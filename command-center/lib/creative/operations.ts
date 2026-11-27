@@ -19,7 +19,8 @@ export type DbError = { code?: string; message?: string; details?: string | null
 export type DbAnswer = { data: unknown; error: DbError | null };
 
 export interface CreativeDb {
-  rpc(fn: string, args: Record<string, unknown>): Promise<DbAnswer>;
+  /** `headers`: extra request headers for this one call (0208's server-signed country, lib/server/geo-claim.ts). */
+  rpc(fn: string, args: Record<string, unknown>, headers?: Record<string, string>): Promise<DbAnswer>;
   /** One creative_jobs row by id, read through RLS (members of its org). */
   readJob(id: string): Promise<DbAnswer>;
   /** The newest creative_jobs rows of one org, read through RLS; only these tools' when `capabilities` is given. */
@@ -197,6 +198,18 @@ export type ImageQuality = (typeof IMAGE_QUALITIES)[number];
 export const DEFAULT_IMAGE_QUALITY: ImageQuality = "medium";
 export const QUALITY_CAPABILITIES = ["t2i", "edit"] as const satisfies readonly CreativeCapability[];
 
+/**
+ * 0208's `image_size` (t2i and edit only, optional): the size of a picture from a model that bills by it (registry
+ * pricing.variants.by = image_size, one credit_prices row per size). The closed list is the registry schema's own. Whether THIS model
+ * sells the size, and at what price, is the database's question; a model priced by size refuses a request that names none.
+ */
+export const IMAGE_SIZES = ["512", "1K", "2K", "4K"] as const;
+export type ImageSize = (typeof IMAGE_SIZES)[number];
+
+export function isImageSize(v: unknown): v is ImageSize {
+  return typeof v === "string" && (IMAGE_SIZES as readonly string[]).includes(v);
+}
+
 export function isImageQuality(v: unknown): v is ImageQuality {
   return typeof v === "string" && (IMAGE_QUALITIES as readonly string[]).includes(v);
 }
@@ -234,6 +247,8 @@ export const PARAM_KEYS = [
   "quality",
   "audio",
   "look",
+  // 0208
+  "image_size",
 ] as const;
 
 /** Codes the routes answer with. Each has a sentence in lib/i18n `creative.errors`. */
@@ -254,6 +269,9 @@ export const CREATIVE_ERRORS = [
   "model_temporarily_off",
   // The model is not offered where this request comes from (lib/server/geo.ts, docs/GEO_BLOCK.md); nothing was quoted or held.
   "country_blocked",
+  // A model sold only inside listed regions (lib/geo/blocked REFUSE_UNKNOWN_COUNTRY) and a country that could not be read, or one
+  // the database could not confirm came from our server (0208); nothing was quoted or held.
+  "country_unverified",
   "entitlement_required",
   "unpriced",
   "capability_not_supported",
@@ -335,6 +353,9 @@ const NS400: Partial<Record<string, { status: number; code: CreativeError }>> = 
   acknowledgement_required: { status: 428, code: "acknowledgement_required" },
   adult_attestation_required: { status: 403, code: "adult_attestation_required" },
   adult_only_service: { status: 403, code: "adult_only_service" },
+  // 0208: the database's own country gate (a geo-gated model and no server-signed country, or a country on the model's list).
+  country_blocked: { status: 451, code: "country_blocked" },
+  country_unverified: { status: 451, code: "country_unverified" },
   // 0048: the style kit is not this organization's or no longer exists —
   // another organization's kit reads exactly like a missing one.
   style_unavailable: { status: 422, code: "style_unavailable" },
@@ -568,6 +589,12 @@ export function parseGenerationInput(
     if (!isImageQuality(params.quality))
       return { ok: false, result: fail(400, "invalid_params", { detail: `quality must be one of ${IMAGE_QUALITIES.join(", ")}` }) };
   }
+  if (params.image_size !== undefined) {
+    if (!(QUALITY_CAPABILITIES as readonly string[]).includes(capability))
+      return { ok: false, result: fail(400, "invalid_params", { detail: `image_size does not apply to ${capability}` }) };
+    if (!isImageSize(params.image_size))
+      return { ok: false, result: fail(400, "invalid_params", { detail: `image_size must be one of ${IMAGE_SIZES.join(", ")}` }) };
+  }
   if (params.audio !== undefined) {
     if (!(AUDIO_CAPABILITIES as readonly string[]).includes(capability))
       return { ok: false, result: fail(400, "invalid_params", { detail: `audio does not apply to ${capability}` }) };
@@ -634,7 +661,11 @@ export async function quote(db: CreativeDb, input: GenerationInput): Promise<Cre
  * price the member confirmed: a higher price is refused (price_changed),
  * never charged. A replayed idempotency key answers the first job (200).
  */
-export async function createGeneration(db: CreativeDb, input: GenerationInput): Promise<CreativeResult> {
+export async function createGeneration(
+  db: CreativeDb,
+  input: GenerationInput,
+  headers?: Record<string, string>,
+): Promise<CreativeResult> {
   if (input.maxCredits === null) return fail(400, "confirm_price");
   const { data, error } = await db.rpc("create_creative_job", {
     p_org: input.orgId,
@@ -644,7 +675,7 @@ export async function createGeneration(db: CreativeDb, input: GenerationInput): 
     p_mode: input.mode,
     p_idempotency_key: input.idempotencyKey,
     p_max_credits: input.maxCredits,
-  });
+  }, headers);
   if (error) return degraded(input.capability, mapCreativeError(error));
   const out = obj(data);
   const job = obj(out?.job);
