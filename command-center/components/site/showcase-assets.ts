@@ -235,6 +235,10 @@ import s44Mp4 from "@/components/site/showcase/cf2af7b1-5433-4661-979b-f65f3f8a4
 import s44Webm from "@/components/site/showcase/cf2af7b1-5433-4661-979b-f65f3f8a4dbf/clip.webm";
 import s44SmMp4 from "@/components/site/showcase/cf2af7b1-5433-4661-979b-f65f3f8a4dbf/clip-sm.mp4";
 import s44SmWebm from "@/components/site/showcase/cf2af7b1-5433-4661-979b-f65f3f8a4dbf/clip-sm.webm";
+import s45Poster from "@/components/site/showcase/495ebf91-84df-4c76-a6c4-a3ca6e4eb82d/poster.webp";
+import s45PosterSm from "@/components/site/showcase/495ebf91-84df-4c76-a6c4-a3ca6e4eb82d/poster-sm.webp";
+import s46Poster from "@/components/site/showcase/94baf12a-60db-42f6-a000-fcc118e344a0/poster.webp";
+import s46PosterSm from "@/components/site/showcase/94baf12a-60db-42f6-a000-fcc118e344a0/poster-sm.webp";
 
 export const SHOWCASE_FILES: Readonly<Record<string, ShowcaseFiles>> = {
   "a04d5d55-27ef-4cae-95a2-25488503829e": { poster: s0Poster.src, posterSm: s0PosterSm.src, clip: { mp4: s0Mp4, webm: s0Webm, smMp4: s0SmMp4, smWebm: s0SmWebm } },
@@ -282,4 +286,6 @@ export const SHOWCASE_FILES: Readonly<Record<string, ShowcaseFiles>> = {
   "e35f41fb-3162-4f9d-ae17-6420d558840d": { poster: s42Poster.src, posterSm: s42PosterSm.src, clip: { mp4: s42Mp4, webm: s42Webm, smMp4: s42SmMp4, smWebm: s42SmWebm } },
   "49af4517-9ebf-44d9-80ed-f652cea6e071": { poster: s43Poster.src, posterSm: s43PosterSm.src, clip: { mp4: s43Mp4, webm: s43Webm, smMp4: s43SmMp4, smWebm: s43SmWebm } },
   "cf2af7b1-5433-4661-979b-f65f3f8a4dbf": { poster: s44Poster.src, posterSm: s44PosterSm.src, clip: { mp4: s44Mp4, webm: s44Webm, smMp4: s44SmMp4, smWebm: s44SmWebm } },
+  "495ebf91-84df-4c76-a6c4-a3ca6e4eb82d": { poster: s45Poster.src, posterSm: s45PosterSm.src, clip: null },
+  "94baf12a-60db-42f6-a000-fcc118e344a0": { poster: s46Poster.src, posterSm: s46PosterSm.src, clip: null },
 };

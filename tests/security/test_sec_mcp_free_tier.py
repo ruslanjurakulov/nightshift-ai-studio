@@ -39,9 +39,11 @@ ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0147_mcp_free_tier.sql"
 # tests/security/test_sec_adult_attestation.py), the 0191 connector's own (tests/security/test_sec_mcp_oauth_creative.py), oauth_gc
 # (0161, tests/security/test_sec_mcp_chatgpt_client.py) and api_request_download (0170, tests/security/test_sec_api_download.py).
 # 0198 (Film Studio's switch per organization) sits on 0192's quote_film and start_film: off before 0192, on after it.
+# 0219 (the operator route for connected assistants) sits on 0192's and 0191's Studio doors, and both refuse it: off first.
 # 0218 (creative_price on 0208's body) comes off before 0208 and goes back after it.
 # 0215 (archive and resume) sits on 0198's start_film and film_claim_segment: off before 0198.
-LATER = [(sec_db.MIGRATION_0224, sec_db.ROLLBACK_0224),  # 0224 sits on 0218's creative_price, which 0218's rollback keeps the line of
+LATER = [(sec_db.MIGRATION_0219, sec_db.ROLLBACK_0219),
+         (sec_db.MIGRATION_0224, sec_db.ROLLBACK_0224),  # 0224 sits on 0218's creative_price, which 0218's rollback keeps the line of
          (sec_db.MIGRATION_0218, sec_db.ROLLBACK_0218),
          (sec_db.MIGRATION_0215, sec_db.ROLLBACK_0215),
          (sec_db.MIGRATION_0208, sec_db.ROLLBACK_0208),  # 0208 sits on 0196's reroute_creative_job, which 0196's rollback refuses

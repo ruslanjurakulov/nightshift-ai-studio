@@ -109,6 +109,19 @@ describe("the double-tap lock", () => {
   });
 });
 
+it("accepts case and space differences by default and passes the original text to run", async () => {
+  const run = vi.fn(async (_typed: string) => true);
+  const done = await open({ message: "Confirm publish", confirmLabel: "Go", run, typeToConfirm: "publish" });
+  const dialog = within(screen.getByRole("alertdialog"));
+  const typed = "  PuB LiSh ";
+  fireEvent.change(dialog.getByRole("textbox"), { target: { value: typed } });
+  const go = dialog.getByRole<HTMLButtonElement>("button", { name: "Go" });
+  expect(go.disabled).toBe(false);
+  await act(async () => fireEvent.click(go));
+  expect(run).toHaveBeenCalledExactlyOnceWith(typed);
+  expect(done).toHaveBeenCalledWith(true);
+});
+
 describe("a long sheet opens at the top", () => {
   it("focuses Cancel without scrolling to it, and resets the panel to the top", async () => {
     const focus = vi.spyOn(HTMLElement.prototype, "focus");

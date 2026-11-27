@@ -2745,6 +2745,63 @@ table or grant; `film_expire_segments` is called, never replaced. It spends noth
 - Lab: `tests/security/test_sec_worker_identity_reads.py`. Rollback: `docs/sql/rollback_0225_creative_jobs_member_columns.sql`
   restores the table grant only; the redaction is not undone (the worker ids are not stored anywhere else).
 
+## The operator's own assistant may use the Studio's web models; no ByteDance model for any assistant (0219)
+
+0219 (`0219_oauth_creative_operator_models.sql`) lets a connected assistant (0191) in the operator's own workspace generate with the
+models the Studio sells on the web, for first-party marketing samples made by the owner through our own MCP connection (S9,
+`docs/studio/S9_MCP_CREATIVE.md`, decision of 2026-11-22). Every other workspace gets 0191/0192's answers.
+
+- **Who.** `oauth_creative_operator_org(org)` is `credits_exempt(org)`, which is exactly `org = default_org_id()` (0020), under a name
+  that says what is asked. Not callable by any API role.
+- **The judgement.** `oauth_creative_org_model_state(org, capability, model)`, shared by the list, the quote and the create:
+  - a ByteDance / BytePlus model (`oauth_creative_bytedance`: id `seedance` / `seedream`, provider `bytedance` / `byteplus`, adapter
+    `video.seedance*` / `image.seedream*`, or the vendor's model id) is `not_offered` for every workspace, the operator's included:
+    BytePlus's service terms §4.2.3 forbid re-integrating its video API into an AI content-creation tool (`docs/FILM_STUDIO.md`);
+    ByteDance models stay hidden on every surface, the web Studio included, until a terms review says otherwise (BytePlus service
+    terms §4.2.3);
+  - otherwise 0191's `oauth_creative_model_state(capability, model)`, called unchanged (its body is guarded, not replaced);
+  - only in the operator's workspace, where that answer is `not_offered`: 0191's gates again without the two third-party ones
+    (`spec.mcp_oauth_exposure` and the `mcp` surface). Still required: one of the API's capabilities (never captions), no
+    `blocked_countries`, no rights acknowledgement (`acknowledgement_required`), the owner's switch (`model_temporarily_off`), and on
+    sale in the Studio (`sellable_models(cap, 'web')`). That is `ok_operator`.
+- **The list.** The operator's workspace lists from `sellable_models(cap, 'web')`; every model carries `operator_only` (true only for a
+  model reached by the operator route, with `availability_note` "Operator workspace only (first-party use)."). No price, no terms
+  notes, as before.
+- **The record.** `exposure text not null default 'mcp' check (exposure in ('mcp', 'operator'))` on `oauth_creative_quotes` and
+  `oauth_creative_jobs` (additive; every existing row is `mcp`). The quote stores it (an operator quote also answers
+  `operator_only: true`); create asks the judgement again and refuses a quote whose route no longer holds (409
+  `quote_exposure_changed`, nothing held); the job row and the `creative.generate` audit row record it. Create still runs exactly the
+  quoted capability, model, params and credits.
+- **Replaces** `oauth_creative_models` (0192's, `beafb530…` → `3c19fec2…`), `oauth_creative_quote` (0192's, `e3340606…` →
+  `13c96006…`) and `oauth_creative_create` (0191's, `527ce668…` → `86e36ace…`), each with marked hunks, grants unchanged (anon only).
+  Guards `oauth_creative_model_state` at 0191's `45811a3b…`. Ends with `notify pgrst`.
+- **Registry.** `seedance-1.5-pro` becomes `api_exposure: web_only` in `schemas/model_registry.json` (the registry sync applies it;
+  the migration writes no model data), and `modules/model_registry.py` refuses any ByteDance model that is not `web_only` or has
+  `mcp_oauth_exposure`.
+- **Without it.** Everything works as under 0192; the operator's assistant sees only the models switched on for assistants.
+- **Replay.** `create or replace` plus `if not exists`: a replay changes nothing. Replaying 0191 or 0192 over it is refused by 0192's
+  guard (or, for 0191, silently restores 0191's create): apply this file's rollback first, re-run, then 0219 again.
+- **Number.** 0219, assigned by the S9 lead. Apply order 0208 -> 0218 -> 0219 -> 0224. Needs 0191, 0192 and 0218 (its guard reads
+  0218's `prompt_too_long` in `creative_price`); replaces nothing 0208 or 0218 replaces.
+- **Undo.** `docs/sql/rollback_0219_oauth_creative_operator_models.sql` (owner-applied): refuses a door that is not 0219's, puts
+  0192's two and 0191's create back verbatim, drops the three helpers, keeps the exposure columns (the record). An open operator
+  quote is then refused at create by 0191's judgement.
+- **Tests.** `tests/test_oauth_creative_operator_models_migration.py`, `tests/test_no_bytedance_assistant.py`,
+  `tests/security/test_sec_oauth_creative_operator.py` (a real PostgreSQL), `command-center/tests/mcp-oauth-creative.test.ts`.
+
+## Owner model terms acceptance (0227)
+
+0227 (`0227_owner_model_terms_acceptance.sql`) adds an owner-only approval for a model's exact vendor terms gate.
+Applying it leaves existing model rows untouched. Owners confirm the model ID and use the existing availability control
+to offer a model after approval. The probe and pricing requirements still apply. ByteDance terms cannot be approved.
+
+The registry preserves approvals for matching gates. A changed gate on a model with an earlier approval hides the model
+if it is on sale. Revoking an approval hides it if it is on sale and restores the recorded gate when there is no newer gate.
+The audit allow-list adds `model.terms_accept` and `model.terms_revoke`.
+
+Apply as one transaction after 0018 (platform role), 0035 (registry), 0107 (operator MFA) and 0145 (audit allow-list).
+The owner-applied rollback is `docs/sql/rollback_0227_owner_model_terms_acceptance.sql`.
+
 ## Dated credit prices (0224)
 
 0224 (`0224_dated_credit_price.sql`) lets a credit price change at an exact moment, so our price rises when a vendor's does, not

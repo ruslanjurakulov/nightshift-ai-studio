@@ -456,6 +456,18 @@ def _err(mid: str, msg: str) -> str:
     return f"{mid or '?'}: {msg}"
 
 
+_BYTEDANCE_RE = re.compile(r"seedance|seedream")
+
+
+def is_bytedance(m: Mapping) -> bool:
+    """A ByteDance / BytePlus model, however it is named: the same test as migration 0219's oauth_creative_bytedance (the id, the
+    provider, the adapter, the vendor's own model id)."""
+    return bool(_BYTEDANCE_RE.search(str(m.get("id") or "").lower())
+                or str(m.get("provider") or "").lower() in ("bytedance", "byteplus")
+                or re.match(r"(video\.seedance|image\.seedream)", str(m.get("adapter") or "").lower())
+                or _BYTEDANCE_RE.search(str(m.get("vendor_model") or "").lower()))
+
+
 def _cross_errors(models: Sequence[Mapping]) -> List[str]:
     """Rules a JSON Schema cannot say: uniqueness, adapters that exist and can
     serve the listed capabilities, prices with a source, units that 0020
@@ -696,6 +708,11 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             # give it, and 0191's gate (sellable_models 'mcp') would refuse the model anyway: the file must not promise it.
             if m["api_exposure"] not in ("web_mcp", "any"):
                 errors.append(_err(mid, "mcp_oauth_exposure needs api_exposure web_mcp (or any): web_only is the vendor's no"))
+        if is_bytedance(m) and (m["api_exposure"] != "web_only" or m.get("mcp_oauth_exposure") is True):
+            # BytePlus's service terms §4.2.3 forbid re-integrating its video API into an AI content-creation tool
+            # (docs/FILM_STUDIO.md "Models"): never the public API, never a connected assistant. Migration 0219 refuses every
+            # ByteDance model to every assistant in the database too; the file must not promise otherwise.
+            errors.append(_err(mid, "a ByteDance model is web_only and never mcp_oauth_exposure (BytePlus terms §4.2.3)"))
         ent = m["entitlement"]
         if ent and ent.split(":")[0] != f"models_{m['output']}":
             errors.append(_err(mid, "entitlement category must match the output"))

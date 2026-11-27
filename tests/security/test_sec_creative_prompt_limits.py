@@ -321,7 +321,8 @@ def test_on_0224s_base_the_file_keeps_0224s_line_its_rollback_puts_it_back_and_t
     base = sec_db.create_database(admin, name)
     try:
         sec_db.apply_files(base, [f for f in sec_db.build_sequence()
-                               if f.name not in (sec_db.MIGRATION_0218.name, sec_db.MIGRATION_0224.name)])
+                               if f.name not in (sec_db.MIGRATION_0218.name, sec_db.MIGRATION_0219.name,
+                                                 sec_db.MIGRATION_0224.name)])
         d = Db(base)
         assert _md5s(d) == BEFORE
         d.su("create function public.credits_per_unit_now(p_unit text) returns numeric language sql stable "
@@ -397,7 +398,8 @@ def test_the_file_refuses_a_registry_synced_from_a_ref_without_0218(lab):
     base = sec_db.create_database(admin, name)
     try:
         sec_db.apply_files(base, [f for f in sec_db.build_sequence()
-                               if f.name not in (sec_db.MIGRATION_0218.name, sec_db.MIGRATION_0224.name)])
+                               if f.name not in (sec_db.MIGRATION_0218.name, sec_db.MIGRATION_0219.name,
+                                                 sec_db.MIGRATION_0224.name)])
         d = Db(base)
         d.su("insert into public.model_registry (id, display_name, provider, adapter, capabilities, spec, credit_unit) values "
              "('lab-old', 'old', 'lab', 'image.lab', array['t2i'], '{\"output\": \"image\"}'::jsonb, 'model_lab_old_image')")

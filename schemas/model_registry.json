@@ -3715,10 +3715,10 @@
       "entitlement": "models_video:premium",
       "terms_gate": "written_consent_required",
       "terms_notes": [
-        "Luma API terms: no product that substantially replicates Luma, and no output as a standalone service, without Luma's prior written consent"
+        "Luma API Terms of Use (lumalabs.ai/legal/api-terms-of-use, 2026-04-28, read 2026-11-22) s.5: no Output or access 'as a standalone product or service without Luma's prior written consent' (item 4), nothing that 'substantially replicates' it (item 5): web_only", "Luma API terms: no product that substantially replicates Luma, and no output as a standalone service, without Luma's prior written consent"
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 1
@@ -3879,9 +3879,11 @@
       "credit_unit": "model_seedance_1_5_pro_second",
       "entitlement": "models_video:premium",
       "terms_gate": null,
-      "terms_notes": [],
+      "terms_notes": [
+        "BytePlus service terms §4.2.3 forbid re-integrating its video API into an AI content-creation tool: never the public API or a connected assistant (docs/FILM_STUDIO.md \"Models\"; migration 0219 refuses every ByteDance model to every connected assistant)"
+      ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 1
@@ -5986,7 +5988,7 @@
       "terms_gate": "written_consent_required",
       "terms_notes": [
         "Luma API terms (carried from the luma-ray-3.2 entry, NOT re-read here): no product that substantially replicates Luma, and no output as a standalone service, without Luma's prior written consent.",
-        "Luma Terms of Service (Last updated 2026-05-14, lumalabs.ai/legal/tos) 3.4(b) bar service-bureau use but do not prohibit API Customers 'from using the APIs ... to provide API Users with access to the Services'. They defer API customers to 'API Terms of Use', NOT found at any URL tried.",
+        "Luma Terms of Service (Last updated 2026-05-14, lumalabs.ai/legal/tos) 3.4(b) bar service-bureau use but do not prohibit API Customers 'from using the APIs ... to provide API Users with access to the Services'.", "They defer API customers to the 'API Terms of Use', found 2026-11-22 at lumalabs.ai/legal/api-terms-of-use (s.5 items 4-5), NOT read in full by a person yet.",
         "Same ToS: the customer owns Output (Luma assigns its rights, section 10); Output that identifies or resembles a person must be publicly identified as AI generated (section 4); the customer answers for its API Users.",
         "Failed generations: Luma's pricing page lists which asynchronous failures are refunded; that is Luma's statement, unverified here. Sign-up and payment from Uzbekistan were not verified.",
         "Gate stays open until a person has read Luma's API Terms of Use (or Luma agrees in writing). No credit price may be added before that."
@@ -6056,7 +6058,7 @@
       "terms_gate": "written_consent_required",
       "terms_notes": [
         "Luma API terms (carried from the luma-ray-3.2 entry, NOT re-read here): no product that substantially replicates Luma, and no output as a standalone service, without Luma's prior written consent.",
-        "Luma Terms of Service (Last updated 2026-05-14, lumalabs.ai/legal/tos) 3.4(b) bar service-bureau use but do not prohibit API Customers 'from using the APIs ... to provide API Users with access to the Services'. They defer API customers to 'API Terms of Use', NOT found at any URL tried.",
+        "Luma Terms of Service (Last updated 2026-05-14, lumalabs.ai/legal/tos) 3.4(b) bar service-bureau use but do not prohibit API Customers 'from using the APIs ... to provide API Users with access to the Services'.", "They defer API customers to the 'API Terms of Use', found 2026-11-22 at lumalabs.ai/legal/api-terms-of-use (s.5 items 4-5), NOT read in full by a person yet.",
         "Same ToS: the customer owns Output (Luma assigns its rights, section 10); Output that identifies or resembles a person must be publicly identified as AI generated (section 4); the customer answers for its API Users.",
         "Failed generations: Luma's pricing page lists which asynchronous failures are refunded; that is Luma's statement, unverified here. Sign-up and payment from Uzbekistan were not verified.",
         "Gate stays open until a person has read Luma's API Terms of Use (or Luma agrees in writing). No credit price may be added before that."
