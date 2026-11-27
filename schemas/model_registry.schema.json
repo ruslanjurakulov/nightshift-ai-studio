@@ -13,7 +13,7 @@
     "models": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/model"}}
   },
   "$defs": {
-    "capability": {"enum": ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe", "captions", "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg", "music", "video_music", "video_character_swap"]},
+    "capability": {"enum": ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe", "captions", "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg", "music", "video_music", "video_character_swap", "lipsync"]},
     "relight_look": {"enum": ["soft", "warm", "cool", "golden_hour", "dramatic", "studio"]},
     "upscale_target": {"enum": ["720p", "1k", "2k", "4k"]},
     "language": {"type": "string", "pattern": "^[a-z]{2,3}$"},
@@ -93,6 +93,27 @@
             "input_max_side_px": {"type": "integer", "minimum": 1},
             "input_min_pixels": {"type": "integer", "minimum": 1},
             "input_max_pixels": {"type": "integer", "minimum": 1}
+          }
+        },
+        "lipsync": {
+          "description": "The vendor's own input limits for a lipsync entry (docs/research/kling-lipsync.md). The adapter refuses a video or a speech file outside them before the vendor's first call, which is billed whatever the file. One face per task; the speech is always our own file, never the vendor's TTS.",
+          "type": "object",
+          "required": ["video_formats", "video_max_bytes", "video_seconds", "video_short_sides_px", "video_min_side_px", "video_max_side_px",
+                       "audio_formats", "audio_max_bytes", "audio_seconds", "faces_per_task", "min_overlap_ms", "speech_source"],
+          "additionalProperties": false,
+          "properties": {
+            "video_formats": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["mp4", "mov"]}},
+            "video_max_bytes": {"type": "integer", "minimum": 1},
+            "video_seconds": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": 1, "maximum": 120}},
+            "video_short_sides_px": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "integer", "minimum": 1}},
+            "video_min_side_px": {"type": "integer", "minimum": 1},
+            "video_max_side_px": {"type": "integer", "minimum": 1},
+            "audio_formats": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["mp3", "wav", "m4a", "aac"]}},
+            "audio_max_bytes": {"type": "integer", "minimum": 1},
+            "audio_seconds": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": 1, "maximum": 120}},
+            "faces_per_task": {"const": 1},
+            "min_overlap_ms": {"type": "integer", "minimum": 0},
+            "speech_source": {"const": "our_file"}
           }
         },
         "audio_out": {"type": "boolean"},

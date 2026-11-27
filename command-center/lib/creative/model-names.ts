@@ -47,6 +47,7 @@ export const REGISTRY_NAMES: Readonly<Record<string, string>> = {
   "ideogram-4.5": "Ideogram 4.5",
   "ideogram-upscale": "Ideogram Upscale",
   "kling-4.0-omni-edit": "Kling 4.0 Omni (video edit)",
+  "kling-lipsync": "Kling Lip Sync",
   "kling-v2.6": "Kling 2.6",
   "kling-v3": "Kling 3.0",
   "krea-3": "Krea 3",

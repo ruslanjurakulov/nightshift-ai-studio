@@ -293,9 +293,10 @@ describe("Terms 6: generated images, video and voice", () => {
 
     // Dubbing keeps each speaker's own voice and voice change re-voices a recording: in effect voice cloning. Today only a
     // vendor-terms gate keeps them (and the character-swap models) out of sellable_models(); clearing one must change Terms 6.2 first.
-    it("every registry entry that dubs, changes a voice or swaps a character carries a terms gate", () => {
+    // A lip-sync moves a real face to words that person never said: the same likeness risk, the same gate.
+    it("every registry entry that dubs, changes a voice, swaps a character or lip-syncs carries a terms gate", () => {
       const registry = JSON.parse(read("schemas/model_registry.json")) as { models: { id: string; capabilities: string[]; terms_gate?: string | null }[] };
-      const risky = registry.models.filter((m) => m.capabilities.some((c) => ["dub", "voice_change", "video_character_swap"].includes(c)));
+      const risky = registry.models.filter((m) => m.capabilities.some((c) => ["dub", "voice_change", "video_character_swap", "lipsync"].includes(c)));
       expect(risky.length).toBeGreaterThan(0);
       for (const m of risky) expect(String(m.terms_gate ?? "").trim(), m.id).not.toBe("");
     });

@@ -34,7 +34,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -73,8 +73,12 @@ VIDEO_MUSIC = "video_music"  # video → music that follows it; the output is th
 #: input_images) + words that say who becomes whom → the same scene with those people replaced. Sold through 0137's own tables,
 #: never through creative_jobs, so the registry entries that list it are registry-only.
 VIDEO_CHARACTER_SWAP = "video_character_swap"
+#: Lip-sync (no migration yet, see REGISTRY_ONLY_CAPABILITIES): a video of one face (CapabilityRequest.input_media) and a
+#: speech file (CapabilityRequest.input_audio) → the same video with that mouth moving to the speech. The speech is always
+#: our own file: a vendor's built-in TTS is never the voice (Kling's speaks only zh/en, and a channel's voice is a choice).
+LIPSYNC = "lipsync"
 CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE,
-                CAPTIONS, *PICTURE_OPS, *VIDEO_OPS, MUSIC, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP)
+                CAPTIONS, *PICTURE_OPS, *VIDEO_OPS, MUSIC, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP, LIPSYNC)
 #: Capabilities the DATABASE does not list yet. Migration 0100's ``model_registry_capabilities_check`` and
 #: ``model_probe_runs_capability_check`` are closed lists, and ``sync_model_registry`` is one statement: a single row with
 #: a capability outside them would fail the sync of EVERY model. So an entry that lists one of these is REGISTRY-ONLY: it
@@ -83,13 +87,14 @@ CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE,
 #: migrations, so the migration that teaches the database a capability is also the change that takes it out of here.
 #: A character swap is not a creative job at all (0137 prices, holds and runs it in its own tables), so it stays here for good:
 #: the creative system must never be able to sell it.
-REGISTRY_ONLY_CAPABILITIES = frozenset({MUSIC, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP})
+#: Lip-sync waits for the migration that teaches model_registry the capability (docs/studio/S6_GAPS.md G6).
+REGISTRY_ONLY_CAPABILITIES = frozenset({MUSIC, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP, LIPSYNC})
 OUTPUT_OF = {T2I: "image", EDIT: "image", T2V: "video", I2V: "video", TTS: "audio", SFX: "audio",
              UPSCALE: "image", REMOVE_BG: "image", VOICE_CHANGE: "audio", DUB: "audio",
              VIDEO_UPSCALE: "video", DESCRIBE: "text", CAPTIONS: "text",
              EXPAND: "image", RELIGHT: "image", ERASE: "image",
              VIDEO_EDIT: "video", VIDEO_REFRAME: "video", VIDEO_REMOVE_BG: "video",
-             MUSIC: "audio", VIDEO_MUSIC: "audio", VIDEO_CHARACTER_SWAP: "video"}
+             MUSIC: "audio", VIDEO_MUSIC: "audio", VIDEO_CHARACTER_SWAP: "video", LIPSYNC: "video"}
 #: Capabilities whose input is an image (CapabilityRequest.input_images).
 #: A character swap takes pictures too (the characters), beside its video.
 IMAGE_INPUT = frozenset({EDIT, I2V, UPSCALE, REMOVE_BG, DESCRIBE, *PICTURE_OPS, VIDEO_CHARACTER_SWAP})
@@ -119,7 +124,8 @@ VIDEO_VARIANT_CAPABILITIES = frozenset({T2V, I2V})
 MEDIA_INPUT = frozenset({VOICE_CHANGE, DUB, CAPTIONS})
 #: Capabilities whose input is a video file (0052) — also carried in
 #: CapabilityRequest.input_media, never as a picture, never with speech rules.
-VIDEO_INPUT = frozenset({VIDEO_UPSCALE, *VIDEO_OPS, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP})
+#: A lip-sync starts from a video too (its speech rides apart, in CapabilityRequest.input_audio).
+VIDEO_INPUT = frozenset({VIDEO_UPSCALE, *VIDEO_OPS, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP, LIPSYNC})
 #: Everything that starts from a media file rather than a picture.
 FILE_INPUT = MEDIA_INPUT | VIDEO_INPUT
 #: Capabilities where the prompt is optional (i2v, upscale) or absent
@@ -127,8 +133,9 @@ FILE_INPUT = MEDIA_INPUT | VIDEO_INPUT
 #: describe sends no prompt of the person's: the adapter writes the request.
 #: expand and relight (0099) are asked by a shape / a look: their words are optional.
 #: A soundtrack for a video (video_music) is scored to the picture; words only steer it.
+#: A lip-sync takes no words at all: the speech file is what the mouth follows.
 PROMPT_OPTIONAL = frozenset({I2V, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE, CAPTIONS,
-                             EXPAND, RELIGHT, VIDEO_REFRAME, VIDEO_REMOVE_BG, VIDEO_MUSIC})
+                             EXPAND, RELIGHT, VIDEO_REFRAME, VIDEO_REMOVE_BG, VIDEO_MUSIC, LIPSYNC})
 
 # ── task states ──────────────────────────────────────────────────────────────
 PENDING = "pending"
@@ -285,6 +292,20 @@ def scrub(text: str, secrets: Iterable[str]) -> str:
 
 
 @dataclass(frozen=True)
+class MediaFacts:
+    """What the worker MEASURED of one input file (ffprobe of the copy it holds, and its byte count), never what a job row
+    or a vendor claims. An adapter whose vendor bills a call before it looks at the file (Kling's face check) reads these to
+    refuse an input outside the vendor's limits before anything is paid."""
+    #: The container as a lower-case extension without the dot ("mp4", "mov", "mp3", "wav", "m4a", "aac").
+    format: str
+    bytes: int
+    duration_s: float
+    #: Pixels of the video stream (a video only; None for audio).
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+
+@dataclass(frozen=True)
 class CapabilityRequest:
     """What a caller wants, in registry terms (never vendor field names)."""
     capability: str
@@ -337,6 +358,19 @@ class CapabilityRequest:
     #: The light a ``relight`` is asked for by name (0099): one of RELIGHT_LOOKS,
     #: which the entry's ``relight_looks`` must list. None = the prompt names it.
     look: Optional[str] = None
+    #: The speech a ``lipsync`` moves the mouth to: an https signed link the worker made for a library asset (the vendor
+    #: fetches it). The video stays ``input_media[0]``. Only for ``lipsync``.
+    input_audio: Optional[str] = None
+    #: The worker's measurements of ``input_media[0]`` and ``input_audio`` (``lipsync``: refused without them, because the
+    #: vendor's first call is billed whether or not the file is one it takes).
+    input_media_facts: Optional[MediaFacts] = None
+    input_audio_facts: Optional[MediaFacts] = None
+    #: The face a ``lipsync`` moves, as the vendor's face check named it. None = exactly one face must be found; with two
+    #: or more the job fails, it never picks one (CLAUDE.md #4).
+    face_id: Optional[str] = None
+    #: ``lipsync``: (start, end, insert) in milliseconds — the part of the speech file used, and where in the video it
+    #: starts. None = the whole file, from the video's first frame.
+    sound_window_ms: Optional[Tuple[int, int, int]] = None
 
 
 @dataclass

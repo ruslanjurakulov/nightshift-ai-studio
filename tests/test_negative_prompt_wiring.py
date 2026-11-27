@@ -137,7 +137,9 @@ class NegativePromptWiring(unittest.TestCase):
         self.assertLessEqual(set(unproven), {
             "gemini-2.5-flash-image-relight", "elevenlabs-scribe-v2", "assemblyai-universal-2", "runway-video-upscale",
             "generic-video-edit", "generic-video-reframe", "generic-video-remove-bg", "elevenlabs-voice-changer",
-            "elevenlabs-dubbing-v2", "elevenlabs-dubbing-v1", "sonilo-video-music", "kling-4.0-omni-edit", "seedance-2.5-edit"},
+            "elevenlabs-dubbing-v2", "elevenlabs-dubbing-v1", "sonilo-video-music", "kling-4.0-omni-edit", "seedance-2.5-edit",
+            # kling-lipsync (registry-only): its lab request needs a measured video and speech file the worker fetches itself.
+            "kling-lipsync"},
             unproven)
 
     def test_the_adapters_that_could_not_be_driven_never_read_a_negative_prompt_into_a_body(self):
@@ -145,7 +147,7 @@ class NegativePromptWiring(unittest.TestCase):
 
         for mid in ("gemini-2.5-flash-image-relight", "elevenlabs-scribe-v2", "assemblyai-universal-2", "runway-video-upscale",
                     "generic-video-edit", "elevenlabs-voice-changer", "elevenlabs-dubbing-v2", "kling-4.0-omni-edit",
-                    "seedance-2.5-edit"):
+                    "seedance-2.5-edit", "kling-lipsync"):
             cls = mr.ADAPTERS[mr.get(mid).adapter]
             src = inspect.getsource(cls.submit)
             self.assertNotIn("negative_prompt", src.replace("request.negative_prompt:", ""), mid)
