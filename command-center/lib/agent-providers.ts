@@ -1,7 +1,12 @@
 /**
  * Nightshift direct-developer provider planning registry.
  * NO provider API calls; no reseller endpoints or invented unit prices.
+ *
+ * Server-only: the registry names each developer with its licensing and pricing
+ * state, and the Agent Builder imported it, so it sat in a static chunk. The
+ * page plans each provider's review card here and passes the plans as props.
  */
+import "server-only";
 import { z } from "zod";
 
 export const CAPABILITIES = ["image", "video", "vector"] as const;

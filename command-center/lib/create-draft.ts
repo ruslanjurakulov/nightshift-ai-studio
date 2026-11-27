@@ -17,7 +17,7 @@
  * page (clearAllDrafts: every key with the prefix, whatever scope or version).
  */
 import { RUN_DURATIONS_S } from "@/lib/home";
-import { VOICES } from "@/lib/ttsModels";
+import { VOICES } from "@/lib/voices";
 
 export const DRAFT_PREFIX = "nightshift.create.draft.";
 export const DRAFT_VERSION = 1;

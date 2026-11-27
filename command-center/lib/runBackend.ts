@@ -7,8 +7,10 @@
  * exact value "queue" is Actions: a typo must fall back to the path that has
  * always worked, not to one that may have no worker behind it.
  *
- * Pure (no server-only import) so it is unit-tested directly; the callers are
- * the run route and the server pages.
+ * Pure, and unit-tested directly; the callers are the run route and the server
+ * pages. Server code only: it validates against lib/imageProviders.ts and
+ * lib/ttsModels.ts, which are server-only (a browser needing a failure code
+ * imports lib/job-errors.ts).
  */
 
 export type RunBackend = "actions" | "queue";
@@ -133,23 +135,10 @@ export function buildRenderJobInsert(
 
 export type QueueJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
-/** Why a render job failed, in the closed set modules/render_error.py writes. */
-export const JOB_ERROR_CODES = ["credits", "voice", "provider_quota", "media", "render", "timeout", "held", "switched_off", "channel_reconnect_required", "credentials_missing", "spend_ceiling", "unknown"] as const;
-export type JobErrorCode = (typeof JOB_ERROR_CODES)[number];
-
-/**
- * `render_jobs.error` is operator text behind a stable prefix, `[code:voice] main.py exited with code 1\n<log tail>`
- * (the worker adds it, modules/render_error.py; the column is plain text so no migration is needed). Returns the code
- * and the text without the prefix. A failure written before codes existed has no prefix: `code` is null; a prefix this
- * build does not know reads "unknown". Pure.
- */
-export function parseJobError(error: string | null | undefined): { code: JobErrorCode | null; text: string | null } {
-  if (typeof error !== "string" || error === "") return { code: null, text: null };
-  const m = /^\[code:([a-z_]+)\][ \t]?/.exec(error);
-  if (!m) return { code: null, text: error };
-  const code = (JOB_ERROR_CODES as readonly string[]).includes(m[1]) ? (m[1] as JobErrorCode) : "unknown";
-  return { code, text: error.slice(m[0].length) || null };
-}
+// The failure codes are their own module: the Studio's live view needs them in the browser, and importing this file there
+// put the run's whole validation (our generator ids, the narration vendor's model ids) in a static chunk.
+export { JOB_ERROR_CODES, parseJobError, type JobErrorCode } from "./job-errors";
+import { parseJobError, type JobErrorCode } from "./job-errors";
 
 export type QueueJob = {
   id: number;

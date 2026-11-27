@@ -7,8 +7,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
-import { PROVIDERS } from "@/lib/providers";
-import { IMAGE_GENERATORS, imageGeneratorById } from "@/lib/imageProviders";
+import type { RoutingOption } from "@/lib/provider-types";
 
 /**
  * Pipeline routing — choose which generator the pipeline actually uses.
@@ -39,15 +38,6 @@ import { IMAGE_GENERATORS, imageGeneratorById } from "@/lib/imageProviders";
 const TRUTHY = new Set(["1", "true", "yes", "on"]);
 const truthy = (v: string | undefined) => !!v && TRUTHY.has(v.trim().toLowerCase());
 
-const VIDEO_PROVIDERS = PROVIDERS.filter((p) => p.category === "video");
-// Pexels is the stock fallback ("off"), not a generator option. Two generators
-// reuse an LLM key (OpenAI, Gemini), so they come from their own list.
-const IMAGE_PROVIDERS = IMAGE_GENERATORS;
-
-function secretFor(id: string): string | undefined {
-  return PROVIDERS.find((p) => p.id === id)?.secretName;
-}
-
 type Vars = Record<string, string>;
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -55,7 +45,14 @@ export function PipelineRouting({
   initial,
   configured,
   githubConfigured,
+  videoProviders,
+  imageGenerators,
 }: {
+  /** The video generators (lib/providers.ts, server-only), from the page: the vendor list is not in a static chunk. */
+  videoProviders: RoutingOption[];
+  /** The image generators (lib/imageProviders.ts, server-only). Pexels is the stock fallback ("off"), not one of them;
+   *  two of them reuse an LLM key (OpenAI, Gemini), which is why they are their own list. */
+  imageGenerators: RoutingOption[];
   /** Current values of the routing variables, name→value (absent = default). */
   initial: Vars;
   /** Secret names GitHub reports as set — used to warn when a key is missing. */
@@ -64,6 +61,8 @@ export function PipelineRouting({
 }) {
   const { t } = useI18n();
   const configuredSet = useMemo(() => new Set(configured), [configured]);
+  const secretFor = (id: string) => videoProviders.find((p) => p.id === id)?.secretName;
+  const imageGeneratorById = (id: string) => imageGenerators.find((g) => g.id === id);
 
   // Derive the current selection from the raw variables, mirroring config.py.
   const initialVideo = (() => {
@@ -115,7 +114,7 @@ export function PipelineRouting({
   const imageVars = (id: string): Vars =>
     id === "off" ? { CHRONOS_ENABLE_IMAGE_GEN: "0" } : { CHRONOS_IMAGE_PROVIDER: id, CHRONOS_ENABLE_IMAGE_GEN: "1" };
 
-  const videoName = (id: string) => (id === "off" ? t.providers.routingStock : (VIDEO_PROVIDERS.find((p) => p.id === id)?.name ?? id));
+  const videoName = (id: string) => (id === "off" ? t.providers.routingStock : (videoProviders.find((p) => p.id === id)?.name ?? id));
   const imageName = (id: string) => (id === "off" ? t.providers.routingStock : (imageGeneratorById(id)?.name ?? id));
 
   /** One change at a time; the lock is set before the first await, so a second tap is ignored. */
@@ -213,7 +212,7 @@ export function PipelineRouting({
             className={selectCls}
           >
             <option value="off">{t.providers.routingStock}</option>
-            {VIDEO_PROVIDERS.map((p) => (
+            {videoProviders.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
@@ -237,7 +236,7 @@ export function PipelineRouting({
             className={selectCls}
           >
             <option value="off">{t.providers.routingStock}</option>
-            {IMAGE_PROVIDERS.map((p) => (
+            {imageGenerators.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>

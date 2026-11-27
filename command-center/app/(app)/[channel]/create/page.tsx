@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { getChannelContext } from "@/lib/channels-server";
 import { channelSlug, isScoped } from "@/lib/channels";
 import { isRunNowConfigured, runBackend } from "@/lib/server/run-backend";
+import { createPipelineOptionsFor } from "@/lib/server/pipeline-options";
+import { exampleModelsFor } from "@/lib/server/creative-examples";
 import { CreateStudio } from "@/components/create/CreateStudio";
 import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { atLeast } from "@/lib/auth/roles";
@@ -156,6 +158,8 @@ export default async function CreatePage({
       dna={dna.run}
       userId={user?.id ?? ""}
       orgId={genOrgId}
+      // The per-run model choices name our vendors and their model ids: built here and sent only when the form will draw them.
+      pipeline={createPipelineOptionsFor({ operator: frame, orgId: genOrgId })}
     />
   );
 
@@ -274,6 +278,7 @@ export default async function CreatePage({
         <StudioHome
           orgId={genOrgId}
           models={panelModels}
+          exampleModels={exampleModelsFor(panelModels)}
           unavailable={switchedOff}
           plans={plans}
           defaultStyleKitId={startKit}

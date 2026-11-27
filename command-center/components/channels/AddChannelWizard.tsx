@@ -10,7 +10,8 @@ import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { fmt } from "@/lib/i18n";
 import type { ChannelRow } from "@/lib/types";
-import { isValidChannelId, slugifyChannelId, voiceOwners } from "@/lib/channels";
+import { isValidChannelId, slugifyChannelId } from "@/lib/channels";
+import { voiceOwners } from "@/lib/channel-voices";
 
 /**
  * Guided channel creation.
@@ -95,14 +96,18 @@ export function AddChannelWizard({
   canConfirm = false,
   initialNiche = null,
   initialLanguage = null,
+  keyNames,
 }: {
+  /** The GitHub secret names of the three keys this wizard can save, from the page (lib/providers.ts is server-only: no secret
+   *  name may sit in a static chunk). Shown under each field and used as the key of the save. */
+  keyNames: { gemini: string; pexels: string; eleven: string };
   orgId?: string | null;
   /** The caller administers the operator's own organization: the database then
    *  stamps the confirmation from this lookup (migration 0086). */
   canConfirm?: boolean;
   initialNiche?: string | null;
   initialLanguage?: string | null;
-} = {}) {
+}) {
   const { t } = useI18n();
   const router = useRouter();
   const path = useChannelPath();
@@ -219,9 +224,9 @@ export function AddChannelWizard({
   /** The secrets the operator actually filled in, keyed by their GitHub name. */
   function pendingSecrets(): Record<string, string> {
     const out: Record<string, string> = {};
-    if (geminiKey.trim()) out.GEMINI_API_KEY = geminiKey.trim();
-    if (pexelsKey.trim()) out.PEXELS_API_KEY = pexelsKey.trim();
-    if (elevenKey.trim()) out.ELEVENLABS_API_KEY = elevenKey.trim();
+    if (geminiKey.trim()) out[keyNames.gemini] = geminiKey.trim();
+    if (pexelsKey.trim()) out[keyNames.pexels] = pexelsKey.trim();
+    if (elevenKey.trim()) out[keyNames.eleven] = elevenKey.trim();
     if (ytDataKey.trim()) out.YOUTUBE_DATA_API_KEY = ytDataKey.trim();
     if (clientSecretJson.trim()) out.YOUTUBE_CLIENT_SECRET_JSON = clientSecretJson.trim();
     if (tokenJson.trim()) out[secret] = tokenJson.trim();
@@ -658,9 +663,9 @@ export function AddChannelWizard({
               )
             )}
             <div className="grid gap-3 sm:grid-cols-2">
-              <Secret label={t.channels.keyGemini} value={geminiKey} onChange={setGeminiKey} name="GEMINI_API_KEY" />
-              <Secret label={t.channels.keyPexels} value={pexelsKey} onChange={setPexelsKey} name="PEXELS_API_KEY" />
-              <Secret label={t.channels.keyEleven} value={elevenKey} onChange={setElevenKey} name="ELEVENLABS_API_KEY" />
+              <Secret label={t.channels.keyGemini} value={geminiKey} onChange={setGeminiKey} name={keyNames.gemini} />
+              <Secret label={t.channels.keyPexels} value={pexelsKey} onChange={setPexelsKey} name={keyNames.pexels} />
+              <Secret label={t.channels.keyEleven} value={elevenKey} onChange={setElevenKey} name={keyNames.eleven} />
               <Secret
                 label={t.channels.keyYoutubeData}
                 value={ytDataKey}

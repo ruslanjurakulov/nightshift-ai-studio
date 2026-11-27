@@ -5,6 +5,7 @@ import { NotConfigured } from "@/components/NotConfigured";
 import { PageHeader } from "@/components/PageHeader";
 import "../../../app-pages-g2.css";
 import { AddChannelWizard } from "@/components/channels/AddChannelWizard";
+import { secretNameOf } from "@/lib/providers";
 import { getDictionary } from "@/lib/i18n/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { readChannelPrefill } from "@/lib/welcome";
@@ -78,6 +79,8 @@ export default async function NewChannelPage({
           canConfirm={canConfirm}
           initialNiche={prefill.niche}
           initialLanguage={prefill.language}
+          // Secret names are server-only (lib/providers.ts): the wizard gets the three it saves from here.
+          keyNames={{ gemini: secretNameOf("gemini"), pexels: secretNameOf("pexels"), eleven: secretNameOf("elevenlabs") }}
         />
       </details>
     </div>
