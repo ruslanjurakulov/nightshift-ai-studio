@@ -126,3 +126,9 @@ jobs:
       - name: Static chunks carry no vendor billing data
         if: ${{ !cancelled() }}
         run: node scripts/billing-bundle-check.mjs
+      # Each effect's model preference order and prompt (lib/effects/effects.json), the provider display map and the cost
+      # ledger's vendor-named units each reached a public chunk through a client module. They are server-only now; this reads
+      # them from those sources and fails if any .js under .next/static (or a prerendered page) still carries them.
+      - name: Static chunks carry no vendor routing, vendor map or vendor metering units
+        if: ${{ !cancelled() }}
+        run: node scripts/vendor-bundle-check.mjs
