@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { fmt, type Dictionary } from "@/lib/i18n";
-import { EFFECTS, publicEffectHref, type Effect } from "@/lib/effects/catalog";
+import { EFFECTS, effectFace, publicEffectHref, type Effect } from "@/lib/effects/catalog";
 import { levelSpans, masonryColumns, masonrySpan } from "@/lib/effects/masonry";
 import { EffectFrame } from "@/components/effects/EffectFrame";
 import { effectFrameRatio, effectSample } from "@/components/effects/effect-sample";
@@ -64,7 +64,9 @@ export function EffectsGallery({ t, effects = EFFECTS }: { t: Dictionary; effect
             const sampled = effectSample(e) !== null;
             return (
               <li key={e.id} className="efx-card mf-card" data-mf-card="" data-effect={e.id} style={rows}>
-                <EffectFrame effect={e} label={label} className="fx-frame efx-frame" badgeId={badgeId} />
+                {/* The face only (effectFace): this is a Client Component's prop, so the effect's models and prompt would be in the
+                    public page's payload otherwise. */}
+                <EffectFrame effect={effectFace(e)} label={label} className="fx-frame efx-frame" badgeId={badgeId} />
                 {/* "AI" on a real result (owner decision 22 Nov: the mark is "AI" in every language); a drawing is not one, and says
                     "Drawing". The frame's badge (badgeId) says which in full, and the link's description reads it. */}
                 {sampled ? (

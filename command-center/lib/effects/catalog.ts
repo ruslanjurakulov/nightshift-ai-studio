@@ -4,7 +4,7 @@
  *
  * An effect is a way of FILLING the Studio's video form and nothing else (CLAUDE.md #3). It has no price, no spend path and no
  * run of its own: /create?tool=<cap>&effect=<id> opens the normal composer with the words, the model, the shape and the length in
- * it, and the person still presses Generate there and sees the database's quote and hold. There is no "effect" on the server.
+ * it, and the person still presses Generate there and sees the database's quote and hold. There is no effect route and no effect job.
  *
  * Which model an effect uses is decided only from the models the Studio already offers this workspace (the same list the composer
  * gets: sellable, probe-verified, not switched off, not geo-blocked, plus the operator's own previews in the operator's org). The
@@ -15,68 +15,34 @@
  * tests/effects-catalog.test.ts checks every model against schemas/model_registry.json. Names and one-line descriptions are in
  * lib/i18n/effects/{en,ru,uz}.ts; the prompts are English on purpose, as the Studio templates are (the models follow English best).
  *
- * Pure and client-safe.
+ * Server-only: this module holds every effect's model preference order, full prompt and preview job, and it once put them in
+ * the public chunk on /, /solutions/[slug] and the Studio. Client Components are handed the slices in lib/effects/shared.ts,
+ * built here (effectFace, effectDeskCards, canvasEffects), and re-exported so server code and tests keep one import.
  */
+import "server-only";
 import data from "@/lib/effects/effects.json";
-import { ALL_CHANNELS_SLUG } from "@/lib/channels";
 import { MODEL_ID_RE } from "@/lib/models-admin";
-import { cleanLinkPrompt } from "@/lib/creative/improve";
-import { ASPECT_RATIOS, VIDEO_DURATIONS, prefillFromQuery, type AspectRatio, type StudioModel, type StudioPrefill, type VideoDuration } from "@/lib/creative/studio";
-import { fitsAfterSignup } from "@/lib/safe-redirect";
-import { SIGNUP_PATH } from "@/lib/public-paths";
+import { ASPECT_RATIOS, VIDEO_DURATIONS, prefillFromQuery, type StudioModel, type StudioPrefill } from "@/lib/creative/studio";
+import { effectSample } from "@/components/effects/effect-sample";
+import {
+  EFFECT_CAPABILITIES,
+  EFFECT_IDS,
+  EFFECT_MODELS_MAX,
+  EFFECT_MOTIFS,
+  EFFECT_PROMPT_MAX,
+  SUBJECT_SLOT,
+  cleanSubject,
+  fillPrompt,
+  type CanvasEffect,
+  type Effect,
+  type EffectAvailability,
+  type EffectCapability,
+  type EffectDeskCard,
+  type EffectFace,
+  type EffectId,
+} from "@/lib/effects/shared";
 
-/** Every effect, in the order the galleries show them. effects.json holds exactly these (pinned by a test). */
-export const EFFECT_IDS = [
-  "photo-to-life",
-  "product-burst",
-  "liquid-reveal",
-  "giant-in-the-city",
-  "snow-globe",
-  "orbit-to-street",
-  "satisfying-macro",
-  "time-freeze",
-] as const;
-export type EffectId = (typeof EFFECT_IDS)[number];
-
-/** The two Studio tools an effect fills. */
-export const EFFECT_CAPABILITIES = ["t2v", "i2v"] as const;
-export type EffectCapability = (typeof EFFECT_CAPABILITIES)[number];
-
-/** The drawing a card shows until it has a real sample (components/effects/EffectArt.tsx). */
-export const EFFECT_MOTIFS = ["life", "burst", "spiral", "giant", "globe", "orbit", "macro", "freeze"] as const;
-export type EffectMotif = (typeof EFFECT_MOTIFS)[number];
-
-/** The one slot a words effect has. A picture effect has none: the picture is the subject. */
-export const SUBJECT_SLOT = "{subject}";
-/** The longest subject a person may put into the slot (code points). */
-export const SUBJECT_MAX = 120;
-/**
- * The longest template. The smallest prompt limit among the models we write for is Runway's 1000 characters (registry
- * limits.max_prompt_chars), and the subject must fit beside the template: a test checks each effect against each of its models.
- */
-export const EFFECT_PROMPT_MAX = 1000 - SUBJECT_MAX;
-/** At most this many models per effect: a preference list, not a catalog. */
-export const EFFECT_MODELS_MAX = 6;
-
-export interface Effect {
-  id: EffectId;
-  capability: EffectCapability;
-  /** What the person brings: words for the slot, or one picture. */
-  input: "none" | "picture";
-  /** Registry ids, first choice first. */
-  models: readonly string[];
-  /** English, with exactly one {subject} for a words effect and none for a picture effect. */
-  prompt: string;
-  /** What stands in the slot until the person writes a subject: square brackets, like the Studio templates' [subject]. */
-  slotHint: string | null;
-  /** The clip's shape (a picture effect's clip takes the picture's shape: there this is only the card's frame). */
-  aspect: AspectRatio;
-  duration: VideoDuration;
-  motif: EffectMotif;
-  hues: readonly [string, string];
-  /** A showcase entry (lib/site/showcase.json jobId) whose clip is this effect's preview; null until the operator exports one. */
-  previewJobId: string | null;
-}
+export * from "@/lib/effects/shared";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -158,51 +124,9 @@ export function effectById(id: unknown): Effect | null {
   return typeof id === "string" ? (EFFECTS.find((e) => e.id === id) ?? null) : null;
 }
 
-// ── the words ───────────────────────────────────────────────────────────────
-
-/**
- * A subject as an address may carry it: the link cleaning the Studio applies to words (control, bidi and invisible characters
- * out), one line, no braces (the template's own slot syntax), at most SUBJECT_MAX characters on a whole character.
- */
-export function cleanSubject(raw: unknown): string {
-  const words = cleanLinkPrompt("t2v", raw).replace(/[{}]/g, "").replace(/\s+/g, " ").trim();
-  return Array.from(words).slice(0, SUBJECT_MAX).join("").trim();
-}
-
-/** The effect's prompt with the subject in its slot, or the slot's [hint] until there is one. A picture effect is its prompt. */
-export function fillPrompt(effect: Pick<Effect, "prompt" | "slotHint">, subject: string): string {
-  if (!effect.prompt.includes(SUBJECT_SLOT)) return effect.prompt;
-  const s = cleanSubject(subject);
-  // A function, not a string: with a string replacement, `$&`, `$'` and `` $` `` in the subject are expanded, which put the
-  // template's own {subject} back and grew a 424-character template past 5000 (Lens, PR #732).
-  return effect.prompt.replace(SUBJECT_SLOT, () => s || effect.slotHint || "[subject]");
-}
-
-/**
- * Whether `prompt` is this effect's own words: the template exactly, or for a words effect the template with one cleaned,
- * non-empty subject in its slot. A sample is shown as an effect's preview only when its job was given exactly these words
- * (components/effects/effect-sample.ts effectSample), so a preview is the effect's output, never some other clip.
- */
-export function isEffectPrompt(effect: Pick<Effect, "prompt">, prompt: string): boolean {
-  if (!effect.prompt.includes(SUBJECT_SLOT)) return prompt === effect.prompt;
-  const [head, tail] = effect.prompt.split(SUBJECT_SLOT) as [string, string];
-  if (prompt.length <= head.length + tail.length || !prompt.startsWith(head) || !prompt.endsWith(tail)) return false;
-  const subject = prompt.slice(head.length, prompt.length - tail.length);
-  return subject === cleanSubject(subject) && !/^\[.*\]$/.test(subject);
-}
-
 // ── which model ─────────────────────────────────────────────────────────────
 
 type OfferedModel = Pick<StudioModel, "id" | "displayName" | "capabilities"> & Partial<Pick<StudioModel, "preview" | "fixedShape">>;
-
-export type EffectAvailability =
-  /**
-   * `rank` 0 is the effect's first choice; above 0 the card says the first choice is not open here (the model it will use is
-   * named either way). `preview`: an operator preview, which only the operator's own organization is ever offered.
-   */
-  | { state: "ready"; modelId: string; modelName: string; rank: number; preview: boolean; fixedShape: boolean }
-  /** None of the effect's models is offered here: nothing is filled and nothing can run from the card. */
-  | { state: "unavailable" };
 
 /** The first of the effect's models the Studio offers this workspace for the effect's tool, or "unavailable". Never another one. */
 export function resolveEffect(effect: Pick<Effect, "capability" | "models">, offered: readonly OfferedModel[]): EffectAvailability {
@@ -214,24 +138,6 @@ export function resolveEffect(effect: Pick<Effect, "capability" | "models">, off
 }
 
 // ── the links ───────────────────────────────────────────────────────────────
-
-/** `/create?tool=<cap>&effect=<id>` (a section path: the caller puts the channel in front). The tool keeps the sidebar on Video. */
-export function effectSection(effect: Pick<Effect, "id" | "capability">): string {
-  return `/create?${new URLSearchParams({ tool: effect.capability, effect: effect.id }).toString()}`;
-}
-
-/** The effects gallery inside the Studio. */
-export const EFFECTS_DESK_SECTION = "/create?desk=effects";
-
-/**
- * The public site's "Use this effect": sign-up, then the Studio form under the all-channels workspace (lib/safe-redirect.ts
- * carries it through the e-mail confirmation and /welcome; only that same-origin Studio path survives). The path is built from
- * the catalog's own id and tool, never from anything a visitor typed, so it cannot point anywhere else.
- */
-export function publicEffectHref(effect: Pick<Effect, "id" | "capability">): string {
-  const next = `/${ALL_CHANNELS_SLUG}${effectSection(effect)}`;
-  return fitsAfterSignup(next) ? `${SIGNUP_PATH}?next=${encodeURIComponent(next)}` : SIGNUP_PATH;
-}
 
 type Query = Record<string, string | string[] | undefined>;
 const one = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
@@ -261,4 +167,41 @@ export function effectPrefill(effect: Effect, modelId: string, subject: string, 
     styleKitId: null,
     ...(effect.input === "picture" ? { sourceId, factor: 2 as const } : {}),
   };
+}
+
+// ── what a Client Component is handed ───────────────────────────────────────
+
+/** What a card draws: the effect's tool, shape, length and drawing, and its real sample when it has one. No models, no prompt. */
+export function effectFace(effect: Effect): EffectFace {
+  return {
+    id: effect.id,
+    capability: effect.capability,
+    input: effect.input,
+    aspect: effect.aspect,
+    duration: effect.duration,
+    motif: effect.motif,
+    hues: [effect.hues[0], effect.hues[1]],
+    sample: effectSample(effect),
+  };
+}
+
+/** The Studio's Effects desk for a workspace offered `models`: each effect's face and the model it will use here (resolveEffect). */
+export function effectDeskCards(models: readonly OfferedModel[], effects: readonly Effect[] = EFFECTS): EffectDeskCard[] {
+  return effects.map((e) => ({ face: effectFace(e), availability: resolveEffect(e, models) }));
+}
+
+/**
+ * The Studio canvas's effects for a workspace offered `models`: an effect whose model is open here comes with the composer's
+ * starting values (effectPrefill with no subject and no picture; the canvas puts the node's picture in), any other with none.
+ */
+export function canvasEffects(models: readonly OfferedModel[], effects: readonly Effect[] = EFFECTS): CanvasEffect[] {
+  return effects.map((e) => {
+    const pick = resolveEffect(e, models);
+    return {
+      id: e.id,
+      capability: e.capability,
+      hues: [e.hues[0], e.hues[1]],
+      prefill: pick.state === "ready" ? effectPrefill(e, pick.modelId, "", null) : null,
+    };
+  });
 }

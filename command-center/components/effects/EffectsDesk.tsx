@@ -6,13 +6,12 @@ import { ArrowRight } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
-import { EFFECTS, effectSection, resolveEffect, type Effect, type EffectAvailability } from "@/lib/effects/catalog";
-import type { StudioModel } from "@/lib/creative/studio";
+import { effectSection, type EffectAvailability, type EffectDeskCard, type EffectFace } from "@/lib/effects/shared";
 import { EffectFrame } from "@/components/effects/EffectFrame";
 import "@/components/effects/effects.css";
 
 /** The shape an effect's clip comes out in, as the card says it: the picture's, the model's own, or the effect's. */
-export function shapeText(t: Dictionary, effect: Pick<Effect, "input" | "aspect">, a: EffectAvailability): string {
+export function shapeText(t: Dictionary, effect: Pick<EffectFace, "input" | "aspect">, a: EffectAvailability): string {
   if (effect.input === "picture") return t.effects.desk.pictureShape;
   if (a.state === "ready" && a.fixedShape) return t.effects.desk.ownShape;
   return effect.aspect;
@@ -23,11 +22,12 @@ export function shapeText(t: Dictionary, effect: Pick<Effect, "input" | "aspect"
  * model it will use HERE and its shape and length, and "Use this effect".
  *
  * The model is the first of the effect's models that this workspace is offered (lib/effects/catalog.ts resolveEffect, over the
- * same `models` the composer gets). When none is, the card says the effect is not open here and its button is disabled: nothing
+ * same `models` the composer gets), worked out on the server (effectDeskCards): the cards arrive with it, and the effects'
+ * model preference lists and prompts never reach the browser. When none is, the card says the effect is not open here and its button is disabled: nothing
  * is shown as available that is not, and no other model is put in its place. A card is a link and nothing more: this desk prices,
  * holds and starts nothing (CLAUDE.md #3); the composer it opens shows the price before Generate.
  */
-export function EffectsDesk({ models, effects = EFFECTS }: { models: StudioModel[]; effects?: readonly Effect[] }) {
+export function EffectsDesk({ cards }: { cards: readonly EffectDeskCard[] }) {
   const { t } = useI18n();
   const fx = t.effects;
   const path = useChannelPath();
@@ -38,8 +38,8 @@ export function EffectsDesk({ models, effects = EFFECTS }: { models: StudioModel
         {fx.desk.title}
       </h2>
       <ul className="fx-grid" aria-label={fx.desk.listLabel}>
-        {effects.map((e) => (
-          <EffectCard key={e.id} effect={e} a={resolveEffect(e, models)} href={path(effectSection(e))} />
+        {cards.map(({ face, availability }) => (
+          <EffectCard key={face.id} effect={face} a={availability} href={path(effectSection(face))} />
         ))}
       </ul>
       <p className="m-0 text-xs text-[var(--color-muted)]">{fx.desk.note}</p>
@@ -47,7 +47,7 @@ export function EffectsDesk({ models, effects = EFFECTS }: { models: StudioModel
   );
 }
 
-function EffectCard({ effect, a, href }: { effect: Effect; a: EffectAvailability; href: string }) {
+function EffectCard({ effect, a, href }: { effect: EffectFace; a: EffectAvailability; href: string }) {
   const { t } = useI18n();
   const fx = t.effects;
   const copy = fx.items[effect.id];

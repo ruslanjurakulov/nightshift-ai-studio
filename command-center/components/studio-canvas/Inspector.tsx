@@ -18,7 +18,7 @@ import {
   type StudioPrefill,
 } from "@/lib/creative/studio";
 import { DESK_TOOLS } from "@/lib/creative/desks";
-import { EFFECTS, effectPrefill, resolveEffect } from "@/lib/effects/catalog";
+import { withEffectSource, type CanvasEffect } from "@/lib/effects/shared";
 import { KIND_SPEC, type CanvasNode, type CanvasState, type PortType } from "@/lib/studio/canvas";
 import type { UpsellCatalog } from "@/lib/upsell";
 import type { StudioDna } from "@/lib/channel-dna";
@@ -30,6 +30,9 @@ import { SceneActionContext } from "./SceneActionContext";
 import "@/components/studio/desk.css";
 import "@/components/studio/availability.css";
 
+/** No effects handed in (a test, or a page before canvasEffects): every Effects node reads as not open here. */
+const NO_EFFECTS: readonly CanvasEffect[] = [];
+
 export interface PanelData {
   orgId: string | null;
   models: StudioModel[];
@@ -37,6 +40,9 @@ export interface PanelData {
   plans: UpsellCatalog | null;
   dna: (StudioDna & { href: string }) | null;
   defaultStyleKitId: string | null;
+  /** The effects, each with its composer prefill where one of its models is offered here, resolved on the server
+   *  (lib/effects/catalog.ts canvasEffects): the effects' model order and prompts are not in the canvas's chunk. */
+  effects?: readonly CanvasEffect[];
 }
 
 /**
@@ -44,7 +50,7 @@ export interface PanelData {
  * turns into a clip from words). Edit · Upscale offers the picture or the clip operations by what is wired in; Voice
  * offers speech from words, or the recording tools when a recording is wired in.
  */
-export function toolsFor(node: CanvasNode, input: PortType | null): StudioCapability[] {
+export function toolsFor(node: CanvasNode, input: PortType | null, effects: readonly CanvasEffect[] = []): StudioCapability[] {
   switch (node.kind) {
     case "image":
       return ["t2i"];
@@ -53,7 +59,7 @@ export function toolsFor(node: CanvasNode, input: PortType | null): StudioCapabi
     case "animate":
       return ["i2v"];
     case "effects": {
-      const effect = node.effectId ? EFFECTS.find((e) => e.id === node.effectId) : undefined;
+      const effect = node.effectId ? effects.find((e) => e.id === node.effectId) : undefined;
       return [effect?.capability ?? "t2v"];
     }
     case "enhance":
@@ -66,27 +72,27 @@ export function toolsFor(node: CanvasNode, input: PortType | null): StudioCapabi
 }
 
 /** The tool a node's form starts on. */
-export function startCapability(node: CanvasNode, input: PortType | null): StudioCapability | null {
-  return toolsFor(node, input)[0] ?? null;
+export function startCapability(node: CanvasNode, input: PortType | null, effects: readonly CanvasEffect[] = []): StudioCapability | null {
+  return toolsFor(node, input, effects)[0] ?? null;
 }
 
 /** The form's starting values: the node's tool, its words (or the wired prompt's), and the wired file. Fills only: no price, no spend. */
 export function nodePrefill(
   node: CanvasNode,
   input: { type: PortType | null; assetId: string | null; text?: string | null } | null,
-  models: readonly StudioModel[],
+  /** The effects as the server resolved them for this workspace (PanelData.effects). */
+  effects: readonly CanvasEffect[],
   /** The chain's words (nodeState upstreamWords): only an animation starts from them, the other file tools keep their own. */
   chainWords: string | null = null,
 ): StudioPrefill | null {
   const sourceId = input?.assetId ?? null;
-  const cap0 = startCapability(node, input?.type ?? null);
+  const cap0 = startCapability(node, input?.type ?? null, effects);
   const words = node.draft || input?.text || (cap0 === "i2v" ? chainWords ?? "" : "");
   if (node.kind === "effects" && node.effectId) {
-    const effect = EFFECTS.find((e) => e.id === node.effectId);
-    const pick = effect ? resolveEffect(effect, models) : null;
-    if (effect && pick?.state === "ready") return effectPrefill(effect, pick.modelId, "", sourceId);
+    const effect = effects.find((e) => e.id === node.effectId);
+    if (effect?.prefill) return withEffectSource(effect.prefill, sourceId);
   }
-  const cap = startCapability(node, input?.type ?? null);
+  const cap = startCapability(node, input?.type ?? null, effects);
   if (!cap) return null;
   const takesFile = needsSource(cap) || needsRecording(cap) || needsVideo(cap);
   const base = prefillFromQuery(cap, takesFile && sourceId ? sourceId : undefined);
@@ -197,11 +203,12 @@ export function Inspector({
     setSourceRequest((r) => ({ nonce: (r?.nonce ?? 0) + 1, id: sourceId }));
   }, [sourceId]);
 
-  const only = toolsFor(node, input?.type ?? null);
+  const effects = data.effects ?? NO_EFFECTS;
+  const only = toolsFor(node, input?.type ?? null, effects);
   const prefill = useMemo(
     () =>
       seed.prefill ??
-      nodePrefill(node, input ? { type: input.type, assetId: input.assetId, text: input.text } : null, data.models, upstreamWords(state, node)),
+      nodePrefill(node, input ? { type: input.type, assetId: input.assetId, text: input.text } : null, effects, upstreamWords(state, node)),
     // The form mounts once per seed: later typing lives in the form (and in node.draft through onDraft).
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [seed, node.id, node.effectId, input?.type],
@@ -209,7 +216,7 @@ export function Inspector({
 
   const accepts = spec.accepts.map((k) => c.ports[k]).join(" / ");
   const candidates = wireCandidates(state, node);
-  const effect = node.kind === "effects" && node.effectId ? EFFECTS.find((e) => e.id === node.effectId) ?? null : null;
+  const effect = node.kind === "effects" && node.effectId ? effects.find((e) => e.id === node.effectId) ?? null : null;
   // The composer's Generate key sticks to the bottom of what scrolls it (globals.css .studio-dock): here, this panel.
   const dock = { "--studio-dock-offset": "0px" } as CSSProperties;
   const href = job ? resultHref(job) : null;
@@ -277,7 +284,7 @@ export function Inspector({
                 {c.inspector.effectChange}
               </button>
             ) : (
-              <EffectList models={data.models} onPick={onEffect} />
+              <EffectList effects={effects} onPick={onEffect} />
             )}
           </section>
         )}
@@ -370,20 +377,20 @@ export function Inspector({
   );
 }
 
-function EffectList({ models, onPick }: { models: readonly StudioModel[]; onPick: (id: string) => void }) {
+function EffectList({ effects, onPick }: { effects: readonly CanvasEffect[]; onPick: (id: string) => void }) {
   const { t } = useI18n();
   const c = t.studioCanvas;
-  const list = EFFECTS.map((e) => ({ e, pick: resolveEffect(e, models) }));
-  if (!list.some((x) => x.pick.state === "ready")) return <p className="cv-note">{c.inspector.effectNone}</p>;
+  // Ready = one of the effect's models is offered here: the server sent its prefill (canvasEffects), and only then.
+  if (!effects.some((e) => e.prefill !== null)) return <p className="cv-note">{c.inspector.effectNone}</p>;
   return (
     <ul className="cv-effects">
-      {list.map(({ e, pick }) => (
+      {effects.map((e) => (
         <li key={e.id}>
-          <button type="button" className="cv-effect" disabled={pick.state !== "ready"} onClick={() => onPick(e.id)} data-testid={`effect-${e.id}`}>
+          <button type="button" className="cv-effect" disabled={e.prefill === null} onClick={() => onPick(e.id)} data-testid={`effect-${e.id}`}>
             <span className="cv-effect-sw" aria-hidden style={{ background: `linear-gradient(135deg, ${e.hues[0]}, ${e.hues[1]})` }} />
             <span className="flex min-w-0 flex-col text-left">
               <span className="font-semibold">{t.effects.items[e.id].name}</span>
-              <span className="cv-note">{pick.state === "ready" ? c.inspector.effectReady : c.node.notAvailable}</span>
+              <span className="cv-note">{e.prefill !== null ? c.inspector.effectReady : c.node.notAvailable}</span>
             </span>
           </button>
         </li>
