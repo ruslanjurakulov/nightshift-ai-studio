@@ -4,6 +4,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { aiChatEnv, aiChatMode, aiChatOpenFor } from "@/lib/brain/flag";
 import { readSlots } from "@/lib/brain/logic";
 import { brainJson, channelOrg, chosenModelState, dbRefusal, modelFromRef, notFound } from "@/lib/server/brain/session";
+import { chatGateVerdict, chatModelGate } from "@/lib/server/brain/google-gate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/brain?channel=<id> — the panel's state for a channel (or, without one, the current workspace): whether this plan has
  * Nightshift AI (`limit` null = upgrade), what is used today, whether the owner's model is up (its id is never sent: customers do
- * not pick it), and the person's latest open conversation here.
+ * not pick it), whether the model's own conditions let THIS person use it (`gate`), and the person's latest open conversation here.
  */
 export async function GET(request: Request) {
   if (aiChatMode(aiChatEnv()) === "off") return notFound();
@@ -49,11 +50,16 @@ export async function GET(request: Request) {
   if (quota.error) return dbRefusal(quota.error) ?? brainJson({ error: "unavailable" }, 503);
   const q = quota.data as { used?: number; limit?: number | null; trial_left?: number | null; max_input_chars?: number; model_ref?: unknown };
   const model = await chosenModelState(supabase, modelFromRef(q.model_ref));
+  // The same gate a turn runs (POST /api/brain/turn), asked here too so the panel can close the box with the reason and its remedy
+  // before a press (rule 6), rather than letting the person type, press, and get a refusal. Read only: no cap, no vendor. `model`
+  // stays the model's own state; `gate` is this person's (an adult in a served country gets null).
+  const gate = model.ok && model.id ? chatGateVerdict(await chatModelGate(model.id)) : null;
   const latest = (sessions.data ?? [])[0] ?? null;
   return brainJson({
     // limit null: no Brain on this plan; trial_left then says how many of its lifetime trial messages remain (0 = the upgrade).
     plan: { used: q.used ?? null, limit: q.limit ?? null, trial_left: typeof q.trial_left === "number" ? q.trial_left : null, max_input_chars: q.max_input_chars ?? 2000 },
     model: model.ok ? model.state : "unknown",
+    gate,
     canEdit: role.ok,
     canRun: admin.ok,
     session: latest ? { id: latest.id, step: latest.step, slots: readSlots(latest.slots), brief: latest.brief, card: latest.card, updated_at: latest.updated_at } : null,

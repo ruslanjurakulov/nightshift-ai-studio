@@ -2,10 +2,14 @@
    and the closing band are dark in either theme (data-theme-scope="dark"), every other section follows the page's theme.
    In @layer components, like the rest of the public site's stylesheets, so a utility can still win. */
 @layer components {
-  .hm-root {
+  /* The hero is also Landing's first screen (HomeHero.tsx), where no .hm-root is around it: it carries the column itself. */
+  .hm-root,
+  .hm-hero {
     /* The public shell's own column (site.css --st-max / --st-gutter), so every section, new or reused, starts at one edge. */
     --hm-gutter: var(--st-gutter, 16px);
     --hm-max: calc(var(--st-max, 1240px) - 2 * var(--hm-gutter));
+  }
+  .hm-root {
     background: var(--ds-bg);
     color: var(--ds-text);
   }
@@ -13,11 +17,13 @@
   .hm-wrap { width: 100%; max-width: calc(var(--hm-max) + 2 * var(--hm-gutter)); margin-inline: auto; padding-inline: var(--hm-gutter); }
 
   /* ── Hero ─────────────────────────────────────────────────────────────── */
+  /* The owner's "in this style" (kling.ai's first screen, 2026-11-22): the clip edge to edge, and over it, centred, the title, one
+     line and one glass bar (thumbnail, field, black key). Nothing else, but the AI label and the pause switch, at the bottom. */
   .hm-hero {
     position: relative;
     isolation: isolate;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     /* A fixed box before anything loads: the still, the clip and the words never move it (CLS 0). */
     min-height: max(560px, min(88svh, 860px));
     overflow: hidden;
@@ -29,113 +35,163 @@
   .hm-hero-media .nx-clip { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 70% 55%; }
   .hm-hero-media .nx-clip { opacity: 0; transition: opacity var(--ds-dur-page) var(--ds-ease-out); }
   .hm-hero-media[data-live="true"] .nx-clip { opacity: 1; }
-  /* The words sit on the left (the dark side of the planet); the veil keeps them >= 4.5:1 whatever frame is behind. */
+  /* The words are in the middle now, so the veil is heaviest there: an ellipse behind the title, the line and the bar, a band at
+     the foot for the label, and a light wash over the rest so the picture stays the picture. The clip is one shot from Earth orbit
+     (bright cloud right of centre) down into a neon city, so any frame can sit behind the words: the veil, not the frame, keeps
+     them readable (tests/site-engage-9.test.tsx holds the stops; the contrast was measured over every frame, docs in the PR). */
   .hm-hero-veil {
     position: absolute;
     inset: 0;
     z-index: -1;
-    /* Heavy behind the words (left) and on the last strip, which meets the next section; the right side stays the picture. The
-       clip is one shot from Earth orbit down into a neon city, so any frame can sit behind the words: the veil, not the
-       frame, is what keeps them readable. */
     background:
-      linear-gradient(90deg, rgb(7 10 20 / 0.92) 0%, rgb(7 10 20 / 0.78) 45%, rgb(7 10 20 / 0.35) 70%, rgb(7 10 20 / 0) 88%),
-      linear-gradient(0deg, rgb(7 10 20 / 0.85) 0%, rgb(7 10 20 / 0) 22%);
+      radial-gradient(ellipse 66% 62% at 50% 52%, rgb(7 10 20 / 0.8) 0%, rgb(7 10 20 / 0.72) 60%, rgb(7 10 20 / 0) 100%),
+      linear-gradient(0deg, rgb(7 10 20 / 0.8) 0%, rgb(7 10 20 / 0) 18%),
+      rgb(7 10 20 / 0.3);
   }
-  /* Below 1024 the words span most of the width: the whole picture is veiled, heaviest under them. */
-  @media (max-width: 1023px) {
-    .hm-hero-veil { background: linear-gradient(0deg, rgb(7 10 20 / 0.96) 0%, rgb(7 10 20 / 0.82) 45%, rgb(7 10 20 / 0.35) 100%); }
+  /* A phone's words span the width: the whole picture is veiled, heaviest across the middle where they are. */
+  @media (max-width: 640px) {
+    .hm-hero-veil { background: linear-gradient(0deg, rgb(7 10 20 / 0.9) 0%, rgb(7 10 20 / 0.82) 30%, rgb(7 10 20 / 0.82) 70%, rgb(7 10 20 / 0.78) 100%); }
   }
-  .hm-hero-body { padding-block: 120px 72px; }
-  @media (min-width: 1024px) { .hm-hero-body { padding-block: 160px 112px; } }
-  .hm-eyebrow {
-    margin-bottom: var(--ds-space-4);
-    color: var(--ds-select);
-    font-size: 0.875rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-  }
+  .hm-hero-body { display: flex; flex-direction: column; align-items: center; padding-block: 96px 88px; text-align: center; }
   .hm-hero-title {
-    /* In em, never ch: ch is the width of "0", which differs between the fallback and Unbounded, so a ch box wrapped the
-       fallback to three lines and the real face to two, and the swap moved the whole hero (CLS 0.04). 11em keeps the words
-       inside the veil's dark part (Pixel: at 15em "finished" sat on bright cloud at 1.5:1). */
-    max-width: 11em;
-    font-size: clamp(2.1rem, 1.2rem + 4.4vw, 4.6rem);
-    color: var(--ds-text);
+    /* In em, never ch: ch is the width of "0", which differs between the fallback and the display face, so a ch box wrapped one
+       to three lines and the other to two, and the swap moved the whole hero (CLS 0.04). 13.5em holds every locale's title to two
+       lines at 1440 px; 3.625rem (58 px) is the reference's size and still above the landing's section titles (--lp-h2, 56 px). */
+    max-width: 13.5em;
+    font-size: clamp(2rem, 1.1rem + 3.4vw, 3.625rem);
+    color: #fff;
+    text-shadow: 0 2px 24px rgb(0 0 0 / 0.35);
   }
-  .hm-hero-lead {
-    max-width: 24em;
-    margin-top: var(--ds-space-5);
-    color: var(--ds-text-2);
-    font-size: clamp(1rem, 0.95rem + 0.35vw, 1.25rem);
-    line-height: 1.55;
+  .hm-hero-sub {
+    max-width: 40em;
+    margin-top: var(--ds-space-4);
+    color: rgb(255 255 255 / 0.9);
+    font-size: clamp(1.0625rem, 0.85rem + 0.9vw, 1.625rem);
+    line-height: 1.35;
   }
   .hm-hero-ctas { display: flex; flex-wrap: wrap; gap: var(--ds-space-3); margin-top: var(--ds-space-8); }
   @media (max-width: 479px) {
     .hm-hero-ctas > * { flex: 1 1 100%; }
   }
-  /* The "Write your idea" box (IdeaBox.tsx): a solid surface on the moving picture, the field and the primary key on one row from
-     640 px, stacked below it. Its height is fixed by the field's rows, so hydration never moves the hero (CLS 0). */
-  .hm-idea { display: grid; gap: var(--ds-space-2); max-width: 44rem; margin-top: var(--ds-space-8); }
-  .hm-idea-label { color: var(--ds-text); font-size: 0.9375rem; font-weight: 600; }
+
+  /* The idea box (IdeaBox.tsx) as one glass pill: thumbnail, divider, one line, the black key. Its height is fixed here (80 px; a
+     phone's two rows 132 px), never by its content, so hydration moves nothing (CLS 0). */
+  .hm-idea { display: flex; flex-direction: column; align-items: center; width: min(100%, 1020px); margin-top: var(--ds-space-8); }
+  /* The label is still the field's name for a screen reader and a voice user ("click Your idea"); only the eye loses it. */
+  .hm-idea-label { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
   .hm-idea-row {
-    display: grid;
-    gap: var(--ds-space-2);
-    padding: var(--ds-space-2);
-    border: 1px solid var(--ds-border-strong);
-    border-radius: var(--ds-r-panel);
-    background: rgb(15 22 38 / 0.86);
-    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 80px;
+    padding: 0 14px;
+    border: 1px solid rgb(255 255 255 / 0.32);
+    border-radius: 999px;
+    /* Light glass, as in the reference, over a picture that is darkened first: the backdrop's brightness() is what keeps the
+       words >= 4.5:1 over the brightest frame (the orbit's cloud), and the fill is what makes it read as glass. */
+    background: rgb(255 255 255 / 0.2);
+    -webkit-backdrop-filter: blur(18px) brightness(0.7);
+    backdrop-filter: blur(18px) brightness(0.7);
   }
-  /* Only the field's focus: the button draws its own ring, and two would show at once. */
-  .hm-idea-row:has(.hm-idea-field:focus-visible) { border-color: var(--ds-focus); box-shadow: 0 0 0 1px var(--ds-focus); }
-  @media (min-width: 640px) { .hm-idea-row { grid-template-columns: minmax(0, 1fr) auto; align-items: end; } }
+  /* Without backdrop-filter the fill alone would be glass over a bright frame: a solid dark grey instead. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .hm-idea-row { background: rgb(38 42 52 / 0.94); }
+  }
+  .hm-idea-row:has([aria-invalid="true"]) { border-color: #ffb4bd; }
+  .hm-idea-thumb {
+    position: relative;
+    flex: none;
+    width: 80px;
+    height: 50px;
+    margin-right: 33px;
+    border-radius: 25px;
+    background: #0f1115 center / cover no-repeat;
+  }
+  /* The hero's clip, copied frame by frame (HeroThumb.tsx): over the still, shown only while the hero's own clip is shown, and
+     faded in with the hero's own timing so the two change together. Absolute: the box keeps its size with or without it. */
+  .hm-idea-thumb-live { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; opacity: 0; transition: opacity var(--ds-dur-page) var(--ds-ease-out); }
+  .hm-idea-thumb[data-live="true"] > .hm-idea-thumb-live { opacity: 1; }
+  /* The thin divider between the thumbnail and the words. */
+  .hm-idea-thumb::after { content: ""; position: absolute; top: 14px; right: -17px; width: 1px; height: 22px; background: rgb(255 255 255 / 0.5); }
   .hm-idea-field {
+    flex: 1 1 auto;
     width: 100%;
     min-width: 0;
-    min-height: calc(2 * 1.5em + 2 * var(--ds-space-3));
-    padding: var(--ds-space-3);
-    resize: none;
+    height: 50px;
+    padding: 0 16px;
     border: 0;
-    border-radius: var(--ds-r-key);
     background: transparent;
-    color: var(--ds-text);
+    color: #fff;
     font: inherit;
     font-size: 1rem;
     line-height: 1.5;
+    text-overflow: ellipsis;
   }
-  .hm-idea-field::placeholder { color: var(--ds-text-2); opacity: 0.85; }
-  .hm-idea-field[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--ds-danger); }
-  .hm-idea-go { white-space: nowrap; }
+  .hm-idea-thumb + .hm-idea-field { padding-left: 0; }
+  /* Opaque, not an opacity: its contrast is a measured number (>= 4.5:1 on the glass over the brightest frame). */
+  .hm-idea-field::placeholder { color: #d5d9e2; opacity: 1; }
+  /* The reference's key: a solid black pill inside the bar, bold white words. Over the ds primary's indigo by specificity. */
+  .hm-idea .hm-idea-go {
+    --_bg: #000;
+    --_bg-hover: #1d1f26;
+    --_fg: #fff;
+    --_edge: #000;
+    --_shadow-hover: none;
+    flex: none;
+    min-width: 200px;
+    height: 50px;
+    min-height: 50px;
+    padding: 0 26px;
+    border-radius: 999px;
+    font-size: 1.0625rem;
+    font-weight: 700;
+  }
+  .hm-idea .hm-idea-go > svg { width: 18px; height: 18px; }
   /* Leaving for sign-up: seen on a touch screen too, where no cursor shows it. */
   .hm-idea-go[aria-busy="true"] { opacity: 0.7; }
-  @media (max-width: 639px) {
-    .hm-idea-go { width: 100%; justify-content: center; }
-    /* A phone wraps the example to three lines; two cut it mid-word. Still a fixed height: nothing moves on hydration. */
-    .hm-idea-field { min-height: calc(3 * 1.5em + 2 * var(--ds-space-3)); }
+  /* A phone: a rounded rectangle, the thumbnail and the line on the first row, the key the full width under them. */
+  @media (max-width: 640px) {
+    .hm-idea-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      row-gap: 8px;
+      height: 132px;
+      padding: 8px;
+      border-radius: 24px;
+    }
+    .hm-idea-thumb { grid-column: 1; width: 64px; height: 44px; margin-right: 25px; border-radius: 16px; }
+    .hm-idea-thumb::after { top: 11px; right: -13px; }
+    .hm-idea-field { grid-column: 2; height: 52px; }
+    .hm-idea .hm-idea-go { grid-column: 1 / -1; width: 100%; min-width: 0; height: 56px; min-height: 56px; justify-content: center; }
   }
   /* Lighter than --ds-danger, which falls to 4.3:1 on the brightest hero frame; this holds >= 7.6:1 on any of them (Pixel). */
-  .hm-idea-problem { color: #ffb4bd; font-size: 0.875rem; font-weight: 600; }
-  /* 32em keeps the note inside the veil's dark part at 1024-1279 px, where 40em reached bright frames at 2.85:1 (Pixel). */
-  .hm-idea-note { max-width: 32em; color: var(--ds-text-2); font-size: 0.875rem; line-height: 1.5; }
-  .hm-idea-count { color: var(--ds-text); font-variant-numeric: tabular-nums; }
-  .hm-idea-count[data-full] { color: var(--ds-warning, var(--ds-text)); font-weight: 600; }
-  /* A 44 px tap target, as the button it replaced was. */
-  .hm-idea-more { display: inline-flex; align-items: center; min-height: 44px; margin-top: var(--ds-space-2); color: var(--ds-text); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+  .hm-idea-problem { margin-top: var(--ds-space-3); color: #ffb4bd; font-size: 0.875rem; font-weight: 600; }
+  /* One caption line under the bar at desktop width (it wraps on a phone), on the veil's dark middle. */
+  .hm-idea-note { max-width: 100%; margin-top: var(--ds-space-3); color: rgb(236 240 248 / 0.88); font-size: 0.8125rem; line-height: 1.5; text-wrap: balance; }
+  .hm-idea-count { color: #fff; font-variant-numeric: tabular-nums; }
+  .hm-idea-count[data-full] { color: var(--ds-warning, #fff); font-weight: 600; }
 
-  /* On a moving picture a solid surface reads better than a translucent one. */
-  .hm-ghost { --_bg: rgb(15 22 38 / 0.72); --_bg-hover: var(--ds-surface-3); backdrop-filter: blur(8px); }
   .hm-hero-credit {
     position: absolute;
-    right: var(--hm-gutter);
+    left: var(--hm-gutter);
     bottom: 16px;
     display: flex;
     align-items: center;
     gap: var(--ds-space-2);
-    color: var(--ds-text-2);
+    /* Lighter than --ds-text-2 (#a9b8d4), which fell to 4.2:1 on the brightest frame here and 2.4:1 at a phone's top. */
+    color: #e3e9f5;
     font-size: 0.8125rem;
+    text-shadow: 0 1px 6px rgb(0 0 0 / 0.5);
   }
-  @media (max-width: 767px) { .hm-hero-credit { display: none; } }
-  .hm-hero .nx-motion { position: absolute; top: 12px; right: var(--hm-gutter); }
+  /* A phone keeps the label (every picture says what it is): at the top, clear of the words in the middle. */
+  @media (max-width: 767px) { .hm-hero-credit { top: 14px; bottom: auto; } }
+  /* The pause switch, where the reference keeps its sound key: the bottom right corner. Visually hidden until a keyboard focuses it
+     (owner, 2026-11-13: no visible pause word or icon; site-next.css), and then it shows there, clear of the bar. */
+  .hm-hero .nx-motion { position: absolute; top: auto; right: var(--hm-gutter); bottom: 60px; }
+  /* The hero clip's sound key (components/site/SoundToggle.tsx), stacked above the pause switch's 44 px corner so the two never
+     overlap, and clear of the "AI" badge bottom left. Drawn only for a clip with sound, while it plays. */
+  .hm-hero .hm-hero-sound { right: var(--hm-gutter); bottom: 112px; }
 
   .hm-badge {
     display: inline-flex;
@@ -143,14 +199,18 @@
     padding: 2px 8px;
     border-radius: var(--ds-r-pill);
     border: 1px solid rgb(255 255 255 / 0.35);
-    background: rgb(7 10 20 / 0.72);
+    background: rgb(10 11 14 / 0.72);
     color: #e6eefc;
-    font-size: 0.75rem;
+    /* 13px like every other AI badge on the page (S5 Pixel on #889: this one alone was 12). */
+    font-size: 0.8125rem;
     font-weight: 600;
     line-height: 1.25;
     /* "Sunʼiy intellekt yaratgan" is wider than a phone's reel card: it wraps rather than being cut. */
     max-width: calc(100% - 16px);
   }
+  /* The first screen's credit is the badge alone now (just "AI", owner 2026-11-22), so its box is as wide as the badge: a share of
+     that width would cut the badge's own edge off. Nothing in it can outgrow the screen. */
+  .hm-hero-credit .hm-badge { max-width: none; }
 
   /* ── Sections ─────────────────────────────────────────────────────────── */
   .hm-section { padding-block: 72px; }
@@ -266,8 +326,43 @@
   .hm-step-num { color: var(--ds-muted); font-family: var(--ds-font-display); font-size: 1.5rem; font-weight: 600; }
   .hm-step-label { margin-top: var(--ds-space-5); color: var(--ds-muted); font-size: 0.8125rem; font-weight: 600; }
 
-  /* ── Models on sale ───────────────────────────────────────────────────── */
-  .hm-model-list { display: flex; flex-wrap: wrap; gap: var(--ds-space-3); margin-top: var(--ds-space-8); }
+  /* ── Models on sale: a slow ribbon on a dark band (HomePage.tsx Models) ── */
+  /* Dark in either theme (data-theme-scope="dark"), a soft glow at each end like the closing band, edges faded by the mask. */
+  .hm-ribbon {
+    --_gap: var(--ds-space-3);
+    position: relative;
+    overflow: hidden;
+    margin-top: var(--ds-space-8);
+    padding-block: var(--ds-space-6);
+    border-block: 1px solid var(--ds-border);
+    background:
+      radial-gradient(520px 160px at 8% 50%, rgb(47 139 255 / 0.2), transparent 70%),
+      radial-gradient(520px 160px at 92% 50%, rgb(255 79 163 / 0.14), transparent 70%),
+      var(--ds-bg);
+    color: var(--ds-text);
+  }
+  .hm-ribbon-track {
+    display: flex;
+    width: max-content;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  }
+  /* Each list ends with one gap of padding, so the seam between two copies is the same gap as between two chips and sliding by
+     exactly half the track (k copies) lands on a chip's start: no jump in the loop. */
+  .hm-model-list { display: flex; flex-wrap: nowrap; gap: var(--_gap); margin: 0; padding: 0 var(--_gap) 0 0; list-style: none; }
+  .hm-ribbon .hm-model { flex: none; white-space: nowrap; }
+  @media (prefers-reduced-motion: no-preference) {
+    /* After load (SiteEffects sets data-fx), so the slide never competes with the first paint. ~50 px/s: 4 s per chip. */
+    html[data-fx="on"] .hm-ribbon-track { animation: hm-ribbon calc(var(--hm-rb-n, 10) * 4s) linear infinite; }
+    .hm-ribbon:hover .hm-ribbon-track,
+    .hm-ribbon:focus-within .hm-ribbon-track { animation-play-state: paused; }
+  }
+  /* Reduced motion: nothing moves, the repeats are not drawn, and the one accessible list wraps inside the page's column. */
+  @media (prefers-reduced-motion: reduce) {
+    .hm-ribbon-track { width: auto; max-width: calc(var(--hm-max) + 2 * var(--hm-gutter)); margin-inline: auto; padding-inline: var(--hm-gutter); -webkit-mask-image: none; mask-image: none; }
+    .hm-model-list { flex-wrap: wrap; padding: 0; }
+    .hm-model-list[data-copy="repeat"] { display: none; }
+  }
   .hm-model {
     display: inline-flex;
     flex-wrap: wrap;
@@ -367,9 +462,16 @@
 }
 .hm-root .hm-eyebrow { display: inline-flex; padding: 2px 10px; border: 1px solid var(--ds-select); border-radius: var(--ds-r-pill); }
 
+/* The models ribbon. Unlayered, like the page switch's own rules (site-motion.css): the switch stops it wherever it is, and the
+   keyboard's pause key (site-next.css .nx-clip-pause, hidden until focused) shows at the band's right end, not at a clip's corner. */
+@keyframes hm-ribbon { to { transform: translateX(-50%); } }
+html[data-motion="paused"] .hm-ribbon-track { animation-play-state: paused !important; }
+.hm-ribbon .nx-clip-pause { top: 50%; right: 12px; bottom: auto; margin-top: -22px; }
+@media print { .hm-ribbon-track { animation: none; } }
+
 /* Reduced motion: the hero shows its still only (LoopClip never renders a clip), and nothing eases in. */
 @media (prefers-reduced-motion: reduce) {
-  .hm-hero-media .nx-clip { transition: none; }
+  .hm-hero-media .nx-clip, .hm-idea-thumb-live { transition: none; }
 }
 
 /* The landing's frame in the --ds-* look. The public shell (header, footer) and the reused pricing teaser paint with the
@@ -441,7 +543,11 @@
   background: var(--ds-bg);
   color: var(--ds-text);
 }
-/* Unlayered: the global :focus-visible is, and a layered `outline: none` lost to it (a second ring inside the row's). The row draws it. */
-.hm-idea-field:focus-visible { outline: none; }
+/* The bar draws the field's focus ring, around the whole pill. Unlayered: the global :focus-visible is, and a layered `outline: none`
+   lost to it (a second ring inside the bar). Only where :has() works: elsewhere the field keeps the global ring of its own. */
+@supports selector(:has(*)) {
+  .hm-idea-field:focus-visible { outline: none; }
+  .hm-idea-row:has(.hm-idea-field:focus-visible) { outline: 3px solid var(--ns-focus, #ffc266); outline-offset: 3px; }
+}
 /* The pricing teaser's heading in the display face, like every other section title on the page. */
 .hm-pricing h2 { font-family: var(--ds-font-display); font-weight: 600; letter-spacing: -0.02em; }

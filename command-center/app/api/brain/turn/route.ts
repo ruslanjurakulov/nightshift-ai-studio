@@ -29,6 +29,7 @@ import { SYSTEM_PROMPT, dataBlock } from "@/lib/brain/prompt";
 import { getDictionaryFor } from "@/lib/i18n";
 import { isLocale } from "@/lib/i18n/core";
 import { callChatModel } from "@/lib/server/brain/llm";
+import { chatModelGate } from "@/lib/server/brain/google-gate";
 import { readChannelFacts } from "@/lib/server/brain/facts";
 import { chatPricing } from "@/lib/server/brain/quote";
 import { brainJson, channelOrg, chosenModelState, dbRefusal, modelFromRef, notFound } from "@/lib/server/brain/session";
@@ -43,7 +44,8 @@ export const dynamic = "force-dynamic";
  *
  * The order of a turn is its safety:
  *   1. the flag (off: 404 before anything is read), the person, the conversation (theirs, RLS), the owner's model (on sale AND keyed
- *      on this server) — a dead model is refused before the cap is touched, and no other model is ever tried;
+ *      on this server) — a dead model is refused before the cap is touched, and no other model is ever tried; for a Google model, the
+ *      person's 18+ attestation and the request's country (lib/server/brain/google-gate), refused the same way, never rerouted;
  *   2. ai_chat_reserve_turn: the plan's cap, the person's and the platform's, in the database, under locks — before any vendor call;
  *   3. the channel's research and the history, read as the person;
  *   4. ONE call to the model, its answer checked by lib/brain/logic.ts (links and prices removed, slots validated, the next question
@@ -95,6 +97,9 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
   const model = await chosenModelState(supabase, modelFromRef((q0.data as { model_ref?: unknown } | null)?.model_ref));
   if (!model.ok) return brainJson({ error: "unavailable" }, 503);
   if (model.state !== "available" || !model.id) return brainJson({ error: "model_unavailable", reason: model.state }, 409);
+  // Google's 18+ and country conditions, before the cap is touched (a refused turn is never a turn) and before any vendor call.
+  const gate = await chatModelGate(model.id);
+  if (gate) return brainJson({ error: gate.error }, gate.status);
 
   const prev0 = readSlots(s.slots);
   const { words: words0, open, kindOptions } = await kindChoices(s);
@@ -303,7 +308,10 @@ export async function POST(request: Request) {
     if (quota.error) return dbRefusal(quota.error) ?? brainJson({ error: "unavailable" }, 503);
     const model = await chosenModelState(supabase, modelFromRef((quota.data as { model_ref?: unknown })?.model_ref));
     if (!model.ok) return brainJson({ error: "unavailable" }, 503);
-    if (model.state !== "available") return brainJson({ error: "model_unavailable", reason: model.state }, 409);
+    if (model.state !== "available" || !model.id) return brainJson({ error: "model_unavailable", reason: model.state }, 409);
+    // Said at Start, before a conversation is opened that could never be answered here (CLAUDE.md rule 6).
+    const gate = await chatModelGate(model.id);
+    if (gate) return brainJson({ error: gate.error }, gate.status);
     const started = await supabase.rpc("ai_chat_start", { p_org: orgId, p_channel: channelId });
     if (started.error) return dbRefusal(started.error) ?? brainJson({ error: "unavailable" }, 503);
     const sid = String(started.data);

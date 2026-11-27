@@ -2,6 +2,7 @@ import type { SiteDictionary } from "./en";
 import { studioPageUz } from "../studio-page/uz";
 import { roadmapUz } from "../roadmap/uz";
 import { trustUz } from "../trust/uz";
+import { megaMenuUz } from "../megamenu/uz";
 import { siteAutopilotUz } from "../site-autopilot/uz";
 import { publicStatsUz } from "../public-stats/uz";
 
@@ -140,6 +141,8 @@ export const siteUz: SiteDictionary = {
   },
   fx: {
     pause: "Harakatni toʻxtatish",
+    /** The title of the models strip (ModelMarquee): models that made a sample on this page; never "partners". */
+    modelsTitle: "Nightshift Studioʼdagi modellar",
   },
   bar: {
     label: "Tez boshlash",
@@ -148,6 +151,7 @@ export const siteUz: SiteDictionary = {
     dismiss: "Bu panelni yashirish",
   },
   samples: {
+    sound: "Klip ovozi",
     tag: "Namuna kadr (stok surat)",
     frameTag: "Namuna kadr (stok video)",
     clipTag: "Namuna klip (stok video)",
@@ -176,16 +180,17 @@ export const siteUz: SiteDictionary = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Rasm mualliflari",
-    lead: "Bu sahifalardagi stok namuna deb belgilangan har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm ham mahsulotning skrinshoti emas.",
+    lead: "Bu sahifalardagi stok namuna deb belgilangan har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. “AI” (sunʼiy intellekt yaratgan) belgisi bor klip yoki rasm ham mahsulotning skrinshoti emas.",
     licence: "Pexels litsenziyasi",
-    leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan.",
-    generated: "Yana bir istisno: “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm, bu sahifalarning qayerida boʻlmasin, stok emas. U oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan.",
+    leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “AI” (sunʼiy intellekt yaratgan) belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan.",
+    generated: "Yana bir istisno: “AI” (sunʼiy intellekt yaratgan) belgisi bor klip yoki rasm, bu sahifalarning qayerida boʻlmasin, stok emas. U oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan.",
   },
   gallery: {
     label: "Nightshift Studio’da yaratilgan",
     title: "Nightshift’da yaratilgan",
     lead: "Haqiqiy generatsiyalar: ularni jamoamiz Nightshift Studio’da yaratgan. Istalganini oching: uni yaratgan model va unga berilgan soʻzlar koʻrinadi.",
-    badge: "Sunʼiy intellekt yaratgan",
+    badge: "AI",
+    badgeName: "Sunʼiy intellekt yaratgan",
     model: "Model",
     prompt: "Soʻrov",
     noPrompt: "Soʻzsiz: faqat rasmdan yaratilgan.",
@@ -543,6 +548,7 @@ export const siteUz: SiteDictionary = {
   roadmap: roadmapUz,
   /** The public /trust page (lib/i18n/trust; English is the source). */
   trust: trustUz,
+  megaMenu: megaMenuUz,
   /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
   autopilot: siteAutopilotUz,
   liveStats: publicStatsUz,

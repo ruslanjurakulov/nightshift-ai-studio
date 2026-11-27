@@ -587,7 +587,8 @@ describe("pinned to 0072", () => {
     // The picture ops and their `look` (0099) and the video ops (0100) are pinned to 0099, which replaces these functions on top of 0072's.
     for (const c of CREATIVE_CAPABILITIES) if (!["expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg"].includes(c)) expect(supported, c).toContain(`'${c}'`);
     const params = fn("creative_params_problem");
-    for (const k of PARAM_KEYS) if (k !== "look") expect(params, k).toContain(`'${k}'`);
+    // `look` is pinned to 0099 and `image_size` to 0208 (tests/test_geo_gate_image_size_migration.py), each on top of 0072's function.
+    for (const k of PARAM_KEYS) if (k !== "look" && k !== "image_size") expect(params, k).toContain(`'${k}'`);
     expect(CAPABILITIES as readonly string[]).toContain("captions");
   });
 
