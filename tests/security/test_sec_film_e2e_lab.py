@@ -484,25 +484,26 @@ def test_a_clip_that_fails_twice_is_charged_nothing_the_film_pauses_and_the_rest
     assert lab.d.film_row(fid) == ("paused", "takes_failed")
 
 
-def test_a_key_frame_that_fails_twice_skips_both_clips_at_zero_but_the_narration_is_still_voiced_and_charged(lab, a):
-    """The key frame fails, and so does its retry: neither clip can begin (no picture to start from). What the run still spends is
-    measured here: the narration is still voiced and charged, which is what 0171's settle captures."""
+def test_a_key_frame_that_fails_twice_stops_the_run_the_narration_is_not_voiced_and_nothing_is_charged(lab, a):
+    """The key frame fails, and so does its retry: neither clip can begin (no picture to start from), and P4a would refuse the film
+    for its missing takes (docs/FILM_STUDIO.md, Assembly). So the run stops there (rule 6, S2_GAPS G5): the narration is never sent,
+    nothing is captured, and the film goes back to its storyboard (0171: nothing charged and nothing made)."""
     fid, seg = lab.started(a)
     before = lab.d.account(a.org)[0]
     ads = adapters(img=[ProviderErr("provider_error"), ProviderErr("provider_error")])
     out = lab.worker(ads).run_once()
     assert out.result == "settled" and out.reason == "takes_failed", out
     assert ads["vid-clip"].submits == []  # never sent: its input failed for good
+    assert ads["tts-a"].submits == []  # never sent: the film can no longer be assembled
     rows = lab.take_rows(seg["id"])
-    assert [(r[0], r[3]) for r in rows if r[0] == "clip"] == [("clip", "skipped"), ("clip", "skipped")], rows
-    assert all(Decimal(r[4] or 0) == 0 for r in rows if r[0] != "narration"), rows
+    kf = [(r[2], r[3]) for r in rows if r[0] == "keyframe"]
+    assert kf == [(1, "superseded"), (2, "failed")], rows
+    # The takes that never began are gone with the return to draft (0171 deletes skipped takes no job names).
+    assert [r for r in rows if r[0] != "keyframe"] == [], rows
+    assert all(Decimal(r[4] or 0) == 0 for r in rows), rows
     status, captured = settled_money_holds(lab, a, seg["id"], before)
-    narr = [r for r in rows if r[0] == "narration"][0]
-    # Measured, not endorsed: the narration (1 credit, the job minimum) is still voiced for a segment that can no longer become a
-    # film, so the film pauses with that capture instead of going back to draft at 0 (film_orchestrator._inputs_ready: a narration
-    # is always ready). Reported to the lead as a rule-6 question; pinned here so a change to it is a decision, not an accident.
-    assert (narr[3], Decimal(narr[4])) == ("completed", Decimal(1)) and captured == Decimal(1)
-    assert lab.d.film_row(fid) == ("paused", "takes_failed")
+    assert (status, captured) == ("released", Decimal(0))
+    assert lab.d.film_row(fid) == ("draft", "takes_failed")
 
 
 def test_both_attempts_failing_on_the_only_billable_path_releases_the_whole_hold_and_returns_the_film_to_draft(lab, a):
