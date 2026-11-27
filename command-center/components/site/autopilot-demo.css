@@ -340,11 +340,21 @@
   font-size: 14px;
   line-height: 1.45;
 }
-.nx-shorts-badge { display: inline-block; padding: 2px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.16); font-size: 12.5px; font-weight: 600; }
-.nx-shorts-model { margin-top: 8px; font-size: 14px; }
+.nx-shorts-title { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.25; color: #ffffff; text-wrap: balance; }
+/* Media first, like the cards (owner decision 22 Nov): at rest the slide is its clip and the AI mark; a tap on the clip
+   (data-shown) or the keyboard on its link (:focus-visible inside the caption; not :focus-within, which a tap on the clip also
+   matched once the video took focus, so the second tap never hid it) shows the shade, the caption and the link. The caption takes no
+   taps (they reach the clip, which hides it again) except its link once it shows. Opacity only: nothing moves. */
+.nx-shorts-shade, .nx-shorts-cap { opacity: 0; }
+.nx-shorts-cap { pointer-events: none; }
+.nx-shorts-slide:is([data-shown="true"], :has(.nx-shorts-cap :focus-visible)) :is(.nx-shorts-shade, .nx-shorts-cap) { opacity: 1; }
+.nx-shorts-slide:is([data-shown="true"], :has(.nx-shorts-cap :focus-visible)) .nx-shorts-use { pointer-events: auto; }
+@media (prefers-reduced-motion: no-preference) {
+  .nx-shorts-shade, .nx-shorts-cap { transition: opacity 200ms ease; }
+}
 .nx-shorts-prompt {
   display: -webkit-box;
-  margin-top: 6px;
+  margin-top: 8px;
   -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -422,7 +432,8 @@
   transform: translate(-50%, -50%);
 }
 .nx-shorts-playbig svg { width: 30px; height: 30px; }
-.nx-shorts-hint { position: absolute; left: 0; right: 0; top: calc(60px + env(safe-area-inset-top)); text-align: center; font-size: 13px; color: rgba(255, 255, 255, 0.8); pointer-events: none; }
+/* Inset 48 px each side: since the AI mark moved below Close (top 64 px, right 12 px) it shares this row, and the Russian hint ran under it (Pixel, S8). */
+.nx-shorts-hint { position: absolute; left: 48px; right: 48px; top: calc(60px + env(safe-area-inset-top)); text-align: center; font-size: 13px; color: rgba(255, 255, 255, 0.8); pointer-events: none; }
 
 @media (prefers-reduced-motion: no-preference) {
   .nx-shorts-media video { transition: opacity 240ms var(--ns-ease); }

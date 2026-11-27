@@ -309,6 +309,8 @@ export const filmStudioEn = {
     model_not_available: "That model is not on sale right now. Choose another.",
     asset_not_usable: "A chosen picture is no longer in this workspace's library. Choose another.",
     reference_missing: "A reference picture or character was removed after the price was set. Choose another or remove it, then ask for the price again.",
+    voice_language_unsupported: "The voice model does not speak this project's language. Choose a voice model that lists it; for Uzbek, choose Eleven v3.",
+    voice_language_unknown: "This voice model's languages are not known. Choose a voice model that lists the project's language.",
     film_changed: "Someone else changed this project after you opened it. Nothing was overwritten.",
     film_not_editable: "This project can no longer be changed.",
     idempotency_conflict: "This request was already used for another project. Close the form and start again.",

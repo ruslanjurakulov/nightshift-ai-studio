@@ -491,6 +491,10 @@ class HttpAdapter:
     #: Capabilities for which this adapter always sends a resolution — the
     #: request's, else the one the registry pins (``default_resolution``, 0070).
     resolution_capabilities: Sequence[str] = ()
+    #: True only when ``submit`` puts ``CapabilityRequest.negative_prompt`` in the vendor's request. A registry entry says the same in
+    #: ``takes_negative_prompt`` (the registry refuses any other pairing), and migration 0218 refuses a negative prompt, before any hold,
+    #: for every model that does not: one an adapter dropped was paid for and never used (CLAUDE.md #4).
+    TAKES_NEGATIVE_PROMPT = False
     timeout = 60
     #: False = a 3xx from the API host is an error, never followed: the request carries the key in a header,
     #: and a redirect would send it to wherever the answer points (requests drops only ``Authorization``).

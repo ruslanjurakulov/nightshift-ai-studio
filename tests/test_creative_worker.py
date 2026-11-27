@@ -36,6 +36,17 @@ def job(**over):
     return j
 
 
+class _OnSaleBut(list):
+    """sellable_models' ids, as a list holding every model but the ones named (the fake does not enumerate the registry)."""
+
+    def __init__(self, off):
+        super().__init__()
+        self.off = frozenset(off)
+
+    def __contains__(self, model):
+        return model not in self.off
+
+
 class FakeQueue:
     """The 0036 worker functions, in memory, with the same refusals."""
 
@@ -46,6 +57,11 @@ class FakeQueue:
         self.costs = []
         self.down_at = down_at
         self.heartbeat_answer = True
+        #: Models taken off sale since the job was queued (sellable_models no longer lists them), and the owner's switched-off ones.
+        self.off_sale = set()
+        self.switched_off = set()
+        #: model_registry rows the operator-preview rule reads, by model id.
+        self.registry = {}
 
     def _maybe_down(self, what):
         if self.down_at == what:
@@ -83,6 +99,22 @@ class FakeQueue:
 
     def record_cost(self, job_id, usage):
         self.costs.append(usage)
+
+    def on_sale(self, capability):
+        """sellable_models as the worker reads it: every model is on sale unless a test took it off (``off_sale``)."""
+        self._maybe_down("on_sale")
+        self.calls.append(("on_sale", capability))
+        if self.down_at == "on_sale_unreadable":
+            return None
+        return _OnSaleBut(self.off_sale | self.switched_off)
+
+    def model_switched_on(self, model_id):
+        self.calls.append(("switched_on", model_id))
+        return model_id not in self.switched_off
+
+    def registry_row(self, model_id):
+        self.calls.append(("registry_row", model_id))
+        return self.registry.get(model_id)
 
     def reroute(self, job_id, worker_id, code):
         """0075's reroute_creative_job: the next model from `self.reroutes`,

@@ -170,13 +170,13 @@ function renderFeed(code: "en" | "ru" | "uz" = "en") {
   const t = dictionaries[code];
   const g = t.site.gallery;
   return render(
-    <ShortsFeed items={shortsItems(items, false, NOW)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, try: g.try, tryAria: g.tryAria, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />,
+    <ShortsFeed items={shortsItems(items, false, NOW, code)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, badgeName: g.badgeName, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />,
   );
 }
 
 describe("the Shorts feed", () => {
   it("takes the 9:16 clips only, and knows the site's clips are silent", () => {
-    expect(shortsItems(items, false, NOW).map((i) => i.jobId)).toEqual([TALL]);
+    expect(shortsItems(items, false, NOW, "en").map((i) => i.jobId)).toEqual([TALL]);
     // tools/export_showcase.py encodes every rendition with -an: the sound key must not promise sound.
     const exporter = readFileSync(join(REPO, "tools/export_showcase.py"), "utf8");
     expect(exporter).toMatch(/"-an"/);
@@ -189,7 +189,7 @@ describe("the Shorts feed", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: opens as a modal, names the model only in the clip's own box, and closes back to its key", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: opens as a modal, names no model (owner decision 22 Nov: it travels only in the Studio link), and closes back to its key", (code) => {
     const s = dictionaries[code].site.autopilot.shorts;
     const back = vi.spyOn(window.history, "back").mockImplementation(() => window.dispatchEvent(new PopStateEvent("popstate")));
     renderFeed(code);
@@ -199,12 +199,13 @@ describe("the Shorts feed", () => {
     expect(dialog.getAttribute("aria-modal")).toBe("true");
     expect(document.activeElement).toBe(screen.getByRole("button", { name: s.close }));
     const slide = dialog.querySelector(`[data-showcase-entry="${TALL}"]`) as HTMLElement;
-    expect(slide.textContent).toContain(FIXTURE_ENTRY.modelName);
     expect(slide.textContent).toContain(FIXTURE_ENTRY.prompt);
-    // The model is named inside its own box only, and no maker credit at all.
-    const rest = dialog.cloneNode(true) as HTMLElement;
-    rest.querySelectorAll("[data-showcase-entry]").forEach((n) => n.remove());
-    expect(rest.textContent).not.toMatch(PROVIDER_BRANDS);
+    // Owner decision 22 Nov: no model name on public cards; it travels only in the Studio link. Not in the slide's text, nor in any
+    // attribute but an href, and no maker credit at all.
+    const words = [dialog.textContent ?? "", ...[...dialog.querySelectorAll("*")].flatMap((n) => [...n.attributes].filter((a) => a.name !== "href").map((a) => a.value))].join("\n");
+    expect(words).not.toContain(FIXTURE_ENTRY.modelName);
+    expect(words).not.toContain(FIXTURE_ENTRY.modelId);
+    expect(words).not.toMatch(PROVIDER_BRANDS);
     expect(dialog.textContent).not.toMatch(/powered by/i);
     expect(dialog.querySelector('a[href*="runway.com"]')).toBeNull();
     // An operator preview: "Use this prompt", as on the gallery card.

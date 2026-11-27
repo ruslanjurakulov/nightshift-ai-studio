@@ -177,6 +177,7 @@ TABLES: Dict[str, Kind] = {
     # probe runs are the operator's evidence
     "model_registry": Public(),
     "model_probe_runs": Platform(),
+    "model_terms_acceptance": Service(),
     # creative generations (0036) and their provider cost (0037: operator economics)
     "creative_jobs": Org(),
     "creative_job_events": Org(),
@@ -388,6 +389,9 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     # what a video costs in credits, for the public price pages (0089)
     "public_video_rates": PRICE_LIST,
     "model_registry_admin": USER,
+    "model_terms_acceptance_admin": USER,
+    "owner_accept_model_terms": USER,
+    "owner_revoke_model_terms": USER,
     "record_model_probe": SERVICE,
     "sync_model_registry": SERVICE,
     # creative jobs (0036): members quote / create / cancel; the worker runs them
@@ -830,3 +834,25 @@ FUNCTIONS.update({"geo_claim_country": SERVICE})
 import sec_owner_ai_history_0209  # noqa: E402
 
 sec_owner_ai_history_0209.extend(TABLES, FUNCTIONS)
+
+# Migration 0214 (does a film's voice model speak the film's language): tests/security/sec_voice_language_0214.py
+import sec_voice_language_0214  # noqa: E402
+
+sec_voice_language_0214.extend(TABLES, FUNCTIONS)
+
+# Migration 0211 (one storyboard plan at a time per Nightshift AI conversation): tests/security/sec_ai_chat_plan_0211.py
+import sec_ai_chat_plan_0211  # noqa: E402
+
+sec_ai_chat_plan_0211.extend(TABLES, FUNCTIONS)
+
+# Migration 0212 (the recorded film sweep: one row per runner, film_sweep and film_sweep_status for the service role only):
+# tests/security/sec_film_sweep_0212.py
+import sec_film_sweep_0212  # noqa: E402
+
+sec_film_sweep_0212.extend(TABLES, FUNCTIONS)
+
+# Migration 0215 (Film Studio: archive a paused or cancelled film, resume a paused one; the worker's id kept out of members' reads):
+# tests/security/sec_film_resume_0215.py
+import sec_film_resume_0215  # noqa: E402
+
+sec_film_resume_0215.extend(TABLES, FUNCTIONS)

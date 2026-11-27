@@ -2446,6 +2446,120 @@ video is cross-posted.
 - **Requires** 0029 and 0112. The body is replaced only if it is 0029's or 0205's (md5 guard).
 - **Undo.** `docs/sql/rollback_0205_publish_refusal_gate_verdict.sql` puts 0029's body back exactly.
 
+## Film voice: does the voice model speak the film's language (0214)
+
+0214 (`0214_voice_language_check.sql`, provisional number) adds one helper, `public.voice_language_problem(model, language)`. It
+reads `model_registry.spec -> 'languages'`, which `schemas/model_registry.json` now lists for every `tts` entry (equal to
+`modules/tts_languages.MODEL_LANGUAGES`, held by `tests/test_tts_registry_languages.py`).
+
+- **Why.** `quote_film` (0171) quotes and holds credits for an Uzbek film whose voice is Eleven Multilingual v2, which does not
+  speak Uzbek; the take then fails in the TTS adapter after the clips were paid (docs/studio/S6_GAPS.md, G1).
+- **What.** NULL when the model lists the language. Otherwise `{priced: false, reason, detail}`:
+  - `voice_language_unsupported` when the model's list does not hold it. For Uzbek the detail says "choose Eleven v3, a voice
+    model that lists Uzbek" (v3 only, like `tts_languages.UZBEK_FIX`: v4 is untried);
+  - `voice_language_unknown` when there is no row, no list, no language, or a language outside en/ru/uz. The lists cover only
+    the three languages that were checked, so unknown is never "speaks" and never "does not speak".
+- **Who.** No role may execute it (revoked from public, anon, authenticated and service_role, like `film_model_problem`);
+  `quote_film` runs as its owner and calls it from inside.
+- **Not done here.** No money function changes. S2 adds the call to `quote_film`'s narration branch, second in its
+  `coalesce`: after `film_model_problem` (so a hidden or unavailable model is answered `model_not_available`, never with a
+  language detail naming a row the member cannot see) and before `film_try_price`. The line is in the migration's header.
+- **The sync un-verifies the voice models.** `model_registry_guard` (0100) treats a change of `spec.languages` as a new claim:
+  a TTS row that is verified today loses its verification, and one on sale (beta/ga) goes back to hidden. A row that is not
+  verified today is not changed. The Probe models workflow always passes `--sync`, so ANY probe run, of any model, is that
+  sync. Check first: `select id, availability, verified_at from public.model_registry where 'tts' = any(capabilities);`.
+- **Deploy order.**
+  1. Apply 0214 and run its Verify block.
+  2. Sync the registry (any probe run does it).
+  3. Probe each voice model by name. `--all` skips terms-gated entries and all four are gated, so name them, with a voice id
+     from the account's list (`--voice-id` or `ELEVENLABS_VOICE_ID`): `python tools/probe_models.py --sync --model
+     elevenlabs-v4 --model elevenlabs-v3 --model elevenlabs-multilingual-v2 --model elevenlabs-flash-v2.5 --voice-id <id>`,
+     or one Probe models workflow run per id. Each probe is a real, paid call.
+  4. The owner puts the re-verified models back on sale.
+  5. Only then S2 wires `quote_film`.
+- **Requires** 0035. **Undo.** `docs/sql/rollback_0214_voice_language_check.sql` (refuses while any function still calls it).
+- Lab: `tests/security/sec_voice_language_0214.py`, `tests/security/test_sec_voice_language.py`. Static:
+  `tests/test_voice_language_check_migration.py`.
+
+## Film Studio: archive and resume a project that stopped, re-run a failed assembly, and only a member spends (0215)
+
+0215 (`0215_film_archive_resume.sql`, provisional number) closes switch-on gate G1 (`docs/FILM_STUDIO.md`, "Resume";
+`docs/studio/S2_GAPS.md`). Before it, a film that paused (something was charged and the run stopped short) or was cancelled after a
+charge could neither be archived (0166's `archive_film` takes draft / planned only) nor go on (`start_film` takes draft / planned
+only). It also narrows a low-severity leak S3 found (the film worker's id, by default the host name and process id, in
+`segment_claimed` events): `film_read` no longer hands it to a member and new claim events record a reference instead. It does
+not close the leak entirely (below: BR-0036-01/02 and BR-0215-01 are open in the security ledger).
+
+- **Archive.** `archive_film` (0166's body, one hunk) also takes a `paused` or `cancelled` film, editors and above as before. It is
+  refused while a segment of the film is open (`NS409 segment_open`) or a refund waits to collect from one of its holds
+  (`NS409 refund_pending`). It moves no money and deletes no take or file; the `archived` event keeps `from_status` and the pause
+  reason.
+- **Resume** (owners and admins, `start_film`'s caller rules): `quote_film_resume(film, version)` prices only the lines the newest
+  segment did not complete, at today's rates, through 0171's `film_price` (no pricing of its own), with each line's earlier
+  confirmed price, `original_remaining`, `delta` and `changed`; one unpriced line makes the total and the quote id null.
+  `start_film_resume(film, quote_id, idempotency_key)` follows `start_film`'s refusal order, takes one new segment (`purpose
+  'resume'`, `resumed_from`) and one new hold `fm-…` of the resume total only, carries every completed take into it at 0
+  (`charge_basis carried_not_charged`; `film_takes_carried_check` refuses any charge on such a take), and queues the film. A completed
+  take whose file was deleted since is not carried; its line is priced and made again (`film_resume_done`). New
+  words: `film_not_resumable`, `nothing_to_resume` (NS409). A cancelled film is not resumable (0171 keeps `cancelled` only for a
+  cancel after a charge, which `start_film` never restarts); archive it.
+- **The cap is the whole film's.** `max_credits_per_film` is asked of what the film's segments already captured plus the resume
+  total, in the start and in the quote's `blocked_by` (Breach hole 1), and so is `start_film`'s (and `quote_film`'s) for a film
+  back at draft after a paid segment (BR-0215-R2-01). One helper, `film_captured(film)`, says what the film already cost.
+- **Settling** (0198's `film_settle_locked`, two marked hunks): a segment whose assembly is recorded completed settles `completed`
+  (the film `ready`) whatever reason reaches it, the sweep's deadline included; a resume segment that captured 0 and made nothing new
+  puts the film back to `paused` (after a cancel, with the earlier pause reason), never `cancelled` (Breach hole 2).
+- **Only a member spends** (the owner's decision, 22 Nov): `start_film`, `start_film_resume` and `rerun_film_assembly` need an owner
+  or admin seat in `org_members` (`is_org_spender(org, role)`, standalone so later spend paths reuse it), never only 0043's `accessible_org_ids`; a platform owner or admin who is not
+  one gets `NS400 not_a_member` ("ask the workspace's owner to add you as a member") with who may call, before anything is counted.
+  `quote_film` (0198's body, one hunk) and `quote_film_resume` still answer them (no hold) and say `not_a_member` in `blocked_by`.
+  The exempt organization's credits are the platform's own: its platform owner or admin starts and resumes there as before.
+- **A failed assembly, made again** (agreed with the coordinator; no separate migration): `rerun_film_assembly(film, quote_id,
+  idempotency_key)` for a film whose every take is made and whose assembly failed with one of S4's retryable words
+  (`film_assembly_retryable`), or whose word was lost (the settle reason is `deadline`, `worker_lost` or `assembly_failed`:
+  an unknown cause, re-run at the cost of the assembly line only; after two such re-runs in a row the third is refused
+  `assembly_not_retryable` with `word=<last> reruns=2`, and the remedy is support, a person: `film_lost_reruns`); `not_assembly_failure`, `assembly_not_retryable` (with the word), `film_changed`; the event is
+  `assembly_rerun`. A resume quote also stores what it carries (`film_quotes.carried`), and the start refuses `film_changed` when
+  any of it moved since.
+- **The worker** is unchanged: the carried takes are completed, so it makes only what is left and assembles; 0171 settles the new
+  segment and captures at most its hold. A resume that makes nothing new leaves the film paused (never draft).
+- **The leak, what 0215 closes.** `film_claim_segment` and `claim_creative_job` (0198's bodies, one hunk each) record `worker_ref`
+  (the first 12 hex of md5 of the worker id) instead of the id in every event written from now on; `film_read` (0166's, one hunk)
+  drops `detail.worker` from every event a member reads through `film_json`, `save_film` and `archive_film`, old rows included; a
+  `start_film` replay no longer answers `worker_id`.
+- **The leak, what stays open** (in the security ledger, each with its own fix): `worker_ref` is an unsalted md5, so a member who
+  guesses the host name can recover the id (BR-0215-01, info; pinned as a strict xfail). And BR-0036-01/02: 0036 grants the whole `creative_jobs` table to members, so `creative_jobs.worker_id` (the
+  creative worker's and, for a film take's job, the film worker's id) is still readable by a member's direct select, and so is
+  `detail.worker` in `film_events` / `creative_job_events` rows written before 0215 (both tables are append-only). The app reads
+  neither (`lib/creative/operations.ts` `JOB_COLUMNS` names no worker). To redact the old rows, the owner may run once, as the table
+  owner (it lifts each append-only trigger inside this one transaction only, as the erasure runbook in `docs/FILM_STUDIO.md` does):
+
+  ```sql
+  begin;
+  set local lock_timeout = '5s';
+  alter table public.film_events disable trigger film_events_append_only;
+  update public.film_events
+     set detail = (detail - 'worker') || jsonb_build_object('worker_ref', left(md5(detail ->> 'worker'), 12))
+   where event = 'segment_claimed' and detail ? 'worker';
+  alter table public.film_events enable trigger film_events_append_only;
+  alter table public.creative_job_events disable trigger creative_job_events_append_only;
+  update public.creative_job_events
+     set detail = (detail - 'worker') || jsonb_build_object('worker_ref', left(md5(detail ->> 'worker'), 12))
+   where event = 'claimed' and detail ? 'worker';
+  alter table public.creative_job_events enable trigger creative_job_events_append_only;
+  -- Both read 'O' before commit:
+  select tgrelid::regclass, tgenabled from pg_trigger
+   where tgname in ('film_events_append_only', 'creative_job_events_append_only');
+  commit;
+  ```
+- **Requires** 0166, 0167, 0171, 0187, 0192, 0198. Each replaced body is replaced only if it is the earlier file's or 0215's (md5
+  guard); 0166's and 0198's replays and rollbacks refuse while 0215 is on (take it out first).
+- **Browser routes** for archive of a paused film (the existing `POST /api/films/{id}/archive` already calls `archive_film`) and for
+  the two resume calls are a follow-up; no UI changes here.
+- **Undo.** `docs/sql/rollback_0215_film_archive_resume.sql` (owner-applied): the seven earlier bodies back, the ten functions
+  dropped; the columns and record checks kept, 0171's state check back only when no segment ever resumed. Refused while a resume
+  segment is open.
+
 ## The database's own country gate, and the price by picture size (0208, provisional)
 
 0208 (`0208_geo_gate_and_image_size_price.sql`) changes no answer for a model on sale today (0142 keeps every model with a country
@@ -2469,3 +2583,178 @@ list off sale, and every model priced by size carries a terms gate). Post-event:
   `provider = 'google'` row has no `blocked_countries`), the Vault key, then the web's key.
 - Lab: `tests/security/test_sec_geo_gate_0208.py`; pins: `tests/test_geo_gate_image_size_migration.py`. Rollback:
   `docs/sql/rollback_0208_geo_gate_and_image_size_price.sql`. Docs: `docs/GEO_BLOCK.md`.
+
+## A quote refuses a prompt longer than the model takes, and settings its adapter would drop (0218)
+
+0218 (`0218_creative_prompt_limits.sql`) is **live on apply** and writes no row. It replaces THREE functions: `creative_params_problem`
+(0208's body plus two hunks), `creative_price` (0208's body plus two hunks; 0208's size checks and its country gate, a trigger, are kept
+exactly) and `film_price` (0171's body plus four hunks). Apply order: 0208, then 0218, then 0219.
+
+- **Evidence.** Breach's pins (`tests/security/test_sec_breach_s9_prompt_limits.py`): a model's own `limits.max_prompt_chars` was read
+  only by the worker (`ModelEntry.problems`, UTF-16 units), after the hold, while the database checked 4000 code points; a prompt of 301
+  characters on a 300-character model was quoted and held through MCP. A `negative_prompt` or a `seed` was quoted and charged for every
+  model, and dropped by every adapter that does not send it (Recraft V4.1 among them; `CapabilityRequest` has no seed at all).
+  `creative_params_problem` repeated an unknown key verbatim (`unknown parameter <key>`), so a key carrying a newline and "SYSTEM: ..."
+  reached a connected assistant inside the server's own refusal.
+- **The rule.** `seed` is refused for every model (`seed_not_supported`) by `creative_params_problem`, before any model is read, so a
+  routed quote (auto / cheap / fast / quality) names it too. In `creative_price`, after the model row is read and before any rate: a
+  `negative_prompt` that is not only white space (what Python's `str.strip()` removes, the worker's test) is refused unless `spec.takes_negative_prompt` is JSON true
+  (`negative_prompt_not_supported`); the prompt is counted in UTF-16 code units (the worker's `prompt_units`: an emoji counts two)
+  against `spec.limits.max_prompt_chars`, and a negative prompt in code points against `spec.limits.max_negative_prompt_chars` (Krea's
+  adapter limit, 1024), refused `prompt_too_long` with "<N> character(s) over this model's limit of <M>; shorten the prompt". A spec with
+  no positive limit is held to the 4000 only (every registry entry states one). Each is `creative_refuse(word, detail, 'NS400')`: the
+  router skips the model, `film_try_price` puts the word on the line, the API and MCP answer 400 `invalid_params` with the detail, and
+  the Studio's routes answer the word itself (a sentence in en / ru / uz).
+- **The registry side.** New field `takes_negative_prompt` (default false), synced into `spec` (always stated), and checked against the
+  adapter's `TAKES_NEGATIVE_PROMPT` in `_cross_errors`. True only where the adapter's `submit` puts the field in the vendor body, proved
+  per model by `tests/test_negative_prompt_wiring.py`: Veo 3.1 (all three), Kling 2.6 and 3, Wan 2.7 and 3.0, Pika 2.5 and Pikaframes,
+  Krea 3 and Krea 3 Regional. The worker refuses a negative prompt the entry does not take (`ModelEntry.problems`) as a backstop.
+- **Unknown keys.** `creative_params_problem` answers `unknown parameter (<count>); allowed: <the keys it knows>` (0208's `image_size`
+  included, `seed` left out), never the key.
+- **Film behaviour change.** `film_price` now prices the words each take sends (0198): the key frame carries the scene's negative
+  prompt, each clip shot its visual prompt and negative prompt. A scene with a negative prompt on a model that does not take one, or a
+  visual prompt longer than the clip model takes, is refused on that scene's lines at `quote_film` / `start_film`; the scene is never
+  altered. The lines' own params (what `start_film` copies into a take and what the quote id hashes) leave the words out as before.
+- **Residuals.** The style kit's and characters' descriptions (0048) are appended by the worker, which still refuses the composed prompt
+  over the limit after the hold; a routed quote with a negative prompt and no model of the capability that takes one answers
+  `no_model_available` (naming it would mean replacing `route_model`); region edits' words are capped at 1000 code points (0126), not in UTF-16 units; `creative_regions_problem`
+  still names an unknown field inside a region; Film's narration line checks one sample.
+- **Before you apply (enforced).** Run Actions -> Probe models with `--sync` FROM A REF THAT CONTAINS 0218 (merge first, then sync from
+  main). The file refuses to apply while `model_registry` has rows and none states `takes_negative_prompt`. A later sync from an older ref
+  removes the key again; every negative prompt is then refused (never dropped) until a sync from a current ref.
+- **Drift guard and end state.** Live bodies must be 0208's (`creative_params_problem` `7ccde072309a637d9b07e59f1be45d20`,
+  `creative_price` `f61aaddd5686045961addd6f14a02c32`) and 0171's (`film_price` `5de6c9bb2a74079e2078cad2d91b3c34`), or this file's
+  (`cb7ad6cd459f31259445bedd1a4a0c88`, `59c5c289009a874af043c534b29934ee`, `3c22f87be736c073d17d93e040e914e1`); 0208 must be applied.
+  Where stream S10's 0224 was applied first (0208's `creative_price` plus its one dated-price line, `d5bc7c5ef1c3d823ece05b9d00274042`),
+  the file creates its own body plus that line (`ea2b58e88fe34ae18b261e5a0fbef435`, by EXECUTE), and its rollback puts 0208's body plus
+  the line back. The base is read from a durable fact (`credits_per_unit_now(text)` exists), never a session setting, so a
+  statement-by-statement run ends in the same place; any other body is refused. The rollback asserts its own end state too. The last block asserts
+  the three bodies, no API role grant, the pinned search_path, the volatility, every guard of `creative_price`, and that an unknown key
+  never comes back in the refusal. Apply as ONE transaction.
+- **Order.** 0208's and 0171's replays and rollbacks refuse 0218's bodies: run `docs/sql/rollback_0218_creative_prompt_limits.sql`
+  first (it puts the three bodies back byte for byte). The lab: `sec_db.take_off_0218`, called by `take_off_0208` and `take_off_0171`;
+  `rollback_0208_body` (and so `rollback_0159_body`) starts with 0218's rollback where 0218 is on; `ON_0156`, `ON_0139` and `ON_0124`
+  list it right after 0208, so every sequence that leaves 0208 out leaves it out too.
+- **Tests.** `tests/test_creative_prompt_limits_migration.py` (the hunks, the count is the worker's, the hashes, the rollback, the lab
+  chain, every synced row states a limit), `tests/test_negative_prompt_wiring.py` (the flag is what each adapter sends),
+  `tests/security/test_sec_creative_prompt_limits.py` (the Studio's create and quote, the real rows, Film's lines, the file on a scratch
+  database), and `tests/security/test_sec_breach_s9_prompt_limits.py` (MCP: the limit, the boundary, a stored quote after the limit was
+  lowered, the unknown key never echoed).
+
+## Retire gemini-omni-1.1-flash (0222)
+
+0222 (`0222_retire_gemini_omni_1_1.sql`, number from Atlas, stream S10) sets `model_registry.availability = 'disabled'` for
+`gemini-omni-1.1-flash`. It writes nothing else.
+
+- **Why.** Google's deprecations page (read 2026-11-22; S10's `docs/studio/S10_GOOGLE_MODELS.md`, PR #917) says this endpoint is routed to
+  `gemini-omni-1.2-flash` from 2026-12-03 and billed at 1.2's rates. Selling "Omni 1.1" after that would be a substitute the vendor
+  makes silently (CLAUDE.md rule 4).
+- **Why not just the shutdown date.** The registry's `shutdown.on` (2026-12-03) already stops the sale that day (0125). But the
+  schema keeps it the vendor's date, never ours. `disabled` is the state nothing automatic undoes: every open migration refuses
+  to touch it, the registry sync skips it, `sellable_models` and `creative_price` never offer it, and an operator preview needs
+  `hidden`. A person can still move it: the owner's rollback, or a platform admin on the model board (audited as
+  `model.availability`). Neither can sell it while its `terms_gate` is set.
+- **Not added.** `gemini-omni-1.2-flash` waits for the owner's terms decisions and a real probe.
+- **Before the sync.** A missing row is only a NOTICE; apply the file again after the registry sync.
+- **Undo.** `docs/sql/rollback_0222_retire_gemini_omni_1_1.sql` (owner-applied) sets the row back to `hidden`. That is still not sold.
+- **Not covered.** The queue worker does not re-check availability before it submits a job (a follow-up). None can be queued on
+  this model today, because it is terms-gated and not a preview; the file names any job that is not finished.
+- **Tests.** `tests/test_retire_omni_1_1_migration.py`, `tests/security/test_sec_retire_omni_1_1.py`.
+## Film Studio: the sweep runs without the worker, and every run is recorded (0212)
+
+0212 (`0212_film_sweep.sql`, provisional number; `docs/studio/S2_GAPS.md` also pencils 0212 in for the archive branch, and
+whichever merges second renumbers) closes switch-on gate G2 (`docs/FILM_STUDIO.md`). Before it, 0171's `film_expire_segments` ran
+only on a thread of `tools/film_worker.py`: no worker, no sweep, and no record that one ever ran. It changes no existing function,
+table or grant; `film_expire_segments` is called, never replaced. It spends nothing.
+
+- **The record.** `film_sweep_runs`: one row per runner (`pg_cron`, `server`, `worker`, and `actions`, which nothing schedules any
+  more); `last_at` / `last_settled` for the last completed sweep, `last_error` / `last_error_at` (a SQLSTATE only, never a
+  message) for the last failed one. RLS on, no policy; no API role writes it, the service role reads it.
+- **The sweep.** `film_sweep(runner)` (service role only): `film_expire_segments()`, then the record. `{ok:true, settled, at}`, or
+  `{ok:false, error, at}` when the sweep itself failed. It answers instead of raising because a raise would roll the record of the
+  failure back with it; every caller treats `ok:false` as a failure. An unknown runner is refused (22023 `unknown_runner`).
+- **What is not recorded.** PL/pgSQL's `when others` does not catch `query_canceled` (57014: a statement timeout, PostgREST's
+  included) or `assert_failure`. Such a call raises and records nothing: the service logs it, pg_cron marks the run failed, and
+  `overdue` trips once the last completed sweep is older than the line. `last_at` is "the last sweep that completed", not "every
+  attempt". A bounded per-pass sweep is the follow-up G2b (`docs/studio/S2_GAPS.md`), open.
+- **The measurement.** `film_sweep_status()` (service role only; counts and times, never an id):
+  `{runners: {worker|actions|pg_cron|server: {last_at, last_settled, last_error, last_error_at} | null}, last_at, open_segments,
+  stuck_segments, oldest_stuck_minutes, overdue_after_minutes: 30, overdue, at}`. `stuck_segments` counts open segments already
+  past 0171's settle point, from 0171's own `film_money_limits()` (a hold no longer open, queued past `unclaimed_hours`, past
+  deadline + `grace_hours`); a sweep that "completes" while 0171 skips such a segment is not a settled segment (Breach on 0212).
+  `overdue` is true when a segment has been stuck longer than the line, or one is open and no runner completed a sweep within it;
+  **null when nothing was ever recorded and nothing is stuck** (unknown is not fine); false otherwise. The line (30 minutes) is
+  declared once in the function and returned as `overdue_after_minutes`.
+- **Who sweeps.** Any one is enough, several at once are safe (the sweep takes rows `for update skip locked`; lab test: two at the
+  same moment settle a segment once):
+  - **pg_cron, the primary**: job `nightshift-film-sweep`, every 5 minutes, runner `pg_cron`, where pg_cron is installed
+    (unscheduled first, so a replay leaves one). With pg_cron present a schedule that did not land fails the file, and the end
+    state asserts the job;
+  - **the film-sweep service, the fallback**: `deploy/docker-compose.yml` service `film-sweep` (the worker image,
+    `tools/film_sweep.py --loop`, a pass every 300 s, runner `server`, stops on SIGTERM), the service key from the worker env
+    file. Switched by `NIGHTSHIFT_FILM_SWEEP=on` (a repository variable that rides in the worker section, so it needs
+    `NIGHTSHIFT_WORKER=on`), **independent of `NIGHTSHIFT_FILM_WORKER`**: the sweep runs with the film worker off;
+  - the film worker's own thread (runner `worker`), while it runs.
+- **Actions does not sweep.** A 10-minute schedule would cost about 4,300 runner-minutes a month on a private repository.
+  `.github/workflows/film_sweep_watchdog.yml` runs `tools/film_sweep.py --check` at minute 17 of every hour and only READS
+  `film_sweep_status()`: red with `::error::` (stuck_segments, oldest_stuck_minutes) when `overdue` is true or the status cannot be
+  read; green with a `::notice::` when it is false or unknown; one neutral `::notice title=0212 not applied::` before 0212 is
+  applied; a `::warning::` when its secrets are unset.
+- **pg_cron and a failed sweep.** pg_cron marks a run succeeded whenever its command returns, and `film_sweep` returns `ok:false`,
+  so the job's command raises on it (`'film_sweep failed with SQLSTATE <code>'` cast to integer): the run shows as failed in
+  `cron.job_run_details` with the SQLSTATE in its message. The raise rolls back `film_sweep`'s own `last_error` row, so for the
+  `pg_cron` runner the failure is read from `cron.job_run_details`.
+- **pg_cron is not installed on the live project**, so applying 0212 there prints a NOTICE that says so and creates no job. To turn
+  the primary schedule on, the owner enables pg_cron in the Supabase dashboard (**Database -> Extensions -> pg_cron**), then
+  applies 0212 again, or runs this once in the SQL editor (the same command 0212 schedules; a bare `film_sweep('pg_cron')` would
+  let pg_cron mark a failed sweep succeeded):
+  `select cron.schedule('nightshift-film-sweep', '*/5 * * * *', 'select case when (r ->> ''ok'')::boolean then 1 else (''film_sweep failed with SQLSTATE '' || coalesce(r ->> ''error'', ''none''))::integer end from (select public.film_sweep(''pg_cron'') as r) s');`
+- **Owner steps.** Apply 0212. Then either enable pg_cron as above, or set the repository variable `NIGHTSHIFT_FILM_SWEEP=on`
+  (with `NIGHTSHIFT_WORKER=on`) and deploy, or both. Within about 5 minutes `select public.film_sweep_status();` shows `pg_cron` or
+  `server` with a `last_at`. The watchdog uses the `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` Actions secrets that
+  operator_alerts.yml already uses.
+- **Without it.** The watchdog says "0212 not applied" and stays green; the film-sweep service logs that 0212 is missing on every
+  pass and sweeps nothing (it never sweeps unrecorded); the worker calls `film_expire_segments` directly, unrecorded, and says so
+  once.
+- **Is it working?** The verify block at the bottom of the file, then `select public.film_sweep_status();` and, if pg_cron is on,
+  `select jobname, schedule, command from cron.job where jobname = 'nightshift-film-sweep';`.
+- **Undo.** `docs/sql/rollback_0212_film_sweep.sql` (owner-applied): unschedules the job, drops the two functions and the table
+  (the record is lost; no money is), and leaves `film_expire_segments`. Refused while either body is not 0212's; if pg_cron's
+  unschedule fails it fails too and changes nothing (no job is left calling a dropped function). 0212 also refuses to apply over a
+  `film_sweep_runs` of another shape (columns, the SQLSTATE check, the runner check). Set `NIGHTSHIFT_FILM_SWEEP` off first, or
+  the service logs a missing function every 5 minutes; the watchdog goes back to "0212 not applied".
+## Creative jobs: members read named columns, never a worker id (0225, provisional)
+
+0225 (`0225_creative_jobs_member_columns.sql`) closes ledger BR-0036-01, BR-0036-02 and BR-S-031 (all low).
+
+- **Grant.** `authenticated` loses 0036's SELECT on the whole of `creative_jobs` and gets SELECT on 38 named columns: every column
+  except `worker_id` (the worker's host name and process id by default) and `provider_task_id` (the vendor's task id, which 0171
+  already withholds on `film_takes`). `anon` holds nothing. A guard stops the file when the table has a column it does not list
+  (or lacks one it lists): a new column is decided on deliberately. A member's `select *`, a whole-row reference or either
+  withheld column answers 42501.
+- **Readers checked** (the file's header lists them): the Command Center's `JOB_COLUMNS` reads, `jobDurations` and the workflow
+  step read; 0037's `creative_economics` view; 0072's `caption_tracks_select` policy. None reads a withheld column. The worker,
+  the operator bot and the showcase export use the service key, whose table grant is unchanged.
+- **History redaction (BR-0036-02).** Rows written before 0215 carry `detail.worker` in `creative_job_events` and `film_events`.
+  Each such row's `worker` key becomes `worker_ref = left(md5(worker), 12)`, the reference 0215 writes on new rows. As 0088 did,
+  the append-only trigger is disabled for the update and enabled again in the same transaction; the file counts and checksums the
+  rows and stops if anything other than that key changed. Idempotent: a second run finds nothing.
+- **Requires** 0036, 0166. Meant to follow 0215; applied earlier it says so (NOTICE), and running it again after 0215 redacts
+  what the old functions wrote in between.
+- Lab: `tests/security/test_sec_worker_identity_reads.py`. Rollback: `docs/sql/rollback_0225_creative_jobs_member_columns.sql`
+  restores the table grant only; the redaction is not undone (the worker ids are not stored anywhere else).
+
+
+
+## Owner model terms acceptance (0227)
+
+0227 (`0227_owner_model_terms_acceptance.sql`) adds an owner-only approval for a model's exact vendor terms gate.
+Applying it leaves existing model rows untouched. Owners confirm the model ID and use the existing availability control
+to offer a model after approval. The probe and pricing requirements still apply. ByteDance terms cannot be approved.
+
+The registry preserves approvals for matching gates. A changed gate on a model with an earlier approval hides the model
+if it is on sale. Revoking an approval hides it if it is on sale and restores the recorded gate when there is no newer gate.
+The audit allow-list adds `model.terms_accept` and `model.terms_revoke`.
+
+Apply as one transaction after 0018 (platform role), 0035 (registry), 0107 (operator MFA) and 0145 (audit allow-list).
+The owner-applied rollback is `docs/sql/rollback_0227_owner_model_terms_acceptance.sql`.

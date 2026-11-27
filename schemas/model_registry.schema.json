@@ -67,6 +67,10 @@
         "languages": {"type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/language"}},
         "upscale_targets": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/upscale_target"}},
         "end_frame": {"type": "boolean"},
+        "takes_negative_prompt": {
+          "description": "The adapter puts negative_prompt in the vendor's request (migration 0218 refuses one, before any hold, for every model that does not say true; modules/model_registry.py checks it against the adapter's TAKES_NEGATIVE_PROMPT). Absent = false.",
+          "type": "boolean"
+        },
         "relight_looks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/relight_look"}},
         "character_swap": {
           "description": "The vendor's own input limits for a video_character_swap entry (migration 0137, docs/CHARACTER_STUDIO.md). The worker refuses an input outside them before any paid call; the database refuses a length outside input_seconds when it quotes.",
@@ -208,7 +212,8 @@
           "properties": {
             "max_prompt_chars": {"type": "integer", "minimum": 1, "maximum": 100000},
             "max_concurrent_per_org": {"type": "integer", "minimum": 1, "maximum": 100},
-            "max_source_seconds": {"type": "integer", "minimum": 1, "maximum": 1800}
+            "max_source_seconds": {"type": "integer", "minimum": 1, "maximum": 1800},
+            "max_negative_prompt_chars": {"type": "integer", "minimum": 1, "maximum": 100000}
           }
         },
         "quality_tier": {"type": "integer", "minimum": 1, "maximum": 5},

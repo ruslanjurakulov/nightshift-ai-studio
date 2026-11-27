@@ -17,6 +17,7 @@ import { cookies, headers } from "next/headers";
 import { FRAME_SRC_HEADER, VIEW_COOKIE, isFrameRequest, parseViewChoice, viewportWidthFor } from "@/lib/view-mode";
 import { ViewFrame } from "@/components/view-mode/ViewFrame";
 import { EmbedBridge } from "@/components/view-mode/EmbedBridge";
+import { DS_SKIN_CLASS, skinOnFor } from "@/lib/skin";
 
 export const metadata: Metadata = {
   title: "Nightshift Command Center",
@@ -69,9 +70,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // cannot live in a frame leave it.
   const inFrame = isFrameRequest(requestHeaders.get("sec-fetch-dest"));
 
-  // ds-skin: the whole product in the approved navy/neon look (app/tokens.css). Taking the class away restores the old look.
+  // ds-skin: the signed-in app in the approved navy/neon look (app/tokens.css). The public site has none, so it looks as it did
+  // before 20 November (owner, 2026-11-22). Decided from the middleware's header (lib/skin.ts) so the first paint is right;
+  // components/shell/AppSkin.tsx keeps it right across client navigation, which never re-renders this layout.
+  const skin = skinOnFor(requestHeaders) ? DS_SKIN_CLASS : undefined;
   return (
-    <html lang={locale} className="ds-skin" suppressHydrationWarning>
+    <html lang={locale} className={skin} suppressHydrationWarning>
       <head>
         {/* Apply the saved theme before first paint — prevents a flash of the
             wrong theme. Must run synchronously, ahead of the body. */}
