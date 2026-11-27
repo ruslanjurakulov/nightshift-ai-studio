@@ -44,7 +44,7 @@ export const ownerRpcUz: OwnerRpcDictionary = {
     bad_request: "Soʻrov yaroqsiz. Sahifani yangilab, qayta urinib koʻring. Hech narsa oʻzgarmadi.",
     bad_reply: "Serverning javobini oʻqib boʻlmadi. Qayta urinishdan oldin tarixni tekshiring: amal bajarilgan boʻlishi mumkin.",
     rpc_failed: "Server buni oxiriga yetkaza olmadi. Qayta urinishdan oldin tarixni tekshiring: amal bajarilgan boʻlishi mumkin.",
-    not_configured: "Server ma’lumotlar bazasiga ulanmagan. Hech narsa oʻzgarmadi.",
+    not_configured: "Server maʼlumotlar bazasiga ulanmagan. Hech narsa oʻzgarmadi.",
     unknown: "Server rad etdi ({code}). Hech narsa oʻzgarmadi.",
     figureUnknown: "nomaʼlum",
   },

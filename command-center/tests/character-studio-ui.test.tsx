@@ -236,7 +236,9 @@ describe("the studio", () => {
 
   it("a ready swap carries the AI label", () => {
     mount({ initial: state({ jobs: [{ id: "0e000000-0000-4000-8000-00000000000e", model: "kling-4.0-omni-edit", resolution: "720p", status: "ready", errorCode: null, credits: 18.8, charged: 18.8, outputAssetId: VIDEO, createdAt: null }] }) });
-    expect(screen.getByText(t.jobs.aiLabel)).toBeTruthy();
+    // Seen: just "AI" (owner, 2026-11-22); heard: what it means.
+    expect(screen.getByText(t.jobs.aiLabel).getAttribute("aria-hidden")).toBe("true");
+    expect(screen.getByText(t.jobs.aiLabelName).className).toBe("sr-only");
     expect(screen.getByText("18.8 credits charged")).toBeTruthy();
   });
 });
