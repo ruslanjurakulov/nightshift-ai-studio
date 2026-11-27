@@ -42,12 +42,16 @@ listed as unknown, never as fine. Days are UTC calendar days.
 
 ## Owner AI (/owner/ai)
 
-`POST /api/brain/owner/turn` answers one owner question from the facts above, with the chat model the owner chose (0199's
-`ai_chat_owner_settings`, through S5's `callChatModel`). It is not the Studio's planning chat.
+`POST /api/brain/owner/turn` answers one owner question from the facts above using the selected chat model.
 
-- **Order.** Same-origin POST → signed in → platform owner (404 otherwise, before anything is read) → the chosen model is on sale and
-  keyed (409 with the reason otherwise; no other model is tried) → the facts, built server side (401 `second_factor`) → a turn
-  reserved under the daily cap (0203, 429) → the model → the turn finished with how it ended.
+- **Model selection.** In `/owner/ai`, the owner picks Gemini 3.6 Flash, Claude Sonnet 5.5 or GPT-6 Luna. The browser remembers the choice.
+  The default is Gemini when its server key is set, otherwise the first configured model. The owner route refuses an unknown
+  model ID (400) or a model without a server key (409, `not_configured`) and never switches models. For the owner's internal use,
+  hidden or terms-gated registry rows are allowed. Missing or disabled rows and an operational switch-off (`model_is_available`)
+  block the turn. Gemini passes through the same age and country gate as the customer chat.
+- **Order.** Same-origin POST → signed in → platform owner (404 otherwise, before anything is read) → model checks and Gemini gate
+  → the facts, built server side (401 `second_factor`) → a turn reserved under the daily cap (0203, 429) → the model → the turn
+  finished with how it ended.
 - **Answers and drafts only.** The model has no tools and the route no action: nothing it says is executed. The rules
   (`lib/owner-console/ai-prompt.ts`) forbid inventing, keep the measured / estimated / unknown tags, and treat customer-typed
   text in the facts as data; a closing tag inside a value is defused so it cannot end the data block.

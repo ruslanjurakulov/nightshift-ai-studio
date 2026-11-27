@@ -173,8 +173,9 @@ function measureInPage() {
     signin: item(hdr.querySelector(".st-signin")),
     navShown,
     navLinks,
-    // Below 768px the bar's one disclosure is the menu button (components/legal/PublicMenu.tsx); from 768px there is none.
-    menuBtn: [...hdr.querySelectorAll(".st-menu-btn, [aria-expanded][aria-controls]")].some(shown) ? { present: true } : null,
+    // Below 768px the bar's one disclosure is the menu button (components/legal/PublicMenu.tsx); the panel triggers
+    // (components/legal/PublicMegaMenu.tsx) are the bar's own items, measured with the links.
+    menuBtn: [...hdr.querySelectorAll(".st-menu-btn, [aria-expanded][aria-controls]:not(.st-mm-trigger)")].some(shown) ? { present: true } : null,
     coarse: matchMedia("(pointer: coarse)").matches,
     // Every visible link and button in the header (the language chip and the theme key included) is a tap target.
     smallTargets: [...hdr.querySelectorAll("a[href], button")].filter(shown).map((e) => ({ e, r: e.getBoundingClientRect() })).filter(({ r }) => r.width < 43.5 || r.height < 43.5).map(({ e, r }) => `${(e.getAttribute("aria-label") || e.textContent || e.tagName).trim().slice(0, 16)} ${Math.round(r.width)}x${Math.round(r.height)}`),

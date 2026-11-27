@@ -517,6 +517,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # The owner's Nightshift AI history (0209): tests/security/sec_owner_ai_history_0209.py — one owner conversation, two messages.
     import sec_owner_ai_history_0209
     sec_owner_ai_history_0209.seed(conn, sc)
+    # The recorded film sweep (0212): tests/security/sec_film_sweep_0212.py — one sweep, recorded by film_sweep as the service role.
+    import sec_film_sweep_0212
+    sec_film_sweep_0212.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.

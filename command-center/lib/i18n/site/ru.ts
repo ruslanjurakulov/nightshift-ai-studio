@@ -2,6 +2,7 @@ import type { SiteDictionary } from "./en";
 import { studioPageRu } from "../studio-page/ru";
 import { roadmapRu } from "../roadmap/ru";
 import { trustRu } from "../trust/ru";
+import { megaMenuRu } from "../megamenu/ru";
 import { siteAutopilotRu } from "../site-autopilot/ru";
 import { publicStatsRu } from "../public-stats/ru";
 
@@ -140,6 +141,8 @@ export const siteRu: SiteDictionary = {
   },
   fx: {
     pause: "Остановить анимацию",
+    /** The title of the models strip (ModelMarquee): models that made a sample on this page; never "partners". */
+    modelsTitle: "Модели в Nightshift Studio",
   },
   bar: {
     label: "Быстрый старт",
@@ -148,6 +151,7 @@ export const siteRu: SiteDictionary = {
     dismiss: "Скрыть эту панель",
   },
   samples: {
+    sound: "Звук клипа",
     tag: "Пример кадра (стоковое фото)",
     frameTag: "Пример кадра (стоковое видео)",
     clipTag: "Пример клипа (стоковое видео)",
@@ -176,16 +180,17 @@ export const siteRu: SiteDictionary = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Авторы изображений",
-    lead: "Каждая фотография и каждый клип на этих страницах с пометкой стокового примера — стоковое фото или видео авторов Pexels; они показаны только как пример картинки, которую можно использовать в видео. Это не результат работы реального аккаунта, и ни люди, ни места, ни бренды на них не рекомендуют Nightshift. Клип или картинка с пометкой «создано нейросетью» — тоже не скриншот продукта.",
+    lead: "Каждая фотография и каждый клип на этих страницах с пометкой стокового примера — стоковое фото или видео авторов Pexels; они показаны только как пример картинки, которую можно использовать в видео. Это не результат работы реального аккаунта, и ни люди, ни места, ни бренды на них не рекомендуют Nightshift. Клип или картинка с пометкой «AI» (создано нейросетью) — тоже не скриншот продукта.",
     licence: "Лицензия Pexels",
-    leadNoStock: "Стоковых изображений на этих страницах больше нет. Клип или картинка с пометкой «создано нейросетью» — настоящее задание из нашей собственной Студии, его сделала одна из её моделей.",
-    generated: "И ещё одно исключение: клип или картинка с пометкой «создано нейросетью» — не сток, где бы на этих страницах они ни были. Это настоящее задание из нашей собственной Студии, его сделала одна из её моделей.",
+    leadNoStock: "Стоковых изображений на этих страницах больше нет. Клип или картинка с пометкой «AI» (создано нейросетью) — настоящее задание из нашей собственной Студии, его сделала одна из её моделей.",
+    generated: "И ещё одно исключение: клип или картинка с пометкой «AI» (создано нейросетью) — не сток, где бы на этих страницах они ни были. Это настоящее задание из нашей собственной Студии, его сделала одна из её моделей.",
   },
   gallery: {
     label: "Сделано в Nightshift Studio",
     title: "Сделано в Nightshift",
     lead: "Настоящие генерации: их сделала наша команда в Nightshift Studio. Откройте любую, чтобы увидеть модель, которая её сделала, и слова, которые ей дали.",
-    badge: "Создано нейросетью",
+    badge: "AI",
+    badgeName: "Создано нейросетью",
     model: "Модель",
     prompt: "Запрос",
     noPrompt: "Без слов: сделано только по картинке.",
@@ -543,6 +548,7 @@ export const siteRu: SiteDictionary = {
   roadmap: roadmapRu,
   /** The public /trust page (lib/i18n/trust; English is the source). */
   trust: trustRu,
+  megaMenu: megaMenuRu,
   /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
   autopilot: siteAutopilotRu,
   liveStats: publicStatsRu,

@@ -1,0 +1,67 @@
+/* The customer's Nightshift AI docked beside the Studio canvas (NightshiftAiPanel.tsx), in the shared chat shell. The dock is a
+   fixed-height column: the shell runs `contained`, so the thread scrolls inside it and the composer stays in view, and the history
+   is the drawer variant, over the chat itself. */
+.ns-ai-dock {
+  /* The plan, the cards and the scenarios are the Studio's own fields: the shell draws them dark (chat-shell.css), never a light card. */
+  position: relative;
+  isolation: isolate;
+  height: min(80dvh, 760px);
+  min-height: 26rem;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: #000;
+}
+/* The Studio used to switch from lime on the canvas to blue inside the chat. */
+.ns-ai-dock :is(.chat-shell, .chat-frame) {
+  --chat-focus: var(--ds-focus);
+  --ns-act: #8ab4ff;
+  --ns-focus: var(--ds-focus);
+}
+.ns-ai-dock > .chat-shell { height: 100%; }
+@media (min-width: 64rem) {
+  /* Beside the canvas: it stays on screen while the canvas scrolls, below the app's sticky top bar (--ns-shell-h is its measured
+     height, ShellOffsets.tsx; 4rem until measured), not tucked under it (at top: 1rem it went under the 60px bar, Pixel on #900). */
+  .ns-ai-dock {
+    position: sticky;
+    top: calc(var(--ns-shell-h, 4rem) + 1rem);
+    height: min(calc(100dvh - var(--ns-shell-h, 4rem) - 2rem), 760px);
+  }
+}
+/* Below lg the canvas's dock (studio-canvas.css .cv-flow-dock: 62px tall, 80px above the bottom, over the tab bar) covers the end
+   of the screen. When the box is brought into view on focus, it stops above the dock: html's scroll-padding-bottom (5rem, the tab
+   bar, globals.css) plus this margin is the dock's height + 80px, with air. */
+@media (max-width: 63.99rem) {
+  .ns-ai-dock .chat-composer { scroll-margin-bottom: calc(env(safe-area-inset-bottom) + 4.5rem); }
+}
+/* Where the history's menu button will be once the panel is ready: the title starts there from the first paint. */
+.ns-ai-lead-slot { visibility: hidden; }
+.ns-ai-lead-slot ~ .chat-title { flex: 1; min-width: 0; }
+
+.ns-ai-dock .chat-meter { margin: 0; text-align: center; font-size: 0.75rem; line-height: 1.4; color: var(--color-muted); }
+/* A finger-sized target (44x44, WCAG 2.5.5), not the 16px line of small text it sits in. */
+.ns-ai-dock .chat-meter-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0 0.5rem;
+  color: var(--color-fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ns-ai-dock .chat-meter-link:focus-visible { outline: 2px solid var(--chat-focus); outline-offset: 2px; }
+
+.ns-ai-problem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid #a16207;
+  border-radius: 0.8rem;
+  background: var(--color-panel);
+  font-size: 0.9rem;
+}
+.ns-ai-problem-ic { flex-shrink: 0; margin-top: 0.2rem; color: #fbbf24; }

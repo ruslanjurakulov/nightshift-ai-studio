@@ -370,17 +370,21 @@ def registry_only_left_out(entries: Iterable, ids: Sequence[str], capability: Op
 
 
 def gated_left_out(entries: Iterable, ids: Sequence[str], capability: Optional[str], everything: bool) -> List:
-    """The entries ``--all`` skipped because their terms gate is open (so the log can say so)."""
+    """The entries ``--all`` skipped because their terms gate is open (so the log can say so). A gated entry past its shutdown is
+    reported by ``shutdown_left_out`` instead: the shutdown is the reason that does not go away when the terms are cleared."""
     if not everything:
         return []
-    return [e for e in entries if e.terms_gate and e.id not in ids and (capability is None or capability in e.capabilities)]
+    return [e for e in entries if e.terms_gate and not e.shut_down() and e.id not in ids
+            and (capability is None or capability in e.capabilities)]
 
 
 def shutdown_left_out(entries: Iterable, ids: Sequence[str], capability: Optional[str], everything: bool) -> List:
-    """The ungated entries ``--all`` skipped because their announced shutdown date has come (so the log can say so)."""
+    """The entries ``--all`` skipped because their announced shutdown date has come (so the log can say so), gated or not: the Veo
+    rows got a terms gate for their country list (docs/GEO_BLOCK.md) and then read "gated", which told the owner to clear terms
+    for a model that no longer runs at all."""
     if not everything:
         return []
-    return [e for e in entries if e.shut_down() and not e.terms_gate and e.id not in ids
+    return [e for e in entries if e.shut_down() and e.id not in ids
             and (capability is None or capability in e.capabilities)]
 
 

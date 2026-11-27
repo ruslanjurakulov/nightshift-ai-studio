@@ -11,9 +11,10 @@ import type { SiteDictionary } from "@/lib/i18n/site/en";
 import { useMotionPaused } from "@/lib/site/motion";
 import { holdClips } from "@/lib/site/clip-hold";
 import type { ShortsItem } from "@/components/site/shorts";
+import { AiMark } from "@/components/site/AiMark";
 
 type NetworkInformation = { saveData?: boolean };
-type GalleryCopy = Pick<SiteDictionary["gallery"], "badge" | "try" | "tryAria" | "use" | "useNote" | "noPrompt">;
+type GalleryCopy = Pick<SiteDictionary["gallery"], "badge" | "badgeName" | "try" | "tryAria" | "use" | "useNote" | "noPrompt">;
 
 /** The marker of the history entry the feed adds, so the phone's back button closes the feed instead of leaving the page. */
 const HISTORY_KEY = "nsShorts";
@@ -275,7 +276,7 @@ function Feed({
               )}
               {i === 0 && total > 1 && here && <p className="nx-shorts-hint" aria-hidden>{copy.hint}</p>}
               <div className="nx-shorts-cap" inert={!here}>
-                <span className="nx-shorts-badge">{g.badge}</span>
+                <span className="nx-shorts-badge"><AiMark short={g.badge} name={g.badgeName} /></span>
                 <p className="nx-shorts-model">
                   {/* The model's name and the AI label, and no maker's "Powered by" line or link (owner's rule, 2026-11-13). */}
                   {copy.madeBy} <strong>{it.modelName}</strong>

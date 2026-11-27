@@ -1,0 +1,175 @@
+/* ── The homepage's first-visit brand intro (components/site/BrandIntro.tsx, lib/site/brand-intro.ts) ──────────────────────
+   Every delay and length is a custom property the component sets from INTRO; the timeline starts when the overlay commits.
+   Only transform, translate, scale and opacity move (and the overlay's own black, once, as the halves start to part): the
+   overlay is fixed and out of flow, so nothing on the page under it moves (CLS 0). */
+
+/* The pre-hydration cover: the inline script sets the attribute before the first paint; the component lifts it the moment its
+   own overlay is up, or the script itself lifts it at INTRO_LATE_MS if the component has not claimed it by then. Pure black whatever the theme, the same black as the overlay, so the hand-over cannot be seen. */
+html[data-ns-intro] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  background: #000;
+  /* The cover lifts itself 300 ms (INTRO_LATE_MS) after it first paints, unless the component claimed it. An animation of
+     opacity alone can run off the main thread (a `visibility` step in it measurably kept it on the main thread, behind the
+     long tasks of a slow phone's hydration), so it lifts on time; the script's own timer, which a long task delays, only tidies
+     up after it. It never takes the pointer: the script hears a tap on the window and swallows that tap's click itself.
+     tests/brand-intro.test.tsx holds the delay equal to INTRO_LATE_MS. */
+  pointer-events: none;
+  will-change: opacity;
+  animation: ns-intro-cover-lift 160ms ease-out 300ms forwards;
+}
+html[data-ns-intro="held"] body::before {
+  animation: none;
+}
+@keyframes ns-intro-cover-lift {
+  to { opacity: 0; }
+}
+
+.ns-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  overflow: hidden;
+  contain: strict;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  /* The N's fold shadow, black on the white N, as the header draws it in the dark theme. */
+  --ns-fold: #000;
+  /* The N's height: the header's lockup, set larger. */
+  --wm-h: clamp(34px, 9vw, 64px);
+  /* Catches the pointer only to end the intro (BrandIntro listens on the window). */
+  pointer-events: auto;
+  cursor: default;
+  /* Solid until the halves start to part: two turned edges that meet exactly still let a hairline of the page through their
+     anti-aliasing, and a faint diagonal of the hero showed in the first frames. */
+  background: #000;
+  animation: ns-intro-clear 1ms step-end var(--ns-open-at) forwards;
+}
+@keyframes ns-intro-clear {
+  to { background: transparent; }
+}
+
+/* The two halves of the black. Each is far larger than any screen, pivoted on the screen's centre and turned to the N's
+   diagonal, so their shared edge is that diagonal; parting moves each straight away from it. */
+.ns-intro-leaf {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 400vmax;
+  height: 200vmax;
+  margin-left: -200vmax;
+  background: #000;
+  will-change: transform;
+  animation: var(--ns-open-ms) cubic-bezier(0.7, 0, 0.25, 1) var(--ns-open-at) both;
+}
+.ns-intro-leaf[data-leaf="a"] {
+  /* 1px past the seam, under the other half, for the same hairline while they part. */
+  margin-top: calc(1px - 200vmax);
+  transform-origin: 50% 100%;
+  transform: rotate(var(--ns-angle));
+  animation-name: ns-intro-part-a;
+}
+.ns-intro-leaf[data-leaf="b"] {
+  transform-origin: 50% 0;
+  transform: rotate(var(--ns-angle));
+  animation-name: ns-intro-part-b;
+}
+@keyframes ns-intro-part-a {
+  from { transform: rotate(var(--ns-angle)) translateY(0); }
+  to { transform: rotate(var(--ns-angle)) translateY(-75vmax); }
+}
+@keyframes ns-intro-part-b {
+  from { transform: rotate(var(--ns-angle)) translateY(0); }
+  to { transform: rotate(var(--ns-angle)) translateY(75vmax); }
+}
+
+/* The light: a thin white edge on each half where they meet. Closed, the two are one slit across the screen, grown out of the
+   N; open, each rides its half away and dims. */
+.ns-intro-leaf::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1.5px;
+  background: #fff;
+  box-shadow: 0 0 10px 1px rgba(255, 255, 255, 0.85), 0 0 36px 4px rgba(190, 200, 255, 0.35);
+  transform-origin: 50% 50%;
+  animation:
+    ns-intro-slit var(--ns-slit-ms) cubic-bezier(0.2, 0.7, 0.2, 1) var(--ns-slit-at) both,
+    ns-intro-dim var(--ns-open-ms) ease-in var(--ns-open-at) forwards;
+}
+.ns-intro-leaf[data-leaf="a"]::after { bottom: 0; }
+.ns-intro-leaf[data-leaf="b"]::after { top: 0; }
+@keyframes ns-intro-slit {
+  from { opacity: 0; scale: 0.004 1; }
+  to { opacity: 1; scale: 1 1; }
+}
+/* No `from`: until it starts, the slit animation above owns the opacity. */
+@keyframes ns-intro-dim {
+  to { opacity: 0; }
+}
+
+/* Above the halves: the lockup, fading and scaling in at the centre. */
+.ns-intro-stage {
+  position: relative;
+  animation: ns-intro-in var(--ns-in-ms) cubic-bezier(0.2, 0.7, 0.2, 1) var(--ns-in-at) both;
+}
+@keyframes ns-intro-in {
+  from { opacity: 0; scale: 0.92; }
+  to { opacity: 1; scale: 1; }
+}
+
+/* The lockup's box is the header's whole wordmark; it moves right by half the lettering's width as the lettering goes, so the
+   N ends at the centre, on the diagonal the halves part along. */
+.ns-intro-lockup {
+  position: relative;
+  display: block;
+  height: var(--wm-h);
+  width: calc(var(--wm-h) * var(--ns-wa));
+  animation: ns-intro-centre var(--ns-wipe-ms) cubic-bezier(0.65, 0, 0.35, 1) var(--ns-wipe-at) both;
+}
+@keyframes ns-intro-centre {
+  to { translate: calc(var(--wm-h) * (var(--ns-wa) - var(--ns-ma)) / 2) 0; }
+}
+
+.ns-intro-n {
+  position: absolute;
+  left: 0;
+  top: 0;
+  animation: ns-intro-n-out var(--ns-slit-ms) ease-in var(--ns-slit-at) both;
+}
+@keyframes ns-intro-n-out {
+  to { opacity: 0; scale: 1.18; }
+}
+
+/* The window: from the N's right edge to the lockup's end. Its left edge is the mask the lettering slides behind. */
+.ns-intro-win {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  left: calc(var(--wm-h) * var(--ns-ma));
+  overflow: hidden;
+}
+.ns-intro-slide {
+  position: absolute;
+  top: 0;
+  left: calc(var(--wm-h) * var(--ns-ma) * -1);
+  animation: ns-intro-wipe var(--ns-wipe-ms) cubic-bezier(0.65, 0, 0.35, 1) var(--ns-wipe-at) both;
+}
+@keyframes ns-intro-wipe {
+  to { translate: calc(var(--wm-h) * (var(--ns-wa) - var(--ns-ma)) * -1) 0; }
+}
+
+/* Belt and braces for the checks the script and the component make: whatever put it up, the intro never shows under reduced
+   motion, the page's Pause motion, or in print. */
+@media (prefers-reduced-motion: reduce) {
+  html[data-ns-intro] body::before, .ns-intro { display: none; }
+}
+html[data-motion="paused"][data-ns-intro] body::before, html[data-motion="paused"] .ns-intro { display: none; }
+@media print {
+  html[data-ns-intro] body::before, .ns-intro { display: none; }
+}

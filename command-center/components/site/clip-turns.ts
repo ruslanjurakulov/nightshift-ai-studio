@@ -29,18 +29,27 @@ export const SHOW_RATIO = 0.35;
  *   second video costs the frame rate, the later ones do not), with the clips presenting 100%, 96%, 92% and 88% of their 24 fps
  *   frames. The densest phone screen shows 3, so 6 covers it twice over.
  * - 1440 x 900 unthrottled: six and eight clips present 95% and 88% of their frames; at ten it falls to 54%. The densest wide
- *   screen shows 6, so 8.
+ *   screen shows 6.
+ * At most 6 on any screen (2026-11-22, measured against competitors' galleries by the lead): 6 is the densest wide screen and the
+ * best-presenting count measured above, so nothing that is on screen today stops, and a denser screen (a zoomed-out window) never
+ * decodes more. A 7th clip that comes into view takes a turn only from one less in view than itself.
  */
 export const PHONE_TURNS = 6;
-export const WIDE_TURNS = 8;
+export const WIDE_TURNS = 6;
 /** How far ahead of the screen a clip starts to load, so it is already moving when it is seen (half a screen down, a quarter across). */
 export const NEAR_MARGIN = "50% 25%";
 
 export type Bid = { ratio: number; want: boolean };
 
-/** The players that get a turn: those that want one and show at least SHOW_RATIO, most on screen first, `cap` of them. */
-export function pickTurns<K>(bids: ReadonlyMap<K, Bid>, cap: number): Set<K> {
-  const ranked = [...bids].filter(([, b]) => b.want && b.ratio >= SHOW_RATIO).sort((a, b) => b[1].ratio - a[1].ratio);
+/**
+ * The players that get a turn: those that want one and show at least SHOW_RATIO, most on screen first, `cap` of them. On a tie the
+ * ones already playing (`holding`) keep their turn, so a newcomer as much in view as they are waits instead of stopping one
+ * mid-loop (and two equal clips never swap turns back and forth on every observer callback).
+ */
+export function pickTurns<K>(bids: ReadonlyMap<K, Bid>, cap: number, holding: ReadonlySet<K> = new Set()): Set<K> {
+  const ranked = [...bids]
+    .filter(([, b]) => b.want && b.ratio >= SHOW_RATIO)
+    .sort((a, b) => b[1].ratio - a[1].ratio || Number(holding.has(b[0])) - Number(holding.has(a[0])));
   return new Set(ranked.slice(0, Math.max(0, cap)).map(([k]) => k));
 }
 
@@ -62,7 +71,7 @@ const listeners = new Set<() => void>();
 
 function settle() {
   const phone = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 767px)").matches;
-  const next = pickTurns(bids, phone ? PHONE_TURNS : WIDE_TURNS);
+  const next = pickTurns(bids, phone ? PHONE_TURNS : WIDE_TURNS, granted);
   if (next.size === granted.size && [...next].every((k) => granted.has(k))) return;
   granted = next;
   listeners.forEach((l) => l());

@@ -57,7 +57,11 @@ class CountryBlockMigration(unittest.TestCase):
         mig_doc = (ROOT / "docs" / "MIGRATIONS.md").read_text(encoding="utf-8")
         self.assertIn("(0142)", mig_doc)
         geo = (ROOT / "docs" / "GEO_BLOCK.md").read_text(encoding="utf-8")
-        self.assertIn("The database does not check the country.", geo)
+        # Since 0208 the database refuses a job on a gated model by itself (creative_jobs_geo_gate); the paragraph that said it does
+        # not is kept as 0142's history, marked "(Before 0208.)", so a reader cannot take it for today's behaviour.
+        self.assertIn("Since 0208 the database checks the country for every creative job on a model with a country list.", geo)
+        self.assertIn("(Before 0208.) The database did not check the country.", geo)
+        self.assertNotIn("\nThe database does not check the country.", geo)
         self.assertNotIn("in front of\nevery call that prices, holds or queues anything.", geo)
 
 

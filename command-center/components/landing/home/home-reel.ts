@@ -13,7 +13,7 @@ import { REGISTRY_NAMES } from "@/lib/creative/model-names";
  * The hero: Earth from orbit, its dark left third behind the headline (lib/site/showcase.json, written only by
  * tools/export_showcase.py; docs/design/MEDIA_CREDITS.md "Model samples").
  */
-export const HERO_JOB = "4e85c7e4-fd1a-4771-97ee-66c1fb853367";
+export { HERO_JOB } from "@/components/site/slots";
 
 export type ReelItem = { e: ShowcaseEntry; f: ShowcaseFiles };
 

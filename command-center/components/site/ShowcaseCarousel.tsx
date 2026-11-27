@@ -10,9 +10,10 @@ import type { SiteCarouselDictionary } from "@/lib/i18n/site-carousel";
 import { clipsAllowed } from "@/components/site/LoopClip";
 import { usePageVisible, useReducedMotion, useClipNear, useClipTurn } from "@/components/site/clip-turns";
 import "@/components/site/showcase-carousel.css";
+import { AiMark } from "@/components/site/AiMark";
 
 /** The few gallery words the centre card shares with the explore grid (t.site.gallery), so both say the same thing. */
-export type CarouselGalleryCopy = { badge: string; model: string; altClip: string; altImage: string; use: string; notInStudio: string; gone: string; noPrompt: string };
+export type CarouselGalleryCopy = { badge: string; badgeName: string; model: string; altClip: string; altImage: string; use: string; notInStudio: string; gone: string; noPrompt: string };
 
 /**
  * A coverflow of our own samples (lib/site/showcase.json): one large centre card playing its clip, the cards before and after it
@@ -342,7 +343,7 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
                         <source src={small ? it.clip.smMp4 : it.clip.mp4} type="video/mp4" />
                       </video>
                     )}
-                    <span className="nx-result-badge nxc-badge">{g.badge}</span>
+                    <span className="nx-result-badge nxc-badge"><AiMark short={g.badge} name={g.badgeName} /></span>
                     {hasClip && mounted && (reduced || !allowed || pressedPlay) && (
                       // Starting a clip by hand is a visible play button; once it plays, its pause is the tap on the clip, and this
                       // button stays only for the keyboard (shown when focused).
@@ -407,7 +408,7 @@ export function ShowcaseCarousel({ slides, copy, g }: { slides: SampleSlide[]; c
       <div className="nxc-info" data-showcase-entry={s.job} data-model={s.modelName}>
         <h3 className="nxc-title">{s.title}</h3>
         <p className="nxc-meta">
-          <span className="nx-ai-badge">{g.badge}</span>
+          <span className="nx-ai-badge"><AiMark short={g.badge} name={g.badgeName} /></span>
           <span className="nxc-chip">
             {g.model} <strong>{s.modelName}</strong>
           </span>
