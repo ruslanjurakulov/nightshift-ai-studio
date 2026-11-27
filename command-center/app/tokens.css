@@ -121,10 +121,11 @@
   --ds-z-toast: 600;
   --ds-z-tooltip: 700;
 
-  --ds-font-display: "Unbounded", "Unbounded Fallback", var(--font-sans);
+  /* Onest, the product face: the wide display face read as strange to the owner (2026-11-22, app/fonts.css). */
+  --ds-font-display: var(--font-sans);
 }
-/* Uzbek's Latin wraps later than English's at the same scale: its own fallback (app/fonts.css). */
-:root:lang(uz) { --ds-font-display: "Unbounded", "Unbounded Fallback Uz", var(--font-sans); }
+/* Kept as its own rule so a later Uzbek-only display choice has one place to go; today it is the same Onest stack. */
+:root:lang(uz) { --ds-font-display: var(--font-sans); }
 @media (prefers-reduced-motion: reduce) {
   :root {
     --ds-dur-press: 0ms;
@@ -224,6 +225,8 @@
     --ds-glow-select: 0 0 0 1px rgb(200 255 46 / 0.5), 0 0 18px -2px rgb(200 255 46 / 0.45);
   }
 }
+/* The Studio chat keeps a black ground even in the light app theme. */
+.ns-ai-dock,
 :root[data-theme="dark"],
 [data-theme-scope="dark"] {
   --ds-bg: #070a14;

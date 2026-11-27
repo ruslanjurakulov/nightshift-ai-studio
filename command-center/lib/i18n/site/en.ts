@@ -1,6 +1,7 @@
 import { studioPageEn } from "../studio-page/en";
 import { roadmapEn } from "../roadmap/en";
 import { trustEn } from "../trust/en";
+import { megaMenuEn } from "../megamenu/en";
 import { siteAutopilotEn } from "../site-autopilot/en";
 import { publicStatsEn } from "../public-stats/en";
 
@@ -154,6 +155,8 @@ export const siteEn = {
   },
   fx: {
     pause: "Pause motion",
+    /** The title of the models strip (ModelMarquee): models that made a sample on this page; never "partners". */
+    modelsTitle: "Models in Nightshift Studio",
   },
   bar: {
     label: "Quick start",
@@ -162,6 +165,11 @@ export const siteEn = {
     dismiss: "Hide this bar",
   },
   samples: {
+    /**
+     * The speaker toggle on a clip that has sound (components/site/SoundToggle.tsx): a toggle button, so one name and aria-pressed
+     * say whether it is on. Shown only where the clip's files carry an audio track.
+     */
+    sound: "Clip sound",
     tag: "Example frame (stock photo)",
     frameTag: "Example frame (stock footage)",
     clipTag: "Example clip (stock footage)",
@@ -190,12 +198,12 @@ export const siteEn = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Image credits",
-    lead: "Every photograph and clip on these pages labelled as a stock example is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. A clip or picture labelled AI-generated is not a screenshot of the product either.",
+    lead: "Every photograph and clip on these pages labelled as a stock example is stock photography or footage from Pexels contributors, shown only as an example of the kind of picture a video can use. None of it is output from a real account, and none of the people, places or brands in it endorse Nightshift. A clip or picture labelled “AI” (AI-generated) is not a screenshot of the product either.",
     licence: "Pexels License",
     /** The lead once no page shows a stock picture any more (components/site/stock-in-use.ts is empty). */
-    leadNoStock: "No stock pictures are left on these pages. A clip or picture labelled AI-generated is a real job from our own Studio, made by one of its models.",
+    leadNoStock: "No stock pictures are left on these pages. A clip or picture labelled “AI” (AI-generated) is a real job from our own Studio, made by one of its models.",
     /** Shown beside the stock credits while any sample (lib/site/showcase.json) is on the site, wherever it is shown. It names no model: each sample names its own. */
-    generated: "One more exception: a clip or picture labelled AI-generated is not stock, wherever it is on these pages. It is a real job from our own Studio, made by one of its models.",
+    generated: "One more exception: a clip or picture labelled “AI” (AI-generated) is not stock, wherever it is on these pages. It is a real job from our own Studio, made by one of its models.",
   },
   /**
    * The model samples (components/site/ShowcaseGallery.tsx): real generations from the operator's Studio. No model or maker is named
@@ -206,7 +214,12 @@ export const siteEn = {
     label: "Made in Nightshift Studio",
     title: "Made with Nightshift",
     lead: "Real generations, made by our team in Nightshift Studio. Open one to see the model that made it and the words it was given.",
-    badge: "AI-generated",
+    /**
+     * The mark on every one of our samples, as seen: just "AI" (the owner, 2026-11-22: no longer phrases on the pictures). It is
+     * never shown alone to a screen reader: `badgeName` is what it says, in words (components/site/AiMark.tsx).
+     */
+    badge: "AI",
+    badgeName: "AI-generated",
     model: "Model",
     prompt: "Prompt",
     noPrompt: "No words: made from the picture alone.",
@@ -471,7 +484,7 @@ export const siteEn = {
   wall: {
     label: "Real outputs, made by our team in Nightshift Studio",
     note: "A tool’s picture or clip is a real job our team ran in the Studio. “Not available yet” means the tool is not on sale today. Once a tool opens, its price is on its button. The free ones say so.",
-    /** Under a tile's sample, after the "AI-generated" badge word: who made it. No model name on the wall (the owner has not decided whether the public site names models). */
+    /** Under a tile's sample, after the "AI" badge: who made it, heard by a screen reader only (the eye sees just "AI", owner 2026-11-22). No model name on the wall (the owner has not decided whether the public site names models). */
     byTeam: "made by our team",
     /** Under Animate's before and after: which half is the picture the clip started from. */
     from: "Left: the picture this clip was made from",
@@ -604,6 +617,8 @@ export const siteEn = {
   roadmap: roadmapEn,
   /** The public /trust page (lib/i18n/trust; English is the source). */
   trust: trustEn,
+  /** The public header's panels and the phone sheet's sections (lib/i18n/megamenu). */
+  megaMenu: megaMenuEn,
   /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
   autopilot: siteAutopilotEn,
   /** The live counters strip (components/site/LiveStats.tsx; lib/i18n/public-stats), hidden until the owner turns it on. */

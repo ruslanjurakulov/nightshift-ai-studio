@@ -1967,6 +1967,40 @@ class RemoteDeployCreativeWorkerTests(_RemoteDeployFixture):
         self.assertIn("the creative worker did not start", proc.stderr)
 
 
+@unittest.skipUnless(shutil.which("bash") and shutil.which("git") and shutil.which("flock"), "bash, git, flock needed")
+class RemoteDeployFilmSweepTests(_RemoteDeployFixture):
+    """The film sweep (0212's fallback schedule): its own worker-section switch NIGHTSHIFT_FILM_SWEEP, never the film worker's,
+    because the sweep must run while the film worker is off."""
+
+    worker_payload = RemoteDeployWorkerTests.worker_payload
+
+    def test_on_starts_it_with_the_film_worker_off(self):
+        proc = self.deploy(self.worker_payload(NIGHTSHIFT_FILM_SWEEP="on"))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        calls = self.docker_calls()
+        self.assertEqual(len([c for c in calls if c.endswith("up -d --no-deps film-sweep")]), 1, calls)
+        self.assertFalse(any(c.endswith("up -d --no-deps film-worker") for c in calls))
+        self.assertIn("film-worker off; film-sweep on", proc.stdout)
+        self.assertIn("NIGHTSHIFT_FILM_SWEEP=on\n", self.worker_env_file.read_text())
+
+    def test_anything_but_on_removes_it_and_the_film_workers_switch_does_not_start_it(self):
+        for over in ({"NIGHTSHIFT_FILM_SWEEP": "off"}, {"NIGHTSHIFT_FILM_SWEEP": "On"}, {"NIGHTSHIFT_FILM_WORKER": "on"}):
+            with self.subTest(over=over):
+                self.docker_log.unlink(missing_ok=True)
+                proc = self.deploy(self.worker_payload(**over))
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                calls = self.docker_calls()
+                self.assertFalse(any(c.endswith("up -d --no-deps film-sweep") for c in calls))
+                self.assertTrue(any(c.endswith("rm --stop --force film-sweep") for c in calls))
+                self.assertIn("film-sweep is off", proc.stdout)
+
+    def test_never_without_the_worker(self):
+        proc = self.deploy(self.payload())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(any(c.endswith("rm --stop --force film-sweep") for c in self.docker_calls()))
+        self.assertIn("film-sweep off", proc.stdout)
+
+
 # ── The customer notification senders (Telegram, e-mail) ────────────────────
 
 

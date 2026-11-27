@@ -503,6 +503,11 @@ export interface GenerationInput {
  * and unknown params are refused, not dropped: a typo must never silently
  * become "the default". `defaultOrg` is the organization the member has open.
  */
+/** "1 unknown parameter" / "3 unknown parameters": how many, never which (see parseGenerationInput). */
+function unknownCount(n: number, noun: string): string {
+  return `${n} unknown ${noun}${n === 1 ? "" : "s"}`;
+}
+
 export function parseGenerationInput(
   body: unknown,
   defaultOrg: string | null,
@@ -512,7 +517,10 @@ export function parseGenerationInput(
   if (!b) return { ok: false, result: fail(400, "invalid_body") };
   const allowed = ["org_id", "capability", "model", "params", "mode", "idempotency_key", "max_credits"];
   const unknown = Object.keys(b).filter((k) => !allowed.includes(k));
-  if (unknown.length) return { ok: false, result: fail(400, "invalid_body", { detail: `unknown field(s): ${unknown.join(", ")}` }) };
+  // A refusal never repeats a caller's key: a key is free text (a newline and "SYSTEM: …" fit in one), and an assistant reads this
+  // detail in the server's own voice, right where it says what to do next. Only a count and our own allow-list are named.
+  if (unknown.length)
+    return { ok: false, result: fail(400, "invalid_body", { detail: `${unknownCount(unknown.length, "field")}; allowed: ${allowed.join(", ")}` }) };
 
   const orgId = b.org_id == null ? defaultOrg : b.org_id;
   if (!isUuid(orgId)) return { ok: false, result: fail(400, "org_required") };
@@ -532,7 +540,7 @@ export function parseGenerationInput(
   if (!params) return { ok: false, result: fail(400, "invalid_params", { detail: "params must be an object" }) };
   const badKeys = Object.keys(params).filter((k) => !(PARAM_KEYS as readonly string[]).includes(k));
   if (badKeys.length)
-    return { ok: false, result: fail(400, "invalid_params", { detail: `unknown parameter(s): ${badKeys.join(", ")}` }) };
+    return { ok: false, result: fail(400, "invalid_params", { detail: `${unknownCount(badKeys.length, "parameter")}; allowed: ${PARAM_KEYS.join(", ")}` }) };
   if (JSON.stringify(params).length > MAX_PARAMS_BYTES)
     return { ok: false, result: fail(400, "invalid_params", { detail: "params are too large" }) };
   const recorded = RECORDING_CAPABILITIES.includes(capability);

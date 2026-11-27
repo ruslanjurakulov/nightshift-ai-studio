@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { ArrowRight } from "lucide-react";
 import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
-import { SHOWCASE_ENTRIES, modelLeftOut, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
+import { SHOWCASE_ENTRIES, modelLeftOut, sourceOnlyJobs, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { tryHref } from "@/lib/site/showcase-link";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
@@ -12,6 +12,7 @@ import { GRID_GUTTER_ROWS, PLANNED_COLUMNS, gridSpan, level, levelOrder } from "
 import { ShortsFeed } from "@/components/site/ShortsFeed";
 import { shortsItems } from "@/components/site/shorts";
 import { SampleDetail, type SampleDetailCopy } from "@/components/site/SampleDetail";
+import { AiMark } from "@/components/site/AiMark";
 
 /** The day a sample was made, in the page's language (UTC, so the server and every visitor read the same day). */
 function madeOn(iso: string, locale: Locale): string {
@@ -24,8 +25,20 @@ function madeOn(iso: string, locale: Locale): string {
 
 export { GRID_GUTTER_ROWS, gridSpan };
 
-/** The entries the page can show: those whose files are here (an entry without its files is never shown as a gap). */
+/**
+ * The entries a grid can show: those whose files are here (an entry without its files is never shown as a gap), less the pictures
+ * that are only an animation's starting frame (lib/site/showcase.ts sourceOnlyJobs: a starting frame is not its own sample).
+ */
 export function showcaseItems(
+  entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES,
+  files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES,
+): { e: ShowcaseEntry; f: ShowcaseFiles }[] {
+  const sources = sourceOnlyJobs(entries);
+  return showcaseItemsWithSources(entries, files).filter(({ e }) => !sources.has(e.jobId));
+}
+
+/** Every entry whose files are here, starting frames included: for looking a clip's source up, and for a slot that names one. */
+export function showcaseItemsWithSources(
   entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES,
   files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES,
 ): { e: ShowcaseEntry; f: ShowcaseFiles }[] {
@@ -100,7 +113,8 @@ export function ShowcaseGallery({
   // An animation of one of our own pictures reads as a trick without the picture it started from. Shown only when that picture is
   // itself a sample here (its file is in the repository and its own card names its model); any other input is not shown.
   // Looked up among every sample, so a picture the page shows in a slot (and leaves out of the grid) still credits the clip made from it.
-  const byJob = new Map(all.map((it) => [it.e.jobId, it]));
+  // Starting frames included: they are not cards of their own, but a clip still credits the picture it was made from.
+  const byJob = new Map(showcaseItemsWithSources(entries, files).map((it) => [it.e.jobId, it]));
   const sourceOf = (e: ShowcaseEntry) => (e.kind === "video" && e.input.kind === "operator_job" ? byJob.get(e.input.jobId) ?? null : null);
   // The dialog's words (a Client Component takes these, never the whole dictionary).
   const copy: SampleDetailCopy = {
@@ -108,6 +122,7 @@ export function ShowcaseGallery({
     close: g.close,
     detail: g.detail,
     badge: g.badge,
+    badgeName: g.badgeName,
     model: g.model,
     prompt: g.prompt,
     notInStudio: g.notInStudio,
@@ -128,7 +143,7 @@ export function ShowcaseGallery({
         </h2>
         <p className="nx-sub">{g.lead}</p>
         {/* Phones only (CSS): the vertical clips as a full-screen feed (components/site/ShortsFeed.tsx). */}
-        <ShortsFeed items={shortsItems(items, signedIn, now)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, try: g.try, tryAria: g.tryAria, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />
+        <ShortsFeed items={shortsItems(items, signedIn, now)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, badgeName: g.badgeName, try: g.try, tryAria: g.tryAria, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />
         <div className="nx-gallery-box">
           {/* One pause key for the whole grid, for a keyboard (hidden until focused; a pointer pauses by tapping a clip elsewhere or in
               a sample's dialog): one Tab stop, not one per card. */}
@@ -159,7 +174,7 @@ export function ShowcaseGallery({
                       decoding="async"
                     />
                     {clip && <ShowcaseClip jobId={e.jobId} together />}
-                    <span className="nx-result-badge">{g.badge}</span>
+                    <span className="nx-result-badge"><AiMark short={g.badge} name={g.badgeName} /></span>
                   </div>
                   {/* The whole card opens the sample (a button stretched over it); the words and the link below sit above it. */}
                   <SampleDetail

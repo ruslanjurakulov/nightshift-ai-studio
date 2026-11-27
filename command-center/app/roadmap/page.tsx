@@ -29,7 +29,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RoadmapRoute() {
   const { t } = await getDictionary();
   return (
-    <PublicShell t={t} fresh>
+    <PublicShell t={t} current="resources" fresh>
       <RoadmapPage t={t} />
     </PublicShell>
   );

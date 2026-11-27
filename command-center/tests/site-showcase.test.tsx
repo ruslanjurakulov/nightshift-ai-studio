@@ -25,9 +25,9 @@ vi.mock("next/link", () => ({
 
 import { dictionaries, fmt, LOCALES } from "@/lib/i18n";
 import raw from "@/lib/site/showcase.json";
-import { SHOWCASE_ENTRIES, modelLeftOut, parseShowcase, parseShowcaseEntry, showcaseModels } from "@/lib/site/showcase";
+import { SHOWCASE_ENTRIES, modelLeftOut, parseShowcase, parseShowcaseEntry, showcaseModels, sourceOnlyJobs } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
-import { GRID_GUTTER_ROWS, ShowcaseGallery, gridSpan, showcaseItems } from "@/components/site/ShowcaseGallery";
+import { GRID_GUTTER_ROWS, ShowcaseGallery, gridSpan, showcaseItems, showcaseItemsWithSources } from "@/components/site/ShowcaseGallery";
 import { level, levelOrder } from "@/lib/site/gallery-plan";
 import { cutWords, signupTryHref, studioTryHref, tryHref } from "@/lib/site/showcase-link";
 import { DEFAULT_AFTER_AUTH, STUDIO_NEXT_PREFIX, afterSignupPath, safeLoginReturn, safeNextPath, studioNext } from "@/lib/safe-redirect";
@@ -39,6 +39,7 @@ import { useClipsHeld } from "@/lib/site/clip-hold";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import { GALLERY, SAMPLE_CARD, makerCreditProblems, without } from "./helpers/showcase-scope";
 import { FIXTURE_ENTRY, FIXTURE_FILES, FIXTURE_JOB } from "./fixtures/showcase-entry";
+import { aiMarkOf } from "./helpers/ai-mark";
 
 afterEach(cleanup);
 
@@ -53,7 +54,12 @@ describe("the data file", () => {
   // It shipped empty, and the first export (#720) made a test that said so fail: what holds for any number of entries is that
   // the page shows every one of them, each as what it is.
   it("shows every shipped entry, and a video's plays its own clip while a picture's has none, never from off-site", () => {
-    expect(showcaseItems().map(({ e }) => e.jobId)).toEqual(SHOWCASE_ENTRIES.map((e) => e.jobId));
+    // Every shipped entry except the starting frames (Atlas/owner decision 22 Nov: a starting frame is not its own sample); those
+    // are still found with their files, for the clip that credits them and for a slot that names one.
+    const frames = sourceOnlyJobs(SHOWCASE_ENTRIES);
+    expect(frames.size).toBeGreaterThan(0);
+    expect(showcaseItems().map(({ e }) => e.jobId)).toEqual(SHOWCASE_ENTRIES.filter((e) => !frames.has(e.jobId)).map((e) => e.jobId));
+    expect(showcaseItemsWithSources().map(({ e }) => e.jobId)).toEqual(SHOWCASE_ENTRIES.map((e) => e.jobId));
     for (const e of SHOWCASE_ENTRIES) {
       const clip = SHOWCASE_FILES[e.jobId].clip;
       expect(clip === null, e.jobId).toBe(e.kind === "image");
@@ -166,7 +172,7 @@ describe("the gallery", () => {
     const card = container.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`) as HTMLElement;
     expect(card).toBeTruthy();
     // The badge is on the picture, always (it is required, and nothing may hide it).
-    expect(card.querySelector(".nx-gallery-pic > .nx-result-badge")?.textContent).toBe(g.badge);
+    expect(aiMarkOf(card.querySelector(".nx-gallery-pic > .nx-result-badge"))).toEqual({ seen: g.badge, said: g.badgeName });
     // The model is named in the dialog only (the owner has not decided on the cards, 2026-11-14): not in the card's words, not in
     // its picture's description, not in its link's name.
     expect(card.textContent).not.toContain(FIXTURE_ENTRY.modelName);
@@ -202,7 +208,7 @@ describe("the gallery", () => {
     const { dialog, restore } = openSample(container.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`)!);
     // The dialog is the sample's own box: the only kind of element that may name a model.
     expect(dialog.dataset.showcaseEntry).toBe(FIXTURE_JOB);
-    expect(dialog.querySelector(".nx-result-badge")?.textContent).toBe(g.badge);
+    expect(aiMarkOf(dialog.querySelector(".nx-result-badge"))).toEqual({ seen: g.badge, said: g.badgeName });
     expect(dialog.querySelector(".nx-gallery-model strong")?.textContent).toBe("Runway Gen-4.5");
     expect(dialog.querySelector(".nx-gallery-model")?.textContent).toContain(g.model);
     expect(dialog.querySelector(".nx-sd-prompt")?.textContent).toBe(FIXTURE_ENTRY.prompt);
@@ -392,10 +398,10 @@ describe("the gallery", () => {
     // Neither the picture's maker nor the clip's is linked or credited.
     expect(makerCreditProblems(opened.dialog)).toEqual([]);
     closeSample(opened.dialog, opened.restore);
-    // The picture's own dialog shows no source, and neither does an animation of site art or of a job that is not a sample here.
-    const own = openSample(container.querySelector(`[data-showcase-entry="${stillJob}"]`)!);
-    expect(own.dialog.querySelector(".nx-gallery-source")).toBeNull();
-    closeSample(own.dialog, own.restore);
+    // The picture is the clip's starting frame only, so it is no card of its own (Atlas/owner decision 22 Nov: a starting frame is
+    // not its own sample); it is seen in the clip's dialog above. An animation of site art or of a job that is not a sample here
+    // shows no source.
+    expect(container.querySelector(`[data-showcase-entry="${stillJob}"]`)).toBeNull();
     cleanup();
     const plain = openSample(render(<ShowcaseGallery t={d} locale={code} entries={[FIXTURE_ENTRY]} files={FIXTURE_FILES} />).container.querySelector(SAMPLE_CARD)!);
     expect(plain.dialog.querySelector(".nx-gallery-source")).toBeNull();
@@ -439,7 +445,9 @@ describe("the gallery", () => {
     expect(JSON.stringify(s.gallery)).not.toMatch(PROVIDER_BRANDS);
     expect(s.credits.generated).not.toMatch(PROVIDER_BRANDS);
     const AI = /AI-generated|нейросет|sunʼiy intellekt/i;
-    expect(s.gallery.badge).toMatch(AI);
+    // The mark reads just "AI" (owner, 2026-11-22); what a screen reader hears for it still says AI-generated.
+    expect(s.gallery.badge).toBe("AI");
+    expect(s.gallery.badgeName).toMatch(AI);
     expect(s.credits.generated).toMatch(AI);
     expect(s.gallery.altClip).toContain("{model}");
     expect(s.gallery.bgClip).toMatch(AI);
@@ -586,7 +594,7 @@ describe("the shipped samples", () => {
 
       // The card: labelled as an AI generation, on the picture, clip or not; nothing on it says stock or names a photographer, and
       // nothing on it names a model (its link carries the model id for the Studio form only, and says "Use this prompt").
-      expect(card.querySelector(".nx-gallery-pic > .nx-result-badge")?.textContent, e.jobId).toBe(g.badge);
+      expect(aiMarkOf(card.querySelector(".nx-gallery-pic > .nx-result-badge")), e.jobId).toEqual({ seen: g.badge, said: g.badgeName });
       expect(card.querySelector(".nx-gallery-pic")?.getAttribute("data-clip") ?? null).toBe(clip ? "sample" : null);
       noStock(card);
       expect(card.querySelector(".nx-gallery-pic > img")?.getAttribute("alt")).toBe(clip ? g.bgClip : g.bgImage);
@@ -608,13 +616,14 @@ describe("the shipped samples", () => {
       // (the prompt included: the words a job was given are shown, and they must not name a model or maker either).
       const { dialog, restore } = openSample(card);
       expect(dialog.dataset.showcaseEntry).toBe(e.jobId);
-      expect(dialog.querySelector(".nx-result-badge")?.textContent, e.jobId).toBe(g.badge);
+      expect(aiMarkOf(dialog.querySelector(".nx-result-badge")), e.jobId).toEqual({ seen: g.badge, said: g.badgeName });
       noStock(dialog);
       const box = dialog.cloneNode(true) as HTMLElement;
       // A clip animated from another sample's picture shows that picture: named, credited and described exactly as that picture's
       // own dialog does, and only when the input really is that sample's job.
       const fig = box.querySelector<HTMLElement>(".nx-gallery-source");
-      const src = e.kind === "video" && e.input.kind === "operator_job" ? items.find((it) => it.e.jobId === (e.input as { jobId: string }).jobId) : undefined;
+      // Looked up among every entry: a starting frame has no card of its own (Atlas/owner decision 22 Nov) but is still credited here.
+      const src = e.kind === "video" && e.input.kind === "operator_job" ? showcaseItemsWithSources().find((it) => it.e.jobId === (e.input as { jobId: string }).jobId) : undefined;
       expect(fig?.dataset.sourceEntry ?? null, e.jobId).toBe(src?.e.jobId ?? null);
       if (fig && src) {
         const sm = MODELS.get(src.e.modelId)!;

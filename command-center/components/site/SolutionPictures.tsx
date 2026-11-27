@@ -4,6 +4,7 @@ import { StatusLamp } from "@/components/ui/StatusLamp";
 import { ASPECT_RATIOS } from "@/lib/creative/studio";
 import { AiBadge, PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { EXAMPLE_THUMB_JOB, exampleMedia } from "@/components/site/samples";
+import { AiMark } from "@/components/site/AiMark";
 
 /**
  * The Studio composer, drawn: a description, the shape keys, a style chip and
@@ -119,7 +120,7 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
           <span className="st-signoff-private">{s.private}</span>
           {m && (
             <span className="nx-result-badge st-signoff-badge" data-kind="ai">
-              {t.site.gallery.badge}
+              <AiMark short={t.site.gallery.badge} name={t.site.gallery.badgeName} />
             </span>
           )}
         </div>

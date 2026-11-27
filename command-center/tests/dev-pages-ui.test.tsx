@@ -16,7 +16,7 @@ import { ApiDocs } from "@/components/docs/ApiDocs";
 import { McpPage } from "@/components/docs/McpPage";
 import { CliPage, SkillsPage } from "@/components/docs/ToolPages";
 import { PublicFooter } from "@/components/legal/PublicFooter";
-import { publicNavLinks } from "@/components/legal/PublicShell";
+import { publicNav, navHrefs } from "@/lib/public-nav";
 import { devDictionaries } from "@/lib/i18n/dev";
 import { dictionaries, type Locale } from "@/lib/i18n";
 import { MCP_CLIENTS } from "@/lib/dev/mcp-clients";
@@ -443,10 +443,18 @@ describe("the public shell links the developer pages as one group", () => {
 
   beforeEach(() => vi.stubEnv("DEV_CLI_PAGE", ""));
 
-  it("the top menu has one Developers entry, not an API link beside an MCP one", () => {
-    const links = publicNavLinks(t);
-    expect(links.filter((l) => l.href.startsWith("/docs") || l.href === "/mcp")).toEqual([
-      { href: "/docs/api", label: "Developers", section: "docs" },
+  it("the top menu has one Developers group: the API reference, MCP and API pricing, and CLI and Skills only when on", () => {
+    const groups = publicNav(t, { devPages: false }).filter((e) => e.kind === "group" && e.id === "developers");
+    expect(groups).toHaveLength(1);
+    expect(navHrefs(groups)).toEqual(["/docs/api", "/mcp", "/docs/api#pricing"]);
+    // Nowhere else in the bar: no API link beside the group.
+    expect(navHrefs(publicNav(t, { devPages: false })).filter((h) => h.startsWith("/docs") || h === "/mcp")).toEqual(navHrefs(groups));
+    expect(navHrefs(publicNav(t, { devPages: true }).filter((e) => e.kind === "group" && e.id === "developers"))).toEqual([
+      "/docs/api",
+      "/mcp",
+      "/docs/api#pricing",
+      "/docs/cli",
+      "/docs/skills",
     ]);
   });
 
