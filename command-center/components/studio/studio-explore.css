@@ -14,7 +14,7 @@
    48 px from 1440. */
 .sx-h2 {
   margin: 0; font-family: var(--ds-font-display, var(--font-display)); font-weight: 700;
-  font-size: clamp(1.5rem, 1.0833rem + 1.8519vw, 3rem); line-height: var(--ds-lh-display-lg, 1.08); letter-spacing: var(--ds-ls-display-lg, -0.02em);
+  font-size: clamp(1.5rem, 1rem + 2.2222vw, 3rem); line-height: var(--ds-lh-display-lg, 1.08); letter-spacing: var(--ds-ls-display-lg, -0.02em);
   color: var(--color-fg); text-wrap: balance;
 }
 .sx-h2:focus { outline: none; }
