@@ -841,3 +841,9 @@ sec_operator_models_0219.extend(TABLES, FUNCTIONS)
 import sec_film_sweep_0212  # noqa: E402
 
 sec_film_sweep_0212.extend(TABLES, FUNCTIONS)
+
+# Migration 0215 (Film Studio: archive a paused or cancelled film, resume a paused one; the worker's id kept out of members' reads):
+# tests/security/sec_film_resume_0215.py
+import sec_film_resume_0215  # noqa: E402
+
+sec_film_resume_0215.extend(TABLES, FUNCTIONS)

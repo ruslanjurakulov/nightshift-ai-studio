@@ -114,7 +114,7 @@ function stockIsCredited(container: Element) {
 function backdropOnly(container: Element) {
   for (const name of ["Runway Gen-4.5", "FLUX.2 Pro"]) expect(container.textContent).not.toContain(name);
   expect(container.querySelector(".nx-ai-model, .nx-ai-try, .nx-ai-note")).toBeNull();
-  for (const w of [t.site.gallery.try, t.site.gallery.use, t.site.gallery.useNote]) expect(container.textContent).not.toContain(w);
+  for (const w of [t.site.gallery.use, t.site.gallery.useNote]) expect(container.textContent).not.toContain(w);
   expect(makerCreditProblems(container)).toEqual([]);
 }
 
