@@ -41,6 +41,8 @@ ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0147_mcp_free_tier.sql"
 # 0198 (Film Studio's switch per organization) sits on 0192's quote_film and start_film: off before 0192, on after it.
 # 0219 (the operator route for connected assistants) sits on 0192's and 0191's Studio doors, and both refuse it: off first.
 LATER = [(sec_db.MIGRATION_0219, sec_db.ROLLBACK_0219),
+         # 0218 (creative_price on 0208's body; skipped where the file is not there) comes off before 0208.
+         (sec_db.MIGRATIONS / "0218_creative_prompt_limits.sql", sec_db.REPO / "docs" / "sql" / "rollback_0218_creative_prompt_limits.sql"),
          (sec_db.MIGRATION_0208, sec_db.ROLLBACK_0208),  # 0208 sits on 0196's reroute_creative_job, which 0196's rollback refuses
          (sec_db.MIGRATION_0198, sec_db.ROLLBACK_0198),
          (sec_db.MIGRATION_0196, sec_db.ROLLBACK_0196),  # 0196 sits on 0192's api_create_video

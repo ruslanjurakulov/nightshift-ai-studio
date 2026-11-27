@@ -399,6 +399,83 @@ def test_a_connection_without_studio_create_reaches_nothing_even_in_the_operator
         assert res["status"] == 403 and code(res) == "insufficient_scope", res
 
 
+# ── the real registry: what the owner's samples use ────────────────────────
+
+REGISTRY = {m["id"]: m for m in json.loads((sec_db.REPO / "schemas" / "model_registry.json").read_text(encoding="utf-8"))["models"]}
+_COLUMNS = ("id", "display_name", "provider", "adapter", "capabilities", "credit_unit", "entitlement")
+#: Web-only models of schemas/model_registry.json the operator's samples are made with (S9): pictures and MiniMax H3 clips.
+SAMPLE_MODELS = ["ideogram-3", "openai-gpt-image-2.6-sunburst", "minimax-h3"]
+
+
+def _units(m):
+    """Every credit_prices unit a quote of this entry can read: its own, each quality tier's and each price variant's."""
+    import re
+    unit = m["credit_unit"]
+    out = {unit}
+    out |= {f"{unit}_{t}" for t in (m.get("qualities") or [])}
+    out |= {f"{unit}_{re.sub('[^a-z0-9]', '_', k.lower())}" for k in ((m["pricing"].get("variants") or {}).get("prices") or {})}
+    return out
+
+
+def seed_real(d: Db, ids) -> None:
+    """These registry entries on sale in the Studio, as the registry sync and a passing probe leave them (their own file facts)."""
+    # Inserted row by row, not through sync_model_registry: a sync takes every model it is not given off sale (the lab's own).
+    for i in ids:
+        m = REGISTRY[i]
+        d.su("insert into public.model_registry (id, display_name, provider, adapter, capabilities, spec, credit_unit, entitlement) "
+             "values (%s, %s, %s, %s, %s, %s::jsonb, %s, null)",
+             [i, m["display_name"], m["provider"], m["adapter"], m["capabilities"],
+              json.dumps({k: v for k, v in m.items() if k not in _COLUMNS}), m["credit_unit"]])
+        for cap in m["capabilities"]:
+            d.su("select public.record_model_probe(%s, %s, %s, %s, true, null, null, 10, 100, 'security-lab')",
+                 [i, m["adapter"], m["vendor_model"], cap])
+        d.su("update public.model_registry set availability = 'beta' where id = %s", [i])
+        for u in _units(m):
+            d.su("insert into public.credit_prices (unit, credits_per_unit, margin) values (%s, 4, 0.5) on conflict (unit) do nothing", [u])
+
+
+def test_the_operator_lists_the_sample_models_and_a_customer_none_of_them(db):
+    seed_real(db, [*SAMPLE_MODELS, "seedance-1.5-pro"])
+    # seedance-1.5-pro is past its shutdown in the file: put it back on sale here, so only the ByteDance rule can refuse it.
+    db.su("update public.model_registry set spec = spec - 'shutdown' where id = 'seedance-1.5-pro'")
+    assert db.su("select count(*) from public.sellable_models(null, 'web') where id = any (%s)",
+                 [[*SAMPLE_MODELS, "seedance-1.5-pro"]])[0][0] == 4
+    op, _g = connection(db, UOP, OPERATOR)
+    listed = {m["id"]: m for m in models(db, op)["data"]["models"]}
+    for mid in SAMPLE_MODELS:
+        assert listed.get(mid, {}).get("operator_only") is True, (mid, sorted(listed))
+    assert "seedance-1.5-pro" not in listed
+    assert listed["minimax-h3"]["capabilities"] == ["i2v", "t2v"]
+    q = quote(db, op, "ideogram-3")
+    assert q["ok"] and q["data"]["operator_only"] is True, q
+    assert code(quote(db, op, "seedance-1.5-pro", "t2v")) == "model_not_offered"
+
+    cu, grant = connection(db, UCU, CUSTOMER)
+    theirs = [m["id"] for m in models(db, cu)["data"]["models"]]
+    assert not set(theirs) & {*SAMPLE_MODELS, "seedance-1.5-pro"}, theirs
+    for mid, cap in (("ideogram-3", "t2i"), ("openai-gpt-image-2.6-sunburst", "t2i"), ("minimax-h3", "t2v"), ("seedance-1.5-pro", "t2v")):
+        res = quote(db, cu, mid, cap)
+        assert res["status"] == 422 and code(res) == "model_not_offered", (mid, res)
+    before = credits(db, CUSTOMER)
+    res = create(db, cu, q["data"]["quote_id"])
+    assert res["status"] == 404 and code(res) == "quote_not_found", res
+    assert credits(db, CUSTOMER) == before and jobs(db, grant) == 0
+
+
+def test_no_route_around_the_country_gate_for_the_operator(db):
+    # A model with a country list cannot be on sale (0142's CHECK; 0208's gate refuses a job on it without a signed country, and an
+    # assistant's request carries none). Lift the CHECK inside a transaction that is undone, put such a model on sale, and the
+    # judgement still refuses it to the operator, before 0208's trigger is ever reached.
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute("alter table public.model_registry drop constraint if exists model_registry_countries_before_sale")
+        c.execute("update public.model_registry set spec = spec || '{\"blocked_countries\": [\"XX\"]}'::jsonb where id = 'img-web'")
+        assert c.execute("select count(*) from public.sellable_models('t2i', 'web') where id = 'img-web'").fetchone()[0] == 1, \
+            c.execute("select availability, verified_at is not null, spec from public.model_registry where id = 'img-web'").fetchone()
+        assert c.execute("select public.oauth_creative_org_model_state(%s, 't2i', 'img-web')", [OPERATOR]).fetchone()[0] == "not_offered"
+        c.rollback()
+    assert db.su("select public.oauth_creative_org_model_state(%s, 't2i', 'img-web')", [OPERATOR])[0][0] == "ok_operator"
+
+
 # ── replay and rollback (last: it ends where it began) ─────────────────────
 
 def test_replay_changes_nothing_and_the_rollback_keeps_the_record_and_closes_the_route(db):

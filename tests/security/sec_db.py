@@ -347,6 +347,9 @@ ON_0156 = (MIGRATION_0159.name, MIGRATION_0208.name)
 #: Migrations written on 0155's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0155 out
 #: leaves these out too, in this order. (0156 also sits on 0126's creative_params_problem, which every sequence that reaches 0155 has
 #: applied already.)
+#: 0219 (the operator route for connected assistants) refuses to apply before 0218 (which sits on 0208): a sequence that leaves
+#: 0208 or 0218 out leaves 0219 out too, and puts it back last.
+ON_0156 = (*(f for f in ON_0156 if f != "0219_oauth_creative_operator_models.sql"), "0219_oauth_creative_operator_models.sql")
 ON_0155 = (MIGRATION_0156.name, *ON_0156)
 #: Migrations written on 0153's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0153 out
 #: leaves these out too, in this order.
@@ -374,7 +377,7 @@ ON_0139 = (*ON_0139, "0198_film_studio_org_switch.sql")
 ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0208.name), MIGRATION_0208.name)
 #: 0219 (the operator route for connected assistants) replaces 0192's oauth_creative_models / oauth_creative_quote and 0191's
 #: oauth_creative_create and refuses any other body: last in both lists, for the same reason.
-ON_0139 = (*ON_0139, "0219_oauth_creative_operator_models.sql")
+ON_0139 = (*(f for f in ON_0139 if f != "0219_oauth_creative_operator_models.sql"), "0219_oauth_creative_operator_models.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
