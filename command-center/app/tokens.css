@@ -714,7 +714,7 @@ textarea.ds-input { padding: var(--ds-space-3) var(--ds-space-4); min-height: 96
    linear between a 360 px phone and a 1440 px desk (middle term = min + (max − min)·(100vw − 360px)/1080), so no stream writes its own breakpoint ladder for a heading.
    Additive: nothing existing reads these yet; a screen moves over when its owner edits it. */
 :root {
-  /* Faces. Display is whatever --ds-font-display says (Onest once #889 lands; Unbounded on main before it); mono is the system stack,
+  /* Faces. Display is whatever --ds-font-display says (Onest, since #889); mono is the system stack,
      never a downloaded face: a timecode must not wait for a font. */
   --ds-font-mono: var(--font-mono);
 

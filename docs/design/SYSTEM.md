@@ -6,9 +6,8 @@ One visual language for the public site and the Studio, dark-first. Owner of thi
 block of the live specimen (`/{channel}/design`) shows every role at its real size in both themes.
 
 **What is decided by the owner and not changed here:** the navy/neon colour family (TOKENS.md), Onest as the display and
-body face and the public site without the `ds-skin` class (both the owner's choice of 22 Nov, carried by PR #889; until it
-merges, `--ds-font-display` on main is still Unbounded, and the roles below take whichever face that token names). Anything below that would touch those is
-written as a proposal.
+body face and the public site without the `ds-skin` class (both the owner's choice of 22 Nov, carried by PR #889, merged;
+the roles below take whichever face `--ds-font-display` names). Anything below that would touch those is written as a proposal.
 
 ## 1. Type
 
@@ -70,6 +69,10 @@ need 3:1. Elevation: `--ds-elev-1` resting card, `--ds-elev-2` floating dock/pop
 - **Blue = the machine and the one primary action.** The primary key, the timecode, a "working" state. One primary key per
   view.
 - **Lime = a person's mark.** Selection, focus ring, a person's approval. Never decoration, never a badge background.
+  Because focus and selection share the hue (the canvas made every focus ring lime in #932), they must differ by **shape**, not
+  colour: focus is a 2 px outline drawn *outside* the element with a gap (`outline-offset` ≥ 2 px), selection is the element's own
+  border or `--ds-glow-select`. A focused, selected node then shows both at once, and neither can be read as the other. A
+  container that clips (`overflow: hidden/auto`) must leave room for the ring's offset, or the ring is cut (seen on the canvas: 4 px).
 - **Type hues** (text yellow, image cyan, video magenta, audio green) = **media identity only**: a chip's dot, a track's pill,
   a node's edge. Not icon-tile backgrounds, not section badges (benchmark §1: we spend the accent on badges).
 - **Status** (success/warning/danger) only for status.
@@ -155,7 +158,8 @@ Existing shared pieces these replace or restyle: `EmptyState` (`components/ui.ts
 ## 7. Review checklist (what Pixel checks against this file)
 
 1. Every text takes a role from §1; no prose under 13 px; no display at 600+ in new work.
-2. One primary key per view; lime only for selection/focus/approval; type hues only for media identity.
+2. One primary key per view; lime only for selection/focus/approval, focus told from selection by shape (§4); type hues only for
+   media identity.
 3. Radii by role (§3); one hairline; glow only on the primary key.
 4. Sections open on media or a one-line title, not a paragraph.
 5. Every motion has a reduced path and a truthful trigger.
