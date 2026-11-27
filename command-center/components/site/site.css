@@ -415,6 +415,20 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   border-radius: var(--ns-r-key);
 }
 .st-signin:hover { background: var(--ns-hover); }
+/* 1024 to 1119px: the bar is one row from 1024px, and with the panel triggers (a chevron each) it wrapped to two lines up
+   to 1116px (Russian; Uzbek 1076, English 1040: the header 69 -> 97px). Here the bar gives up a little air instead: tighter
+   gaps and item padding, a smaller chevron and lockup, and the language key shows its code without the globe. Measured
+   one row at 1024 in every language, with the lit item's dot (tools/visual-qa/public-megamenu.mjs). The triggers' share is
+   after their own rules below, which would otherwise win by coming later. */
+@media (min-width: 1024px) and (max-width: 1119px) {
+  .st-brand { --wm-h: 22px; }
+  .st-header-row { gap: 6px; }
+  .st-nav a { padding: 0 6px; gap: 4px; }
+  .st-header-desk { gap: 6px; }
+  .st-header-desk [aria-haspopup="listbox"] svg { display: none; }
+  .st-signin { padding: 0 8px; }
+  .st-header-tools .st-key[data-size="sm"] { padding: 0 12px; }
+}
 
 /* ── The phone bar and its menu (components/legal/PublicMenu.tsx) ─────────
    Below 768px the rows under the wordmark were 209px tall at 390px (the links wrapped to three lines). There the bar is
@@ -446,13 +460,6 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 .st-menu-btn svg, .st-menu-close svg { width: 20px; height: 20px; }
 .st-menu-btn:hover, .st-menu-close:hover { background: var(--ns-hover); }
 .st-menu-btn[aria-expanded="true"] { background: var(--ns-hover); }
-/* The bar's quiet controls (language, theme, view, the menu key) are found by their edge alone: on the dark ground the shared
-   quiet border measured 1.37:1 (S5 Pixel on #889/#906), under the 3:1 a control's boundary needs (WCAG 1.4.11). The strong rule
-   is 3:1 or better on every public ground; hover keeps the app's accent edge. A listbox row keeps its transparent edge. */
-.st-header .btn-sky.is-quiet:not(.border-transparent),
-.st-menu-btn,
-.st-menu-close { border-color: var(--ns-rule-strong); }
-.st-header .btn-sky.is-quiet:not(.border-transparent):hover:where(:not(:disabled, [aria-disabled="true"])) { border-color: var(--color-primary); }
 .st-menu-root { position: fixed; inset: 0; z-index: 60; }
 .st-menu-root[hidden] { display: none; }
 @media (min-width: 768px) { .st-menu-root { display: none; } }
@@ -506,12 +513,16 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 .st-menu-signin:hover { background: var(--ns-hover); }
 @media (prefers-reduced-motion: no-preference) {
   .st-menu-sheet { animation: st-menu-in var(--ns-dur-2) var(--ns-ease); }
+  html[data-motion="paused"] .st-menu-sheet { animation: none; }
 }
 @keyframes st-menu-in { from { transform: translateX(24px); opacity: 0; } }
 /* The phone sheet's sections (PublicMenu.tsx): the desktop panels' groups, one button each, a chevron that turns. The sheet
    is the whole screen (a 360px side sheet left a 30px strip of page on a 390px phone, which read as a mistake). */
 @media (max-width: 767px) { .st-menu-sheet { width: 100%; border-left: 0; padding-bottom: 0; } }
 .st-menu-sec { border-bottom: 1px solid var(--ns-rule); }
+/* The list's last row has no rule of its own: with only the language and theme keys before the pinned foot's top rule, two
+   rules read as a double line on a short phone (360px). */
+.st-menu-nav > :last-child { border-bottom: 0; }
 .st-menu-sec-btn {
   display: flex;
   align-items: center;
@@ -579,7 +590,7 @@ a.st-menu-col-title { color: var(--ns-text); text-decoration: underline; text-de
    A trigger per group in the bar; one full-width frame under the bar, over the page. The frame is absolutely placed in the
    header (sticky from 1024px, positioned below that so the frame has the header to hang from), so opening it moves nothing
    and the bar's height never changes. It slides down by its clip (not its height: no box is laid out again) and fades,
-   300ms; under reduced motion or the site's "Pause motion" it is simply there. Panels swap inside it at once. */
+   200ms (the design system's panel duration); under reduced motion or the site's "Pause motion" it is simply there. Panels swap inside it at once. */
 /* Positioned only where a panel is drawn (768 to 1023px; sticky above). Below 768px the header stays unpositioned: a
    positioned header with its z-index 40 is a stacking context, and the phone sheet (fixed, z-index 60, inside it) would
    then be ranked as 40 against the page: none of the public pages draws above 40 today, but the sheet must not depend on it. */
@@ -613,6 +624,11 @@ a.st-menu-col-title { color: var(--ns-text); text-decoration: underline; text-de
 .st-mm-trigger[aria-expanded="true"] .st-mm-chev { transform: rotate(180deg); }
 /* Without JavaScript the triggers are hidden by the shell's noscript rule and these plain links take their place. */
 .st-nav .st-mm-nojs { display: none; }
+/* The 1024 to 1119px bar's tighter triggers (with the header's other tightening above). */
+@media (min-width: 1024px) and (max-width: 1119px) {
+  .st-nav .st-mm-trigger { padding: 0 4px 0 6px; gap: 2px; }
+  .st-mm-chev { width: 12px; height: 12px; }
+}
 
 .st-mm {
   position: absolute;
@@ -632,8 +648,8 @@ a.st-menu-col-title { color: var(--ns-text); text-decoration: underline; text-de
 .st-mm[data-open="true"] { visibility: visible; opacity: 1; clip-path: inset(0 0 -64px 0); pointer-events: auto; }
 @media (max-width: 767px) { .st-mm { display: none; } }
 @media (prefers-reduced-motion: no-preference) {
-  .st-mm { transition: opacity 300ms var(--ns-ease), clip-path 300ms var(--ns-ease), visibility 0s linear 300ms; }
-  .st-mm[data-open="true"] { transition: opacity 300ms var(--ns-ease), clip-path 300ms var(--ns-ease), visibility 0s; }
+  .st-mm { transition: opacity 200ms var(--ns-ease), clip-path 200ms var(--ns-ease), visibility 0s linear 200ms; }
+  .st-mm[data-open="true"] { transition: opacity 200ms var(--ns-ease), clip-path 200ms var(--ns-ease), visibility 0s; }
   .st-mm-chev { transition: transform var(--ns-dur-2) var(--ns-ease); }
   html[data-motion="paused"] .st-mm, html[data-motion="paused"] .st-mm[data-open="true"], html[data-motion="paused"] .st-mm-chev { transition: none; }
 }
@@ -646,7 +662,7 @@ a.st-menu-col-title { color: var(--ns-text); text-decoration: underline; text-de
   align-items: center;
   gap: 6px;
   align-self: flex-start;
-  min-height: 36px;
+  min-height: 40px;
   padding: 0 10px;
   margin-bottom: 4px;
   font-size: 14px;
@@ -670,7 +686,8 @@ a.st-mm-title svg { width: 14px; height: 14px; }
 .st-mm-link:hover { background: var(--ns-hover); }
 .st-mm-label { font-size: 15px; font-weight: 500; line-height: 1.35; }
 /* 14px, not the reference's 13: the public site's smallest text size (tests/site-engage-5.test.tsx). */
-.st-mm-desc { font-size: 14px; line-height: 1.4; color: var(--ns-text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Wraps rather than cutting the sentence (an ellipsis cut Trust's line and Russian's API line mid-word). */
+.st-mm-desc { font-size: 14px; line-height: 1.4; color: var(--ns-text-dim); white-space: normal; text-wrap: pretty; }
 .st-mm-link[aria-current="page"] .st-mm-label::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-inline-end: 8px; vertical-align: middle; border-radius: 999px; background: var(--ns-amber); }
 /* A coarse pointer (a touch screen at desktop width) gets the 44px rows a finger needs. */
 @media (pointer: coarse) { .st-mm-link, .st-mm-title { min-height: 44px; } }
@@ -2636,3 +2653,13 @@ h3.st-doc-h3 { letter-spacing: 0; }
 
 /* The language chip in the public header and the auth pages (a component the signed-in app shares, so this is scoped to .st): its code was 12 px. */
 .st [aria-haspopup="listbox"] .text-xs { font-size: 14px; line-height: 20px; }
+
+/* The bar's quiet controls (language, theme, view, the menu key) are found by their edge alone: on the dark ground the shared
+   quiet border measured 1.37:1 (S5 Pixel on #889/#906), under the 3:1 a control's boundary needs (WCAG 1.4.11). The strong rule
+   is 3:1 or better on every public ground; hover keeps the app's accent edge. A listbox row keeps its transparent edge.
+   Unlayered (outside @layer components): the shared .btn-sky.is-quiet border is unlayered in globals.css, and an unlayered
+   rule beats any layered one whatever its specificity, so inside the layer this never applied (S5 Pixel, #916). */
+.st-header .btn-sky.is-quiet:not(.border-transparent),
+.st-menu-btn,
+.st-menu-close { border-color: var(--ns-rule-strong); }
+.st-header .btn-sky.is-quiet:not(.border-transparent):hover:where(:not(:disabled, [aria-disabled="true"])) { border-color: var(--color-primary); }

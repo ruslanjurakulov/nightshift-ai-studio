@@ -190,7 +190,15 @@ export function MegaMenu({ entries, current, children }: { entries: NavEntry[]; 
       if (!inside(e.target)) close(false);
     };
     const onFocusIn = (e: FocusEvent) => {
-      if (!inside(e.target)) close(false);
+      if (!inside(e.target)) {
+        close(false);
+        return;
+      }
+      // Focus on another item of the bar (Shift+Tab back out of a panel past its trigger, or a click on Pricing): the open
+      // panel is no longer the one being read. Its own trigger and its own links keep it open.
+      const t = e.target as Node;
+      const own = triggers.current.get(openId);
+      if (nav.current?.contains(t) && t !== own) close(false);
     };
     const desk = typeof window.matchMedia === "function" ? window.matchMedia(DESK) : null;
     const onNarrow = () => {
@@ -387,8 +395,13 @@ export function MegaPanels() {
     const t = m.triggers.current.get(id);
     if (!t) return;
     const col = box.querySelector<HTMLElement>(`[data-panel="${id}"] .st-mm-col`);
-    const room = box.clientWidth - (col?.offsetWidth ?? 0);
-    const x = Math.round(t.getBoundingClientRect().left - box.getBoundingClientRect().left);
+    // The panel sits inside the page column's padding (.st-wrap's gutter): measured from the content edge, not the box's, or a
+    // one-column panel started a gutter's width to the right of its trigger.
+    const cs = getComputedStyle(box);
+    const padL = parseFloat(cs.paddingLeft) || 0;
+    const padR = parseFloat(cs.paddingRight) || 0;
+    const room = box.clientWidth - padL - padR - (col?.offsetWidth ?? 0);
+    const x = Math.round(t.getBoundingClientRect().left - box.getBoundingClientRect().left - padL);
     box.style.setProperty("--mm-x", `${Math.max(0, Math.min(x, room))}px`);
   }, [m.openId, m.triggers]);
 

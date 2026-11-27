@@ -23,6 +23,30 @@ describe("the public bar's quiet controls have a 3:1 edge", () => {
     expect(site).toMatch(/\.st-header \.btn-sky\.is-quiet:not\(\.border-transparent\),\n\.st-menu-btn,\n\.st-menu-close \{ border-color: var\(--ns-rule-strong\); \}/);
   });
 
+  // The shared .btn-sky.is-quiet border (app/globals.css) is unlayered, and an unlayered rule beats every layered one
+  // whatever its specificity: inside site.css's @layer components the 3:1 edge never applied (computed 1.23:1, S5 Pixel).
+  // jsdom computes no cascade, so this pins the structure; tools/visual-qa/public-megamenu.mjs measures the computed edge.
+  it("keeps the edge rules outside every @layer block, so the unlayered shared border cannot win", () => {
+    const code = site.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+    const layered: [number, number][] = [];
+    for (const m of code.matchAll(/@layer[^{;]*\{/g)) {
+      let depth = 0;
+      for (let i = m.index! + m[0].length - 1; i < code.length; i++) {
+        if (code[i] === "{") depth++;
+        else if (code[i] === "}" && --depth === 0) {
+          layered.push([m.index!, i]);
+          break;
+        }
+      }
+    }
+    expect(layered.length).toBeGreaterThan(0);
+    for (const needle of [".st-header .btn-sky.is-quiet:not(.border-transparent),\n.st-menu-btn,", ".st-header .btn-sky.is-quiet:not(.border-transparent):hover"]) {
+      const at = code.indexOf(needle);
+      expect(at, needle).toBeGreaterThan(-1);
+      expect(layered.some(([a, b]) => at > a && at < b), `${needle} is inside an @layer`).toBe(false);
+    }
+  });
+
   it("keeps the strong rule at 3:1 or better on the ground and the console, in every theme block", () => {
     const strong = all("--ns-rule-strong");
     const ground = all("--ns-ground");

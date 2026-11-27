@@ -178,6 +178,8 @@
   .st .st-nav[data-glass]::before { transition: transform 460ms cubic-bezier(0.34, 1.32, 0.64, 1), width 460ms cubic-bezier(0.34, 1.32, 0.64, 1), height 460ms cubic-bezier(0.34, 1.32, 0.64, 1), opacity 200ms var(--ns-ease); }
   /* Appearing from nothing it fades in where it is, rather than sliding in from the nav's corner. */
   .st .st-nav[data-ind-snap]::before { transition: opacity 200ms var(--ns-ease); }
+  /* "Pause motion": the glass jumps to the item instead of sliding. */
+  html[data-motion="paused"] .st .st-nav[data-glass]::before { transition-duration: 0s; }
 }
 
 /* "Loading": a key whose page is on its way (attach.ts attachNavBusy) shows a small ring in place of its arrow; a key with no

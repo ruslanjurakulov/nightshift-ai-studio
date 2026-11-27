@@ -260,6 +260,37 @@ describe("the desktop panels: keyboard", () => {
     expect(document.activeElement).not.toBe(document.body);
   });
 
+  it("focus landing on another item of the bar (Shift+Tab out past the trigger, or Pricing) closes the panel", () => {
+    renderShell();
+    const b = trigger("Studio");
+    b.focus();
+    press(b, "Enter");
+    expect(isOpen(b)).toBe(true);
+    // Its own trigger keeps it open.
+    act(() => b.focus());
+    expect(isOpen(b)).toBe(true);
+    act(() => within(nav()).getByRole("link", { name: "Pricing" }).focus());
+    expect(b.getAttribute("aria-expanded")).toBe("false");
+    press(b, "Enter");
+    act(() => trigger("Resources").focus());
+    expect(openTriggers()).toEqual([]);
+  });
+
+  it("the Solutions panel names its developers page \"For developers\" (the next trigger is \"Developers\")", () => {
+    for (const locale of ["en", "ru", "uz"] as const) {
+      const t = dictionaries[locale];
+      const sol = publicNav(t, { devPages: false }).find((e) => e.kind === "group" && e.id === "solutions");
+      const dev = t.site.solutions.pages.find((p) => p.id === "developers")!;
+      const item = sol && sol.kind === "group" ? sol.columns[0].links.find((l) => l.href === "/solutions/developers") : undefined;
+      expect(item?.label, locale).toBe(dev.kicker);
+      expect(item?.label, locale).not.toBe(dev.nav);
+    }
+  });
+
+  it("the Pricing page lights Pricing in the bar", () => {
+    expect(readFileSync(path.join(ROOT, "app/pricing/page.tsx"), "utf8")).toMatch(/<PublicShell t=\{t\} current="pricing"/);
+  });
+
   it("focus leaving the header, or a press outside it, closes the panel", () => {
     renderShell();
     const b = trigger("Studio");
@@ -423,7 +454,8 @@ describe("the desktop panels: pointer", () => {
 
 describe("motion and layout (components/site/site.css)", () => {
   const css = readFileSync(path.join(ROOT, "components/site/site.css"), "utf8");
-  const rule = (sel: string) => new RegExp(`(?:^|\\})\\s*${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`, "m").exec(css)?.[1] ?? null;
+  // The base rule for a selector: its first top-level occurrence (a line starting with it), not a media block's override.
+  const rule = (sel: string) => new RegExp(`^${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`, "m").exec(css)?.[1] ?? null;
 
   it("the frame overlays the page under the bar (absolute, full width) and is clipped and faded, never resized", () => {
     const base = rule(".st-mm") ?? "";
@@ -441,7 +473,11 @@ describe("motion and layout (components/site/site.css)", () => {
 
   it("moves only with prefers-reduced-motion: no-preference, and not at all under the site's Pause motion", () => {
     const block = /@media \(prefers-reduced-motion: no-preference\) \{\n  \.st-mm \{ transition:[\s\S]*?\n\}/.exec(css)?.[0] ?? "";
-    expect(block).toMatch(/\.st-mm \{ transition: opacity 300ms/);
+    expect(block).toMatch(/\.st-mm \{ transition: opacity 200ms/);
+    // Pause motion also stops the phone sheet's slide-in and the bar's sliding glass.
+    expect(css).toMatch(/html\[data-motion="paused"\] \.st-menu-sheet \{ animation: none; \}/);
+    const motion = readFileSync(path.join(ROOT, "components/site/site-motion.css"), "utf8");
+    expect(motion).toMatch(/html\[data-motion="paused"\] \.st \.st-nav\[data-glass\]::before \{ transition-duration: 0s; \}/);
     expect(block).toMatch(/html\[data-motion="paused"\] \.st-mm, html\[data-motion="paused"\] \.st-mm\[data-open="true"\], html\[data-motion="paused"\] \.st-mm-chev \{ transition: none; \}/);
     // Outside that block nothing in the menu transitions.
     const chev = /@media \(prefers-reduced-motion: no-preference\) \{\n  \.st-menu-chev \{ transition:[\s\S]*?\n\}/.exec(css)?.[0] ?? "";
@@ -649,5 +685,7 @@ describe("the phone sheet's sections", () => {
     expect(css).toMatch(/\.st-menu-sec-btn\[aria-expanded="true"\] \.st-menu-chev \{ transform: rotate\(180deg\); \}/);
     expect(css).toMatch(/html\[data-motion="paused"\] \.st-menu-chev \{ transition: none; \}/);
     expect(css).toMatch(/@media \(max-width: 767px\) \{ \.st-menu-sheet \{ width: 100%;/);
+    // One rule above the pinned foot, not the last row's and the foot's both.
+    expect(css).toMatch(/\.st-menu-nav > :last-child \{ border-bottom: 0; \}/);
   });
 });

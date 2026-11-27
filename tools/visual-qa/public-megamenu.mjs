@@ -11,6 +11,8 @@
  * measure, per language (en, ru, uz):
  *   - 360 and 390 px: no horizontal scroll with the page closed, with the sheet open, and with every section expanded;
  *     the sheet's primary key is inside the viewport (pinned at its foot);
+ *   - 1024, 1100 and 1440 px: the bar is one row and the header 69px or less;
+ *   - 1440, dark and light: the language, theme and view keys' computed edge is 3:1 or better against the ground;
  *   - 820, 1024 and 1440 px: each panel opens from the keyboard (ArrowDown), its frame lies inside the viewport, the header's
  *     height and the main column's top do not move (no layout shift), and there is still no horizontal scroll.
  * Signed out, no backend needed: the header reads nothing. Nothing is sent anywhere; screenshots stay on disk.
@@ -146,6 +148,66 @@ async function measure() {
   }
 }
 
+/** The bar is one row (every item on one line) and 69px or less, where the one-row bar starts (1024) and where it was tightest (1100). */
+async function oneRow() {
+  for (const locale of LOCALES) {
+    for (const width of [1024, 1100, 1440]) {
+      const { context, page } = await open(width, { locale });
+      const m = await page.evaluate(() => {
+        const items = [...document.querySelectorAll(".st-nav > a, .st-nav > button")];
+        return {
+          rows: new Set(items.map((i) => Math.round(i.getBoundingClientRect().top))).size,
+          h: document.querySelector(".st-header").offsetHeight,
+        };
+      });
+      const tag = `${locale} ${width}px`;
+      if (m.rows !== 1 || m.h > 69) fail(`${tag}: the bar is ${m.rows} rows, header ${m.h}px (want 1 row, <= 69px)`);
+      else console.log(`ok   ${tag}: one row, header ${m.h}px`);
+      await context.close();
+    }
+  }
+}
+
+/**
+ * The bar's quiet controls (language, theme, view) as the browser draws them: the computed border against the header's
+ * ground, 3:1 or better (WCAG 1.4.11). A test reading the stylesheet cannot see the cascade: an unlayered shared rule
+ * silently beat the header's layered one, and only this measurement showed it.
+ */
+async function pillEdges() {
+  for (const scheme of ["dark", "light"]) {
+    const { context, page } = await open(1440, { locale: "en", scheme });
+    const r = await page.evaluate(() => {
+      const rgba = (c) => (c.match(/[\d.]+/g) || []).map(Number);
+      const lum = ([r, g, b]) => {
+        const f = (v) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+      };
+      // The ground: the body's background (the header paints the same ground; at the top of the page it is not scrolled).
+      const probe = document.createElement("div");
+      probe.style.background = "var(--ns-ground)";
+      document.body.appendChild(probe);
+      const ground = rgba(getComputedStyle(probe).backgroundColor);
+      probe.remove();
+      const over = (c) => {
+        const [r, g, b, a = 1] = rgba(c);
+        return [r * a + ground[0] * (1 - a), g * a + ground[1] * (1 - a), b * a + ground[2] * (1 - a)];
+      };
+      const shown = (e) => e.getClientRects().length > 0;
+      return [...document.querySelectorAll(".st-header-desk .btn-sky.is-quiet:not(.border-transparent)")].filter(shown).map((e) => {
+        const c = over(getComputedStyle(e).borderTopColor);
+        const [hi, lo] = [lum(c), lum(ground)].sort((x, y) => y - x);
+        return { name: (e.getAttribute("aria-label") || e.textContent || "").trim().slice(0, 20), border: getComputedStyle(e).borderTopColor, ratio: +((hi + 0.05) / (lo + 0.05)).toFixed(2) };
+      });
+    });
+    if (r.length < 3) fail(`${scheme}: found ${r.length} quiet controls in the bar (want language, theme and view)`);
+    for (const x of r) {
+      if (x.ratio < 3) fail(`${scheme}: ${x.name} edge ${x.border} is ${x.ratio}:1 (want >= 3)`);
+      else console.log(`ok   ${scheme}: ${x.name} edge ${x.border} ${x.ratio}:1`);
+    }
+    await context.close();
+  }
+}
+
 async function shots() {
   mkdirSync(OUT, { recursive: true });
   const save = (page, name) => page.screenshot({ path: path.join(OUT, `${name}.jpg`), type: "jpeg", quality: 82 });
@@ -177,7 +239,11 @@ async function shots() {
 }
 
 if (MODE === "shots") await shots();
-else await measure();
+else {
+  await measure();
+  await oneRow();
+  await pillEdges();
+}
 await browser.close();
 if (failures.length) {
   console.log(`${failures.length} failure(s)`);

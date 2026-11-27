@@ -85,15 +85,12 @@ export function publicNav(t: Dictionary, opts: { devPages: boolean }): NavEntry[
           href: SOLUTIONS_PATH,
           links: SOLUTION_IDS.flatMap((id) => {
             const p = pages.find((x) => x.id === id);
-            return p
-              ? [
-                  {
-                    href: solutionHref(id),
-                    label: p.nav,
-                    description: p.kicker,
-                  },
-                ]
-              : [];
+            if (!p) return [];
+            // The developers page's short name ("Developers") is also the next trigger's: in the panel it reads by its kicker
+            // ("For developers"), with the page's own title as the line under it.
+            return id === "developers"
+              ? [{ href: solutionHref(id), label: p.kicker, description: p.title }]
+              : [{ href: solutionHref(id), label: p.nav, description: p.kicker }];
           }),
         },
       ],
