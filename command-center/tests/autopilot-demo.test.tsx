@@ -170,7 +170,7 @@ function renderFeed(code: "en" | "ru" | "uz" = "en") {
   const t = dictionaries[code];
   const g = t.site.gallery;
   return render(
-    <ShortsFeed items={shortsItems(items, false, NOW)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, try: g.try, tryAria: g.tryAria, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />,
+    <ShortsFeed items={shortsItems(items, false, NOW)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, badgeName: g.badgeName, try: g.try, tryAria: g.tryAria, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />,
   );
 }
 
