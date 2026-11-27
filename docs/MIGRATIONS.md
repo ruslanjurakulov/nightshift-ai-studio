@@ -2780,8 +2780,14 @@ inserted. Prices are the owner's. Apply order: 0208, then 0218, then 0224.
   `tests/test_dated_vendor_prices.py`. Rollback: `docs/sql/rollback_0224_dated_credit_price.sql`. It puts 0218's `creative_price`
   back and drops the reader and the list guard. The table and its rows are kept, and they change no quote afterwards. After an
   `effective_at` has passed, set `credit_prices` to the rate in force right after rolling back (the guard is gone by then).
-  Applying 0224 again later keeps every quote as it is then: for a unit whose dated row in force differs from its list rate (the
-  list moved while 0224 was off), it first adds a dated row at the list rate, effective at once, with a NOTICE.
+  Applying 0224 again later never lowers a price by itself. While 0224 was off nothing read the schedule (and the tenth rule, which
+  asks 0224's reader, was not asked), so before it is on again:
+  - a unit whose dated row in force differs from its list rate (the list moved while 0224 was off) gets a dated row at the list
+    rate, effective at once, with a NOTICE. If that list rate is below a tenth of the dated one, the file stops and says so: check
+    the list price, or, if it is meant, insert that dated row yourself (accepted while 0224 is off), then apply again;
+  - a pending row below a tenth of the rate it would replace (a slipped decimal point) is kept at the replaced rate by a row at the
+    same moment, with a NOTICE; schedule a deliberate cut again once 0224 is on;
+  - a pending row below the list rate as it is then is kept and named in a NOTICE: read it before its moment.
 - **No backslash in either file.** The live apply path (Supabase MCP `apply_migration`) rewrote backslash escapes in SQL text when
   0218 went live. The md5 folds use `[[:space:]]+` (the same class as the backslash-s form in Postgres' regular expressions; the lab
   checks both give one md5 on every function), and `creative_price` (0218's prompt regexes carry backslashes) is built as text with

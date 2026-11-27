@@ -12,7 +12,9 @@
 -- dropped by this file).
 -- APPLYING 0224 AGAIN later keeps every quote as it is then: for each unit whose dated row in force differs from its list rate (the
 -- list was changed while 0224 was off), 0224 first inserts a dated row at the list rate, effective at that moment, and says so in a
--- NOTICE. A kept dated row that is still pending takes effect at its moment, as planned: read the schedule before applying again.
+-- NOTICE. A kept dated row that is still pending takes effect at its moment as written, with two exceptions: one below a tenth of the
+-- rate it would replace (a slipped decimal point written while the rule was not asked) is kept at that rate by a row at the same
+-- moment, and one below the list rate as it is then is named in a NOTICE. Read the schedule before applying again.
 
 begin;
 set local lock_timeout = '5s';

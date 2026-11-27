@@ -379,3 +379,25 @@ def test_a_deleted_list_row_of_a_scheduled_unit_comes_back_only_at_its_rate(db):
         c.execute("insert into public.credit_prices (unit, credits_per_unit, margin) values (%s, 3, 0)", [u])
         c.commit()
     assert float(quote(db, "img-free")["credits"]) == 3.0
+
+
+def test_a_replay_that_would_keep_a_list_rate_below_a_tenth_says_so_in_its_own_words(db):
+    # Dated 6 in force, the list set to 0.2 while 0224 was off: 0224's own keeping row would trip the decimal-point rule with a message
+    # about a row nobody typed. It names the list rate and the remedy instead, and the remedy (the owner's own row, accepted while
+    # 0224 is off) lets the replay through at the list rate.
+    u = unit_of("img-rb")
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute("insert into public.credit_price_schedule (unit, credits_per_unit, effective_at, reason) "
+                  "values (%s, 6, now() - interval '1 minute', 'in force')", [u])
+        c.execute(sec_db.rollback_0224_body())
+        c.execute("update public.credit_prices set credits_per_unit = 0.2 where unit = %s", [u])
+        c.execute("savepoint s")
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(sec_db.MIGRATION_0224.read_text(encoding="utf-8"))
+        assert "less than a tenth of it. Check the list price" in str(e.value) and u in str(e.value)
+        c.execute("rollback to savepoint s")
+        c.execute("insert into public.credit_price_schedule (unit, credits_per_unit, effective_at, reason) "
+                  "values (%s, 0.2, now(), 'the remedy: the list rate is meant')", [u])
+        c.execute(sec_db.MIGRATION_0224.read_text(encoding="utf-8"))
+        assert c.execute("select public.credits_per_unit_now(%s)::float", [u]).fetchone()[0] == 0.2
+        c.rollback()

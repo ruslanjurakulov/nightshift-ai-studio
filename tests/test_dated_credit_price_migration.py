@@ -107,8 +107,10 @@ class DatedCreditPriceMigration(unittest.TestCase):
 
     def test_it_sets_no_price_and_grants_nothing(self):
         low = CODE.lower()
-        # One insert only: the dated row at a unit's own list rate when 0224 is applied again after its rollback (the quote stays).
-        self.assertEqual(len(re.findall(r"insert\s+into", low)), 1)
+        # Two inserts, both only when 0224 is applied again after its rollback, and both keep a price: the list rate behind a row in
+        # force the list moved past, and the replaced rate behind a pending row below a tenth of it.
+        self.assertEqual(len(re.findall(r"insert\s+into", low)), 2)
+        self.assertIn("values (r.unit, was, r.effective_at,", CODE)
         self.assertIn("insert into public.credit_price_schedule (unit, credits_per_unit, effective_at, reason)\n    values (r.unit, r.list_rate, now(),",
                       CODE)
         self.assertNotRegex(low, r"update\s+public\.")

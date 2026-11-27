@@ -2,8 +2,9 @@
 -- not a day later when someone remembers.
 --
 -- *** LIVE ON APPLY. *** It changes NO quote by itself: it creates an empty table, and with no row in it every quote is answered
--- exactly as 0218 answers it (credits_per_unit_now returns the credit_prices rate). It sets no price: prices are the owner's. (Its one
--- insert runs only when it is applied again after its rollback: a dated row at a unit's own list rate, so the quote stays as it is.)
+-- exactly as 0218 answers it (credits_per_unit_now returns the credit_prices rate). It sets no price: prices are the owner's. (Its two
+-- inserts run only when it is applied again after its rollback, and only keep a price: a dated row at a unit's list rate where the
+-- list moved past a row in force, and one at the replaced rate behind a pending row below a tenth of it.)
 -- (docs/MIGRATIONS.md "Dated credit prices (0224)" has the one row for D7). The one behaviour that changes at once: none, until a
 -- dated row exists; from then on, that unit's list rate can no longer be edited (the remedy is another dated row).
 --
@@ -238,14 +239,20 @@ revoke all on function public.credits_per_unit_now(text) from public, anon, auth
 comment on function public.credits_per_unit_now(text) is
   'The rate in force now for a unit (0224): the latest credit_price_schedule row with effective_at <= now(), else credit_prices.credits_per_unit, else null (never 0). Internal: no API role may call it.';
 
--- Re-applied after its rollback (which keeps the schedule's rows): while 0224 was off, quotes read the list only, and the owner may
--- have set the list past a dated row in force (the rollback's own advice, or a later change). Bringing that row back would change
--- the quote, so each such unit gets a dated row at its list rate, effective now: the quote is what it was a moment ago, and the
--- schedule says why. Only while creative_price is 0218's own body (0224 off): with 0224 on, a dated row in force above the list is
--- the rise itself. Runs before creative_price is replaced, so a run interrupted after this step finds 0224's body and skips it.
+-- Re-applied after its rollback (which keeps the schedule's rows and its triggers, but not the reader the tenth rule asks): while
+-- 0224 was off, quotes read the list only, and nothing read the schedule. Three things can then be wrong, and none may lower a price
+-- or come back as a surprise. Only while creative_price is 0218's own body (0224 off): with 0224 on, a dated row above the list is the
+-- rise itself. Runs before creative_price is replaced, so a run interrupted after this step finds 0224's body and skips it.
+--   1. A dated row in force that the list moved past (the rollback's own advice, or a later change): a dated row at the list rate,
+--      effective now, keeps the quote as it is a moment ago.
+--   2. A pending row below a tenth of the rate it would replace (a slipped decimal point written while the rule was not asked; it
+--      would quote 0 credits at its moment): a row at that same moment, at the rate it would replace, is added after it (the later
+--      row wins at one moment), so the price never falls at that moment. The owner schedules a deliberate cut again with 0224 on.
+--   3. A pending row below the list rate as it is now: kept (a decision the owner made), and named in a NOTICE to read.
 do $$
 declare
   r record;
+  was numeric;
 begin
   if (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
        where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure) <> '59c5c289009a874af043c534b29934ee' then
@@ -259,12 +266,41 @@ begin
                      order by x.effective_at desc, x.id desc limit 1) s on true
      where s.credits_per_unit is distinct from cp.credits_per_unit
   loop
+    if r.list_rate < 0.1 * r.dated_rate then
+      -- The schedule would refuse 0224's own row as a slipped decimal point; say so in words about this list rate, not a row the
+      -- owner never typed. With 0224 off, the owner's own row at the list rate is accepted (the rule asks the reader 0224 brings).
+      raise exception '0224 (applied again): % has a dated rate % in force but a list rate %, less than a tenth of it. Check the list price; if it is meant, insert a credit_price_schedule row at the list rate effective now() yourself, then apply 0224 again',
+        r.unit, r.dated_rate, r.list_rate;
+    end if;
     insert into public.credit_price_schedule (unit, credits_per_unit, effective_at, reason)
     values (r.unit, r.list_rate, now(),
             format('0224 applied again after its rollback: the list rate %s set while it was off replaces the dated %s', r.list_rate,
                    r.dated_rate));
     raise notice '0224: % had a dated rate % in force but a list rate %; a dated row at the list rate (effective now) keeps its quote',
       r.unit, r.dated_rate, r.list_rate;
+  end loop;
+  for r in
+    select x.id, x.unit, x.credits_per_unit, x.effective_at, cp.credits_per_unit as list_rate
+      from public.credit_price_schedule x join public.credit_prices cp on cp.unit = x.unit
+     where x.effective_at > now()
+     order by x.effective_at, x.id
+  loop
+    -- The rate this row would replace at its moment: the newest row before it (an earlier moment, or the same moment written
+    -- earlier), else the list.
+    select coalesce((select y.credits_per_unit from public.credit_price_schedule y
+                      where y.unit = r.unit and (y.effective_at, y.id) < (r.effective_at, r.id)
+                      order by y.effective_at desc, y.id desc limit 1), r.list_rate) into was;
+    if r.credits_per_unit < 0.1 * was then
+      insert into public.credit_price_schedule (unit, credits_per_unit, effective_at, reason)
+      values (r.unit, was, r.effective_at,
+              format('0224 applied again: row %s (%s from %s) is below a tenth of the %s it replaces, a slipped decimal point; kept at %s',
+                     r.id, r.credits_per_unit, r.effective_at, was, was));
+      raise notice '0224: % has a pending dated rate % at % below a tenth of the % it replaces; a row at % at the same moment keeps the price (schedule a deliberate cut again)',
+        r.unit, r.credits_per_unit, r.effective_at, was, was;
+    elsif r.credits_per_unit < r.list_rate then
+      raise notice '0224: % has a pending dated rate % at %, below its list rate % as it is now; it takes effect at its moment as written: read it before then',
+        r.unit, r.credits_per_unit, r.effective_at, r.list_rate;
+    end if;
   end loop;
 end $$;
 
