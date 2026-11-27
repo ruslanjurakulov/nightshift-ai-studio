@@ -23,7 +23,7 @@
 @media (min-width: 768px) {
   .oa { padding: 24px; gap: 20px; }
 }
-.oa h1, .oa h2, .oa .oa-display { font-family: "Unbounded", "Onest", ui-sans-serif, sans-serif; letter-spacing: -0.01em; }
+.oa h1, .oa h2, .oa .oa-display { font-family: "Onest", ui-sans-serif, sans-serif; letter-spacing: -0.01em; }
 .oa h1 { font-size: 1.35rem; margin: 0; }
 .oa h2 { font-size: 0.95rem; margin: 0; font-weight: 600; }
 .oa-num, .oa table td, .oa .oa-kpi-value { font-variant-numeric: tabular-nums; }

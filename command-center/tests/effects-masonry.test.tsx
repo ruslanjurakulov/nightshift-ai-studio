@@ -149,10 +149,12 @@ describe("the model tiles", () => {
     }
   });
 
-  it("lead with a large picture, the label on its corner, and scroll sideways on a phone", () => {
+  // 2026-11-22: the sample fills the whole card (the AI studios' model cards), the name at its top, the prompt over a dark foot.
+  it("lead with the sample filling a tall card, the label on its corner, and scroll sideways on a phone", () => {
     const css = rules(read("components/site/site-next.css"));
-    expect(css).toMatch(/\.nx-model \{ position: relative; display: flex; flex-direction: column;/);
-    expect(css).toMatch(/\.nx-model-media \{ position: relative; width: 100%; aspect-ratio: 4 \/ 3;/);
+    expect(css).toMatch(/\.nx-model \{ position: relative; display: flex; flex-direction: column; min-width: 0; aspect-ratio: 4 \/ 5;/);
+    expect(css).toMatch(/\.nx-model-media \{ position: absolute; inset: 0;/);
+    expect(css).toMatch(/\.nx-model-media::after \{[^}]*rgba\(5, 5, 9, 0\.86\) 62%, rgba\(5, 5, 9, 0\.94\) 100%/);
     expect(css).toMatch(/\.nx-model \.nx-ai-badge \{ position: absolute;/);
     // The stale fixed size that pinned the still at 76 px is gone.
     expect(css).not.toMatch(/\.nx-model-pic \{[^}]*76px/);
