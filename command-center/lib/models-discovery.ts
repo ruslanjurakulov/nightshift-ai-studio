@@ -261,6 +261,7 @@ export interface DiscoverySpec {
   audioOut: boolean;
   upscaleFactors: number[];
   upscaleTargets: string[];
+  /** spec.languages: a dub or captions model's sold languages; a voice model's covers only the three checked (uz, ru, en). */
   languages: string[];
   endFrame: boolean;
   maxSourceSeconds: number | null;

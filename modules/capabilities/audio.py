@@ -170,7 +170,9 @@ class ElevenLabsTTSAdapter(_ElevenLabs):
         # Uzbek text on a model that does not speak Uzbek: refused before the vendor call,
         # never answered with another model (rule 4). This runs after the credit hold (the
         # quote is SQL), and today no job stores a language, so it only bites once the
-        # film studio passes one; the SQL-side refusal before the hold is a follow-up.
+        # film studio passes one. The refusal before the hold is
+        # public.voice_language_problem (migration 0214), read from the registry's
+        # tts languages; it bites once quote_film calls it (S2 owns that function).
         # Text with no language named is not judged.
         reason = tts_languages.refusal(entry.vendor_model_for(TTS), request.text_language)
         if reason:

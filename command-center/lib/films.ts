@@ -387,6 +387,10 @@ export const FILM_ERRORS = [
   "asset_not_usable",
   // 0171's start_film: a reference picture or character was deleted after the quote.
   "reference_missing",
+  // 0214's voice_language_problem, a quote line's refusal once quote_film asks it: the voice model does not speak the film's
+  // language, or nobody can say whether it does (unknown is never "speaks").
+  "voice_language_unsupported",
+  "voice_language_unknown",
   "film_changed",
   "film_not_editable",
   "idempotency_conflict",
