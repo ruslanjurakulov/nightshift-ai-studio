@@ -44,10 +44,12 @@ What the flag values do:
 
 - The owner chooses it: `select public.ai_chat_set_model('gemini-3.6-flash');`. 0199's default is Claude Sonnet 5.5; the owner
   decided on Gemini 3.6 Flash for customers (2026-11-22: cheaper, and the Anthropic organisation's monthly cap had been reached).
-- `ai_chat_settings.model` is the customer chat's model only. The owner's own chat (`/owner/ai`) runs `OWNER_CHAT_MODEL`
-  (lib/server/brain/llm.ts, Claude Sonnet 5.5) whatever this setting says: 0199 records the setting as the model of every customer
-  turn, and 0203 records the owner's turns with the model the owner route passes, so each meter names the model that really ran.
-- It must be a registry text model. Each turn also checks that it is on sale (`sellable_models('describe','web')`) and keyed on this server.
+- `ai_chat_settings.model` applies only to the customer chat. In `/owner/ai`, the owner picks Gemini 3.6 Flash, Claude Sonnet 5.5 or GPT-6 Luna. The browser remembers the choice.
+  The default is Gemini when its server key is set, otherwise the first configured model. The owner route refuses an unknown
+  model ID (400) or a model without a server key (409, `not_configured`) and never switches models. For the owner's internal use,
+  hidden or terms-gated registry rows are allowed. Missing or disabled rows and an operational switch-off (`model_is_available`)
+  block the turn. Gemini passes through the same age and country gate as the customer chat.
+- The customer chat model must be a registry text model. Each turn also checks that it is on sale (`sellable_models('describe','web')`) and keyed on this server.
 - Customers never see or pick it. When it is down, the panel says "Nightshift AI is unavailable right now". No other model is tried.
 - **Gemini Flash needs**, before it answers anyone:
   - the repository secret `AI_CHAT_GEMINI_API_KEY` (the chat's own key, never the worker's `GEMINI_API_KEY`), set on GitHub under
@@ -55,12 +57,14 @@ What the flag values do:
   - the model on sale on the web: its registry row carries `terms_gate: terms_review_required` (the Gemini API terms' 18+,
     "not for consumer use" and available-regions clauses), so `sellable_models` does not list it until the owner's lawyer has read
     them and the gate is cleared; and a `credit_prices` row for `model_gemini_3_6_flash_request`;
-  - Google's country list for the model in `lib/geo/blocked.ts` (PR #881). Until it is there, every Gemini turn is refused
-    `country_unverified`: no list is not "allowed everywhere".
+  - nothing for the country list: the chat reads Google's own (`GOOGLE_BLOCKED` in `lib/geo/blocked.ts`, the twin of the
+    registry, the same list Create uses). A Google chat model that `lib/geo/blocked.ts` does not name (`GOOGLE_MODELS`) answers no
+    one (`country_unverified`) until it is added there.
 - **Google's conditions, on this server** (lib/server/brain/google-gate.ts), before the cap is touched and before any call: only a
   person with an adult attestation (0192; `none` 428 `adult_attestation_required`, an unread answer or 0192 missing 503
   `age_unavailable`, under 18 403 `adult_only_service`); only a known country on no block list (451 `country_blocked`), and an
-  unknown country is refused for every reason (451 `country_unverified`). A chat turn has no database gate behind it, so these are
+  unknown country is refused for every reason (451 `country_unverified`, as `refusesUnknownCountry` says for Google's models), and so
+  is a code Google neither lists nor blocks. A chat turn has no database gate behind it, so these are
   the only place they hold. A refused turn is not a turn: nothing is reserved, nothing is charged. The panel's read
   (`GET /api/brain`) asks the same gate and returns its verdict as `gate: { code, remedy }` (null when nothing stands in the way;
   the codes and remedy keys are in lib/brain/chat-gate.ts), so the box can close with the reason before anyone presses.
@@ -70,6 +74,13 @@ What the flag values do:
 - **Google's errors, by remedy.** A wrong key is `vendor_auth`; "User location is not supported" is `vendor_region` (the server's
   address: move the server, a new key does not help); a 404 is `model_not_found`; a 429 with `limit: 0`, billing off, or credits
   used up is `vendor_quota`; any other 429 is `vendor_rate_limited` (it clears by itself).
+- **No medical, legal or financial advice.** The customer chat's system text (`NO_PROFESSIONAL_ADVICE_RULE`, lib/brain/prompt.ts)
+  tells the model to decline such advice in one sentence, point the person to a doctor, a lawyer or a licensed financial adviser,
+  and go back to the plan. It is an instruction to the model, not a filter on its answer.
+- **Cost.** A customer turn is not charged per message (the plan's caps only), so Google's price for `gemini-3.6-flash` is a
+  cost to Nightshift, not to the customer. Its introductory rate is reported to end on 2027-01-01, roughly doubling the price
+  (secondary sources, 2026-11-27; confirm on Google's own pricing page before budgeting). Nothing in the code changes with it: the
+  plan caps bound the number of turns, not what each one costs Nightshift.
 - Read the settings with `select public.ai_chat_owner_settings();`.
 
 ## Caps (enforced in the database before any LLM call)

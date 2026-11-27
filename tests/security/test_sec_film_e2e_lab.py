@@ -484,25 +484,69 @@ def test_a_clip_that_fails_twice_is_charged_nothing_the_film_pauses_and_the_rest
     assert lab.d.film_row(fid) == ("paused", "takes_failed")
 
 
-def test_a_key_frame_that_fails_twice_skips_both_clips_at_zero_but_the_narration_is_still_voiced_and_charged(lab, a):
-    """The key frame fails, and so does its retry: neither clip can begin (no picture to start from). What the run still spends is
-    measured here: the narration is still voiced and charged, which is what 0171's settle captures."""
+def test_a_paused_film_resumed_is_driven_by_the_real_worker_unchanged_and_nothing_made_is_made_or_paid_again(lab, a):
+    """0215 (gate G1): the film above pauses (scene 2's clip failed twice, and since #903 the run stops there, so the narration is
+    never voiced). Its admin quotes and starts the resume through the real SQL; the same worker, unchanged, claims the resume
+    segment, skips the carried takes (completed, at 0), makes only scene 2's clip from scene 1's carried last frame and the
+    narration, assembles, and settles. The new hold pays only what was left."""
+    fid, seg = lab.started(a)
+    out = lab.worker(adapters(vid=[None, ProviderErr("provider_error"), ProviderErr("provider_error")])).run_once()
+    assert (out.result, out.reason) == ("settled", "takes_failed"), out
+    first = Decimal(lab.d.segment(seg["id"])[1])
+    balance = lab.d.account(a.org)[0]
+    q = lab.d.one("authenticated", a.admin, "select public.quote_film_resume(%s::uuid, %s::integer)", [fid, lab.d.version(fid)])
+    assert sorted(ln["line"] for ln in q["lines"]) == ["assembly", "clip", "narration"] and q["startable"] is True, q
+    r = lab.d.one("authenticated", a.admin, "select public.start_film_resume(%s::uuid, %s, %s)", [fid, q["quote_id"], lab.d.key()])
+    assert r["ok"] is True and r["carried"] == 2, r
+    NARRATION = Decimal(str([ln for ln in q["lines"] if ln["line"] == "narration"][0]["credits"]))
+    ads = adapters()
+    out = lab.worker(ads).run_once()
+    assert out.segment_id == r["id"] and (out.result, out.reason) == ("settled", "completed"), (out, lab.take_rows(r["id"]))
+    # Only scene 2's clip and the narration reached a vendor: the key frame and scene 1's clip were carried, not made again.
+    assert (len(ads["img-key"].submits), len(ads["vid-clip"].submits), len(ads["tts-a"].submits)) == (0, 1, 2)
+    assert ads["vid-clip"].inputs == [[PNG]]
+    carried_last, new_first = lab.d.su(
+        "select (select t.result_last_frame_asset_id from public.film_takes t join public.film_scenes s on s.id = t.scene_id "
+        "         where t.segment_id = %s and t.kind = 'clip' and s.position = 0), "
+        "       (select t.first_frame_asset_id from public.film_takes t join public.film_scenes s on s.id = t.scene_id "
+        "         where t.segment_id = %s and t.kind = 'clip' and s.position = 1)", [r["id"], r["id"]])[0]
+    assert carried_last is not None and new_first == carried_last
+    assert lab.assembled == [(r["id"], "w-1")]
+    rows = lab.take_rows(r["id"])
+    assert sorted((x[0], x[1], x[3], Decimal(x[4]), x[5]) for x in rows) == sorted([
+        ("keyframe", 0, "completed", Decimal(0), "carried_not_charged"), ("clip", 0, "completed", Decimal(0), "carried_not_charged"),
+        ("narration", None, "completed", NARRATION, "per_character"), ("clip", 1, "completed", Decimal(20), "full_line")]), rows
+    status, captured, _reason, ref, confirmed, _att = lab.d.segment(r["id"])
+    takes, asm = lab.money(r["id"])
+    assert status == "settled" and Decimal(captured) == takes + asm == Decimal(20) + NARRATION + Decimal(5) <= Decimal(confirmed)
+    hold = [h for h in lab.d.holds(a.org) if h[0] == ref][0]
+    assert hold[2] == "captured" and Decimal(hold[1]) == Decimal(confirmed) and Decimal(hold[3]) == Decimal(captured)
+    assert lab.d.account(a.org) == (balance - Decimal(captured), 0)
+    assert lab.d.ledger(a.org, "capture") == [-first, -Decimal(captured)]  # the film's total, once: what the first run made, then the rest
+    assert lab.d.film_row(fid) == ("ready", None)
+    assert lab.worker(adapters()).run_once() is None
+
+
+def test_a_key_frame_that_fails_twice_stops_the_run_the_narration_is_not_voiced_and_nothing_is_charged(lab, a):
+    """The key frame fails, and so does its retry: neither clip can begin (no picture to start from), and P4a would refuse the film
+    for its missing takes (docs/FILM_STUDIO.md, Assembly). So the run stops there (rule 6, S2_GAPS G5): the narration is never sent,
+    nothing is captured, and the film goes back to its storyboard (0171: nothing charged and nothing made)."""
     fid, seg = lab.started(a)
     before = lab.d.account(a.org)[0]
     ads = adapters(img=[ProviderErr("provider_error"), ProviderErr("provider_error")])
     out = lab.worker(ads).run_once()
     assert out.result == "settled" and out.reason == "takes_failed", out
     assert ads["vid-clip"].submits == []  # never sent: its input failed for good
+    assert ads["tts-a"].submits == []  # never sent: the film can no longer be assembled
     rows = lab.take_rows(seg["id"])
-    assert [(r[0], r[3]) for r in rows if r[0] == "clip"] == [("clip", "skipped"), ("clip", "skipped")], rows
-    assert all(Decimal(r[4] or 0) == 0 for r in rows if r[0] != "narration"), rows
+    kf = [(r[2], r[3]) for r in rows if r[0] == "keyframe"]
+    assert kf == [(1, "superseded"), (2, "failed")], rows
+    # The takes that never began are gone with the return to draft (0171 deletes skipped takes no job names).
+    assert [r for r in rows if r[0] != "keyframe"] == [], rows
+    assert all(Decimal(r[4] or 0) == 0 for r in rows), rows
     status, captured = settled_money_holds(lab, a, seg["id"], before)
-    narr = [r for r in rows if r[0] == "narration"][0]
-    # Measured, not endorsed: the narration (1 credit, the job minimum) is still voiced for a segment that can no longer become a
-    # film, so the film pauses with that capture instead of going back to draft at 0 (film_orchestrator._inputs_ready: a narration
-    # is always ready). Reported to the lead as a rule-6 question; pinned here so a change to it is a decision, not an accident.
-    assert (narr[3], Decimal(narr[4])) == ("completed", Decimal(1)) and captured == Decimal(1)
-    assert lab.d.film_row(fid) == ("paused", "takes_failed")
+    assert (status, captured) == ("released", Decimal(0))
+    assert lab.d.film_row(fid) == ("draft", "takes_failed")
 
 
 def test_both_attempts_failing_on_the_only_billable_path_releases_the_whole_hold_and_returns_the_film_to_draft(lab, a):

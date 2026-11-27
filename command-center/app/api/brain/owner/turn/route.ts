@@ -4,8 +4,9 @@ import { readJsonBodyCapped } from "@/lib/server/json-body";
 import { getLocale } from "@/lib/i18n/server";
 import { ownerAccess } from "@/lib/server/owner-analytics";
 import { buildOwnerFacts, OwnerOnlyError, SecondFactorRequiredError } from "@/lib/server/owner-brain-facts";
-import { callChatModel, OWNER_CHAT_MODEL } from "@/lib/server/brain/llm";
-import { brainJson, chosenModelState, notFound } from "@/lib/server/brain/session";
+import { callChatModel, chatModelConfigured, isChatModelId, OWNER_CHAT_MODEL } from "@/lib/server/brain/llm";
+import { brainJson, notFound } from "@/lib/server/brain/session";
+import { chatModelGate } from "@/lib/server/brain/google-gate";
 import { extractJson } from "@/lib/brain/logic";
 import { guardLinks, knownLinks, OWNER_AI_SYSTEM, ownerUserBlock, QUESTION_MAX, readHistory, readOwnerAnswer } from "@/lib/owner-console/ai-prompt";
 import { BILLED_PROVIDERS } from "@/lib/billing";
@@ -86,8 +87,7 @@ async function vendorUser(userId: string): Promise<string> {
  * Order, and why:
  *  1. Same-origin POST, a signed-in user, and the platform owner (0182) — anyone else gets the plain 404 before anything is read,
  *     so the route's existence says nothing.
- *  2. The owner chat's own model (OWNER_CHAT_MODEL, lib/server/brain/llm; ai_chat_settings.model is the customer chat's), on sale and
- *     keyed on this server — or the reason it is not. Never another model (rule 4).
+ *  2. The requested owner chat model (legacy callers omit it), checked for server configuration, registry status and provider gates.
  *  3. The owner's facts, built server side (second factor enforced there). The browser never sends a figure.
  *  4. A turn reserved in the database under the daily cap (0203) BEFORE the vendor is called; finished with how it ended.
  *  5. Only after a turn recorded as answered: the question and the (link-guarded) answer stored together in the owner's history
@@ -114,16 +114,29 @@ export async function POST(request: Request) {
   const sessionId = b.session_id === undefined || b.session_id === null ? null : typeof b.session_id === "string" && UUID.test(b.session_id) ? b.session_id : undefined;
   if (sessionId === undefined) return brainJson({ error: "bad_request" }, 400);
 
-  // Still asked: it is how this route knows 0199 is applied. Its `model` is the customer chat's now (OWNER_CHAT_MODEL says why).
+  const model = b.model === undefined ? OWNER_CHAT_MODEL : b.model;
+  if (!isChatModelId(model)) return brainJson({ error: "bad_request" }, 400);
+  if (!chatModelConfigured(model)) return brainJson({ error: "model_unavailable", reason: "not_configured" }, 409);
+
+  // Keep the existing 0199 migration check. The settings row controls customer chat.
   const settings = await supabase.rpc("ai_chat_owner_settings");
   if (settings.error) {
     const code = (settings.error as { code?: string }).code;
     if (code === "42883" || code === "PGRST202") return brainJson({ error: "not_enabled", needs: "0199" }, 503);
     return brainJson({ error: "unavailable" }, 503);
   }
-  const model = await chosenModelState(supabase, OWNER_CHAT_MODEL);
-  if (!model.ok) return brainJson({ error: "unavailable" }, 503);
-  if (model.state !== "available" || !model.id) return brainJson({ error: "model_unavailable", reason: model.state }, 409);
+  // Internal owner use is outside the customer sale rules in chosenModelState. Hidden or terms-gated
+  // registry rows can be used here, but a missing or disabled row or an operational switch still blocks the turn.
+  const registry = await supabase.from("model_registry").select("availability").eq("id", model).maybeSingle();
+  if (registry.error) return brainJson({ error: "unavailable" }, 503);
+  if (!registry.data) return brainJson({ error: "model_unavailable", reason: "unknown_model" }, 409);
+  if (registry.data.availability === "disabled") return brainJson({ error: "model_unavailable", reason: "not_on_sale" }, 409);
+  const operational = await supabase.rpc("model_is_available", { p_model: model });
+  if (operational.error || typeof operational.data !== "boolean") return brainJson({ error: "unavailable" }, 503);
+  if (!operational.data) return brainJson({ error: "model_unavailable", reason: "not_on_sale" }, 409);
+
+  const gate = await chatModelGate(model);
+  if (gate) return brainJson({ error: gate.error }, gate.status);
 
   let facts;
   try {
@@ -134,7 +147,7 @@ export async function POST(request: Request) {
     return brainJson({ error: "unavailable" }, 503);
   }
 
-  const reserve = await supabase.rpc("owner_ai_reserve_turn", { p_chars: question.length, p_model: model.id });
+  const reserve = await supabase.rpc("owner_ai_reserve_turn", { p_chars: question.length, p_model: model });
   if (reserve.error) {
     const e = reserve.error as { code?: string; message?: string; details?: string };
     if (e.code === "42883" || e.code === "PGRST202") return brainJson({ error: "not_enabled", needs: "0203" }, 503);
@@ -162,7 +175,7 @@ export async function POST(request: Request) {
   // leave it "reserved" with a bare 500.
   try {
     const locale = await getLocale().catch(() => "en");
-    const llm = await callChatModel(model.id, OWNER_AI_SYSTEM, ownerUserBlock({ facts, question, history, locale }), { endUser: await vendorUser(user.id), maxOutputTokens: OWNER_OUTPUT_TOKENS });
+    const llm = await callChatModel(model, OWNER_AI_SYSTEM, ownerUserBlock({ facts, question, history, locale }), { endUser: await vendorUser(user.id), maxOutputTokens: OWNER_OUTPUT_TOKENS });
     if (!llm.ok) {
       await finish(false, llm.error, llm.tokensIn, llm.tokensOut);
       // The failure names its remedy (rule 6): the page says "top up the chat model's provider" for vendor_quota, and so on.
@@ -184,7 +197,7 @@ export async function POST(request: Request) {
     // Only the guarded text is kept: what the owner saw, never a link the guard cut.
     // A turn the log did not record as answered is one 0209 refuses to store: said as not saved, without a call bound to fail.
     const saved = finished
-      ? await saveHistory(supabase, turn, sessionId, question, [a.text, dt?.text, d?.text].filter(Boolean).join("\n\n"), facts.as_of, model.id)
+      ? await saveHistory(supabase, turn, sessionId, question, [a.text, dt?.text, d?.text].filter(Boolean).join("\n\n"), facts.as_of, model)
       : { sessionId, state: "not_saved" as const };
     return brainJson({
       answer: a.text,
@@ -192,7 +205,7 @@ export async function POST(request: Request) {
       // Links or account numbers the platform does not know were cut: the panel warns, and never shows what was cut.
       removed_links: a.removed + (d?.removed ?? 0) + (dt?.removed ?? 0),
       as_of: facts.as_of,
-      model: model.id,
+      model,
       // Whether this turn is in the stored history (0209), said rather than assumed (rule 5).
       session_id: saved.sessionId,
       history: saved.state,

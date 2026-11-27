@@ -6,6 +6,7 @@ export const homeUz: HomeDictionary = {
     eyebrow: "Nightshift Studio",
     title: "Gʻoyadan tayyor videogacha — bitta Studio",
     lead: "Gʻoyangizni yozing. Nightshift uni rasm, klip, ovoz va tayyor videoga aylantiradi, narx esa boshlanishidan oldin tugmada koʻrinadi.",
+    subline: "Gʻoyangizni yozing. Studio’da narx boshlanishidan oldin koʻrinadi.",
     primary: "Yaratishni boshlash",
     secondary: "Qanday ishlaydi",
     idea: {
@@ -17,6 +18,7 @@ export const homeUz: HomeDictionary = {
       count: "{n} / {max}",
     },
     reelLabel: "Nightshift Studio’da yaratilgan",
+    aiCredit: "Sunʼiy intellekt yaratgan, Nightshift Studio’da tayyorlangan",
     reelNote: "Bu yerdagi har bir ish oʻzimizning Studio’mizda yaratilgan, ostida uni yaratgan modellar nomi yozilgan.",
     and: "va",
     credit: "Nightshift Studio’da {model} bilan yaratilgan",

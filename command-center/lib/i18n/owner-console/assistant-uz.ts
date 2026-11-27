@@ -4,6 +4,16 @@ import type { ownerAssistantEn } from "./assistant-en";
 export const ownerAssistantUz: typeof ownerAssistantEn = {
   greeting: "Salom, {name}",
   greetingNoName: "Salom",
+  modelPicker: {
+    label: "Chat modeli",
+    notConfigured: "serverda sozlanmagan",
+    noneConfigured: "Bu serverda hech bir chat modeli sozlanmagan.",
+    names: {
+      "anthropic-claude-sonnet-5-5": "Claude Sonnet 5.5",
+      "openai-gpt-6-luna": "GPT-6 Luna",
+      "gemini-3.6-flash": "Gemini 3.6 Flash",
+    },
+  },
   newChat: "Yangi suhbat",
   regenerate: "Qayta javob berish",
   good: "Yaxshi javob",
@@ -50,10 +60,17 @@ export const ownerAssistantUz: typeof ownerAssistantEn = {
     needs_migration: "Saqlanmadi: suhbatlar tarixi uchun maʼlumotlar bazasining 0209-migratsiyasi kerak.",
   },
   errors: {
+    googleGate: {
+      adult_attestation_required: "Yaratish boʻlimida 18 yoshga toʻlganingizni tasdiqlang, soʻng Gemini bilan yana urinib koʻring.",
+      adult_only_service: "Akkauntda qayd etilgan yosh sababli Geminiʼdan foydalanib boʻlmaydi. Akkauntdagi yosh haqidagi javobni tekshiring yoki boshqa modelni tanlang.",
+      age_unavailable: "Yosh tasdigʻini tekshirib boʻlmadi. Yana urinib koʻring.",
+      country_blocked: "Gemini mamlakatingizda mavjud emas. Boshqa modelni tanlang.",
+      country_unverified: "Server bu soʻrov qaysi mamlakatdan kelganini aniqlay olmadi. Boshqa modelni tanlang yoki oʻzingizga tanish tarmoqdan qayta urinib koʻring.",
+    },
     model_unavailable: {
       not_configured: "Chat modelining kaliti bu serverda oʻrnatilmagan. Uni server sozlamalariga qoʻshing va qayta soʻrang.",
-      not_on_sale: "Tanlangan chat modeli modellar reyestrida oʻchirilgan. Uni yoqing yoki sozlamalarda boshqa model tanlang.",
-      unknown_model: "Tanlangan chat modelidan bu konsol foydalana olmaydi. Sozlamalarda boshqa model tanlang.",
+      not_on_sale: "Tanlangan chat modeli modellar reyestrida oʻchirilgan. Uni yoqing yoki shu yerda boshqa model tanlang.",
+      unknown_model: "Tanlangan chat modelidan bu konsol foydalana olmaydi. Shu yerda boshqa model tanlang.",
     },
     model_failed: {
       vendor_auth: "Chat modeli provayderi kalitni rad etdi. Serverdagi kalitni almashtiring.",

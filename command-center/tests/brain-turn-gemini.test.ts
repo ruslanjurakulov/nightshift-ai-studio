@@ -55,13 +55,9 @@ vi.mock("@/lib/server/age", () => ({
   readAgeState: async () => (state.age === "absent" ? "unknown" : state.age),
   readAgeAnswer: async () => state.age,
 }));
-// The country as lib/server/geo reads it from the request, and a Google list for this model (PR #881 adds the real one).
+// The country as lib/server/geo reads it from the request; Google's list is lib/geo/blocked's own (never a copy in a test).
 vi.mock("next/headers", () => ({ headers: async () => new Headers(), cookies: async () => ({ get: () => undefined, getAll: () => [] }) }));
 vi.mock("@/lib/server/geo", () => ({ readCountry: () => state.country }));
-vi.mock("@/lib/geo/blocked", () => {
-  const map: Record<string, readonly string[]> = { "gemini-3.6-flash": ["RU", "BY"] };
-  return { BLOCKED_COUNTRIES: map, blockedCountriesOf: (m: string, mm = map) => mm[m] ?? [] };
-});
 vi.mock("@/lib/orgs-server", () => ({ getOrgContext: async () => ({ supported: true, current: { id: ORG, role: "owner" } }) }));
 vi.mock("@/lib/i18n/server", () => ({ getLocale: async () => "en" }));
 vi.mock("@/lib/server/films", () => ({ filmGate: async () => ({ ok: true, supabase: client, userId: "user-1" }) }));
@@ -77,6 +73,7 @@ vi.mock("@/lib/server/brain/llm", async () => {
 
 const { POST } = await import("@/app/api/brain/turn/route");
 const { REPLY_LANGUAGE_RULE } = await import("@/lib/brain/reply-language");
+const { NO_PROFESSIONAL_ADVICE_RULE } = await import("@/lib/brain/prompt");
 const post = (body: unknown) => POST(new Request("https://x/api/brain/turn", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } }));
 const turn = () => post({ action: "turn", session: SESSION, text: "a video about rivers" });
 const called = (fn: string) => rpc.mock.calls.filter((c) => c[0] === fn);
@@ -106,6 +103,8 @@ describe("/api/brain/turn on Gemini Flash", () => {
     // The reply-language rule and the meter are the route's own, unchanged: the same system prompt and app language go to Gemini,
     // and its tokens reach the finish.
     expect(llm.mock.calls[0][1]).toContain(REPLY_LANGUAGE_RULE);
+    // The no-advice rule travels with it: Gemini is told, in the system text, to send medical, legal and money questions to a professional.
+    expect(llm.mock.calls[0][1]).toContain(NO_PROFESSIONAL_ADVICE_RULE);
     expect(String(llm.mock.calls[0][2])).toContain('"app_language":"en"');
     expect(called("ai_chat_finish_turn")[0][1]).toMatchObject({ p_outcome: "ok", p_tokens_in: 10, p_tokens_out: 20 });
   });

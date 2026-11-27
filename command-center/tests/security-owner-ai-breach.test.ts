@@ -66,12 +66,17 @@ const s = vi.hoisted(() => ({
 vi.mock("@/lib/supabase/server", () => ({
   getUser: async () => ({ id: "owner-1" }),
   createClient: async () => ({
-    rpc: async (name: string) =>
-      name === "ai_chat_owner_settings"
-        ? { data: { model: "anthropic-claude-sonnet-5-5" }, error: null }
-        : name === "owner_ai_reserve_turn"
-          ? { data: 7, error: null }
-          : { data: null, error: null },
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: { availability: "ga" }, error: null }),
+        }),
+      }),
+    }),
+    rpc: async (name: string) => ({
+      data: name === "model_is_available" ? true : name === "owner_ai_reserve_turn" ? 7 : null,
+      error: null,
+    }),
   }),
 }));
 vi.mock("@/lib/server/same-origin", () => ({ rejectCrossOrigin: () => null }));
@@ -82,20 +87,11 @@ vi.mock("@/lib/server/owner-brain-facts", () => ({
   SecondFactorRequiredError: class extends Error {},
   buildOwnerFacts: async () => s.facts,
 }));
-vi.mock("@/lib/server/brain/llm", () => ({
-  OWNER_CHAT_MODEL: "anthropic-claude-sonnet-5-5",
+vi.mock("@/lib/server/brain/llm", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/server/brain/llm")>(),
+  chatModelConfigured: () => true,
   callChatModel: async () => ({ ok: true, text: s.llmText, tokensIn: 10, tokensOut: 5 }),
 }));
-vi.mock("@/lib/server/brain/session", async () => {
-  const { NextResponse } = await import("next/server");
-  const brainJson = (body: unknown, status = 200) => NextResponse.json(body, { status });
-  return {
-    brainJson,
-    notFound: () => brainJson({ error: "not_found" }, 404),
-    chosenModelState: async () => ({ ok: true, id: "anthropic-claude-sonnet-5-5", state: "available" }),
-  };
-});
-
 async function ask() {
   const { POST } = await import("../app/api/brain/owner/turn/route");
   const res = await POST(

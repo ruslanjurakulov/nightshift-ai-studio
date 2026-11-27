@@ -149,10 +149,12 @@ describe("the model tiles", () => {
     }
   });
 
-  it("lead with a large picture, the label on its corner, and scroll sideways on a phone", () => {
+  // 2026-11-22: the sample fills the whole card (the AI studios' model cards), the name at its top, the prompt over a dark foot.
+  it("lead with the sample filling a tall card, the label on its corner, and scroll sideways on a phone", () => {
     const css = rules(read("components/site/site-next.css"));
-    expect(css).toMatch(/\.nx-model \{ position: relative; display: flex; flex-direction: column;/);
-    expect(css).toMatch(/\.nx-model-media \{ position: relative; width: 100%; aspect-ratio: 4 \/ 3;/);
+    expect(css).toMatch(/\.nx-model \{ position: relative; display: flex; flex-direction: column; min-width: 0; aspect-ratio: 4 \/ 5;/);
+    expect(css).toMatch(/\.nx-model-media \{ position: absolute; inset: 0;/);
+    expect(css).toMatch(/\.nx-model-media::after \{[^}]*rgba\(5, 5, 9, 0\.86\) 62%, rgba\(5, 5, 9, 0\.94\) 100%/);
     expect(css).toMatch(/\.nx-model \.nx-ai-badge \{ position: absolute;/);
     // The stale fixed size that pinned the still at 76 px is gone.
     expect(css).not.toMatch(/\.nx-model-pic \{[^}]*76px/);
@@ -163,9 +165,14 @@ describe("the model tiles", () => {
 });
 
 describe("the models strip", () => {
-  it("is not drawn where it cannot move: on a touch screen or with reduced motion", () => {
+  it("sits still where it cannot move (a touch screen, reduced motion): two centred rows, no copy, no animation", () => {
     const css = rules(read("components/site/site-motion.css"));
-    expect(css).toContain("@media (hover: none) { .nx-marquee { display: none; } }");
-    expect(css).toContain("@media (prefers-reduced-motion: reduce) { .nx-marquee { display: none; } }");
+    // Still is the default; motion, the second copy and the one-line rows exist only where the pointer can stop them.
+    expect(css).toMatch(/\.nx-marquee-row\[data-copy="1"\] \{ display: none; \}/);
+    expect(css).not.toMatch(/\.nx-marquee \{ display: none; \}/);
+    const moving = css.slice(css.indexOf("@media (prefers-reduced-motion: no-preference) and (hover: hover) {\n  .nx-marquee-track"));
+    expect(moving).toMatch(/\.nx-marquee-row\[data-copy="1"\] \{ display: flex; \}/);
+    expect(moving).toMatch(/\.nx-marquee-track\[data-dir="right"\] \{ animation: nx-marquee [^}]*reverse; \}/);
+    expect(moving).toMatch(/\.nx-marquee:is\(:hover, :has\(:focus-visible\)\) \.nx-marquee-track \{ animation-play-state: paused; \}/);
   });
 });

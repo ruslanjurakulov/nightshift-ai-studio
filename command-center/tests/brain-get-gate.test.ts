@@ -46,10 +46,6 @@ vi.mock("@/lib/auth/org-roles", () => ({ requireOrgRole: async () => ({ ok: true
 vi.mock("@/lib/server/age", () => ({ readAgeAnswer: async () => { ageRead(); return state.age; } }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers(), cookies: async () => ({ get: () => undefined, getAll: () => [] }) }));
 vi.mock("@/lib/server/geo", () => ({ readCountry: () => state.country }));
-vi.mock("@/lib/geo/blocked", () => {
-  const map: Record<string, readonly string[]> = { "gemini-3.6-flash": ["RU", "BY"] };
-  return { BLOCKED_COUNTRIES: map, blockedCountriesOf: (m: string, mm = map) => mm[m] ?? [] };
-});
 vi.mock("@/lib/orgs-server", () => ({ getOrgContext: async () => ({ supported: true, current: { id: ORG, role: "owner" } }) }));
 vi.mock("@/lib/server/brain/llm", async () => {
   const real = await vi.importActual<typeof import("@/lib/server/brain/llm")>("@/lib/server/brain/llm");

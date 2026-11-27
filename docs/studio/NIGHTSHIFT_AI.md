@@ -324,7 +324,9 @@ clock: each scene's words start 0.25 s into the scene, and the file's provenance
 `[{scene_id, start_s, end_s}]` and the measured `loudness_lufs` / `true_peak_db` (null when not measured).
 
 The order the worker makes them in: every key frame, then the shots scene by scene (shot 1 from its first frame, shots 2-3 from the
-previous shot's last frame), then the narration. A shot whose input failed for good never begins and is `skipped` at the settle.
+previous shot's last frame), then the narration. Once any take has failed for good (its one retry failed too), or a shot can
+never begin because its input did, the film can no longer be assembled: nothing new begins, not even the narration, and the
+segment settles `takes_failed`. What was planned is `skipped` at 0; with nothing charged and nothing made the film is back in `draft`.
 
 ### Why a take failed: `film_takes.error_code`
 
@@ -347,6 +349,13 @@ by 0171 when a lease or the deadline runs out.
 | `no_output` | No file was returned. | Retry. |
 | `worker_lost` | Our worker stopped; nothing was charged. | Start again. |
 | `film_studio_off` | Switched off during the run. | Contact support. |
+
+A take whose model went off sale after the film started (retired, hidden, unpriced, past its shutdown date or switched off: the
+worker asks `sellable_models` again right before every take's paid call, as the creative worker does, `modules/creative_worker.py`
+"Still on sale") is never sent: it fails as `bad_request`, charged 0, with an error text that names the model and says to choose
+another. There is no word of its own yet because the live view has copy only for the words above; its one retry meets the same answer,
+and the segment settles as `takes_failed`. The worker never swaps the model. If that answer cannot be read, nothing is sent and
+the segment is left for the next claim.
 
 `film_studio_off` is the settle reason (`films.pause_reason`) when the platform's or the organization's switch went off during the
 run: nothing new begins (the database refuses `film_begin_take` and a new `film_take_job` with `film_studio_disabled`), a take that
