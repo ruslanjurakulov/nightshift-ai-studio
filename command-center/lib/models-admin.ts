@@ -59,6 +59,7 @@ export interface AdminModel {
   entitlement: string | null;
   /** spec.terms_gate: vendor terms not yet satisfied (beta/ga refused). */
   termsGate: string | null;
+  termsUrl: string | null;
   /** spec.removed_from_file: disabled because it left the reviewed JSON. */
   removedFromFile: boolean;
   updatedAt: string | null;
@@ -68,10 +69,52 @@ type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
 
+export interface ModelTermsAcceptance {
+  gate: string;
+  acceptedAt: string;
+  acceptedByYou: boolean;
+}
+
+export function coerceModelTermsAcceptances(rows: unknown): Record<string, ModelTermsAcceptance> {
+  const out: Record<string, ModelTermsAcceptance> = {};
+  if (!Array.isArray(rows)) return out;
+  for (const row of rows) {
+    if (!isObj(row) || !isModelId(row.model_id) || typeof row.accepted_by_you !== "boolean") continue;
+    const gate = str(row.gate);
+    const acceptedAt = str(row.accepted_at);
+    if (!gate || !acceptedAt || !Number.isFinite(Date.parse(acceptedAt))) continue;
+    out[row.model_id] = { gate, acceptedAt, acceptedByYou: row.accepted_by_you };
+  }
+  return out;
+}
+
+function safeTermsUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function termsUrlFrom(spec: Obj): string | null {
+  const explicit = str(spec.terms_url);
+  if (explicit) return safeTermsUrl(explicit);
+  if (!Array.isArray(spec.terms_notes)) return null;
+  // Reviewed notes sometimes cite the terms as a bare domain and path.
+  // Match links to terms pages only, excluding notes' other references and relative paths.
+  for (const note of spec.terms_notes) {
+    if (typeof note !== "string") continue;
+    const link = note.match(/(?:^|[\s("'\[])(?<link>(?:https:\/\/)?(?:[\w-]+\.)+[a-z]+(?:\/[\w.-]+)*\/(?:[\w.-]+-)?terms(?:-[\w.-]+)?)(?=$|[\s)"',.;\]])/i)?.groups?.link;
+    if (link) return safeTermsUrl(link.startsWith("https://") ? link : `https://${link}`);
+  }
+  return null;
+}
+
 /**
  * Rows from model_registry_admin() as typed models. Only the fields this
  * screen shows are kept: spec carries provider USD costs and internal notes,
- * so nothing of it but the terms gate and the removed flag leaves the server.
+ * so only the fields needed for terms and the removed flag leave the server.
  */
 export function coerceAdminModels(rows: unknown): AdminModel[] {
   if (!Array.isArray(rows)) return [];
@@ -93,6 +136,7 @@ export function coerceAdminModels(rows: unknown): AdminModel[] {
       creditUnit: str(r.credit_unit),
       entitlement: str(r.entitlement),
       termsGate: str(spec.terms_gate),
+      termsUrl: termsUrlFrom(spec),
       removedFromFile: spec.removed_from_file === true,
       updatedAt: str(r.updated_at),
     });

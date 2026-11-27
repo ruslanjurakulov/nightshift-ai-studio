@@ -2787,3 +2787,16 @@ models the Studio sells on the web, for first-party marketing samples made by th
   quote is then refused at create by 0191's judgement.
 - **Tests.** `tests/test_oauth_creative_operator_models_migration.py`, `tests/test_no_bytedance_assistant.py`,
   `tests/security/test_sec_oauth_creative_operator.py` (a real PostgreSQL), `command-center/tests/mcp-oauth-creative.test.ts`.
+
+## Owner model terms acceptance (0227)
+
+0227 (`0227_owner_model_terms_acceptance.sql`) adds an owner-only approval for a model's exact vendor terms gate.
+Applying it leaves existing model rows untouched. Owners confirm the model ID and use the existing availability control
+to offer a model after approval. The probe and pricing requirements still apply. ByteDance terms cannot be approved.
+
+The registry preserves approvals for matching gates. A changed gate on a model with an earlier approval hides the model
+if it is on sale. Revoking an approval hides it if it is on sale and restores the recorded gate when there is no newer gate.
+The audit allow-list adds `model.terms_accept` and `model.terms_revoke`.
+
+Apply as one transaction after 0018 (platform role), 0035 (registry), 0107 (operator MFA) and 0145 (audit allow-list).
+The owner-applied rollback is `docs/sql/rollback_0227_owner_model_terms_acceptance.sql`.
