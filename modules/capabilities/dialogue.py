@@ -30,9 +30,11 @@ One ``audio/mpeg`` Output whose ``provenance`` is S6_GAPS §4's dialogue record 
 The caller (S2's film worker) adds ``film_take_id`` and ``scene_id`` and registers the file with it. Times are on the file's
 own clock, straight from ``voice_segments``. Loudness is null because nothing here measured it (rule 5): the worker that
 measures the file fills it in, or it stays null. No character alignment is kept: 0038 caps a provenance at 16 KB (Lens L4).
+``language`` is the code the vendor was told to enforce, or null when none was sent. The film worker must always pass the
+film's language: without it the model picks the language itself, which is the quiet downgrade G4 exists to stop (rule 4).
 
-Every line maps to exactly one segment, in order and by voice. When the answer cannot be mapped that way the job fails
-``bad_response``; a guess at who said what would put words in the wrong mouth (rules 4 and 5).
+Every line maps to the segments whose ``dialogue_input_index`` names it (a line may be split into several), in its voice.
+When the answer cannot be mapped that way the job fails ``bad_response``; a guess at who said what would put words in the wrong mouth (rules 4 and 5).
 
 Registry-only for now (``REGISTRY_ONLY_CAPABILITIES``): no row in the database, no price, no job can start on it.
 """
@@ -62,6 +64,9 @@ from modules.capabilities.base import (
 DIALOGUE_MAX_CHARS = 2000
 #: "at most 10 unique voice IDs".
 DIALOGUE_MAX_VOICES = 10
+#: Lines per request. Not a vendor limit: each line becomes one provenance entry (about 170 bytes with 64-character ids), and
+#: 0038 caps an asset's provenance at 16 KB. 80 lines stay well inside it, so a billed file is never refused at registration.
+DIALOGUE_MAX_LINES = 80
 #: The models the HTTP endpoint is documented for. Anything else is refused, never sent and left to the vendor's default.
 DIALOGUE_MODELS = frozenset({"eleven_v4", "eleven_v3"})
 #: The film's own character id, echoed back in the provenance. Bounded so a provenance row stays small.
@@ -85,6 +90,8 @@ def line_problems(request: CapabilityRequest, vendor_model: str) -> List[str]:
     if not lines:
         out.append("dialogue needs its lines")
         return out
+    if len(lines) > DIALOGUE_MAX_LINES:
+        out.append(f"a dialogue takes at most {DIALOGUE_MAX_LINES} lines; this one has {len(lines)}: split the scene")
     voices, total = set(), 0
     for i, line in enumerate(lines, 1):
         if not (isinstance(line, (tuple, list)) and len(line) == 3 and all(isinstance(x, str) for x in line)):
@@ -124,6 +131,10 @@ def decode_audio(value: Any) -> bytes:
         raise AdapterError(E_BAD_RESPONSE, "the dialogue audio is not valid base64") from None
     if not data:
         raise AdapterError(E_BAD_RESPONSE, "the dialogue audio is empty")
+    # We ask for mp3_44100_128 and store the file as audio/mpeg: an ID3 tag or an MPEG frame sync must open it, or a
+    # file labelled audio is something else (an error page, JSON) that would only fail later, in the mix.
+    if not (data[:3] == b"ID3" or (len(data) > 1 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0)):
+        raise AdapterError(E_BAD_RESPONSE, "the dialogue audio is not an MP3 file")
     return data
 
 
@@ -134,30 +145,38 @@ def _seconds(value: Any) -> Optional[float]:
 
 
 def line_times(lines: Sequence[Sequence[str]], segments: Any) -> List[Dict[str, Any]]:
-    """One ``{character_id, voice_id, start_s, end_s}`` per line, from ``voice_segments``. The n-th segment must be the n-th
-    line: the same voice, the same ``dialogue_input_index`` when the vendor sends it, times that are real and in speaking
-    order. Anything else raises ``bad_response``: the vendor produced audio (and billed it) that we cannot attribute."""
-    if not isinstance(segments, list):
+    """One ``{character_id, voice_id, start_s, end_s}`` per line, from ``voice_segments``.
+
+    The vendor defines ``dialogue_input_index`` as the line "this segment is a part of": a line may come back as several
+    segments (a pause inside it), so segments are grouped by that index, never paired by position. The index is required:
+    it is the only field that says which line a segment belongs to, and pairing without it would be a guess. Every line
+    0..n-1 must appear, each segment in its line's voice, with real times; lines must start in speaking order. Anything
+    else raises ``bad_response``: the vendor produced audio (and billed it) that we cannot attribute (rule 4)."""
+    if not isinstance(segments, list) or not segments:
         raise AdapterError(E_BAD_RESPONSE, "the dialogue answer has no voice segments")
-    if len(segments) != len(lines):
-        raise AdapterError(E_BAD_RESPONSE, f"the dialogue answer has {len(segments)} voice segments for {len(lines)} lines: "
-                                           "the lines cannot be told apart")
-    out: List[Dict[str, Any]] = []
-    previous_start = 0.0
-    for i, (seg, (character, voice, _text)) in enumerate(zip(segments, lines)):
+    spans: Dict[int, List[float]] = {}
+    for n, seg in enumerate(segments, 1):
         if not isinstance(seg, dict):
-            raise AdapterError(E_BAD_RESPONSE, f"voice segment {i + 1} is not an object")
-        if seg.get("voice_id") != voice:
-            raise AdapterError(E_BAD_RESPONSE, f"voice segment {i + 1} is not in line {i + 1}'s voice")
+            raise AdapterError(E_BAD_RESPONSE, f"voice segment {n} is not an object")
         index = seg.get("dialogue_input_index")
-        if index is not None and (isinstance(index, bool) or index != i):
-            raise AdapterError(E_BAD_RESPONSE, f"voice segment {i + 1} belongs to another line")
+        if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(lines):
+            raise AdapterError(E_BAD_RESPONSE, f"voice segment {n} does not name one of the {len(lines)} lines")
+        if seg.get("voice_id") != lines[index][1]:
+            raise AdapterError(E_BAD_RESPONSE, f"voice segment {n} is not in line {index + 1}'s voice")
         start, end = _seconds(seg.get("start_time_seconds")), _seconds(seg.get("end_time_seconds"))
         if start is None or end is None or end < start:
-            raise AdapterError(E_BAD_RESPONSE, f"voice segment {i + 1} has no usable times")
+            raise AdapterError(E_BAD_RESPONSE, f"voice segment {n} has no usable times")
+        span = spans.setdefault(index, [start, end])
+        span[0], span[1] = min(span[0], start), max(span[1], end)
+    missing = [i + 1 for i in range(len(lines)) if i not in spans]
+    if missing:
+        raise AdapterError(E_BAD_RESPONSE, f"the dialogue answer has no voice segment for line(s) {missing}")
+    out: List[Dict[str, Any]] = []
+    previous_start = 0.0
+    for i, (character, voice, _text) in enumerate(lines):
+        start, end = spans[i]
         if start < previous_start:
-            # Out of speaking order: pairing by position would be a guess.
-            raise AdapterError(E_BAD_RESPONSE, f"voice segment {i + 1} starts before the line before it")
+            raise AdapterError(E_BAD_RESPONSE, f"line {i + 1} starts before the line before it")
         previous_start = start
         out.append({"character_id": character, "voice_id": voice, "start_s": round(start, 3), "end_s": round(end, 3)})
     return out
@@ -184,6 +203,8 @@ class ElevenLabsDialogueAdapter(_ElevenLabs):
         lines = [tuple(line) for line in request.dialogue_lines]
         body: Dict[str, Any] = {"inputs": [{"text": text, "voice_id": voice} for _c, voice, text in lines],
                                 "model_id": vendor_model}
+        # Only the code the vendor was told to enforce is recorded; without one the model chose the language itself, and the
+        # provenance says so (null) instead of naming a language nobody enforced (rule 5).
         language = tts_languages.vendor_language_code(vendor_model, request.text_language)
         if language:
             body["language_code"] = language
@@ -196,16 +217,18 @@ class ElevenLabsDialogueAdapter(_ElevenLabs):
             raise AdapterError(E_BAD_RESPONSE, "the dialogue answer is not an object")
         audio = decode_audio(answer.get("audio_base64"))
         provenance = {"kind": "dialogue", "lines": line_times(lines, answer.get("voice_segments")),
-                      "model": vendor_model, "language": tts_languages.language_code(request.text_language),
+                      "model": vendor_model, "language": language,
                       "loudness_lufs": None, "true_peak_db": None}
         return ProviderTask(self.key, vendor_model, None,
                             outputs=[Output("audio/mpeg", data=audio, provenance=provenance)])
 
     def _dialogue_voice_refused(self, err: AdapterError) -> AdapterError:
         """A dialogue names several voices and ElevenLabs does not say which one it refused: the remedy says so, and no other
-        voice is tried in its place (rule 4). Only a 404 proves nothing was billed, as in ``_voice_refused``."""
+        voice is tried in its place (rule 4). Only a voice code counts: unlike TTS, the voice is not in this URL, so a bare 404
+        here means a wrong base URL or a moved endpoint, and telling the person to change voices would send them the wrong
+        way (rule 6). That one keeps its generic error."""
         code = getattr(self, "last_vendor_code", "")
-        if code not in _EL_VOICE and not (err.http_status == 404 and code == ""):
+        if code not in _EL_VOICE:
             return err
         return AdapterError(E_BAD_REQUEST,
                             f"a voice in this dialogue is not available on this ElevenLabs account ({code or 'HTTP 404'}): "
