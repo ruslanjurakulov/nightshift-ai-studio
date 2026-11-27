@@ -10,7 +10,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Button, IconButton, buttonClass } from "@/components/ds/Button";
-import { DISPLAY_FONT_PATHS, PUBLIC_FONT_PATHS, isPublicFontPath } from "@/lib/public-paths";
+import { PUBLIC_FONT_PATHS, isPublicFontPath } from "@/lib/public-paths";
 import { FONT_FILES } from "@/next.config";
 
 afterEach(cleanup);
@@ -88,10 +88,39 @@ describe("--ds-* colour tokens", () => {
     expect(css).toContain("@theme inline");
     expect(css).toContain("--color-ds-accent: var(--ds-accent);");
     expect(css).toContain("--font-brand: var(--ds-font-display);");
-    expect(css).toMatch(/--ds-font-display: "Unbounded", "Unbounded Fallback", var\(--font-sans\);/);
-    // Uzbek wraps later than English at the same scale: it gets its own measured fallback, so the swap moves nothing.
-    expect(css).toMatch(/:root:lang\(uz\) \{ --ds-font-display: "Unbounded", "Unbounded Fallback Uz"/);
-    expect(fontsCss).toMatch(/font-family: "Unbounded Fallback Uz";/);
+  });
+});
+
+describe("the display face is Onest (owner, 2026-11-22: the wide Unbounded face read as strange)", () => {
+  it("points --ds-font-display at the Onest stack, by default and for Uzbek", () => {
+    const decls = [...css.matchAll(/--ds-font-display:\s*([^;]+);/g)].map((m) => m[1].trim());
+    expect(decls).toEqual(["var(--font-sans)", "var(--font-sans)"]);
+    expect(css).toMatch(/:root:lang\(uz\) \{ --ds-font-display: var\(--font-sans\); \}/);
+    const globals = readFileSync(path.join(root, "app/globals.css"), "utf8");
+    expect(globals).toMatch(/--font-sans: "Onest"/);
+  });
+
+  it("keeps the display weight and tight spacing, now in Onest", () => {
+    expect(css).toMatch(/\.ds-display \{[^}]*font-family: var\(--ds-font-display\);[^}]*font-weight: 600;[^}]*letter-spacing: -0\.02em;/);
+    expect(css).toMatch(/\.ds-display \{[^}]*font-variant-numeric: tabular-nums/);
+  });
+
+  it("no stylesheet declares or preloads Unbounded, so no browser downloads it", () => {
+    expect(fontsCss).not.toMatch(/unbounded/i);
+    expect(css).not.toMatch(/unbounded/i);
+    for (const f of ["app/page.tsx", "app/layout.tsx", "components/site/fonts.ts"]) {
+      expect(readFileSync(path.join(root, f), "utf8"), f).not.toMatch(/unbounded|preloadDisplayFont|DISPLAY_FONT_PATHS/i);
+    }
+  });
+
+  it("leaves the files and the OFL licence in place, still public and cached (a later decision)", () => {
+    expect(readFileSync(path.join(root, "brand/og-fonts/OFL-Unbounded.txt"), "utf8")).toContain("SIL Open Font License, Version 1.1");
+    for (const f of ["latin", "latin-ext", "cyrillic", "cyrillic-ext"].map((s) => `/fonts/unbounded-${s}-v1.woff2`)) {
+      expect(existsSync(path.join(root, "public", f)), f).toBe(true);
+      expect(PUBLIC_FONT_PATHS).toContain(f);
+      expect(isPublicFontPath(f)).toBe(true);
+      expect(FONT_FILES).toContain(f);
+    }
   });
 });
 
@@ -108,42 +137,6 @@ describe("motion", () => {
     expect(at).toBeGreaterThan(0);
     const chunk = css.slice(at, css.indexOf("}\n}", at));
     for (const v of ["--ds-dur-press: 0ms", "--ds-dur-panel: 0ms", "--ds-dur-page: 0ms", "--ds-press-scale: 1"]) expect(chunk).toContain(v);
-  });
-});
-
-describe("the display face (Unbounded)", () => {
-  const files = ["latin", "latin-ext", "cyrillic", "cyrillic-ext"].map((s) => `/fonts/unbounded-${s}-v1.woff2`);
-
-  it("ships its OFL licence and all four subsets, each with font-display: swap", () => {
-    expect(readFileSync(path.join(root, "brand/og-fonts/OFL-Unbounded.txt"), "utf8")).toContain("SIL Open Font License, Version 1.1");
-    for (const f of files) {
-      expect(existsSync(path.join(root, "public", f)), f).toBe(true);
-      const rule = fontsCss.slice(fontsCss.indexOf(f) - 120, fontsCss.indexOf(f) + 400);
-      expect(rule).toContain('font-family: "Unbounded"');
-      expect(rule).toContain("font-display: swap");
-    }
-  });
-
-  it("is public and immutable-cached like Onest, never gated behind /login", () => {
-    for (const f of files) {
-      expect(PUBLIC_FONT_PATHS).toContain(f);
-      expect(isPublicFontPath(f)).toBe(true);
-      expect(FONT_FILES).toContain(f);
-    }
-  });
-
-  it("preloads only the Latin file (plus Cyrillic for Russian), from pages that set a display heading", () => {
-    expect(DISPLAY_FONT_PATHS.en).toEqual(["/fonts/unbounded-latin-v1.woff2"]);
-    expect(DISPLAY_FONT_PATHS.uz).toEqual(["/fonts/unbounded-latin-v1.woff2"]);
-    expect(DISPLAY_FONT_PATHS.ru).toEqual(["/fonts/unbounded-latin-v1.woff2", "/fonts/unbounded-cyrillic-v1.woff2"]);
-    const layout = readFileSync(path.join(root, "app/layout.tsx"), "utf8");
-    expect(layout).not.toContain("preloadDisplayFont");
-  });
-
-  it("is for display headings only: the body face stays Onest", () => {
-    const globals = readFileSync(path.join(root, "app/globals.css"), "utf8");
-    expect(globals).toMatch(/--font-sans: "Onest"/);
-    expect(css).toMatch(/\.ds-display \{[^}]*font-variant-numeric: tabular-nums/);
   });
 });
 
@@ -242,9 +235,9 @@ describe("the skin (html.ds-skin) leaves no old colour behind", () => {
     expect(missing, "a new colour role in globals.css needs a line in the skin (app/tokens.css) or in UNTOUCHED here").toEqual([]);
   });
 
-  it("is on the root of every page, and reaches the public shell and scoped boxes", () => {
+  it("is on the root of every signed-in app page (public-site.test.tsx pins which), and reaches scoped boxes", () => {
     const layout = readFileSync(path.join(root, "app/layout.tsx"), "utf8");
-    expect(layout).toMatch(/<html lang=\{locale\} className="ds-skin"/);
+    expect(layout).toMatch(/<html lang=\{locale\} className=\{skin\}/);
     expect(css).toMatch(/:root\.ds-skin\.ds-skin,\n\.ds-skin :is\(\.st, \.nx-final, \.nx-bar, \.st-auth-aside\),\n\.ds-skin \[data-theme-scope\] \{/);
   });
 });

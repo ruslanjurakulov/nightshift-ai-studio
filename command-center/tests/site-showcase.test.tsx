@@ -39,6 +39,7 @@ import { useClipsHeld } from "@/lib/site/clip-hold";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import { GALLERY, SAMPLE_CARD, makerCreditProblems, without } from "./helpers/showcase-scope";
 import { FIXTURE_ENTRY, FIXTURE_FILES, FIXTURE_JOB } from "./fixtures/showcase-entry";
+import { aiMarkOf } from "./helpers/ai-mark";
 
 afterEach(cleanup);
 
@@ -166,7 +167,7 @@ describe("the gallery", () => {
     const card = container.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`) as HTMLElement;
     expect(card).toBeTruthy();
     // The badge is on the picture, always (it is required, and nothing may hide it).
-    expect(card.querySelector(".nx-gallery-pic > .nx-result-badge")?.textContent).toBe(g.badge);
+    expect(aiMarkOf(card.querySelector(".nx-gallery-pic > .nx-result-badge"))).toEqual({ seen: g.badge, said: g.badgeName });
     // The model is named in the dialog only (the owner has not decided on the cards, 2026-11-14): not in the card's words, not in
     // its picture's description, not in its link's name.
     expect(card.textContent).not.toContain(FIXTURE_ENTRY.modelName);
@@ -202,7 +203,7 @@ describe("the gallery", () => {
     const { dialog, restore } = openSample(container.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`)!);
     // The dialog is the sample's own box: the only kind of element that may name a model.
     expect(dialog.dataset.showcaseEntry).toBe(FIXTURE_JOB);
-    expect(dialog.querySelector(".nx-result-badge")?.textContent).toBe(g.badge);
+    expect(aiMarkOf(dialog.querySelector(".nx-result-badge"))).toEqual({ seen: g.badge, said: g.badgeName });
     expect(dialog.querySelector(".nx-gallery-model strong")?.textContent).toBe("Runway Gen-4.5");
     expect(dialog.querySelector(".nx-gallery-model")?.textContent).toContain(g.model);
     expect(dialog.querySelector(".nx-sd-prompt")?.textContent).toBe(FIXTURE_ENTRY.prompt);
@@ -439,7 +440,9 @@ describe("the gallery", () => {
     expect(JSON.stringify(s.gallery)).not.toMatch(PROVIDER_BRANDS);
     expect(s.credits.generated).not.toMatch(PROVIDER_BRANDS);
     const AI = /AI-generated|нейросет|sunʼiy intellekt/i;
-    expect(s.gallery.badge).toMatch(AI);
+    // The mark reads just "AI" (owner, 2026-11-22); what a screen reader hears for it still says AI-generated.
+    expect(s.gallery.badge).toBe("AI");
+    expect(s.gallery.badgeName).toMatch(AI);
     expect(s.credits.generated).toMatch(AI);
     expect(s.gallery.altClip).toContain("{model}");
     expect(s.gallery.bgClip).toMatch(AI);
@@ -586,7 +589,7 @@ describe("the shipped samples", () => {
 
       // The card: labelled as an AI generation, on the picture, clip or not; nothing on it says stock or names a photographer, and
       // nothing on it names a model (its link carries the model id for the Studio form only, and says "Use this prompt").
-      expect(card.querySelector(".nx-gallery-pic > .nx-result-badge")?.textContent, e.jobId).toBe(g.badge);
+      expect(aiMarkOf(card.querySelector(".nx-gallery-pic > .nx-result-badge")), e.jobId).toEqual({ seen: g.badge, said: g.badgeName });
       expect(card.querySelector(".nx-gallery-pic")?.getAttribute("data-clip") ?? null).toBe(clip ? "sample" : null);
       noStock(card);
       expect(card.querySelector(".nx-gallery-pic > img")?.getAttribute("alt")).toBe(clip ? g.bgClip : g.bgImage);
@@ -608,7 +611,7 @@ describe("the shipped samples", () => {
       // (the prompt included: the words a job was given are shown, and they must not name a model or maker either).
       const { dialog, restore } = openSample(card);
       expect(dialog.dataset.showcaseEntry).toBe(e.jobId);
-      expect(dialog.querySelector(".nx-result-badge")?.textContent, e.jobId).toBe(g.badge);
+      expect(aiMarkOf(dialog.querySelector(".nx-result-badge")), e.jobId).toEqual({ seen: g.badge, said: g.badgeName });
       noStock(dialog);
       const box = dialog.cloneNode(true) as HTMLElement;
       // A clip animated from another sample's picture shows that picture: named, credited and described exactly as that picture's

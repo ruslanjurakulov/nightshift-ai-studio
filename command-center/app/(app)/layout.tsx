@@ -43,6 +43,7 @@ import { AppProviders } from "@/components/AppProviders";
 import { getDictionary, getLocale } from "@/lib/i18n/server";
 import { MotionProvider } from "@/components/motion/MotionProvider";
 import { FlashNotice } from "@/components/account/FlashNotice";
+import { AppSkin } from "@/components/shell/AppSkin";
 import { SkipLink } from "@/components/shell/SkipLink";
 import { adsFactoryEnabled } from "@/lib/adsFactory/flag";
 import { characterStudioEnabled } from "@/lib/characterStudio/model";
@@ -223,6 +224,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AppProviders locale={await getLocale()}>
+      <AppSkin />
       <FlashNotice />
       <SessionEndedBar />
       {/* The motion kit's engine for the signed-in app (docs/design/MOTION.md):
