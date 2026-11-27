@@ -432,7 +432,8 @@
   transform: translate(-50%, -50%);
 }
 .nx-shorts-playbig svg { width: 30px; height: 30px; }
-.nx-shorts-hint { position: absolute; left: 0; right: 0; top: calc(60px + env(safe-area-inset-top)); text-align: center; font-size: 13px; color: rgba(255, 255, 255, 0.8); pointer-events: none; }
+/* Inset 48 px each side: since the AI mark moved below Close (top 64 px, right 12 px) it shares this row, and the Russian hint ran under it (Pixel, S8). */
+.nx-shorts-hint { position: absolute; left: 48px; right: 48px; top: calc(60px + env(safe-area-inset-top)); text-align: center; font-size: 13px; color: rgba(255, 255, 255, 0.8); pointer-events: none; }
 
 @media (prefers-reduced-motion: no-preference) {
   .nx-shorts-media video { transition: opacity 240ms var(--ns-ease); }

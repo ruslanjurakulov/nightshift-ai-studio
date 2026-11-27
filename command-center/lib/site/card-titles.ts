@@ -44,7 +44,7 @@ export const CARD_TITLES: Readonly<Record<string, Readonly<Record<Locale, string
   "fcdba478-1a92-497d-adbb-1d2c9701e806": { en: "A city folding out of paper", ru: "Город, сложенный из бумаги", uz: "Qogʻozdan yasalgan shahar" },
   "f3583fdc-25c4-42cb-96ce-1d92d80cbf68": { en: "Tiny workers fixing a phone", ru: "Крошечные рабочие чинят экран", uz: "Ekran tuzatayotgan mitti ustalar" },
   "c62d40e7-b1b5-4ba4-8bc9-487f9ef7382e": { en: "Thunderstorm in a glass jar", ru: "Гроза в стеклянной банке", uz: "Shisha bankadagi momaqaldiroq" },
-  "7ee6f783-7c3c-4265-ade8-88c64b674127": { en: "Headphones assembling in mid-air", ru: "Наушники собираются в воздухе", uz: "Havoda yigʻilayotgan quloqchin" },
+  "7ee6f783-7c3c-4265-ade8-88c64b674127": { en: "Headphones assembling in mid-air", ru: "Наушники собираются в воздухе", uz: "Havodagi quloqchin" },
   "4e85c7e4-fd1a-4771-97ee-66c1fb853367": { en: "From orbit to a street stall", ru: "Из космоса к уличной лавке", uz: "Koinotdan koʻcha rastasigacha" },
   "3069ec2f-2f68-40a8-bcbe-fc4c5f9111bc": { en: "Cold-brew coffee ad", ru: "Реклама холодного кофе", uz: "Sovuq qahva reklamasi" },
   "ced854a6-ba49-4668-b9dd-91ca46b72f6d": { en: "Explorer and a giant stone face", ru: "Путешественник и каменный лик", uz: "Sayyoh va ulkan tosh yuz" },
