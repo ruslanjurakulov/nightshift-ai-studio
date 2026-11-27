@@ -522,6 +522,30 @@ def test_a_failed_assembly_whose_word_was_lost_may_be_made_again(db, a, how):
     assert Decimal(finish(db, a, out["id"])["captured_credits"]) == 5 and db.film_row(fid) == ("ready", None)
 
 
+def test_two_re_runs_that_lose_their_word_in_a_row_are_the_last_free_ones_and_the_third_is_refused_holding_nothing(db, a, one_hour):
+    """BR-0215-R2-04: a lost word is an unknown cause, so it may be re-run, but not without end: after two re-runs that ended with a
+    lost word, the quote says assembly_not_retryable (reruns 2) and both doors refuse it before anything is counted or held."""
+    fid, _seg = assembly_lost(db, a, "deadline")
+    for _ in range(2):
+        q = rquote(db, a.admin, fid)
+        assert q["startable"] is True and q["assembly_retryable"] is True
+        out = rerun(db, a.admin, fid, q["quote_id"])
+        assert out["ok"] is True
+        db.claim()
+        db.svc("select public.film_begin_assembly(%s, 'w-1')", [out["id"]])
+        db.su("update public.film_segments set deadline_at = now() - interval '3 hours' where id = %s", [out["id"]])
+        assert db.svc("select public.film_expire_segments()") == 1
+        assert db.film_row(fid) == ("paused", "deadline")
+    q = rquote(db, a.admin, fid)
+    assert q["lost_reruns"] == 2 and q["startable"] is False
+    assert {"reason": "assembly_not_retryable", "word": "deadline", "reruns": 2} in q["blocked_by"]
+    holds, used = db.holds(a.org), db.rate_used(a.admin, "start")
+    for door in (rerun, resume):
+        assert err(lambda: door(db, a.admin, fid, q["quote_id"])) == ("NS409", "assembly_not_retryable", "word=deadline reruns=2")
+    assert db.holds(a.org) == holds and db.rate_used(a.admin, "start") == used
+    assert db.ledger(a.org, "capture") == [Decimal(-44)]  # the takes, once; every failed assembly at 0
+
+
 def test_an_assembly_recorded_completed_is_a_ready_film_even_when_the_sweep_settles_it_at_the_deadline(db, a):
     """M3: the assembly completed, the worker died before its settle, and the sweep settles past the deadline and grace. Before 0215
     the film was left paused (deadline) with nothing to resume; it is ready, and its price is captured once."""

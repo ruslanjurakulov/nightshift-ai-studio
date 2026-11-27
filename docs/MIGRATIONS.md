@@ -2469,7 +2469,8 @@ not close the leak entirely (below: BR-0036-01/02 and BR-0215-01 are open in the
   words: `film_not_resumable`, `nothing_to_resume` (NS409). A cancelled film is not resumable (0171 keeps `cancelled` only for a
   cancel after a charge, which `start_film` never restarts); archive it.
 - **The cap is the whole film's.** `max_credits_per_film` is asked of what the film's segments already captured plus the resume
-  total, in the start and in the quote's `blocked_by` (Breach hole 1).
+  total, in the start and in the quote's `blocked_by` (Breach hole 1), and so is `start_film`'s (and `quote_film`'s) for a film
+  back at draft after a paid segment (BR-0215-R2-01). One helper, `film_captured(film)`, says what the film already cost.
 - **Settling** (0198's `film_settle_locked`, two marked hunks): a segment whose assembly is recorded completed settles `completed`
   (the film `ready`) whatever reason reaches it, the sweep's deadline included; a resume segment that captured 0 and made nothing new
   puts the film back to `paused` (after a cancel, with the earlier pause reason), never `cancelled` (Breach hole 2).
@@ -2481,7 +2482,8 @@ not close the leak entirely (below: BR-0036-01/02 and BR-0215-01 are open in the
 - **A failed assembly, made again** (agreed with the coordinator; no separate migration): `rerun_film_assembly(film, quote_id,
   idempotency_key)` for a film whose every take is made and whose assembly failed with one of S4's retryable words
   (`film_assembly_retryable`), or whose word was lost (the settle reason is `deadline`, `worker_lost` or `assembly_failed`:
-  an unknown cause, re-run at the cost of the assembly line only); `not_assembly_failure`, `assembly_not_retryable` (with the word), `film_changed`; the event is
+  an unknown cause, re-run at the cost of the assembly line only; after two such re-runs in a row the third is refused
+  `assembly_not_retryable` with `word=<last> reruns=2`, and the remedy is support, a person: `film_lost_reruns`); `not_assembly_failure`, `assembly_not_retryable` (with the word), `film_changed`; the event is
   `assembly_rerun`. A resume quote also stores what it carries (`film_quotes.carried`), and the start refuses `film_changed` when
   any of it moved since.
 - **The worker** is unchanged: the carried takes are completed, so it makes only what is left and assembles; 0171 settles the new
@@ -2519,7 +2521,7 @@ not close the leak entirely (below: BR-0036-01/02 and BR-0215-01 are open in the
   guard); 0166's and 0198's replays and rollbacks refuse while 0215 is on (take it out first).
 - **Browser routes** for archive of a paused film (the existing `POST /api/films/{id}/archive` already calls `archive_film`) and for
   the two resume calls are a follow-up; no UI changes here.
-- **Undo.** `docs/sql/rollback_0215_film_archive_resume.sql` (owner-applied): the seven earlier bodies back, the nine functions
+- **Undo.** `docs/sql/rollback_0215_film_archive_resume.sql` (owner-applied): the seven earlier bodies back, the ten functions
   dropped; the columns and record checks kept, 0171's state check back only when no segment ever resumed. Refused while a resume
   segment is open.
 

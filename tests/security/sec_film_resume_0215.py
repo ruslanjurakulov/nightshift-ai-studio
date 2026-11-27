@@ -25,6 +25,9 @@ def extend(tables: dict, functions: dict) -> None:
         "film_assembly_retryable": SERVICE,
         # Internal and standalone (0226 reuses it): a seat in org_members of the role, or platform staff in the exempt organization.
         "is_org_spender": SERVICE,
+        # Internal: what a film already captured (every cap check adds it), and the lost-word re-run count (bounded at two).
+        "film_captured": SERVICE,
+        "film_lost_reruns": SERVICE,
         # Internal: called only inside the two above.
         "film_resume_price": SERVICE,
         "film_resume_precheck": SERVICE,

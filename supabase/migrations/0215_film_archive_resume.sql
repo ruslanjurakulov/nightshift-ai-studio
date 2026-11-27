@@ -23,7 +23,7 @@
 --   film can be archived and is NOT resumable (film_not_resumable). Only `paused` (the run stopped short on its own: a failure, the
 --   deadline, the switch) resumes.
 --
--- CHANGE (additive; seven bodies replaced, each with marked 0215 hunks and nothing else changed; nine functions added; one check
+-- CHANGE (additive; seven bodies replaced, each with marked 0215 hunks and nothing else changed; ten functions added; one check
 -- constraint replaced by a superset; three columns and three checks added):
 --   archive_film (0166's body)        archives a draft, planned, PAUSED or CANCELLED film (the same roles: editors and above). Refused
 --     while any segment of the film is open (queued / running / draining: NS409 segment_open) or a refund waits on one of its holds (an
@@ -58,7 +58,10 @@
 --   start_film_resume(film, quote_id, idempotency_key)  owners and admins: the resume start.
 --   rerun_film_assembly(film, quote_id, idempotency_key)  owners and admins: a resume whose only line is a failed assembly (every
 --                                        take made), with its own refusals (not_assembly_failure, film_changed); then start_film_resume.
---   film_assembly_retryable(word)        internal: the assembly failure words a re-run may cure (S4's list, kept once).
+--   film_assembly_retryable(word)        internal: the assembly failure words a re-run may cure (S4's list, kept once), and the
+--                                        three settle reasons that lost the word (an unknown cause).
+--   film_lost_reruns(segment)            internal: consecutive re-runs that ended with a lost word; at two, no third (support).
+--   film_captured(film)                  internal: what a film's settled segments captured; every cap check adds it.
 --
 -- THE RESUME (docs/FILM_STUDIO.md, "Resume"; contract approved by the coordinator)
 --   * What is priced. The film's newest segment (the one that paused it). A line is DONE when that segment has a completed take of it
@@ -89,11 +92,11 @@
 -- REPLACES (md5 drift guard: the earlier body, or this file's own on a replay; whitespace runs read as one space):
 --   film_read            92f02292981b366f817bd37881e20a0f (0166) -> 981acaa80ff158976f8b9c70b547b270
 --   archive_film         9ca4e793fd81bbd4a0aecdebd59d6dc6 (0166) -> 55c7d0a270fd61f65d6aee32f4af3c67
---   start_film           7971355d754165affaf3e08904b4b078 (0198) -> 4ff45b2145f8cf3e4abab7befacb5971
+--   start_film           7971355d754165affaf3e08904b4b078 (0198) -> 37d467f86ed6350598144c4252568e1f
 --   film_claim_segment   40db385bb4e3893e1085ee38dcd6f49b (0198) -> 8f5fc37c0d0a5223e5f53e1a6e62e770
 --   claim_creative_job   3ca4da96aabe145b34a0275ed4d1c841 (0198) -> 7a0a6d9b16d1b03a4e99a35e577e8711
---   film_settle_locked   7caa68e2b6698c81e34c4f965950adf9 (0198) -> aed04169cd567e5b9f971412c92b5323
---   quote_film           99d01240ed2df7fb002f674df8891608 (0198) -> ce64d1e3843a163c088943758036fdf8
+--   film_settle_locked   7caa68e2b6698c81e34c4f965950adf9 (0198) -> 02155545e01d991dc0a43e124a16f8a1
+--   quote_film           99d01240ed2df7fb002f674df8891608 (0198) -> 58c59ee1637b6d973415e3df640c305b
 -- REPLAY. This file replays onto itself. Re-running 0166 or 0198 after it FAILS LOUDLY (their guards refuse these bodies): take this
 --   file out first with its rollback. Re-running 0036 or 0171 after it fails or silently replaces claim_creative_job /
 --   film_claim_segment the way 0198 describes: take 0198 (and so this file) out first.
@@ -104,7 +107,7 @@
 --   queueing behind the film worker (it then applies on a retry).
 --
 -- NUMBER. Provisionally 0215; the coordinator confirms it at merge. Needs 0166, 0167, 0171, 0187, 0192, 0198.
--- Undo: docs/sql/rollback_0215_film_archive_resume.sql (owner-applied): the seven earlier bodies back, the nine functions dropped; the
+-- Undo: docs/sql/rollback_0215_film_archive_resume.sql (owner-applied): the seven earlier bodies back, the ten functions dropped; the
 --   columns, the superset check and the two record checks are kept (they are the record of what resumed and what was carried).
 --
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
@@ -133,11 +136,11 @@ begin
   for r in select * from (values
       ('public.film_read(uuid)', '92f02292981b366f817bd37881e20a0f', '981acaa80ff158976f8b9c70b547b270', '0166'),
       ('public.archive_film(uuid)', '9ca4e793fd81bbd4a0aecdebd59d6dc6', '55c7d0a270fd61f65d6aee32f4af3c67', '0166'),
-      ('public.start_film(uuid, text, text)', '7971355d754165affaf3e08904b4b078', '4ff45b2145f8cf3e4abab7befacb5971', '0198'),
+      ('public.start_film(uuid, text, text)', '7971355d754165affaf3e08904b4b078', '37d467f86ed6350598144c4252568e1f', '0198'),
       ('public.film_claim_segment(text, interval)', '40db385bb4e3893e1085ee38dcd6f49b', '8f5fc37c0d0a5223e5f53e1a6e62e770', '0198'),
       ('public.claim_creative_job(text, interval)', '3ca4da96aabe145b34a0275ed4d1c841', '7a0a6d9b16d1b03a4e99a35e577e8711', '0198'),
-      ('public.film_settle_locked(uuid, uuid, text)', '7caa68e2b6698c81e34c4f965950adf9', 'aed04169cd567e5b9f971412c92b5323', '0198'),
-      ('public.quote_film(uuid, integer)', '99d01240ed2df7fb002f674df8891608', 'ce64d1e3843a163c088943758036fdf8', '0198')) v(sig, was, now_, src) loop
+      ('public.film_settle_locked(uuid, uuid, text)', '7caa68e2b6698c81e34c4f965950adf9', '02155545e01d991dc0a43e124a16f8a1', '0198'),
+      ('public.quote_film(uuid, integer)', '99d01240ed2df7fb002f674df8891608', '58c59ee1637b6d973415e3df640c305b', '0198')) v(sig, was, now_, src) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is null or h <> all (array[r.was, r.now_]) then
       raise exception '0215 found % with a body that is neither %''s nor 0215''s (md5 %): read the live body first', r.sig, r.src, h;
@@ -161,10 +164,12 @@ begin
       ('public.film_assembly_retryable(text)', '82ec51dabd0ff178ec2280bc0c56e62b'),
       ('public.rerun_film_assembly(uuid, text, text)', '077e568b33d99c5e2056a66ca3e22121'),
       ('public.film_resume_precheck(public.films, uuid)', 'aa7275ed5e8520af52cabd03c2f930d8'),
-      ('public.film_resume_price(public.films)', 'cb0951bf0db3f3ff4858607eb7d948b0'),
-      ('public.quote_film_resume(uuid, integer)', '82168c33540974bd5972f89e4daceaeb'),
-      ('public.is_org_spender(uuid, text)', '91b76ea25715c4b6d66b6adbc1f6a885'),
-      ('public.start_film_resume(uuid, text, text)', 'b8d3d8099e9788d629ef4f003d659936')) v(sig, want) loop
+      ('public.film_resume_price(public.films)', 'd9363cfd02117cd9858318ec044a2102'),
+      ('public.quote_film_resume(uuid, integer)', 'c93e2018f1abbcc6f2fa45820b0639a4'),
+      ('public.is_org_spender(uuid, text)', '1570c64088e2ec74954f32bf572b0088'),
+      ('public.film_captured(uuid)', 'fc3b605e327bf885d336ef850688f25f'),
+      ('public.film_lost_reruns(uuid)', 'daaa86c73ec26ef3f8c78629c5ac3bed'),
+      ('public.start_film_resume(uuid, text, text)', '9f1444b6d34991c9964a0200986a43bb')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is not null and h <> r.want then
       raise exception '0215 found % with a body that is not this file''s (md5 %): read the live body first', r.sig, h;
@@ -653,9 +658,13 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'insufficient_credits', 'code', 'NS402',
                               'detail', format('available=%s needed=%s', public.film_available(org), fq.total));
   end if;
-  if st ->> 'max_credits_per_film' is not null and fq.total > (st ->> 'max_credits_per_film')::numeric then
+  -- 0215: the cap is the whole film's (0171: "no film whose total is above it may start"): a film back at draft after a paid
+  -- segment counts what it already captured too (film_captured).
+  if st ->> 'max_credits_per_film' is not null
+     and public.film_captured(f.id) + fq.total > (st ->> 'max_credits_per_film')::numeric then
     return jsonb_build_object('ok', false, 'reason', 'cap_exceeded', 'code', 'NS400',
-      'detail', format('this film costs %s credits and the organization allows %s a film', fq.total, st ->> 'max_credits_per_film'));
+      'detail', format('this film has cost %s credits, starting it costs %s more, and the organization allows %s a film',
+                       public.film_captured(f.id), fq.total, st ->> 'max_credits_per_film'));
   end if;
   if (select count(*) from public.film_segments x where x.org_id = org and x.status in ('queued', 'running', 'draining'))
      >= (st ->> 'max_active_films')::integer then
@@ -822,8 +831,19 @@ begin
     -- (the segment it continued settled with it); any other reason says why this resume stopped.
     update public.films
        set status = 'paused',
+           -- After a cancel, why the film had stopped: back along the resumes to the first settle reason that is not a cancel
+           -- (a chain of cancelled resumes never reads 'cancelled'; rule 5), takes_failed if none is found.
            pause_reason = case when why = 'cancelled'
-                               then (select g.settle_reason from public.film_segments g where g.id = s.resumed_from) else why end,
+                               then coalesce((with recursive back(id, src, why_) as (
+                                                select g.id, g.resumed_from, g.settle_reason from public.film_segments g
+                                                 where g.id = s.resumed_from
+                                                union all
+                                                select g.id, g.resumed_from, g.settle_reason from public.film_segments g
+                                                  join back b on g.id = b.src
+                                                 where b.why_ = 'cancelled')
+                                              select b.why_ from back b where b.why_ is distinct from 'cancelled' limit 1),
+                                             'takes_failed')
+                               else why end,
            pause_detail = null, updated_at = now()
      where id = p_film;
   else
@@ -911,8 +931,11 @@ begin
     blocked := blocked || jsonb_build_array(jsonb_build_object('reason', 'film_studio_disabled'));
   end if;
   if (q ->> 'priced')::boolean then
-    if st ->> 'max_credits_per_film' is not null and (q ->> 'total')::numeric > (st ->> 'max_credits_per_film')::numeric then
-      blocked := blocked || jsonb_build_array(jsonb_build_object('reason', 'cap_exceeded', 'limit', st -> 'max_credits_per_film'));
+    -- 0215: the whole film's cap, as start_film asks it (what the film captured before plus this total).
+    if st ->> 'max_credits_per_film' is not null
+       and public.film_captured(f.id) + (q ->> 'total')::numeric > (st ->> 'max_credits_per_film')::numeric then
+      blocked := blocked || jsonb_build_array(jsonb_build_object('reason', 'cap_exceeded', 'limit', st -> 'max_credits_per_film',
+                                                                 'captured', public.film_captured(f.id)));
     end if;
     if not exempt_ and (q ->> 'total')::numeric > avail then
       blocked := blocked || jsonb_build_array(jsonb_build_object('reason', 'insufficient_credits', 'available', avail,
@@ -957,11 +980,39 @@ $$;
 -- same question (here start_film, start_film_resume and rerun_film_assembly; the quotes say it in blocked_by).
 create or replace function public.is_org_spender(p_org uuid, p_min_role text) returns boolean
   language sql stable security definer set search_path = public, pg_temp as $$
-  select auth.uid() is not null and p_org is not null and p_min_role in ('owner', 'admin', 'editor', 'viewer')
-         and (exists (select 1 from public.org_members m
-                       where m.org_id = p_org and m.user_id = auth.uid()
-                         and public.app_role_rank(m.role) >= public.app_role_rank(p_min_role))
-              or (public.credits_exempt(p_org) and public.is_platform_admin()))
+  -- Never NULL: a caller's `if not is_org_spender(...)` must refuse on an unknown or NULL role, never let it through.
+  select coalesce(auth.uid() is not null and p_org is not null and p_min_role in ('owner', 'admin', 'editor', 'viewer')
+                  and (exists (select 1 from public.org_members m
+                                where m.org_id = p_org and m.user_id = auth.uid()
+                                  and public.app_role_rank(m.role) >= public.app_role_rank(p_min_role))
+                       or (public.credits_exempt(p_org) and public.is_platform_admin())), false)
+$$;
+
+-- What a film has already cost: the captures of its settled segments (the ledger's own answer, 0171). Every cap check of a film
+-- adds it to the total it is about to hold, so the cap is the whole film's, through any start, resume or re-run.
+create or replace function public.film_captured(p_film uuid) returns numeric
+  language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(sum(x.captured_credits), 0) from public.film_segments x
+   where x.film_id = p_film and x.status in ('settled', 'released')
+$$;
+
+-- How many re-runs of the assembly, back from p_segment, ended one after another with a lost word (the settle reasons
+-- film_assembly_retryable lets through as an unknown cause). A re-run segment is a resume whose only takes are carried. The bound
+-- (two) stops an assembly that kills its worker every time from being rendered again for free without end; past it the remedy is a
+-- person (support). A re-run that completes makes the film ready, so it ends the chain.
+create or replace function public.film_lost_reruns(p_segment uuid) returns integer
+  language sql stable security definer set search_path = public, pg_temp as $$
+  with recursive up(id, src, n) as (
+    select g.id, g.resumed_from, 1 from public.film_segments g
+     where g.id = p_segment and g.purpose = 'resume' and g.assembly_status = 'failed'
+       and g.settle_reason in ('deadline', 'worker_lost', 'assembly_failed')
+       and not exists (select 1 from public.film_takes t where t.segment_id = g.id and t.carried_from_take_id is null)
+    union all
+    select g.id, g.resumed_from, up.n + 1 from public.film_segments g join up on g.id = up.src
+     where g.purpose = 'resume' and g.assembly_status = 'failed'
+       and g.settle_reason in ('deadline', 'worker_lost', 'assembly_failed')
+       and not exists (select 1 from public.film_takes t where t.segment_id = g.id and t.carried_from_take_id is null))
+  select coalesce(max(n), 0)::integer from up
 $$;
 
 -- Which assembly failures a re-run may cure: S4's retryable words, kept here once, so a test can compare this list with S4's
@@ -1172,7 +1223,9 @@ begin
     'original_remaining', orig_rem, 'delta', total - orig_rem,
     'changed', case when total is null or orig_rem is null then null else total <> orig_rem end,
     'rerun', rerun, 'previous_failure', case when g.assembly_status = 'failed' then g.settle_reason end,
-    'assembly_retryable', case when rerun then public.film_assembly_retryable(g.settle_reason) end,
+    'assembly_retryable', case when rerun then public.film_assembly_retryable(g.settle_reason)
+                                                and public.film_lost_reruns(g.id) < 2 end,
+    'lost_reruns', case when rerun then public.film_lost_reruns(g.id) end,
     'planned_seconds', q -> 'planned_seconds', 'assembly_minutes', q -> 'assembly_minutes');
 end
 $$;
@@ -1245,8 +1298,7 @@ begin
   delete from public.film_quotes where film_id = f.id and (version <> f.version or expires_at <= now());
 
   -- What stands in the way, read as quote_film reads it (0198's switch for this organization included).
-  paid := (select coalesce(sum(x.captured_credits), 0) from public.film_segments x
-            where x.film_id = f.id and x.status in ('settled', 'released'));
+  paid := public.film_captured(f.id);
   on_ := public.film_studio_on_for(org);
   st := public.film_settings_of(org);
   avail := public.film_available(org);
@@ -1261,7 +1313,10 @@ begin
   end if;
   -- A re-run of an assembly whose failure the same takes cannot cure is priced (so the person sees it) and never startable.
   if (q ->> 'rerun')::boolean and not (q ->> 'assembly_retryable')::boolean then
-    blocked := blocked || jsonb_build_array(jsonb_build_object('reason', 'assembly_not_retryable', 'word', q ->> 'previous_failure'));
+    blocked := blocked || jsonb_build_array(jsonb_build_object('reason', 'assembly_not_retryable', 'word', q ->> 'previous_failure')
+                                            || case when (q ->> 'lost_reruns')::integer >= 2
+                                                    then jsonb_build_object('reruns', (q ->> 'lost_reruns')::integer)
+                                                    else '{}'::jsonb end);
   end if;
   if (q ->> 'priced')::boolean then
     -- The cap is the whole film's (0171: "no film whose total is above it may start"): what its segments captured plus this.
@@ -1407,6 +1462,11 @@ begin
   if rerun and not public.film_assembly_retryable(gs.settle_reason) then
     perform public.creative_refuse('assembly_not_retryable', format('word=%s', coalesce(gs.settle_reason, 'none')), 'NS409');
   end if;
+  -- Two re-runs in a row that ended with a lost word: no third for free; a person (support) looks at why the assembly dies.
+  if rerun and public.film_lost_reruns(g) >= 2 then
+    perform public.creative_refuse('assembly_not_retryable',
+      format('word=%s reruns=%s', gs.settle_reason, public.film_lost_reruns(g)), 'NS409');
+  end if;
   -- What the quote carried must still be what it was: each take completed, with the same result and last frame, both still in the
   -- library. Anything else since the quote is a changed film, refused before anything is counted. The files are locked FOR SHARE
   -- first and stay locked to commit, so none of them can be soft-deleted between this check and the carried copies below.
@@ -1447,8 +1507,7 @@ begin
                               'detail', format('available=%s needed=%s', public.film_available(org), fq.total));
   end if;
   -- The cap is the whole film's (0171: "no film whose total is above it may start"): what its segments captured plus this resume.
-  paid := (select coalesce(sum(x.captured_credits), 0) from public.film_segments x
-            where x.film_id = f.id and x.status in ('settled', 'released'));
+  paid := public.film_captured(f.id);
   if st ->> 'max_credits_per_film' is not null and paid + fq.total > (st ->> 'max_credits_per_film')::numeric then
     return jsonb_build_object('ok', false, 'reason', 'cap_exceeded', 'code', 'NS400',
       'detail', format('this film has cost %s credits, resuming it costs %s more, and the organization allows %s a film', paid,
@@ -1642,6 +1701,8 @@ revoke all on function public.film_settle_locked(uuid, uuid, text) from public, 
 revoke all on function public.quote_film(uuid, integer) from public, anon, authenticated, service_role;
 grant execute on function public.quote_film(uuid, integer) to authenticated;
 revoke all on function public.is_org_spender(uuid, text) from public, anon, authenticated, service_role;
+revoke all on function public.film_captured(uuid) from public, anon, authenticated, service_role;
+revoke all on function public.film_lost_reruns(uuid) from public, anon, authenticated, service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 7. The end state, asserted inside the transaction
@@ -1654,19 +1715,21 @@ begin
   for r in select * from (values
       ('public.film_read(uuid)', '981acaa80ff158976f8b9c70b547b270'),
       ('public.archive_film(uuid)', '55c7d0a270fd61f65d6aee32f4af3c67'),
-      ('public.start_film(uuid, text, text)', '4ff45b2145f8cf3e4abab7befacb5971'),
+      ('public.start_film(uuid, text, text)', '37d467f86ed6350598144c4252568e1f'),
       ('public.film_claim_segment(text, interval)', '8f5fc37c0d0a5223e5f53e1a6e62e770'),
       ('public.claim_creative_job(text, interval)', '7a0a6d9b16d1b03a4e99a35e577e8711'),
-      ('public.film_settle_locked(uuid, uuid, text)', 'aed04169cd567e5b9f971412c92b5323'),
-      ('public.quote_film(uuid, integer)', 'ce64d1e3843a163c088943758036fdf8'),
-      ('public.is_org_spender(uuid, text)', '91b76ea25715c4b6d66b6adbc1f6a885'),
+      ('public.film_settle_locked(uuid, uuid, text)', '02155545e01d991dc0a43e124a16f8a1'),
+      ('public.quote_film(uuid, integer)', '58c59ee1637b6d973415e3df640c305b'),
+      ('public.is_org_spender(uuid, text)', '1570c64088e2ec74954f32bf572b0088'),
+      ('public.film_captured(uuid)', 'fc3b605e327bf885d336ef850688f25f'),
+      ('public.film_lost_reruns(uuid)', 'daaa86c73ec26ef3f8c78629c5ac3bed'),
       ('public.film_resume_done(public.film_takes)', '74a15de06371eb06e694c7e1ef75d891'),
       ('public.film_assembly_retryable(text)', '82ec51dabd0ff178ec2280bc0c56e62b'),
       ('public.rerun_film_assembly(uuid, text, text)', '077e568b33d99c5e2056a66ca3e22121'),
       ('public.film_resume_precheck(public.films, uuid)', 'aa7275ed5e8520af52cabd03c2f930d8'),
-      ('public.film_resume_price(public.films)', 'cb0951bf0db3f3ff4858607eb7d948b0'),
-      ('public.quote_film_resume(uuid, integer)', '82168c33540974bd5972f89e4daceaeb'),
-      ('public.start_film_resume(uuid, text, text)', 'b8d3d8099e9788d629ef4f003d659936')) v(sig, want) loop
+      ('public.film_resume_price(public.films)', 'd9363cfd02117cd9858318ec044a2102'),
+      ('public.quote_film_resume(uuid, integer)', 'c93e2018f1abbcc6f2fa45820b0639a4'),
+      ('public.start_film_resume(uuid, text, text)', '9f1444b6d34991c9964a0200986a43bb')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception '0215 end state: % does not hold this file''s body (md5 %)', r.sig, h;
@@ -1703,6 +1766,8 @@ begin
      or has_function_privilege('anon', 'public.quote_film(uuid, integer)', 'execute')
      or has_function_privilege('authenticated', 'public.is_org_spender(uuid, text)', 'execute')
      or has_function_privilege('service_role', 'public.is_org_spender(uuid, text)', 'execute')
+     or has_function_privilege('authenticated', 'public.film_captured(uuid)', 'execute')
+     or has_function_privilege('authenticated', 'public.film_lost_reruns(uuid)', 'execute')
      or has_column_privilege('authenticated', 'public.film_takes', 'carried_from_take_id', 'select')
      or has_column_privilege('authenticated', 'public.film_segments', 'worker_id', 'select')
      or not has_column_privilege('authenticated', 'public.film_segments', 'resumed_from', 'select')

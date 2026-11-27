@@ -310,7 +310,10 @@ can go on, paying only for what it has not made yet. Contract approved by the co
   `assembly_failed`: the cause is unknown, and a failed assembly is charged 0); any other (a film_timeline refusal, a review copy,
   narration_missing, film_unavailable, assembly_not_enabled) is `assembly_not_retryable` with the word, and the quote lists it in
   `blocked_by`.
-- **The cap is the whole film's.** `max_credits_per_film` is compared with what the film's segments captured plus the resume total.
+- **The cap is the whole film's.** `max_credits_per_film` is compared with what the film's segments captured plus the total about to
+  be held, on every start: a resume, a re-run, and a `start_film` of a film back at draft after a paid segment.
+- **A lost word is re-run twice at most.** After two re-runs in a row that ended with a lost word, the next is refused
+  (`assembly_not_retryable`, `word=<last> reruns=2`): support looks at why the assembly keeps dying.
 - **Only a member spends** (the owner's decision, 22 Nov). Starting, resuming or re-running a film on an organization's credits
   needs an owner or admin seat in `org_members`; a platform owner or admin who is not a member reads the quotes (they hold nothing,
   and say `not_a_member` in `blocked_by`) and is refused `NS400 not_a_member` with the remedy, before anything is counted. In the

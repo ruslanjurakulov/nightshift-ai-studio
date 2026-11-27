@@ -10,14 +10,14 @@
 --   which, and which takes were carried at 0; with the earlier bodies nothing writes them. Every segment, take, hold and event a
 --   resume wrote stays as it is. 0171's film_segments_state_check comes back only when no segment ever resumed; otherwise the
 --   superset ('resume' allowed) stays, since 0171's would refuse those rows.
--- WHAT IS LOST: is_org_spender (a platform admin outside an organization may start its films again), rerun_film_assembly, film_assembly_retryable, film_resume_done, film_resume_precheck, film_resume_price, quote_film_resume and start_film_resume. A paused film then has no way
+-- WHAT IS LOST: film_captured, film_lost_reruns, is_org_spender (a platform admin outside an organization may start its films again), rerun_film_assembly, film_assembly_retryable, film_resume_done, film_resume_precheck, film_resume_price, quote_film_resume and start_film_resume. A paused film then has no way
 --   forward again (switch-on gate G1 is open again), and a paused or cancelled film cannot be archived.
 --
 -- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) if any of the fifteen bodies is not 0215's (a later change would be undone), or a resume segment is still
+--   0. REFUSES (changes nothing) if any of the seventeen bodies is not 0215's (a later change would be undone), or a resume segment is still
 --      open (queued / running / draining: let it settle first, or the film worker's NIGHTSHIFT_FILM_WORKER off and the sweep).
 --   1. Puts the seven earlier bodies back, verbatim, with their grants.
---   2. Drops the eight 0215 functions and the column grant on resumed_from.
+--   2. Drops the ten 0215 functions and the column grant on resumed_from.
 --   3. Puts 0171's film_segments_state_check back when no segment ever resumed.
 --   4. Asserts the end state.
 
@@ -32,19 +32,21 @@ begin
   for r in select * from (values
       ('public.film_read(uuid)', '981acaa80ff158976f8b9c70b547b270'),
       ('public.archive_film(uuid)', '55c7d0a270fd61f65d6aee32f4af3c67'),
-      ('public.start_film(uuid, text, text)', '4ff45b2145f8cf3e4abab7befacb5971'),
+      ('public.start_film(uuid, text, text)', '37d467f86ed6350598144c4252568e1f'),
       ('public.film_claim_segment(text, interval)', '8f5fc37c0d0a5223e5f53e1a6e62e770'),
       ('public.claim_creative_job(text, interval)', '7a0a6d9b16d1b03a4e99a35e577e8711'),
-      ('public.film_settle_locked(uuid, uuid, text)', 'aed04169cd567e5b9f971412c92b5323'),
-      ('public.quote_film(uuid, integer)', 'ce64d1e3843a163c088943758036fdf8'),
-      ('public.is_org_spender(uuid, text)', '91b76ea25715c4b6d66b6adbc1f6a885'),
+      ('public.film_settle_locked(uuid, uuid, text)', '02155545e01d991dc0a43e124a16f8a1'),
+      ('public.quote_film(uuid, integer)', '58c59ee1637b6d973415e3df640c305b'),
+      ('public.is_org_spender(uuid, text)', '1570c64088e2ec74954f32bf572b0088'),
+      ('public.film_captured(uuid)', 'fc3b605e327bf885d336ef850688f25f'),
+      ('public.film_lost_reruns(uuid)', 'daaa86c73ec26ef3f8c78629c5ac3bed'),
       ('public.film_resume_done(public.film_takes)', '74a15de06371eb06e694c7e1ef75d891'),
       ('public.film_assembly_retryable(text)', '82ec51dabd0ff178ec2280bc0c56e62b'),
       ('public.rerun_film_assembly(uuid, text, text)', '077e568b33d99c5e2056a66ca3e22121'),
       ('public.film_resume_precheck(public.films, uuid)', 'aa7275ed5e8520af52cabd03c2f930d8'),
-      ('public.film_resume_price(public.films)', 'cb0951bf0db3f3ff4858607eb7d948b0'),
-      ('public.quote_film_resume(uuid, integer)', '82168c33540974bd5972f89e4daceaeb'),
-      ('public.start_film_resume(uuid, text, text)', 'b8d3d8099e9788d629ef4f003d659936')) v(sig, want) loop
+      ('public.film_resume_price(public.films)', 'd9363cfd02117cd9858318ec044a2102'),
+      ('public.quote_film_resume(uuid, integer)', 'c93e2018f1abbcc6f2fa45820b0639a4'),
+      ('public.start_film_resume(uuid, text, text)', '9f1444b6d34991c9964a0200986a43bb')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0215: % is not 0215''s body (md5 %): if an older file was re-run over it, apply 0215 again first, then roll back; if a later file changed it, take that file out first', r.sig, h;
@@ -686,7 +688,7 @@ revoke all on function public.film_settle_locked(uuid, uuid, text) from public, 
 revoke all on function public.quote_film(uuid, integer) from public, anon, authenticated, service_role;
 grant execute on function public.quote_film(uuid, integer) to authenticated;
 
--- 2. The eight 0215 functions.
+-- 2. The ten 0215 functions.
 drop function public.rerun_film_assembly(uuid, text, text);
 drop function public.start_film_resume(uuid, text, text);
 drop function public.quote_film_resume(uuid, integer);
@@ -695,6 +697,8 @@ drop function public.film_resume_precheck(public.films, uuid);
 drop function public.film_resume_done(public.film_takes);
 drop function public.film_assembly_retryable(text);
 drop function public.is_org_spender(uuid, text);
+drop function public.film_captured(uuid);
+drop function public.film_lost_reruns(uuid);
 revoke select (resumed_from) on public.film_segments from authenticated;
 
 -- 3. 0171's film_segments_state_check (purpose 'initial' only), as 0171 wrote it, when no segment ever resumed. With one, the superset
@@ -736,7 +740,7 @@ begin
     end if;
   end loop;
   if exists (select 1 from pg_proc where pronamespace = 'public'::regnamespace
-              and proname in ('film_resume_done', 'film_assembly_retryable', 'rerun_film_assembly', 'is_org_spender', 'film_resume_precheck', 'film_resume_price', 'quote_film_resume',
+              and proname in ('film_resume_done', 'film_assembly_retryable', 'rerun_film_assembly', 'is_org_spender', 'film_captured', 'film_lost_reruns', 'film_resume_precheck', 'film_resume_price', 'quote_film_resume',
                               'start_film_resume'))
      or not has_function_privilege('authenticated', 'public.archive_film(uuid)', 'execute')
      or not has_function_privilege('authenticated', 'public.start_film(uuid, text, text)', 'execute')
