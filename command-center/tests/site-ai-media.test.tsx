@@ -86,6 +86,7 @@ import { WELCOME_CREDITS } from "@/lib/pricing";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import { GALLERY, SAMPLE_CARD, makerCreditProblems, placeLabelProblems, without } from "./helpers/showcase-scope";
 import { FIXTURE_ENTRY, FIXTURE_FILES, FIXTURE_JOB } from "./fixtures/showcase-entry";
+import { aiMarkOf } from "./helpers/ai-mark";
 
 const ROOT = join(__dirname, "..");
 const css = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
@@ -162,10 +163,17 @@ describe("the landing with our own clip on its first screen", () => {
     expect(img.getAttribute("fetchpriority")).toBe("high");
     expect(img.getAttribute("data-sample-job")).toBe(HERO);
     expect(img.hasAttribute("data-sample")).toBe(false);
-    // Labelled for what it is, once, in the visitor's language: AI-generated, made in our Studio. No link in the label.
+    // Labelled for what it is, once, in the visitor's language. The eye sees just "AI" (the owner, 2026-11-22: no longer phrase on
+    // the picture); a screen reader hears the whole of it, AI-generated and made in our Studio. No link in the label.
     const credit = hero.querySelector(".hm-hero-credit") as HTMLElement;
-    expect(credit.querySelector(".hm-badge")?.textContent).toBe(h.ai);
-    expect(credit.textContent).toContain(h.reelLabel);
+    expect(aiMarkOf(credit.querySelector(".hm-badge"))).toEqual({ seen: t.site.gallery.badge, said: h.aiCredit });
+    expect(t.site.gallery.badge).toBe("AI");
+    expect(h.aiCredit).toMatch(/AI-generated|нейросет|sunʼiy intellekt/i);
+    expect(h.aiCredit).toContain("Nightshift Studio");
+    // Nothing else is seen: the old "Made in Nightshift Studio" line is gone from view, not hidden by a style.
+    const seen = [...credit.childNodes].map((n) => (n instanceof HTMLElement ? [...n.querySelectorAll('[aria-hidden="true"]')].map((x) => x.textContent).join("") : n.textContent ?? "")).join("").trim();
+    expect(seen).toBe("AI");
+    expect(credit.textContent).not.toContain(h.reelLabel);
     expect(credit.querySelectorAll("a")).toHaveLength(0);
     // The entry asks for "Powered by Runway"; the public site does not show it, nor the model, nor its prompt.
     expect(FIXTURE_ENTRY.attribution).not.toBeNull();
@@ -188,6 +196,47 @@ describe("the landing with our own clip on its first screen", () => {
     // A model is named only inside a sample's own box.
     expect(without(container, SAMPLE_CARD).textContent).not.toMatch(PROVIDER_BRANDS);
     expect(without(container, SAMPLE_CARD).innerHTML).not.toMatch(PROVIDER_BRANDS);
+  });
+
+  it("puts the first screen's own still in the idea bar as a thumbnail: decorative, the same picture, not a second sample", () => {
+    const { container } = landing();
+    const still = container.querySelector(".hm-hero-still") as HTMLImageElement;
+    const thumb = container.querySelector("section.hm-hero form .hm-idea-row > .hm-idea-thumb") as HTMLElement;
+    expect(thumb.getAttribute("aria-hidden")).toBe("true");
+    // The small rendition of the very still behind the words (the hero's `src`), as the reference's bar shows its own clip.
+    expect(thumb.style.backgroundImage).toBe(`url("${still.getAttribute("src")}")`);
+    // Not an <img> and no sample marks: the page's picture count and its no-clip-twice check still see the clip once.
+    expect(thumb.tagName).toBe("SPAN");
+    expect([...thumb.attributes].map((a) => a.name).sort()).toEqual(["aria-hidden", "class", "style"]);
+    // The clip's copy is a canvas over the still (HeroThumb.tsx), not a picture element and not a second video.
+    expect(thumb.querySelectorAll("img, video, picture, source")).toHaveLength(0);
+    expect([...thumb.children].map((c) => `${c.tagName}.${c.className}`)).toEqual(["CANVAS.hm-idea-thumb-live"]);
+    expect(container.querySelectorAll(`[data-showcase-entry="${HERO}"]:not(#models *)`)).toHaveLength(1);
+  });
+
+  it("copies the first screen's own clip into the thumbnail once it plays: the video in the hero's box, not another one", async () => {
+    const drawImage = vi.fn();
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation((() => ({ drawImage })) as never);
+    try {
+      const { container } = landing();
+      const media = container.querySelector("section.hm-hero .hm-hero-media") as HTMLElement;
+      const thumb = container.querySelector("section.hm-hero .hm-idea-thumb") as HTMLElement;
+      // The hero's clip as LoopClip leaves it once it plays (no clip mounts in this jsdom, so the test puts it there).
+      const video = document.createElement("video");
+      for (const [k, v] of Object.entries({ paused: false, readyState: 4, videoWidth: 1280, videoHeight: 720 })) Object.defineProperty(video, k, { value: v, configurable: true });
+      await act(async () => {
+        media.appendChild(video);
+        media.setAttribute("data-live", "true");
+        video.dispatchEvent(new Event("playing"));
+        await Promise.resolve();
+      });
+      expect(drawImage).toHaveBeenCalled();
+      for (const call of drawImage.mock.calls) expect(call[0]).toBe(video);
+      expect(thumb.getAttribute("data-live")).toBe("true");
+      expect(container.querySelectorAll("video")).toHaveLength(1);
+    } finally {
+      getContext.mockRestore();
+    }
   });
 
   it("counts what the page holds: the samples on it and the models that made them, and the welcome grant", () => {
@@ -428,8 +477,9 @@ describe("the prompt bar opens the Studio form, and nothing else", () => {
   it("is not on the landing: the first screen's idea box is the page's one place to type", () => {
     const { container } = landing();
     expect(container.querySelector(".nx-pbar, .nx-pbar-idea, .nx-pbar-slot")).toBeNull();
-    expect(container.querySelectorAll("textarea")).toHaveLength(1);
-    expect(container.querySelector("section.hm-hero textarea")).toBeTruthy();
+    // One field to type an idea in, on the whole page, and it is the first screen's (one line since the glass bar, 2026-11-22).
+    expect(container.querySelectorAll("textarea, [data-testid='idea-field']")).toHaveLength(1);
+    expect(container.querySelector("section.hm-hero input[data-testid='idea-field']")).toBeTruthy();
   });
 });
 

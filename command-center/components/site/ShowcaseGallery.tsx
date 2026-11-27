@@ -13,6 +13,7 @@ import { GRID_GUTTER_ROWS, PLANNED_COLUMNS, gridSpan, level, levelOrder } from "
 import { ShortsFeed } from "@/components/site/ShortsFeed";
 import { shortsItems } from "@/components/site/shorts";
 import { TapReveal } from "@/components/site/TapReveal";
+import { AiMark } from "@/components/site/AiMark";
 import "@/components/site/media-card.css";
 
 export { GRID_GUTTER_ROWS, gridSpan };
@@ -98,7 +99,7 @@ export function ShowcaseGallery({
         </h2>
         <p className="nx-sub">{g.lead}</p>
         {/* Phones only (CSS): the vertical clips as a full-screen feed (components/site/ShortsFeed.tsx). */}
-        <ShortsFeed items={shortsItems(items, signedIn, now, locale)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, mark: g.mark, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />
+        <ShortsFeed items={shortsItems(items, signedIn, now, locale)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, badgeName: g.badgeName, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />
         <div className="nx-gallery-box">
           {/* One pause key for the whole grid, for a keyboard (hidden until focused; the page's pause switch stops them too): one Tab
               stop, not one per card. */}
@@ -152,12 +153,10 @@ export function ShowcaseGallery({
                     />
                     {clip && <ShowcaseClip jobId={e.jobId} together />}
                   </div>
-                  {/* "AI" on screen in every language (owner decision 22 Nov); its meaning, "AI-generated", is read from aiId. */}
-                  <span className="mf-ai" aria-hidden>
-                    {g.mark}
-                  </span>
-                  <span id={aiId} className="sr-only">
-                    {g.badge}
+                  {/* "AI" on screen in every language (owner decision 22 Nov), "AI-generated" in words for a screen reader (AiMark);
+                      the link's description reads the same element, so it is said once in the reading order. */}
+                  <span id={aiId} className="mf-ai">
+                    <AiMark short={g.badge} name={g.badgeName} />
                   </span>
                   {href ? (
                     <>

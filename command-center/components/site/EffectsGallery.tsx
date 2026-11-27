@@ -6,6 +6,7 @@ import { levelSpans, masonryColumns, masonrySpan } from "@/lib/effects/masonry";
 import { EffectFrame } from "@/components/effects/EffectFrame";
 import { effectFrameRatio, effectSample } from "@/components/effects/effect-sample";
 import { TapReveal } from "@/components/site/TapReveal";
+import { AiMark } from "@/components/site/AiMark";
 import "@/components/effects/effects.css";
 import "@/components/site/media-card.css";
 import "@/components/site/effects-gallery.css";
@@ -66,12 +67,13 @@ export function EffectsGallery({ t, effects = EFFECTS }: { t: Dictionary; effect
                 <EffectFrame effect={e} label={label} className="fx-frame efx-frame" badgeId={badgeId} />
                 {/* "AI" on a real result (owner decision 22 Nov: the mark is "AI" in every language); a drawing is not one, and says
                     "Drawing". The frame's badge (badgeId) says which in full, and the link's description reads it. */}
-                <span className="mf-ai" aria-hidden>
-                  {sampled ? t.site.gallery.mark : s.drawing}
-                </span>
-                {sampled && (
-                  <span id={aiId} className="sr-only">
-                    {t.site.gallery.badge}
+                {sampled ? (
+                  <span id={aiId} className="mf-ai">
+                    <AiMark short={t.site.gallery.badge} name={t.site.gallery.badgeName} />
+                  </span>
+                ) : (
+                  <span className="mf-ai" aria-hidden>
+                    {s.drawing}
                   </span>
                 )}
                 <span id={capId} className="mf-cap" aria-hidden>

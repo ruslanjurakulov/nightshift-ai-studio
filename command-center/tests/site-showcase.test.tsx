@@ -39,6 +39,7 @@ import { SLOTS } from "@/components/site/samples";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import { GALLERY, SAMPLE_CARD, makerCreditProblems, without } from "./helpers/showcase-scope";
 import { FIXTURE_ENTRY, FIXTURE_FILES, FIXTURE_JOB } from "./fixtures/showcase-entry";
+import { aiMarkOf } from "./helpers/ai-mark";
 
 afterEach(cleanup);
 
@@ -182,10 +183,12 @@ describe("the gallery", () => {
     // At rest: the media, and the mark "AI" in every language (owner decision 22 Nov); the picture's description says what it is,
     // never by whom, and the link's description carries the mark's full meaning.
     expect(card.querySelector(".nx-gallery-pic > img")?.getAttribute("alt")).toBe(g.bgClip);
-    expect(card.querySelector(".mf-ai")?.textContent).toBe("AI");
-    expect(card.querySelector(".mf-ai")?.getAttribute("aria-hidden")).toBe("true");
+    expect(aiMarkOf(card.querySelector(".mf-ai"))).toEqual({ seen: g.badge, said: g.badgeName });
     const described = link.getAttribute("aria-describedby")!.split(" ").map((id) => document.getElementById(id)?.textContent);
-    expect(described).toContain(g.badge);
+    // The link is described by the mark itself (its words for a screen reader: the "AI" half is aria-hidden), so the label is
+    // said once, not by a second hidden copy.
+    expect(link.getAttribute("aria-describedby")!.split(" ")).toContain(card.querySelector(".mf-ai")!.id);
+    expect(card.textContent!.split(g.badgeName)).toHaveLength(2);
     // The link's purpose (WCAG 2.4.4): its name ends with "Use this prompt", and it is described by the note under the grid
     // (sign-up first, then the Studio form).
     expect(link.textContent).toContain(g.use);
@@ -255,13 +258,13 @@ describe("the gallery", () => {
     expect(card.querySelector("a")).toBeNull();
     const box = card as HTMLElement;
     expect(box.hasAttribute("data-mf-card")).toBe(true);
-    expect(box.querySelector(".mf-ai")?.textContent).toBe("AI");
+    expect(aiMarkOf(box.querySelector(".mf-ai"))).toEqual({ seen: t.site.gallery.badge, said: t.site.gallery.badgeName });
     expect(box.querySelector(".mf-cap .mf-desc")?.textContent).toBe(sfx.prompt);
     // Not a fake control: no tab stop and no name of its own; its caption is read as text (not hidden), with the AI label.
     expect(box.querySelector("[tabindex]")).toBeNull();
     expect(box.hasAttribute("tabindex")).toBe(false);
     expect(box.querySelector(".mf-cap")?.hasAttribute("aria-hidden")).toBe(false);
-    expect(box.textContent).toContain(t.site.gallery.badge);
+    expect(box.textContent).toContain(t.site.gallery.badgeName);
     expect(modelLeaks(card, sfx)).toEqual([]);
   });
 
@@ -317,15 +320,17 @@ describe("the gallery", () => {
     expect(JSON.stringify(s.gallery)).not.toMatch(PROVIDER_BRANDS);
     expect(s.credits.generated).not.toMatch(PROVIDER_BRANDS);
     const AI = /AI-generated|нейросет|sunʼiy intellekt/i;
-    expect(s.gallery.badge).toMatch(AI);
+    // The mark reads just "AI" (owner, 2026-11-22); what a screen reader hears for it still says AI-generated.
+    expect(s.gallery.badge).toBe("AI");
+    expect(s.gallery.badgeName).toMatch(AI);
     expect(s.credits.generated).toMatch(AI);
     expect(s.gallery.bgClip).toMatch(AI);
     expect(s.gallery.bgImage).toMatch(AI);
     // The words under the grid say what a card does, not which model it opens (the Studio says that, with the price).
     for (const w of [s.gallery.lead, s.gallery.tryNote, s.gallery.tryNoteSignedOut]) expect(w).not.toMatch(/\{model\}/);
     expect(s.gallery.notInStudio + s.gallery.gone + s.gallery.useNote).not.toMatch(/coming|soon|скоро|появится|tez orada|paydo/i);
-    // The mark on screen is "AI" in every language (owner decision 22 Nov); the long label is its accessible meaning.
-    expect(s.gallery.mark).toBe("AI");
+    // One pair of keys for the mark (components/site/AiMark.tsx): no second "mark" key of S8's own.
+    expect(Object.keys(s.gallery)).not.toContain("mark");
     expect(Object.keys(s.gallery)).not.toContain("try");
     expect(s.gallery.title).toContain("Nightshift");
   });
@@ -418,8 +423,7 @@ describe("the shipped samples", () => {
       const m = MODELS.get(e.modelId);
       if (!m) throw new Error(`${e.jobId}: ${e.modelId} is not in schemas/model_registry.json`);
       const clip = e.kind === "video" && f.clip !== null;
-      expect(card.querySelector(".mf-ai")?.textContent, e.jobId).toBe("AI");
-      expect(card.textContent, e.jobId).toContain(g.badge);
+      expect(aiMarkOf(card.querySelector(".mf-ai")), e.jobId).toEqual({ seen: g.badge, said: g.badgeName });
       expect(card.querySelector(".mf-cap .mf-desc")?.textContent?.trim().length, e.jobId).toBeGreaterThan(0);
       expect(card.querySelector(".nx-gallery-pic")?.getAttribute("data-clip") ?? null).toBe(clip ? "sample" : null);
       expect(card.querySelector(".nx-gallery-pic > img")?.getAttribute("alt")).toBe(clip ? g.bgClip : g.bgImage);

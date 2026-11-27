@@ -22,6 +22,7 @@ import { effectPreviewJobs, landingGalleryJobs, sampleSectionJobs } from "@/comp
 import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
 import { SignOffPicture } from "@/components/site/SolutionPictures";
 import { FlowCard } from "@/components/auth/FlowCard";
+import { aiMarkOf } from "./helpers/ai-mark";
 
 /**
  * The AI-generated pictures (lib/site/art.ts): the hero's backdrop (wide, and a portrait cut for phones) and the eleven slots, and
@@ -224,7 +225,7 @@ describe("the steps and the tool wall", () => {
     // The stock labels are not on it (labels={false}): only the AI badge and the private chip.
     expect(box.querySelector(".nx-result-badge, .nx-result-credit, [data-sample]")).toBeNull();
     expect(phone.querySelector(".nx-step-private")?.textContent).toBe((t.site.stage.steps.find((s) => s.id === "approve") as { lamp: string }).lamp);
-    expect(phone.querySelector(".nx-step-credit")?.textContent).toContain(t.site.gallery.badge);
+    expect(phone.querySelector(".nx-step-credit")?.textContent).toContain(t.site.gallery.badgeName);
     expect(shot.getAttribute("loading")).toBe("lazy");
     expect(container.querySelector("img.nx-strip-pic, img.nx-wall-pic, [data-art-id^='step-'], [data-art-id^='tool-']")).toBeNull();
   });
@@ -407,7 +408,7 @@ describe("the example topic: beside it there are only its own two football clips
     expect(thumb.getAttribute("data-clip")).toBe("sample");
     expect(thumb.querySelector("img")?.getAttribute("data-sample-job")).toBe(EXAMPLE_THUMB_JOB);
     expect(container.querySelector(".nx-approve-art")?.hasAttribute("id")).toBe(false);
-    expect(thumb.querySelector(".nx-ai-badge")?.textContent).toBe(t.site.gallery.badge);
+    expect(aiMarkOf(thumb.querySelector(".nx-ai-badge"))).toEqual({ seen: t.site.gallery.badge, said: t.site.gallery.badgeName });
     expect(thumb.querySelector(".nx-approve-private")?.textContent).toBe((t.site.stage.steps.find((s) => s.id === "approve") as { lamp: string }).lamp);
   });
 

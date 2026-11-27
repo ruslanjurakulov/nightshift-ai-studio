@@ -257,7 +257,7 @@ export function SampleCarousel({ t, locale, signedIn = false, entries = SHOWCASE
       <ShowcaseCarousel
         slides={slides}
         copy={c}
-        g={{ badge: g.badge, model: g.model, altClip: g.altClip, altImage: g.altImage, use: g.use, notInStudio: g.notInStudio, gone: g.gone, noPrompt: g.noPrompt }}
+        g={{ badge: g.badge, badgeName: g.badgeName, model: g.model, altClip: g.altClip, altImage: g.altImage, use: g.use, notInStudio: g.notInStudio, gone: g.gone, noPrompt: g.noPrompt }}
       />
     </section>
   );
@@ -288,7 +288,7 @@ export function SampleCompare({ t, locale, signedIn = false, entries = SHOWCASE_
                   picture={make(picture)}
                   title={s.title}
                   copy={c}
-                  g={{ badge: g.badge, model: g.model, altClip: g.altClip, altImage: g.altImage }}
+                  g={{ badge: g.badge, badgeName: g.badgeName, model: g.model, altClip: g.altClip, altImage: g.altImage }}
                 />
               </li>
             );
@@ -321,7 +321,7 @@ export function SampleTicker({ t, locale, signedIn = false, entries = SHOWCASE_E
           </h2>
           <p className="nxt-note">{c.note}</p>
         </div>
-        <PromptTicker items={list} copy={c} g={{ badge: g.badge, model: g.model, altClip: g.altClip }} />
+        <PromptTicker items={list} copy={c} g={{ badge: g.badge, badgeName: g.badgeName, model: g.model, altClip: g.altClip }} />
       </div>
     </section>
   );

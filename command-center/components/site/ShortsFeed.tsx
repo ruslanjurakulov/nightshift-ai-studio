@@ -12,9 +12,10 @@ import type { SiteDictionary } from "@/lib/i18n/site/en";
 import { useMotionPaused } from "@/lib/site/motion";
 import { holdClips } from "@/lib/site/clip-hold";
 import type { ShortsItem } from "@/components/site/shorts";
+import { AiMark } from "@/components/site/AiMark";
 
 type NetworkInformation = { saveData?: boolean };
-type GalleryCopy = Pick<SiteDictionary["gallery"], "badge" | "mark" | "use" | "useNote" | "noPrompt">;
+type GalleryCopy = Pick<SiteDictionary["gallery"], "badge" | "badgeName" | "use" | "useNote" | "noPrompt">;
 
 /** The marker of the history entry the feed adds, so the phone's back button closes the feed instead of leaving the page. */
 const HISTORY_KEY = "nsShorts";
@@ -295,11 +296,10 @@ function Feed({
               )}
               {i === 0 && total > 1 && here && <p className="nx-shorts-hint" aria-hidden>{copy.hint}</p>}
               {/* At rest only the clip and this mark ("AI" in every language, owner decision 22 Nov); its meaning is read in full. */}
-              <span className="mf-ai nx-shorts-ai" aria-hidden>
-                {g.mark}
+              <span className="mf-ai nx-shorts-ai">
+                <AiMark short={g.badge} name={g.badgeName} />
               </span>
               <div className="nx-shorts-cap" inert={!here}>
-                <span className="sr-only">{g.badge}</span>
                 {it.title && <p className="nx-shorts-title">{it.title}</p>}
                 <p id={promptId} className="nx-shorts-prompt" lang={it.line ? it.lang : undefined}>
                   {/* The card's one line, not the whole prompt: that travels only in the link (owner decision 22 Nov). */}

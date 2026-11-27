@@ -24,6 +24,7 @@ import {
   type SwapJob,
   type SwapQuote,
 } from "@/lib/characterStudio/model";
+import { AiMark } from "@/components/site/AiMark";
 
 /**
  * Character Studio ("Qahramon studiyasi", docs/CHARACTER_STUDIO.md; migration 0137). Drawn only with NIGHTSHIFT_CHARACTER_STUDIO on: the
@@ -473,7 +474,7 @@ export function CharacterStudio({
               {j.status === "ready" && j.charged !== null ? <span className="cs-small">{fmt(t.jobs.charged, { credits: j.charged })}</span> : null}
               {j.status === "ready" ? (
                 <>
-                  <span className="cs-badge">{t.jobs.aiLabel}</span>
+                  <span className="cs-badge"><AiMark short={t.jobs.aiLabel} name={t.jobs.aiLabelName} /></span>
                   <a href={libraryHref}>{t.jobs.open}</a>
                 </>
               ) : null}

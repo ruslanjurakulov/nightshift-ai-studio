@@ -35,6 +35,7 @@ import { TapReveal } from "@/components/site/TapReveal";
 import { shortsItems } from "@/components/site/shorts";
 import { showcaseItems } from "@/components/site/ShowcaseGallery";
 import { PROVIDER_BRANDS } from "./helpers/brands";
+import { aiMarkOf } from "./helpers/ai-mark";
 import { FIXTURE_ENTRY, FIXTURE_FILES } from "./fixtures/showcase-entry";
 import raw from "@/lib/site/showcase.json";
 import { CARD_TITLE_MAX, CARD_TITLES, cardTitle } from "@/lib/site/card-titles";
@@ -68,9 +69,10 @@ describe("no model name on the public cards (owner decision 22 Nov)", () => {
     const cards = [...section.querySelectorAll("[data-showcase-entry]")];
     for (const c of cards) {
       // "AI" on screen in every language (owner decision 22 Nov), its full meaning for a screen reader in the link's description.
-      expect(c.querySelector(".mf-ai")?.textContent).toBe("AI");
+      expect(aiMarkOf(c.querySelector(".mf-ai"))).toEqual({ seen: d.site.gallery.badge, said: d.site.gallery.badgeName });
       const link = c.querySelector("a.mf-card-link");
-      if (link) expect(link.getAttribute("aria-describedby")!.split(" ").map((id) => document.getElementById(id)?.textContent)).toContain(d.site.gallery.badge);
+      // The link is described by the mark itself, whose spoken words are the full label (the "AI" half is aria-hidden).
+      if (link) expect(link.getAttribute("aria-describedby")!.split(" ")).toContain(c.querySelector(".mf-ai")!.id);
       expect(c.querySelector(".mf-cap .mf-desc")).toBeTruthy();
       expect(c.hasAttribute("data-model")).toBe(false);
     }
@@ -95,7 +97,8 @@ describe("no model name on the public cards (owner decision 22 Nov)", () => {
       expect(card.querySelectorAll("a")).toHaveLength(1);
       const sampled = card.querySelector(".fx-frame")!.hasAttribute("data-sample");
       // "AI" only on a real result; a drawing says it is one (never an AI label on something that is not).
-      expect(card.querySelector(".mf-ai")?.textContent).toBe(sampled ? "AI" : d.effects.site.drawing);
+      if (sampled) expect(aiMarkOf(card.querySelector(".mf-ai"))).toEqual({ seen: d.site.gallery.badge, said: d.site.gallery.badgeName });
+      else expect(card.querySelector(".mf-ai")?.textContent).toBe(d.effects.site.drawing);
       expect(card.querySelector(".mf-cap .mf-title")?.textContent).toBe(d.effects.items[e.id].name);
       expect(card.querySelector(".mf-cap .mf-desc")?.textContent).toBe(d.effects.items[e.id].line);
       expect(card.querySelector(".mf-cap .mf-facts")?.textContent).toContain(d.effects.kinds[e.capability]);
@@ -105,8 +108,8 @@ describe("no model name on the public cards (owner decision 22 Nov)", () => {
       expect(described).toContain(card.querySelector(".mf-cap"));
       const words = described.map((n) => n?.textContent ?? "").join(" ");
       expect(words).toContain(sampled ? d.effects.sample : d.effects.noSample);
-      if (sampled) expect(words).toContain(d.site.gallery.badge);
-      else expect(words).not.toContain(d.site.gallery.badge);
+      if (sampled) expect(words).toContain(d.site.gallery.badgeName);
+      else expect(words).not.toContain(d.site.gallery.badgeName);
     }
   });
 
@@ -385,12 +388,10 @@ describe("the Shorts feed is media first", () => {
     const tallJob = SHOWCASE_ENTRIES.find((e) => e.kind === "video")?.jobId ?? FIXTURE_ENTRY.jobId;
     const tall = { ...FIXTURE_ENTRY, jobId: tallJob, capability: "t2v", operatorPreview: false, modelId: "minimax-hailuo-2.3", width: 1280, height: 2240 };
     const items = shortsItems([{ e: tall, f: FIXTURE_FILES[FIXTURE_ENTRY.jobId] }], false, new Date("2026-11-22T00:00:00Z"), "ru");
-    render(<ShortsFeed items={items} copy={d.site.autopilot.shorts} g={{ badge: g.badge, mark: g.mark, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />);
+    render(<ShortsFeed items={items} copy={d.site.autopilot.shorts} g={{ badge: g.badge, badgeName: g.badgeName, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />);
     fireEvent.click(document.querySelector(".nx-shorts-open")!);
     const slide = document.querySelector<HTMLElement>(".nx-shorts-slide")!;
-    expect(slide.querySelector(".mf-ai")?.textContent).toBe("AI");
-    expect(slide.querySelector(".mf-ai")?.getAttribute("aria-hidden")).toBe("true");
-    expect(slide.textContent).toContain(g.badge);
+    expect(aiMarkOf(slide.querySelector(".mf-ai"))).toEqual({ seen: g.badge, said: g.badgeName });
     expect(slide.hasAttribute("data-shown")).toBe(false);
     // The title in the page's language when the sample has one; the line is the card's, never the whole prompt.
     const title = cardTitle(tallJob, "ru");
