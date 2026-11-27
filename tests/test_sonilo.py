@@ -162,7 +162,8 @@ class CapabilityTests(unittest.TestCase):
         for constraint in ("model_registry_capabilities_check", "model_probe_runs_capability_check"):
             self.assertEqual(set(CAPABILITIES) - REGISTRY_ONLY_CAPABILITIES, _db_capabilities(constraint), constraint)
         # video_character_swap (0137) is sold through its own tables, never as a creative job: registry-only for good.
-        self.assertEqual(REGISTRY_ONLY_CAPABILITIES, {"music", "video_music", "video_character_swap"})
+        # dialogue (S6_GAPS G5) waits for its migration: tests/test_elevenlabs_dialogue.py holds it.
+        self.assertEqual(REGISTRY_ONLY_CAPABILITIES, {"music", "video_music", "video_character_swap", "dialogue"})
 
     def test_no_migration_here_adds_them(self):
         for path in (ROOT / "supabase" / "migrations").glob("*.sql"):
@@ -210,8 +211,10 @@ class RegistryEntryTests(unittest.TestCase):
             self.assertLessEqual(set(row["capabilities"]), known, row["id"])
         # The two Character Studio entries (0137) are registry-only too: tests/test_character_swap_adapters.py holds them.
         swap = {"kling-4.0-omni-edit", "seedance-2.5-edit"}
-        self.assertEqual(len(rows), len(self.r) - 2 - len(swap))
-        self.assertEqual({e.id for e in self.r.values() if e.registry_only}, set(IDS) | swap)
+        # So are the two Text to Dialogue entries (tests/test_elevenlabs_dialogue.py).
+        talk = {"elevenlabs-dialogue-v3", "elevenlabs-dialogue-v4"}
+        self.assertEqual(len(rows), len(self.r) - 2 - len(swap) - len(talk))
+        self.assertEqual({e.id for e in self.r.values() if e.registry_only}, set(IDS) | swap | talk)
 
     def test_the_gate_is_terms_review_and_nothing_can_be_sold(self):
         for mid in IDS:

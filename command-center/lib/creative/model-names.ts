@@ -10,6 +10,8 @@
 export const REGISTRY_NAMES: Readonly<Record<string, string>> = {
   "anthropic-claude-sonnet-5-5": "Claude Sonnet 5.5",
   "assemblyai-universal-2": "AssemblyAI Universal-2",
+  "elevenlabs-dialogue-v3": "ElevenLabs v3 Dialogue",
+  "elevenlabs-dialogue-v4": "ElevenLabs v4 Dialogue",
   "elevenlabs-dubbing-v1": "ElevenLabs Dubbing v1",
   "elevenlabs-dubbing-v2": "ElevenLabs Dubbing v2",
   "elevenlabs-flash-v2.5": "ElevenLabs Flash v2.5",

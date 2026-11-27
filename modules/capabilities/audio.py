@@ -186,9 +186,13 @@ class ElevenLabsTTSAdapter(_ElevenLabs):
         reason = tts_languages.refusal(vendor_model, request.text_language)
         if reason:
             raise AdapterError(E_BAD_REQUEST, reason)
+        body = {"text": request.prompt, "model_id": vendor_model}
+        # v3/v4 guess the language from the text unless told; Multilingual v2 refuses the field (tts_languages).
+        language = tts_languages.vendor_language_code(vendor_model, request.text_language)
+        if language:
+            body["language_code"] = language
         try:
-            out = self._audio(f"{self.base_url}/v1/text-to-speech/{request.voice_id}",
-                              {"text": request.prompt, "model_id": vendor_model})
+            out = self._audio(f"{self.base_url}/v1/text-to-speech/{request.voice_id}", body)
         except AdapterError as e:
             # One voice, one call: an unknown voice is the person's to replace, and no default voice is
             # ever asked for instead (rule 4, modules/audio_mixer.verify_voice).
