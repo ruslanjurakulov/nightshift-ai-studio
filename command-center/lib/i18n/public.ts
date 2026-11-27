@@ -28,7 +28,7 @@ export type PublicDictionary = {
     auth: Dictionary["site"]["auth"];
     /** The brief, plan, approve flow the sign-in and sign-up stages draw (components/auth/FlowCard.tsx). */
     stage: Pick<Dictionary["site"]["stage"], "tag" | "figure" | "steps">;
-    samples: Pick<Dictionary["site"]["samples"], "credit" | "captions" | "tag" | "frameTag" | "clipTag" | "alts">;
+    samples: Pick<Dictionary["site"]["samples"], "credit" | "captions" | "tag" | "frameTag" | "clipTag" | "alts" | "sound">;
     /** A sign-in or sign-up stage that shows one of our samples labels it as one (components/site/PlaceFill.tsx). */
     gallery: Pick<Dictionary["site"]["gallery"], "badge" | "badgeName" | "bgClip" | "bgImage">;
     fx: Pick<Dictionary["site"]["fx"], "pause">;
@@ -63,7 +63,7 @@ export function publicDictionary(t: Dictionary): PublicDictionary {
     plans: omit(t.plans, "managePortalMissing"),
     credits: { buy: { pack: t.credits.buy.pack } },
     creditsPage: { eq: t.creditsPage.eq },
-    site: { pricingTeaser: { credits: t.site.pricingTeaser.credits }, auth: t.site.auth, stage: { tag: t.site.stage.tag, figure: t.site.stage.figure, steps: t.site.stage.steps }, samples: { credit: t.site.samples.credit, captions: t.site.samples.captions, tag: t.site.samples.tag, frameTag: t.site.samples.frameTag, clipTag: t.site.samples.clipTag, alts: t.site.samples.alts }, gallery: { badge: t.site.gallery.badge, badgeName: t.site.gallery.badgeName, bgClip: t.site.gallery.bgClip, bgImage: t.site.gallery.bgImage }, fx: { pause: t.site.fx.pause } },
+    site: { pricingTeaser: { credits: t.site.pricingTeaser.credits }, auth: t.site.auth, stage: { tag: t.site.stage.tag, figure: t.site.stage.figure, steps: t.site.stage.steps }, samples: { credit: t.site.samples.credit, captions: t.site.samples.captions, tag: t.site.samples.tag, frameTag: t.site.samples.frameTag, clipTag: t.site.samples.clipTag, alts: t.site.samples.alts, sound: t.site.samples.sound }, gallery: { badge: t.site.gallery.badge, badgeName: t.site.gallery.badgeName, bgClip: t.site.gallery.bgClip, bgImage: t.site.gallery.bgImage }, fx: { pause: t.site.fx.pause } },
     signup: t.signup,
     recovery: t.recovery,
     auth: { email: t.auth.email, password: t.auth.password, signIn: t.auth.signIn, signingIn: t.auth.signingIn },
