@@ -11,7 +11,7 @@
  *   charge = max(ceil(minutes × credits_per_unit × (1 + margin)), ceil(download_minimum))
  */
 
-import type { PriceMap } from "@/lib/credits";
+import { chargedPrices, type PriceMap } from "@/lib/credits";
 
 export type HdQuality = "720p" | "1080p";
 export type DownloadQuality = "480p" | HdQuality;
@@ -23,6 +23,16 @@ export const QUALITY_SIDE: Record<HdQuality, number> = { "720p": 720, "1080p": 1
 export const UNIT_DOWNLOAD_MINIMUM = "download_minimum";
 export function downloadUnit(q: HdQuality): string {
   return `download_${q}_minute`;
+}
+
+/**
+ * The part of a price list the Download menu prices from: the HD download units and their floor, as charged (margin folded
+ * in, no note). The menu is a Client Component, so whatever it is handed is in the video page's payload; the rest of the
+ * list (the ledger's units, the per-minute rate) is not its business.
+ */
+export function downloadPrices(prices: PriceMap): PriceMap {
+  const keep = new Set<string>([...HD_QUALITIES.map(downloadUnit), UNIT_DOWNLOAD_MINIMUM]);
+  return chargedPrices(Object.fromEntries(Object.entries(prices).filter(([unit]) => keep.has(unit))));
 }
 
 /** A paid download makes the same quality of the same video free for this long. */

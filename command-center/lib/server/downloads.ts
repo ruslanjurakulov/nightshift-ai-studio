@@ -7,6 +7,7 @@ import {
   DOWNLOAD_REQUEST_COLUMNS,
   coerceDownloadRequests,
   coerceMaster,
+  downloadPrices,
   type DownloadMaster,
   type DownloadRequestRow,
 } from "@/lib/downloads";
@@ -82,7 +83,7 @@ export async function loadDownloads(videoId: string, channelId: string): Promise
       ...empty,
       available: true,
       master: coerceMaster(masterRes.data),
-      prices: prices.prices,
+      prices: downloadPrices(prices.prices),
       requests: coerceDownloadRequests(reqRes.data),
       balance,
       exempt,
