@@ -561,16 +561,22 @@ class IdeogramUpscaleAdapter(_IdeogramV2):
     FACTORS = {2: "x2"}
     _TYPES = {"image/png", "image/jpeg", "image/webp"}
 
-    @staticmethod
-    def _pixels(path: Path) -> Optional[Tuple[int, int]]:
-        """(width, height) from the file's header, or None when it cannot be read. Never a guess (CLAUDE.md #5)."""
+    #: What Pillow names each accepted type: the file is opened with only these decoders, and its contents must be
+    #: the type its extension says, because that MIME is what the upload declares to the vendor.
+    _FORMATS = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}
+
+    @classmethod
+    def _pixels(cls, path: Path) -> Tuple[Optional[str], Optional[Tuple[int, int]]]:
+        """(the MIME the file's contents are, (width, height)) from its header, or (None, None) when it cannot be read
+        as PNG, JPEG or WebP. Never a guess (CLAUDE.md #5). Only those three decoders are tried: a TIFF renamed .png
+        must not reach the TIFF plugin, nor go up labelled image/png."""
         from PIL import Image  # noqa: PLC0415 - only an upscale reads a source's size
 
         try:
-            with Image.open(path) as im:
-                return int(im.size[0]), int(im.size[1])
-        except Exception:  # noqa: BLE001 - truncated, a bomb, not an image: all "cannot be read"
-            return None
+            with Image.open(path, formats=list(cls._FORMATS)) as im:
+                return cls._FORMATS.get(str(im.format)), (int(im.size[0]), int(im.size[1]))
+        except Exception:  # noqa: BLE001 - truncated, a bomb, not one of the three: all "cannot be read"
+            return None, None
 
     def _refusals(self, request: CapabilityRequest) -> List[str]:
         out: List[str] = []
@@ -589,10 +595,13 @@ class IdeogramUpscaleAdapter(_IdeogramV2):
                 if path.stat().st_size > self.MAX_BYTES:
                     out.append("Ideogram upscales images of at most 10 MB")
                     continue
-                size = self._pixels(path)
+                kind, size = self._pixels(path)
                 if size is None:
-                    out.append("the image's size could not be read, so its upscale cannot be checked; "
-                               "export it again as PNG or JPEG")
+                    out.append("the image could not be read as PNG, JPEG or WebP within the size limit, so its "
+                               "upscale cannot be checked; export it again and upscale the new copy")
+                elif kind != image_mime(str(path)):
+                    out.append("the file's contents are not the image type its name says; "
+                               "export it again as PNG, JPEG or WebP")
                 elif factor in self.FACTORS and max(size) * factor > self.MAX_OUTPUT_SIDE:
                     out.append(f"this image is {size[0]}x{size[1]}; a {factor}x upscale must stay within "
                                f"{self.MAX_OUTPUT_SIDE} px a side, so use one at most "

@@ -100,6 +100,8 @@ class TheRequest(Base):
             with self.subTest(model=other), self.assertRaises(AdapterError) as cm:
                 a.submit(self.ask(src), other)
             self.assertEqual(cm.exception.code, E_BAD_REQUEST)
+            # Nothing was sent, so the worker may route the job on (BR-L-019); without it the job just fails.
+            self.assertIs(cm.exception.not_accepted, True)
         self.assertEqual(s.calls, [])
 
     def test_no_factor_named_still_sends_x2(self):
@@ -118,6 +120,7 @@ class Refusals(Base):
         with self.assertRaises(AdapterError) as cm:
             a.submit(self.ask(src, prompt="keep it sharp"), "topaz-standard-2")
         self.assertEqual(cm.exception.code, E_BAD_REQUEST)
+        self.assertIs(cm.exception.not_accepted, True)
         self.assertEqual(s.calls, [])
 
     def test_a_2x_output_past_8192_px_a_side_is_refused_with_the_size_to_use(self):
@@ -129,8 +132,9 @@ class Refusals(Base):
                 big = self.picture(size, "big.png")
                 problems = a.problems(self.ask(big), self.entry)
                 self.assertTrue(any("8192 px" in p and "4096 px" in p for p in problems), problems)
-                with self.assertRaises(AdapterError):
+                with self.assertRaises(AdapterError) as cm:
                     a.submit(self.ask(big), "topaz-standard-2")
+                self.assertIs(cm.exception.not_accepted, True)
         self.assertEqual(s.calls, [])
 
     def test_a_file_whose_size_cannot_be_read_is_refused_not_sent(self):
@@ -140,6 +144,28 @@ class Refusals(Base):
         problems = a.problems(self.ask(bad), self.entry)
         self.assertTrue(any("could not be read" in p for p in problems), problems)
         self.assertEqual(s.calls, [])
+
+    def test_a_tiff_renamed_png_is_refused_not_parsed_as_tiff_or_sent_as_png(self):
+        # Opened with only the PNG/JPEG/WebP decoders, a TIFF is unreadable; it must never go up labelled image/png.
+        renamed = self.picture(name="renamed.png", fmt="TIFF")
+        a, s = self.make()
+        problems = a.problems(self.ask(renamed), self.entry)
+        self.assertTrue(any("could not be read as PNG, JPEG or WebP" in p for p in problems), problems)
+        with self.assertRaises(AdapterError) as cm:
+            a.submit(self.ask(renamed), "topaz-standard-2")
+        self.assertIs(cm.exception.not_accepted, True)
+        self.assertEqual(s.calls, [])
+
+    def test_a_jpeg_renamed_png_is_refused_for_its_label(self):
+        renamed = self.picture(name="renamed.png", fmt="JPEG")
+        a, s = self.make()
+        problems = a.problems(self.ask(renamed), self.entry)
+        self.assertTrue(any("not the image type its name says" in p for p in problems), problems)
+        with self.assertRaises(AdapterError):
+            a.submit(self.ask(renamed), "topaz-standard-2")
+        self.assertEqual(s.calls, [])
+        jpg = self.picture(name="ok.jpg", fmt="JPEG")
+        self.assertEqual(a.problems(self.ask(jpg), self.entry), [])
 
     def test_other_factors_and_types_are_refused(self):
         src = self.picture()
