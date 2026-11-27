@@ -297,3 +297,48 @@ def test_the_labs_take_off_helpers_take_0218_off_first_and_put_it_back(lab):
         assert _md5s(d) == AFTER
     finally:
         sec_db.drop_database(admin, name)
+
+
+def test_on_0224s_base_the_file_keeps_0224s_line_its_rollback_puts_it_back_and_the_quote_still_refuses(lab):
+    """Stream S10's 0224 (not on main) adds one line to 0208's creative_price. Simulated: a stub credits_per_unit_now(text) and 0208's
+    body plus that line; 0218 must then create its own body plus the line (never drop 0224's price), and its rollback 0208's plus it."""
+    import re
+
+    from test_sec_api_creative import Db
+
+    admin = sec_db.admin_dsn()
+    name = f"ns_prompt_limits_0224_{uuid.uuid4().hex[:8]}"
+    base = sec_db.create_database(admin, name)
+    try:
+        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name != sec_db.MIGRATION_0218.name])
+        d = Db(base)
+        assert _md5s(d) == BEFORE
+        d.su("create function public.credits_per_unit_now(p_unit text) returns numeric language sql stable "
+             "set search_path = public, pg_temp as $$ select credits_per_unit from public.credit_prices where unit = p_unit $$")
+        text = (sec_db.MIGRATIONS / "0208_geo_gate_and_image_size_price.sql").read_text(encoding="utf-8")
+        body = re.search(r"(?m)^create or replace function public\.creative_price\(.*?^\$\$;\n", text, re.S).group(0)
+        anchor = "    select * into rate from public.credit_prices where unit = m_unit;\n"
+        d.su(body.replace(anchor, anchor + "    rate.credits_per_unit := public.credits_per_unit_now(rate.unit);  -- 0224: a dated price "
+                                           "(credit_price_schedule) once it is in force\n"))
+        assert _md5s(d)["creative_price"] == sec_db.CREATIVE_PRICE_0208_0224
+        m = sec_db.MIGRATION_0218.read_text(encoding="utf-8")
+        d.su(m)
+        assert _md5s(d) == {**AFTER, "creative_price": sec_db.CREATIVE_PRICE_0218_0224}
+        with psycopg.connect(base, autocommit=True) as c:
+            assert sec_db.has_0218(c) and sec_db.has_0208(c)
+        d.su(m)  # the replay keeps the variant
+        assert _md5s(d)["creative_price"] == sec_db.CREATIVE_PRICE_0218_0224
+        assert "credits_per_unit_now" in d.su(f"select pg_get_functiondef('{SIGS['creative_price']}'::regprocedure)")[0][0]
+        assert d.su(f"select has_function_privilege('authenticated', '{SIGS['creative_price']}', 'EXECUTE')") == [(False,)]
+        d.su(sec_db.ROLLBACK_0218.read_text(encoding="utf-8"))
+        assert _md5s(d) == {**BEFORE, "creative_price": sec_db.CREATIVE_PRICE_0208_0224}, "0224's line survives the rollback"
+        d.su(m)
+        assert _md5s(d)["creative_price"] == sec_db.CREATIVE_PRICE_0218_0224
+        # any other body is refused
+        live = d.su(f"select pg_get_functiondef('{SIGS['creative_price']}'::regprocedure)")[0][0]
+        d.su(live.replace("begin\n", "begin\n  -- edited by hand\n", 1))
+        with pytest.raises(Exception) as cm:
+            d.su(m)
+        assert "0218 found a creative_price() that is neither 0208's body (with or without 0224's line) nor 0218's" in str(cm.value)
+    finally:
+        sec_db.drop_database(admin, name)

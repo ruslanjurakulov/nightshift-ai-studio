@@ -194,6 +194,22 @@ class CreativePromptLimitsMigration(unittest.TestCase):
             for name in HUNKS:
                 self.assertNotIn(f"function public.{name}(", text, (f, name))
 
+    def test_on_0224s_base_the_body_is_this_files_plus_0224s_one_line_and_nothing_else(self):
+        anchor = "    select * into rate from public.credit_prices where unit = m_unit;\n"
+        line = ("    rate.credits_per_unit := public.credits_per_unit_now(rate.unit);  -- 0224: a dated price (credit_price_schedule) "
+                "once it is in force\n")
+        for text, plain, after, setting in ((NEW_TEXT, NEW["creative_price"], "d3e0c73cd80217eb2d21bff08efea512", "nightshift.m0218_on_0224"),
+                                            (ROLLBACK_TEXT, OLD["creative_price"], "d5bc7c5ef1c3d823ece05b9d00274042", "nightshift.r0218_on_0224")):
+            m = re.search(r"execute \$v0224\$ (create or replace function public\.creative_price\(.*?\$\$) \$v0224\$;", text, re.S)
+            self.assertIsNotNone(m)
+            variant = m.group(1) + ";\n"
+            self.assertEqual(variant, plain.replace(anchor, anchor + line))
+            self.assertEqual(md5_of(variant), after)
+            self.assertIn(f"if current_setting('{setting}', true) = 'on' then", text)
+        self.assertEqual(md5_of(OLD["creative_price"].replace(anchor, anchor + line)), "d5bc7c5ef1c3d823ece05b9d00274042")
+        self.assertIn("array['f61aaddd5686045961addd6f14a02c32', '34ae574dc0261251139c48b6ca1e1983', 'd5bc7c5ef1c3d823ece05b9d00274042', "
+                      "'d3e0c73cd80217eb2d21bff08efea512']", NEW_TEXT)
+
     def test_0208s_size_rule_is_kept_exactly(self):
         # the size hunks of 0208 survive unchanged: every line of 0208's body that names image_size / vsize is still there
         for line in OLD["creative_price"].splitlines():
@@ -251,8 +267,8 @@ class CreativePromptLimitsMigration(unittest.TestCase):
             self.assertIn(line, CODE)
             self.assertIn(line, ROLLBACK_TEXT)
         for name in HUNKS:
-            self.assertIn(f"array['{BEFORE[name]}', '{AFTER[name]}']", NEW_TEXT, name)
-            self.assertIn(f"array['{AFTER[name]}', '{BEFORE[name]}']", ROLLBACK_TEXT, name)
+            self.assertIn(f"array['{BEFORE[name]}', '{AFTER[name]}'", NEW_TEXT, name)
+            self.assertIn(f"array['{AFTER[name]}', '{BEFORE[name]}'", ROLLBACK_TEXT, name)
             self.assertGreaterEqual(NEW_TEXT.count(AFTER[name]), 4, name)  # header, guard, end state, verify
         first = NEW_TEXT.index("create or replace function")
         self.assertLess(NEW_TEXT.index("0218 needs 0208_geo_gate_and_image_size_price.sql"), first)

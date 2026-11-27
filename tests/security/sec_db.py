@@ -575,7 +575,7 @@ def has_0159(conn_or_session) -> bool:
     return bool(conn.execute(
         "select coalesce((select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) = any (%s) from pg_proc "
         "where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')), false)",
-        [[CREATIVE_PRICE_0159, CREATIVE_PRICE_0208, CREATIVE_PRICE_0218]]).fetchone()[0])
+        [[CREATIVE_PRICE_0159, CREATIVE_PRICE_0208, CREATIVE_PRICE_0218, CREATIVE_PRICE_0218_0224]]).fetchone()[0])
 
 
 def has_0208(conn_or_session) -> bool:
@@ -584,7 +584,7 @@ def has_0208(conn_or_session) -> bool:
     return bool(conn.execute(
         "select coalesce((select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) = any (%s) from pg_proc "
         "where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')), false)",
-        [[CREATIVE_PRICE_0208, CREATIVE_PRICE_0218]]).fetchone()[0])
+        [[CREATIVE_PRICE_0208, CREATIVE_PRICE_0218, CREATIVE_PRICE_0218_0224]]).fetchone()[0])
 
 
 def rollback_0208_body() -> str:
@@ -635,6 +635,9 @@ def put_back_0159(session) -> None:
 #: md5 of 0218's three bodies (white space folded), the way its drift guards read them.
 CREATIVE_PARAMS_PROBLEM_0218 = "0f4b7b7ba92bb20432841a4a5d5f8917"
 CREATIVE_PRICE_0218 = "34ae574dc0261251139c48b6ca1e1983"
+#: 0224 (stream S10, not on main) adds one line to 0208's creative_price; 0218 applied on that base keeps it. Both bases, both results.
+CREATIVE_PRICE_0208_0224 = "d5bc7c5ef1c3d823ece05b9d00274042"
+CREATIVE_PRICE_0218_0224 = "d3e0c73cd80217eb2d21bff08efea512"
 FILM_PRICE_0218 = "3c22f87be736c073d17d93e040e914e1"
 #: The bodies 0218 is written on: 0208's creative_params_problem and creative_price, 0171's film_price.
 _BEFORE_0218 = {"public.creative_params_problem(text, jsonb)": CREATIVE_PARAMS_PROBLEM_0208,
@@ -650,7 +653,7 @@ def _md5_of(conn, sig: str):
 def has_0218(conn_or_session) -> bool:
     """0218 replaces all three in one transaction, so its creative_price body is enough to tell."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
-    return _md5_of(conn, "public.creative_price(uuid, text, text, jsonb)") == CREATIVE_PRICE_0218
+    return _md5_of(conn, "public.creative_price(uuid, text, text, jsonb)") in (CREATIVE_PRICE_0218, CREATIVE_PRICE_0218_0224)
 
 
 def rollback_0218_body() -> str:
@@ -665,7 +668,8 @@ def rollback_0218_if_on() -> str:
     body = rollback_0218_body()
     assert "$rb0218$" not in body
     return (f"do $if0218$ begin if (select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) from pg_proc "
-            f"where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')) = '{CREATIVE_PRICE_0218}' then "
+            f"where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')) in ('{CREATIVE_PRICE_0218}', "
+            f"'{CREATIVE_PRICE_0218_0224}') then "
             f"execute $rb0218${body}$rb0218$; end if; end $if0218$;")
 
 
@@ -680,7 +684,10 @@ def take_off_0218(conn_or_session) -> None:
 
 def put_back_0218(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
-    if not has_0218(conn) and all(_md5_of(conn, sig) == h for sig, h in _BEFORE_0218.items()):
+    live = {sig: _md5_of(conn, sig) for sig in _BEFORE_0218}
+    live["public.creative_price(uuid, text, text, jsonb)"] = {CREATIVE_PRICE_0208_0224: CREATIVE_PRICE_0208}.get(
+        live["public.creative_price(uuid, text, text, jsonb)"], live["public.creative_price(uuid, text, text, jsonb)"])
+    if not has_0218(conn) and live == _BEFORE_0218:
         conn.execute(MIGRATION_0218.read_text(encoding="utf-8"))
 
 
