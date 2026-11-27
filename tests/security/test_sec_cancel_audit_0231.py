@@ -600,6 +600,11 @@ def test_no_function_a_browser_may_call_sets_a_setting_it_is_handed(conn):
             assert re.fullmatch(r"'[a-z_.]+'", arg.strip()), (sig, arg)
             assert arg.strip() != f"'{MARK}'", sig
         assert MARK not in config, sig
+        # A setting can also be set by a dynamic statement (execute 'set ...'), which the set_config scan above cannot see: no
+        # exposed function may run one, and an exposed function names the marker only to read it (create_creative_job's
+        # current_setting), never anywhere else (Breach, 0231 round 2).
+        assert not re.search(r"execute\s+(format\s*\(\s*)?'\s*set\s", src or "", re.IGNORECASE), sig
+        assert (src or "").count(MARK) == len(re.findall(r"current_setting\s*\(\s*'" + re.escape(MARK) + "'", src or "")), sig
     for role in ("anon", "authenticated"):
         assert not conn.execute("select has_function_privilege(%s, 'public.workflow_advance_locked(uuid, boolean)', 'execute')",
                                 [role]).fetchone()[0], role
