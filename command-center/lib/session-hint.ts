@@ -5,7 +5,7 @@
  * its value is never read here. An expired session still has the cookie: the "Open app" link then goes through the middleware
  * gate like any app URL and lands on sign-in, so a stale hint costs one redirect and grants nothing.
  */
-const SESSION_COOKIE = /(?:^|;\s*)sb-[^=;\s]+-auth-token(?:\.0)?=[^;]/;
+export const SESSION_COOKIE = /(?:^|;\s*)sb-[^=;\s]+-auth-token(?:\.0)?=[^;]/;
 
 export function hasSessionCookie(cookie: string): boolean {
   return SESSION_COOKIE.test(cookie);
