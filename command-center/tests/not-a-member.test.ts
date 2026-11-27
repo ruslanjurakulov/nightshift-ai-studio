@@ -112,7 +112,7 @@ describe("the public API and a connected assistant", () => {
 
   it("an assistant is told who must connect instead, and that nothing was charged", () => {
     const text = oauthRefusalText({ ok: false, status: 403, code: "not_a_member", message: "", details: {} }, "https://nightshift-ai.studio");
-    expect(text).toMatch(/not a member of its workspace/);
+    expect(text).toMatch(/does not hold a seat with enough access in its workspace/);
     expect(text).toMatch(/Nothing was started or charged/);
   });
 });

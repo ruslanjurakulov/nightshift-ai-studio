@@ -1139,13 +1139,13 @@ ROLLBACK_0226 = REPO / "docs" / "sql" / "rollback_0226_org_spender_everywhere.sq
 
 
 def _0226_paths():
-    import sec_org_spender_0226  # the one list of the twenty-two bodies: signature, role, earlier md5, 0226's md5
+    import sec_org_spender_0226  # the one list of the twenty-eight bodies: signature, role, earlier md5, 0226's md5
 
     return sec_org_spender_0226.PATHS
 
 
 def has_0226(conn_or_session) -> bool:
-    """Any of the twenty-two bodies is 0226's. Not all: a lab that replays an older file (0057, 0094, ...) puts that one body back and
+    """Any of the twenty-eight bodies is 0226's. Not all: a lab that replays an older file (0057, 0094, ...) puts that one body back and
     leaves the rest, and the rest still has to come off before an earlier rollback runs."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     session = SimpleSession(conn)
@@ -1153,20 +1153,20 @@ def has_0226(conn_or_session) -> bool:
 
 
 def take_off_0226(conn_or_session) -> None:
-    """0226 (only a member spends, on every path) replaces twenty-two bodies of 0042, 0057, 0074, 0080, 0085, 0093, 0094, 0120, 0122,
+    """0226 (only a member spends, on every path) replaces twenty-eight bodies of 0042, 0057, 0074, 0080, 0085, 0093, 0094, 0120, 0122,
     0133, 0136, 0137, 0147 and 0192 (one hunk each) and calls 0215's is_org_spender. 0192's drift guard, and the rollbacks of the files
     whose bodies it replaced, refuse while it is on, and 0215's rollback drops what it calls: take_off_0215 takes it off first
     (take_off_0198, take_off_0192, take_off_0187 and take_off_0171 reach it through it), and so do the take-offs of the other files."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if has_0226(conn):
-        # Whole first (its guard takes a mix of the earlier and its own bodies), so that its rollback, which asks for all twenty-two, runs.
+        # Whole first (its guard takes a mix of the earlier and its own bodies), so that its rollback, which asks for all twenty-eight, runs.
         conn.execute(MIGRATION_0226.read_text(encoding="utf-8"))
         text = ROLLBACK_0226.read_text(encoding="utf-8")
         conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
 
 
 def put_back_0226(conn_or_session) -> None:
-    """0226 again, when it is not on and its guard would take it: 0215's is_org_spender is there and each of the twenty-two bodies is the
+    """0226 again, when it is not on and its guard would take it: 0215's is_org_spender is there and each of the twenty-eight bodies is the
     earlier file's (a chain that left one of those files out leaves 0226 out too, the way put_back_0145 does)."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if has_0226(conn) or not conn.execute("select to_regprocedure('public.is_org_spender(uuid, text)') is not null").fetchone()[0]:

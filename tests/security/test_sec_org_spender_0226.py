@@ -921,6 +921,8 @@ def _bodies() -> dict:
 
 #: The one rule that is asked of someone other than the caller (a run's confirmer): it reads org_members itself.
 CONFIRMER = "workflow_confirmer_may_spend"
+#: Not a refusal: platform staff may restrict a customer's run (never widen it), so the cancel only records who stopped it.
+RECORD = "cancel_workflow_run"
 
 
 def test_the_file_replaces_exactly_the_twenty_two_bodies_and_each_spend_path_asks_is_org_spender_with_its_role(conn):
@@ -929,7 +931,7 @@ def test_the_file_replaces_exactly_the_twenty_two_bodies_and_each_spend_path_ask
     for sig, role, _src, _was, now_ in spender.PATHS:
         name = sig.split("(")[0].removeprefix("public.")
         assert md5_of(conn, sig) == now_, sig
-        if name == CONFIRMER:
+        if name in (CONFIRMER, RECORD):
             continue
         assert f"is_org_spender(" in bodies[name] and f"'{role}')" in bodies[name].split("is_org_spender(", 1)[1].split("\n", 1)[0], name
         assert "not_a_member" in bodies[name], name
@@ -949,7 +951,7 @@ FIRST_EFFECT = re.compile(r"credit_account_lock|reserve_credits\(|creative_platf
                           r"download_fail_locked|creative_expire_locked")
 
 
-@pytest.mark.parametrize("sig", [p[0] for p in spender.PATHS if CONFIRMER not in p[0]])
+@pytest.mark.parametrize("sig", [p[0] for p in spender.PATHS if CONFIRMER not in p[0] and RECORD not in p[0]])
 def test_each_path_asks_before_its_first_lock_hold_count_or_write(sig):
     name = sig.split("(")[0].removeprefix("public.")
     body = "\n".join(ln for ln in _bodies()[name].splitlines() if not ln.strip().startswith("--"))
@@ -958,6 +960,10 @@ def test_each_path_asks_before_its_first_lock_hold_count_or_write(sig):
     if name == "approve_storyboard":
         # storyboard_lock_for_runner takes the row lock (FOR UPDATE, nothing written) to ask who may call: asked right after it.
         assert body.index("storyboard_lock_for_runner") < asked < body.index("reserve_credits(")
+        return
+    if name == "ai_chat_plan_session":
+        # The conversation's row lock (FOR UPDATE, nothing written) is how it finds the caller's own conversation: asked right after.
+        assert body.index("for update") < asked
         return
     if name == "request_editor_export":
         # 0054's row lock on the project (FOR UPDATE, nothing written) answers who may read it: asked after it, before any hold.
@@ -1055,7 +1061,7 @@ def test_the_api_doors_ask_the_seat_first_inside_their_own_500_block_before_the_
 #: The lab holds ledger rows of later kinds, so 0020's own credit_transactions check refuses it here (on an empty database it is silent).
 LOUD = {"0020", "0120", "0122", "0129", "0132", "0133", "0136", "0137", "0147", "0174", "0192"}
 SILENT = {"0030", "0031", "0036", "0040", "0041", "0042", "0057", "0060", "0062", "0070", "0073", "0074", "0075",
-          "0076", "0080", "0085", "0093", "0094", "0111", "0199"}
+          "0076", "0080", "0085", "0093", "0094", "0111", "0199", "0211"}
 
 
 def test_the_replay_note_names_exactly_the_files_that_fail_loudly_and_the_ones_that_silently_put_an_older_body_back(conn):
@@ -1213,7 +1219,7 @@ def test_api_settings_another_organizations_member_is_refused_as_before(w):
 
 
 def test_neither_the_file_nor_its_rollback_holds_a_backslash():
-    """An apply tool can rewrite escape sequences: the files are written without one (the three bodies that hold a backslash go
+    """An apply tool can rewrite escape sequences: the files are written without one (the two bodies that hold a backslash, at three sites, go
     through EXECUTE with a token that replace() turns back into chr(92))."""
     for path in (MIGRATION, ROLLBACK):
         assert "\\" not in path.read_text(encoding="utf-8"), path.name
@@ -1225,3 +1231,56 @@ def test_the_files_fold_reads_every_body_exactly_as_the_shorthand_of_the_earlier
         a, b = conn.execute("select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')), md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) "
                             "from pg_proc where oid = to_regprocedure(%s)", [sig]).fetchone()
         assert a == b and a is not None, sig
+
+
+def test_the_cancel_record_writes_the_workflow_cancel_audit_row_and_changes_nothing_else():
+    """cancel_workflow_run (0074's body) plus one insert of its audit row before the answer; no refusal, no other line."""
+    body = _bodies()[RECORD]
+    hunk = body[body.index("-- 0226"):]
+    assert "insert into public.app_audit_log" in hunk and "'workflow.cancel'" in hunk
+    assert "is_org_spender" not in body and "not_a_member" not in body
+
+
+# ── Nightshift AI's plan step: ai_chat_plan_begin / ai_chat_plan_end (editor, through ai_chat_plan_session) ──
+
+BEGIN = "select public.ai_chat_plan_begin(%s, 1, 0)"
+END = "select public.ai_chat_plan_end(%s, %s, 'done', null)"
+
+
+def leases(s, session):
+    become(s, None)
+    return s.rows("select attempt, state from public.ai_chat_plan_leases where session_id = %s", [session])
+
+
+def test_ai_chat_plan_a_member_begins_and_ends_a_plan_a_non_member_platform_admin_writes_no_lease_and_no_call(w):
+    s = w.su
+    chat_ready(s, w.org)
+    mine = session_of(s, w.org, w.member, w.channel)
+    begun = as_(s, w.member, BEGIN, [mine])
+    assert begun.ok, begun
+    assert as_(s, w.member, END, [mine, begun.rows[0][0]["attempt"]]).ok
+    assert leases(s, mine) == [(1, "done")]
+    theirs = session_of(s, w.org, w.staff, w.channel)
+    before = chat_state(s, w.org)
+    for q, p in ((BEGIN, [theirs]), (END, [theirs, 1])):
+        out = as_(s, w.staff, q, p)
+        assert not_a_member(out), (q, out)
+    assert leases(s, theirs) == [] and chat_state(s, w.org) == before  # no lease, no ai_chat_calls row, nothing off the cap
+
+
+def test_ai_chat_plan_platform_staff_in_the_exempt_organization_begin_and_end(w):
+    s = w.su
+    chat_ready(s, w.exempt)
+    sid = session_of(s, w.exempt, w.staff)
+    begun = as_(s, w.staff, BEGIN, [sid])
+    assert begun.ok, begun
+    assert as_(s, w.staff, END, [sid, begun.rows[0][0]["attempt"]]).ok
+
+
+def test_ai_chat_plan_another_organizations_member_is_refused_as_before(w):
+    s = w.su
+    chat_ready(s, w.org)
+    sid = session_of(s, w.org, w.foreign)
+    for q, p in ((BEGIN, [sid]), (END, [sid, 1])):
+        out = as_(s, w.foreign, q, p)
+        assert not out.ok and (out.sqlstate, out.error) == ("NS404", "session_not_found"), (q, out)

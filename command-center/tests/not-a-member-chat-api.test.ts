@@ -43,15 +43,27 @@ describe("the Developer console", () => {
     expect(new Set(texts).size).toBe(3);
     const console_ = readFileSync(path.join(__dirname, "..", "components", "developers", "DeveloperConsole.tsx"), "utf8");
     expect(console_.match(/isNotAMember\(e\)/g)?.length).toBe(3); // key creation, the key's limit, the activation
+    expect(console_).toContain("isNotAMember(error) ? d.settingsNotAMember"); // the workspace's monthly API limit
   });
 });
 
-function findKey(node: unknown, key: string): string {
+describe("a connected app's consent screen", () => {
+  it("names the seat when a platform admin without one approves, in every language", () => {
+    const texts = (["en", "ru", "uz"] as const).map((l) => findKey(dictionaries[l], "notAMember", "tooManyToday"));
+    for (const t of texts) expect(t).toBeTruthy();
+    expect(new Set(texts).size).toBe(3);
+    const form = readFileSync(path.join(__dirname, "..", "components", "oauth", "ConsentForm.tsx"), "utf8");
+    expect(form).toContain('case "not_a_member":\n      return text.notAMember;');
+  });
+});
+
+/** The value of `key` anywhere in a dictionary (inside the object that also holds `near`, when given). */
+function findKey(node: unknown, key: string, near?: string): string {
   if (!node || typeof node !== "object") return "";
   const o = node as Record<string, unknown>;
-  if (typeof o[key] === "string") return o[key] as string;
+  if (typeof o[key] === "string" && (!near || near in o)) return o[key] as string;
   for (const v of Object.values(o)) {
-    const hit = findKey(v, key);
+    const hit = findKey(v, key, near);
     if (hit) return hit;
   }
   return "";

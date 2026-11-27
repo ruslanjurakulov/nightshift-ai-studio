@@ -191,7 +191,7 @@ export function oauthRefusalText(result: Extract<ApiResult, { ok: false }>, orig
     case "workspace_access_lost":
       return "The person who connected this app no longer has access to its workspace. They need to connect the app again.";
     case "not_a_member":
-      return "The person who connected this app is not a member of its workspace, so the app cannot spend that workspace's credits. Someone who manages that workspace needs to connect the app instead. Nothing was started or charged.";
+      return "The person who connected this app does not hold a seat with enough access in its workspace, so the app cannot spend that workspace's credits. Someone who manages that workspace needs to give them that access, or connect the app instead. Nothing was started or charged.";
     case "insufficient_scope": {
       const need = String(d.required_scope ?? "that permission");
       return (

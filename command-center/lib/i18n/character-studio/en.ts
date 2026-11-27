@@ -127,7 +127,7 @@ export const characterStudioEn = {
     references_count: "Pick at least one picture, and no more than this model takes.",
     references_unavailable: "A picture is not in your library any more, is repeated, or is not PNG, JPEG or WebP.",
     project_unavailable: "That project is not in this workspace.",
-    not_a_member: "You are not a member of this workspace, so you cannot spend its credits. Ask the person who runs this workspace to add you as a member. Nothing was started or charged.",
+    not_a_member: "You don't have a seat with enough access in this workspace to spend its credits. Ask the person who runs it to add you, or to give you more access. Nothing was started or charged.",
     declarations_shape: "Confirm every point before you start.",
     declarations_unknown: "Confirm every point before you start.",
     declarations_incomplete: "Confirm every point before you start.",

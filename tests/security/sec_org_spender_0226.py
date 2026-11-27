@@ -1,11 +1,11 @@
 """Security-lab contract for migration 0226 (only a member spends an organization's credits, on every path: 0215's is_org_spender asked
-by the twenty-two spend paths and rules that did not ask it yet).
+by the twenty-eight spend paths and rules that did not ask it yet).
 
 Kept in its own module, like sec_film_resume_0215. One hook wires it in, at the bottom of sec_expectations.py:
 
         import sec_org_spender_0226; sec_org_spender_0226.extend(TABLES, FUNCTIONS)
 
-0226 adds no table and no function: it replaces twenty-two bodies, each keeping its signature and its grants, so every catalog entry
+0226 adds no table and no function: it replaces twenty-eight bodies, each keeping its signature and its grants, so every catalog entry
 (TABLES, FUNCTIONS) stays as the earlier migrations declared it and extend() adds nothing. What this module holds is the one list
 the tests, the drift-guard pins and sec_db's chain read: each path, the role it asks of a member, and its body's md5 before and after
 (whitespace runs read as one space, the way the file's own guard reads them). The attacks are in test_sec_org_spender_0226.py.
@@ -62,6 +62,20 @@ PATHS = (
      "538ad2e8ed9ab8eac10e11e3e60ba655", "c2b04ddeacdc908d02be94360bcc8e66"),
     ("public.api_activate(uuid, text)", "admin", "0031",
      "8cc2ead31d60e2c809c9e2ca4f161b90", "345750e4dfb8abdf49076e222b9ed22d"),
+    # Round 3 (owner and Atlas, 27 Nov): Nightshift AI's plan step (0211), the workspace's API limit, a connected app's consent, and
+    # (not a refusal: a record) who cancelled a workflow run, since platform staff may restrict a customer's run but never widen it.
+    ("public.ai_chat_plan_session(uuid)", "editor", "0211",
+     "872b3f926f9dcf658b8a8efc097397f5", "75c679292759d14dc51ba865f32d6f8e"),
+    ("public.ai_chat_plan_begin(uuid, bigint, integer)", "editor", "0211",
+     "bcb630a57a5be419f80e5a9e2b9ce588", "2002d73eb60ad129f7318416ba560da6"),
+    ("public.ai_chat_plan_end(uuid, integer, text, text)", "editor", "0211",
+     "5b94856b084a3941a39eb825baa8ed5e", "4df6a1c4054bcacedf971a0b79f997d6"),
+    ("public.api_set_monthly_limit(uuid, bigint)", "admin", "0031",
+     "de4c4102641f01de27a71dd57db6b13f", "573c8790a6db4affd8a0ee58928fea75"),
+    ("public.oauth_decide_authorization(text, boolean, numeric, text)", "admin", "0147",
+     "3b5236152d66117425e44e2d5132b9eb", "86a1707d0dd3bd7feba84454206e821b"),
+    ("public.cancel_workflow_run(uuid)", "editor", "0074",
+     "d168fa9af136f070ae655c951a95cc0e", "427ead0896b4881c0739b944997c6b50"),
 )
 
 

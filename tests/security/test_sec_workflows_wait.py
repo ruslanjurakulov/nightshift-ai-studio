@@ -293,8 +293,9 @@ def test_a_platform_admin_without_a_seat_neither_starts_nor_carries_on_a_run_in_
     db.worker(db.steps(run)[0][2], charge=4)
     db.su("update public.workflow_runs set started_by = %s where id = %s", [p, run])
     out = db.advance(c.owner, run)
-    assert statuses(out)[:2] == ["completed", "failed"], statuses(out)
+    assert statuses(out) == ["completed", "failed", "skipped"], statuses(out)  # the third step is skipped, never started
     assert out["steps"][1]["error_code"] == "confirmation_revoked" and out["steps"][1]["job_id"] is None
+    assert out["run"]["status"] == "failed" and out["run"]["charged_credits"] == 4  # only the first step, made before, is charged
     assert run_holds(db, run) == (0, 0)
 
 

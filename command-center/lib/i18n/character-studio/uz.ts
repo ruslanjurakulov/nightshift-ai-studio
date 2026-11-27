@@ -122,7 +122,7 @@ export const characterStudioUz: CharacterStudioDictionary = {
     references_count: "Kamida bitta rasm tanlang, lekin model qabul qiladiganidan koʻp emas.",
     references_unavailable: "Rasm endi kutubxonada yoʻq, takrorlangan yoki PNG, JPEG yoki WebP emas.",
     project_unavailable: "Bu loyiha bu ish maydonida yoʻq.",
-    not_a_member: "Siz bu ish maydonining aʼzosi emassiz, shuning uchun uning kreditlarini sarflay olmaysiz. Ish maydonini boshqaradigan kishidan sizni aʼzo sifatida qoʻshishini soʻrang. Hech narsa boshlanmadi va yechilmadi.",
+    not_a_member: "Bu ish maydonida uning kreditlarini sarflash uchun yetarli huquqli aʼzoligingiz yoʻq. Uni boshqaradigan kishidan sizni qoʻshishini yoki koʻproq huquq berishini soʻrang. Hech narsa boshlanmadi va yechilmadi.",
     declarations_shape: "Boshlashdan oldin har bir bandni tasdiqlang.",
     declarations_unknown: "Boshlashdan oldin har bir bandni tasdiqlang.",
     declarations_incomplete: "Boshlashdan oldin har bir bandni tasdiqlang.",

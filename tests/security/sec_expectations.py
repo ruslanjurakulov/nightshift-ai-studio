@@ -858,7 +858,7 @@ import sec_film_resume_0215  # noqa: E402
 sec_film_resume_0215.extend(TABLES, FUNCTIONS)
 
 # Migration 0226 (only a member spends an organization's credits, on every path): tests/security/sec_org_spender_0226.py. No table and
-# no function of its own (sixteen bodies replaced, each keeping its entry above); the hook keeps the pattern every migration follows.
+# no function of its own (twenty-eight bodies replaced, each keeping its entry above); the hook keeps the pattern every migration follows.
 import sec_org_spender_0226  # noqa: E402
 
 sec_org_spender_0226.extend(TABLES, FUNCTIONS)

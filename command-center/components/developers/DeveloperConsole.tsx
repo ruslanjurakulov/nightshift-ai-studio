@@ -1198,7 +1198,7 @@ function Limits({ orgId, info, onSaved }: { orgId: string; info: Console; onSave
       });
       if (!ok) return;
       const { error } = await supabase.rpc("api_set_monthly_limit", { p_org: orgId, p_cents: limit.cents });
-      setMsg(error ? d.saveFailed : d.saved);
+      setMsg(error ? (isNotAMember(error) ? d.settingsNotAMember : d.saveFailed) : d.saved);
       if (!error) onSaved();
     } finally {
       asking.current = false;
