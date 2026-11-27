@@ -295,6 +295,11 @@ export const CREATIVE_ERRORS = [
   // The model needs words for this tool (registry inputs.prompt_required) and none were sent: refused at the quote and the
   // create, before anything is held, instead of failing at the adapter after the press.
   "prompt_required",
+  // 0218: refused at the quote, before anything is held. A prompt longer than the model's own limit (counted the way the worker
+  // counts: an emoji is two), a negative prompt on a model whose adapter would drop it, and a seed (no model receives one yet).
+  "prompt_too_long",
+  "negative_prompt_not_supported",
+  "seed_not_supported",
   "failed",
 ] as const;
 export type CreativeError = (typeof CREATIVE_ERRORS)[number];
@@ -364,6 +369,10 @@ const NS400: Partial<Record<string, { status: number; code: CreativeError }>> = 
   no_model_available: { status: 422, code: "no_model_available" },
   invalid_params: { status: 400, code: "invalid_params" },
   invalid_idempotency_key: { status: 400, code: "invalid_idempotency_key" },
+  // 0218: each names its own fix (shorten, remove the negative prompt or pick a model that takes one, remove the seed).
+  prompt_too_long: { status: 400, code: "prompt_too_long" },
+  negative_prompt_not_supported: { status: 400, code: "negative_prompt_not_supported" },
+  seed_not_supported: { status: 400, code: "seed_not_supported" },
 };
 const NS409: Partial<Record<string, CreativeError>> = {
   price_changed: "price_changed",
