@@ -19,7 +19,9 @@ import { dictionaries, LOCALES } from "@/lib/i18n";
 import { Landing } from "@/components/landing/Landing";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { buildPlan, cleanTopic, pickStill, STILL_IDS, TOPIC_MAX } from "@/lib/site/demo-plan";
-import { EXAMPLE_THUMB_JOB } from "@/components/site/samples";
+import { EXAMPLE_THUMB_JOB, exampleMedia } from "@/components/site/samples";
+import { TryDemo } from "@/components/landing/TryDemo";
+import { Showcases } from "@/components/landing/Showcases";
 import { MEDIA_IDS } from "@/lib/site/media";
 import { freeMinutes, priceRatesFrom, quoteCents, quoteCredits } from "@/lib/site/price-check";
 import { setMotionPaused } from "@/lib/site/motion";
@@ -46,6 +48,21 @@ const PRICED: MoneyAnchor = {
 
 function landing(anchor: MoneyAnchor = NO_MONEY, locale: "en" | "ru" | "uz" = "en") {
   return render(<Landing t={dictionaries[locale]} locale={locale} pricing={{ kind: "announced" }} anchor={anchor} showcase={[]} />);
+}
+
+/**
+ * The hands-on plan demo as the landing drew it until 2026-11-22 (its #try section, with the example clip's first frame behind the
+ * sample topic). It left the landing with the old first screen: the idea box there says what it said. The demo keeps its rules.
+ */
+function tryDemo() {
+  const t = dictionaries.en;
+  const m = exampleMedia(EXAMPLE_THUMB_JOB);
+  const thumb = m ? { src: m.files.posterSm, width: m.entry.width, height: m.entry.height, job: m.entry.jobId, alt: t.site.how.thumbAlt } : null;
+  return render(
+    <section id="try">
+      <TryDemo copy={t.site.try} thumb={thumb} note="" />
+    </section>,
+  );
 }
 
 describe("the try-it example's plan builder", () => {
@@ -180,7 +197,7 @@ describe("the landing page's reasons to stay", () => {
   it("opens already filled with the first sample topic's plan (never an empty placeholder), then plays your own topic out, labelled as an example", () => {
     vi.useFakeTimers();
     const t = dictionaries.en.site.try;
-    const { container } = landing();
+    const { container } = tryDemo();
     const section = container.querySelector("#try") as HTMLElement;
     const cards = () => [...section.querySelectorAll(".nx-try-card")];
     // Before anything is asked: the sample plan is on show, for the first sample topic, and says so.
@@ -212,7 +229,7 @@ describe("the landing page's reasons to stay", () => {
 
   it("shows a stand-in frame on the thumbnail card, chosen by the topic's words, labelled as an example and said to be a stand-in", () => {
     const t = dictionaries.en.site.try;
-    const { container } = landing();
+    const { container } = tryDemo();
     const section = container.querySelector("#try") as HTMLElement;
     // Drawn, not a still: the topic's own words, set on the stage (BrandArt ThumbArt), and the same topic always the same drawing.
     const thumb = () => [...section.querySelectorAll(".nx-try-thumb svg[data-art='thumb'] text")].map((x) => x.textContent);
@@ -235,7 +252,7 @@ describe("the landing page's reasons to stay", () => {
   it("shows the whole plan at once when the visitor has paused motion", () => {
     const t = dictionaries.en.site.try;
     setMotionPaused(true);
-    const { container } = landing();
+    const { container } = tryDemo();
     const section = container.querySelector("#try") as HTMLElement;
     fireEvent.click(within(section).getByRole("button", { name: t.topics[0] }));
     expect([...section.querySelectorAll(".nx-try-card")].every((c) => c.getAttribute("data-on") === "true")).toBe(true);
@@ -250,17 +267,17 @@ describe("the landing page's reasons to stay", () => {
     expect(within(bar).getByText(t.bar.cta).closest("a")!.getAttribute("href")).toBe("/signup");
     expect(bar.querySelector("button")!.getAttribute("aria-label")).toBe(t.bar.dismiss);
 
-    // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of two
-    // outside the gallery (the hero's switch under the card and the Studio showcase's clip picture carry the same switch; the
-    // Approvals showcase is a drawing and has nothing that moves by itself). The gallery carries it once, and every one of them
-    // agrees. Each is visually hidden until a keyboard focuses it
+    // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. Outside the gallery and the
+    // models strip only the first screen carries it (the showcases that carried another left the landing on 2026-11-22). The
+    // gallery carries it once, and every one of them agrees. Each is visually hidden until a keyboard focuses it
     // (the owner wants no visible pause word or icon), so it is still in the tab order and named for a screen reader.
     const all = () => screen.getAllByRole("button", { name: t.fx.pause });
     // The models strip (components/site/motion/ModelMarquee.tsx) moves by itself, so it carries the same switch, once (also
     // visually hidden until a keyboard focuses it).
     const inStrip = all().filter((b) => b.closest(".nx-marquee"));
     expect(inStrip).toHaveLength(container.querySelector(".nx-marquee") ? 1 : 0);
-    expect(outsideGallery(all()).filter((b) => !b.closest(".nx-marquee"))).toHaveLength(2);
+    expect(outsideGallery(all()).filter((b) => !b.closest(".nx-marquee"))).toHaveLength(1);
+    expect(outsideGallery(all()).filter((b) => !b.closest(".nx-marquee"))[0].closest("section.hm-hero")).toBeTruthy();
     // The gallery carries it once for the whole grid when any of its samples plays a clip (one Tab stop, not one per card), outside
     // the cards, which are the buttons that open each sample.
     const inGallery = all().filter((b) => b.closest(GALLERY));
@@ -276,7 +293,7 @@ describe("the landing page's reasons to stay", () => {
     for (const b of all()) expect(b.getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("states its promises in the hero (the three the page keeps) and invents no customer, count, rating or countdown", () => {
+  it("states its promises just under the first screen (the three the page keeps) and invents no customer, count, rating or countdown", () => {
     const { container } = landing(PRICED);
     const t = dictionaries.en.site;
     const trust = container.querySelector(".nx-trust") as HTMLElement;
@@ -327,8 +344,8 @@ describe("the page's HTML stays small", () => {
 });
 
 describe("the stock-picture disclosure is printed, not only labelled", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: a stock showcase picture prints the stock note as visible text, a sample carries its badge and no footnote, and the drawn approval screen says it is an example", (code) => {
-    const { container } = landing(NO_MONEY, code);
+  it.each(LOCALES.map((l) => l.code))("%s: a stock showcase picture prints the stock note as visible text, a sample carries its badge and no footnote, and the drawn approval screen says it is an example (the showcases on their own: off the landing since 2026-11-22)", (code) => {
+    const { container } = render(<Showcases t={dictionaries[code]} />);
     const site = dictionaries[code].site;
     const shows = [...container.querySelectorAll("section.nx-show")];
     expect(shows.map((x) => x.id)).toEqual(["studio", "approvals"]);
@@ -349,14 +366,13 @@ describe("the stock-picture disclosure is printed, not only labelled", () => {
   it("has no rails and no comparison any more: nothing scrolls sideways on the landing and nothing is shown twice", () => {
     const { container } = landing();
     for (const sel of ["#examples", ".nx-caps", "#compare", ".nx-gal", ".nx-tiles", ".nx-rules-rail"]) expect(container.querySelector(sel), sel).toBeNull();
-    // The one carousel the owner asked back for (2026-11-13) is the samples' coverflow, which scrolls nothing sideways (its stage
-    // clips the side cards); the stock-picture rails stay gone.
-    for (const c of container.querySelectorAll("[aria-roledescription='carousel']")) expect(c.closest("section#watch[data-sample-section]"), "carousel").toBeTruthy();
-    // The first screen, the Studio showcase, the approval screen's thumbnail and the closing panel: four different pictures (a
-    // stock still or a sample each).
-    const used = [...container.querySelectorAll(".nx-sh-media img, section.nx-show img, .nx-final img")].map((i) => i.getAttribute("data-sample") ?? i.getAttribute("data-sample-job") ?? i.getAttribute("data-art-id"));
-    expect(used).toHaveLength(4);
-    expect(new Set(used).size).toBe(4);
+    // One gallery (2026-11-22): the samples' coverflow, the ticker and picture → video left with the stock-picture rails, so nothing
+    // on the landing is a carousel any more.
+    expect(container.querySelectorAll("[aria-roledescription='carousel'], [data-sample-section]")).toHaveLength(0);
+    // The first screen and the closing panel: two different pictures (a stock still or a sample each).
+    const used = [...container.querySelectorAll(".hm-hero-media img, section.nx-show img, .nx-final img")].map((i) => i.getAttribute("data-sample") ?? i.getAttribute("data-sample-job") ?? i.getAttribute("data-art-id"));
+    expect(used).toHaveLength(2);
+    expect(new Set(used).size).toBe(2);
     // A sample in one of those places is not shown again in the gallery.
     for (const id of used) expect(container.querySelector(`${GALLERY} [data-showcase-entry="${id}"]`)).toBeNull();
   });
@@ -434,7 +450,7 @@ describe("round 3: stills, header and the draw-in", () => {
       },
     );
     try {
-      const { container, unmount } = landing();
+      const { container, unmount } = tryDemo();
       const cards = () => [...container.querySelectorAll("#try .nx-try-card")];
       // Below the fold: held back (boxes keep their space), the sentence under the field still describes the sample.
       expect(cards().every((c) => c.getAttribute("data-on") === "false")).toBe(true);

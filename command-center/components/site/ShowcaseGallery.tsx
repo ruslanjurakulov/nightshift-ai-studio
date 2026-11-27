@@ -12,6 +12,7 @@ import { GRID_GUTTER_ROWS, PLANNED_COLUMNS, gridSpan, level, levelOrder } from "
 import { ShortsFeed } from "@/components/site/ShortsFeed";
 import { shortsItems } from "@/components/site/shorts";
 import { SampleDetail, type SampleDetailCopy } from "@/components/site/SampleDetail";
+import { AiMark } from "@/components/site/AiMark";
 
 /** The day a sample was made, in the page's language (UTC, so the server and every visitor read the same day). */
 function madeOn(iso: string, locale: Locale): string {
@@ -108,6 +109,7 @@ export function ShowcaseGallery({
     close: g.close,
     detail: g.detail,
     badge: g.badge,
+    badgeName: g.badgeName,
     model: g.model,
     prompt: g.prompt,
     notInStudio: g.notInStudio,
@@ -128,7 +130,7 @@ export function ShowcaseGallery({
         </h2>
         <p className="nx-sub">{g.lead}</p>
         {/* Phones only (CSS): the vertical clips as a full-screen feed (components/site/ShortsFeed.tsx). */}
-        <ShortsFeed items={shortsItems(items, signedIn, now)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, try: g.try, tryAria: g.tryAria, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />
+        <ShortsFeed items={shortsItems(items, signedIn, now)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, badgeName: g.badgeName, try: g.try, tryAria: g.tryAria, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />
         <div className="nx-gallery-box">
           {/* One pause key for the whole grid, for a keyboard (hidden until focused; a pointer pauses by tapping a clip elsewhere or in
               a sample's dialog): one Tab stop, not one per card. */}
@@ -159,7 +161,7 @@ export function ShowcaseGallery({
                       decoding="async"
                     />
                     {clip && <ShowcaseClip jobId={e.jobId} together />}
-                    <span className="nx-result-badge">{g.badge}</span>
+                    <span className="nx-result-badge"><AiMark short={g.badge} name={g.badgeName} /></span>
                   </div>
                   {/* The whole card opens the sample (a button stretched over it); the words and the link below sit above it. */}
                   <SampleDetail

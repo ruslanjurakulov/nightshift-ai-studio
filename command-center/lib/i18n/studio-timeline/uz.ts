@@ -81,7 +81,7 @@ export const studioTimelineUz: StudioTimelineDictionary = {
   notAvailable: "Hali mavjud emas",
   perClipNote: "Alohida klip tovushi hali hech qayerda saqlanmaydi. Loyiha musiqasi darajasi va pasaytirish — mikserda.",
   effectsNote: "Klip effektlari hali hech qayerda saqlanmaydi.",
-  unknown: "noma’lum",
+  unknown: "nomaʼlum",
   assemble: "Filmni yigʻish",
   assembleShort: "Yigʻish",
   quoting: "Serverdan soʻralmoqda…",
