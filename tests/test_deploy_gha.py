@@ -1391,9 +1391,7 @@ class RemoteDeployRealCaddyTests(_RemoteDeployFixture):
         self.assertIn("\temail {$ACME_EMAIL}\n", text)
         self.assertIn("reverse_proxy web:3000", text)
         text = text.replace("\temail {$ACME_EMAIL}\n", f"\temail {{$ACME_EMAIL}}\n\tadmin 127.0.0.1:{self.admin}\n", 1)
-        text = text.replace("reverse_proxy web:3000", f"reverse_proxy 127.0.0.1:{self.app_port}", 1)
-        # The plan step's own proxy (deploy/Caddyfile, /api/brain/turn only) points at the same test app.
-        return text.replace("reverse_proxy /api/brain/turn web:3000", f"reverse_proxy /api/brain/turn 127.0.0.1:{self.app_port}", 1)
+        return text.replace("reverse_proxy web:3000", f"reverse_proxy 127.0.0.1:{self.app_port}", 1)
 
     def push(self, text):
         up = self.tmp / "upstream"

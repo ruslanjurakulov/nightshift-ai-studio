@@ -97,22 +97,6 @@
 		lb_try_interval 250ms
 	}
 
-	# Nightshift AI's plan step (POST /api/brain/turn, action `choose`; command-center/lib/server/brain/plan.ts) answers only once
-	# the whole storyboard is written: up to its 280 s budget (PLAN_BUDGET_MS), then the draft's save and quote, inside the plan's
-	# 320 s lease (migration 0211). Caddy sets no upstream timeout by default, so nothing cuts it today; this states the bound for
-	# this ONE path, above the lease, so the plan is never cut short and a stuck answer is still closed. Every other path keeps the
-	# proxy above, unchanged. A single path with no `*` sorts before the proxy with no matcher, so this one wins for this path only.
-	# Same retry window as above while `web` is recreated: a failed dial is retried, a request the app received is never resent.
-	reverse_proxy /api/brain/turn web:3000 {
-		lb_try_duration 30s
-		lb_try_interval 250ms
-		transport http {
-			response_header_timeout 330s
-			read_timeout 330s
-			write_timeout 330s
-		}
-	}
-
 	# The access log must not become a store of live links: review/invite path
 	# tokens and token_hash/code/t/sig/token query values are redacted before
 	# the line is written (one regexp, so it also works on Caddy 2.10).
