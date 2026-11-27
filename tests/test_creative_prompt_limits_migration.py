@@ -205,9 +205,15 @@ class CreativePromptLimitsMigration(unittest.TestCase):
             self.assertEqual(undone, old, f"{name} differs from its old body beyond the listed hunks")
 
     def test_no_later_migration_replaces_them(self):
+        # 0220 (the film's voice language) is written on this file's film_price: its body is this one plus 0220's own hunk, pinned by
+        # tests/test_film_voice_language_migration.py, and its guard accepts only this file's body. Every other later file: none.
+        built_on_this = {("0220_film_voice_language.sql", "film_price")}
         for f in LATER:
             text = (MIG / f).read_text(encoding="utf-8")
             for name in HUNKS:
+                if (f, name) in built_on_this:
+                    self.assertIn(AFTER[name], text, (f, name))
+                    continue
                 self.assertNotIn(f"function public.{name}(", text, (f, name))
 
     def test_on_0224s_base_the_body_is_this_files_plus_0224s_one_line_and_nothing_else(self):
@@ -343,10 +349,7 @@ class CreativePromptLimitsMigration(unittest.TestCase):
         self.assertIn("return rollback_0218_if_on() +", LAB[LAB.index("def rollback_0208_body("):LAB.index("def take_off_0208(")])
         self.assertIn("put_back_0218(conn)", LAB[LAB.index("def put_back_0208("):LAB.index("def rollback_0159_body(")])
         self.assertIn("ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0218.name), MIGRATION_0218.name)", LAB)
-        on_0124 = LAB[LAB.index("ON_0124 = ("):]
-        on_0124 = on_0124[:on_0124.index(")\n")]
-        # 0218 closes the list, or is followed only by 0219 (which refuses to apply without it).
-        self.assertRegex(on_0124, r'"0218_creative_prompt_limits\.sql"(,\s*(#[^\n]*\s*)*"0219_oauth_creative_operator_models\.sql")?$')
+        self.assertIn('"0218_creative_prompt_limits.sql",', LAB[LAB.index("ON_0124 = ("):])
         off = LAB[LAB.index("def take_off_0171("):LAB.index("def put_back_0171(")]
         self.assertLess(off.index("take_off_0218(conn)"), off.index("rollback_0171_body("))
         self.assertIn("put_back_0218(", LAB[LAB.index("def put_back_0171("):LAB.index("MIGRATION_0174 =")])
