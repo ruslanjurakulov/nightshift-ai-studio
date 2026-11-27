@@ -586,11 +586,18 @@ def _boxes(buf: bytes, start: int, end: int):
         pos += size
 
 
-def _track_fps(buf: bytes, start: int, end: int) -> Optional[float]:
-    """A ``trak``'s average frame rate from its own sample table (samples x timescale / total sample time), when its
-    handler is video; None otherwise."""
+#: Top-level boxes the container read walks before it gives up: a real MP4 has a handful (ftyp, moov, mdat, free), and
+#: a file of millions of 8-byte boxes would otherwise cost one seek and read each before ``moov`` is found.
+_MP4_MAX_TOP_BOXES = 10_000
+
+
+def _track_fps(buf: bytes, start: int, end: int) -> tuple[bool, Optional[float]]:
+    """(is a video track, its average frame rate) from a ``trak``'s own sample table: samples x timescale / total
+    sample time. The rate is None for a video track whose timing cannot be read; the caller must not move on to a
+    later video track then, because that would report a rate for a stream other than the one ffprobe calls v:0."""
     handler = timescale = None
     frames = ticks = 0
+    seen_mdhd = seen_stts = malformed = False
     stack = [(b"trak", start, end)]
     while stack:
         parent, s, e = stack.pop()
@@ -601,34 +608,56 @@ def _track_fps(buf: bytes, start: int, end: int) -> Optional[float]:
                 # Only the media handler names the track's kind: a QuickTime file has a second hdlr in minf (the data
                 # handler, "alis"), which would otherwise hide that the track is video.
                 handler = buf[ps + 8:ps + 12]
-            elif kind == b"mdhd" and pe - ps >= 24:
+            elif kind == b"mdhd" and parent == b"mdia":
+                # A second media header leaves the timescale ambiguous: malformed is unknown, never one of the two.
+                if seen_mdhd or pe - ps < 24:
+                    malformed = True
+                    continue
+                seen_mdhd = True
                 # version 1 carries 64-bit creation/modification times before the timescale.
                 at = ps + (20 if buf[ps] == 1 else 12)
+                if at + 4 > pe:
+                    malformed = True
+                    continue
                 timescale = int.from_bytes(buf[at:at + 4], "big")
-            elif kind == b"stts" and pe - ps >= 8:
+            elif kind == b"stts" and parent == b"stbl":
+                # Two time-to-sample tables would sum into an average of neither: unknown instead.
+                if seen_stts or pe - ps < 8:
+                    malformed = True
+                    continue
+                seen_stts = True
                 count = int.from_bytes(buf[ps + 4:ps + 8], "big")
                 if 8 + count * 8 > pe - ps:
-                    return None
+                    malformed = True
+                    continue
                 for i in range(count):
                     at = ps + 8 + i * 8
                     n, delta = int.from_bytes(buf[at:at + 4], "big"), int.from_bytes(buf[at + 4:at + 8], "big")
                     frames += n
                     ticks += n * delta
-    if handler != b"vide" or not timescale or not frames or not ticks:
-        return None
-    return frames * timescale / ticks
+    # The walk finishes even after a malformed box, so a broken audio track is still known to be "not video".
+    if handler != b"vide":
+        return False, None
+    if malformed or not timescale or not frames or not ticks:
+        return True, None
+    return True, frames * timescale / ticks
 
 
 def mp4_fps(path: str) -> Optional[float]:
     """The first video track's average frame rate read from an MP4 / MOV file's own sample table, without ffprobe, or
     None when it cannot be read. The same figure ffprobe reports as ``avg_frame_rate``: every frame, over the time they
-    span. Never a guess: a file without a ``moov`` box, a malformed box or a track with no timing is None."""
+    span. Never a guess: a file without a ``moov`` box, a malformed box, a first video track with no readable timing
+    (even when a later one has some), or more than ``_MP4_MAX_TOP_BOXES`` top-level boxes is None."""
     try:
         with open(path, "rb") as fh:
             fh.seek(0, 2)
             total = fh.tell()
             pos = 0
+            walked = 0
             while pos + 8 <= total:
+                walked += 1
+                if walked > _MP4_MAX_TOP_BOXES:
+                    return None
                 fh.seek(pos)
                 head = fh.read(16)
                 size, kind, skip = int.from_bytes(head[:4], "big"), head[4:8], 8
@@ -645,8 +674,8 @@ def mp4_fps(path: str) -> Optional[float]:
                     buf = fh.read(size - skip)
                     for k, ps, pe in _boxes(buf, 0, len(buf)):
                         if k == b"trak":
-                            fps = _track_fps(buf, ps, pe)
-                            if fps:
+                            is_video, fps = _track_fps(buf, ps, pe)
+                            if is_video:
                                 return fps
                     return None
                 pos += size

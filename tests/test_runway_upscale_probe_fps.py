@@ -89,6 +89,38 @@ class TheContainerRead(Base):
         self.assertIsNone(mp4_fps(self.file("t.mp4", whole[:-20])))  # truncated moov
         self.assertIsNone(mp4_fps(str(self.dir / "missing.mp4")))
 
+    def test_an_unreadable_first_video_track_is_unknown_not_the_next_ones_rate(self):
+        # ffprobe's v:0 is the first video stream: a readable second one is a different stream's rate (rule 5).
+        decoy = mp4(track(b"vide", 12800, []), track(b"vide", 12288, [(48, 512)]))
+        self.assertIsNone(mp4_fps(self.file("decoy.mp4", decoy)))
+        # An audio track before the video one is still skipped, even when its own table is broken.
+        broken_sound = track(b"soun", 44100, [(43, 1024)])[:-4]
+        self.assertIsNone(mp4_fps(self.file("bs.mp4", mp4(broken_sound))))
+
+    def test_a_second_stts_or_mdhd_in_one_track_is_unknown_never_an_average(self):
+        twice = full(b"stts", struct.pack(">I", 1) + struct.pack(">II", 48, 256))
+        self.assertIsNone(mp4_fps(self.file("d.mp4", mp4(track(b"vide", 12288, [(48, 512)], extra_minf=box(b"stbl", twice))))))
+        two_headers = box(b"trak", box(b"mdia",
+                                       full(b"mdhd", struct.pack(">IIII", 0, 0, 12288, 0) + b"\x00" * 4)
+                                       + full(b"mdhd", struct.pack(">IIII", 0, 0, 24576, 0) + b"\x00" * 4)
+                                       + full(b"hdlr", struct.pack(">I", 0) + b"vide" + b"\x00" * 13)
+                                       + box(b"minf", box(b"stbl", full(b"stts", struct.pack(">III", 1, 48, 512))))))
+        self.assertIsNone(mp4_fps(self.file("h.mp4", mp4(two_headers))))
+
+    def test_timing_boxes_outside_their_parent_are_not_read(self):
+        # An stts directly in minf (not stbl) is not the sample table: the track has no timing, so unknown.
+        stray = full(b"stts", struct.pack(">III", 1, 48, 512))
+        t = box(b"trak", box(b"mdia", full(b"mdhd", struct.pack(">IIII", 0, 0, 12288, 0) + b"\x00" * 4)
+                             + full(b"hdlr", struct.pack(">I", 0) + b"vide" + b"\x00" * 13)
+                             + box(b"minf", stray + box(b"stbl", b""))))
+        self.assertIsNone(mp4_fps(self.file("p.mp4", mp4(t))))
+
+    def test_too_many_top_level_boxes_is_unknown(self):
+        good = mp4(track(b"vide", 12288, [(48, 512)]))
+        self.assertEqual(mp4_fps(self.file("ok.mp4", box(b"free", b"") * 100 + good)), 24.0)
+        flood = box(b"free", b"") * video._MP4_MAX_TOP_BOXES + good
+        self.assertIsNone(mp4_fps(self.file("flood.mp4", flood)))
+
     def test_webm_without_ffprobe_stays_unknown(self):
         with no_ffprobe():
             self.assertIsNone(video_fps(self.file("a.webm", b"\x1a\x45\xdf\xa3" + b"\x00" * 64)))
