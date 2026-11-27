@@ -26,9 +26,9 @@ vi.mock("next/link", () => ({
 
 import { dictionaries, LOCALES } from "@/lib/i18n";
 import raw from "@/lib/site/showcase.json";
-import { SHOWCASE_ENTRIES, parseShowcase, parseShowcaseEntry, showcaseModels } from "@/lib/site/showcase";
+import { SHOWCASE_ENTRIES, parseShowcase, parseShowcaseEntry, showcaseModels, sourceOnlyJobs } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
-import { GRID_GUTTER_ROWS, ShowcaseGallery, gridSpan, showcaseItems } from "@/components/site/ShowcaseGallery";
+import { GRID_GUTTER_ROWS, ShowcaseGallery, gridSpan, showcaseItems, showcaseItemsWithSources } from "@/components/site/ShowcaseGallery";
 import { level, levelOrder } from "@/lib/site/gallery-plan";
 import { cutWords, signupTryHref, studioTryHref, tryHref } from "@/lib/site/showcase-link";
 import { DEFAULT_AFTER_AUTH, STUDIO_NEXT_PREFIX, afterSignupPath, safeLoginReturn, safeNextPath, studioNext } from "@/lib/safe-redirect";
@@ -54,7 +54,12 @@ describe("the data file", () => {
   // It shipped empty, and the first export (#720) made a test that said so fail: what holds for any number of entries is that
   // the page shows every one of them, each as what it is.
   it("shows every shipped entry, and a video's plays its own clip while a picture's has none, never from off-site", () => {
-    expect(showcaseItems().map(({ e }) => e.jobId)).toEqual(SHOWCASE_ENTRIES.map((e) => e.jobId));
+    // Every shipped entry except the starting frames (Atlas/owner decision 22 Nov: a starting frame is not its own sample); those
+    // are still found with their files, for the clip that credits them and for a slot that names one.
+    const frames = sourceOnlyJobs(SHOWCASE_ENTRIES);
+    expect(frames.size).toBeGreaterThan(0);
+    expect(showcaseItems().map(({ e }) => e.jobId)).toEqual(SHOWCASE_ENTRIES.filter((e) => !frames.has(e.jobId)).map((e) => e.jobId));
+    expect(showcaseItemsWithSources().map(({ e }) => e.jobId)).toEqual(SHOWCASE_ENTRIES.map((e) => e.jobId));
     for (const e of SHOWCASE_ENTRIES) {
       const clip = SHOWCASE_FILES[e.jobId].clip;
       expect(clip === null, e.jobId).toBe(e.kind === "image");
@@ -249,6 +254,17 @@ describe("the gallery", () => {
     };
     expect(model(new Date("2027-02-09T12:00:00Z"))).toBe("openai-gpt-image-2");
     expect(model(new Date("2027-02-10T00:00:00Z"))).toBeNull();
+  });
+
+  it("a clip's starting frame is no card of its own (Atlas/owner decision 22 Nov: a starting frame is not its own sample)", () => {
+    const stillJob = "0d0d0d0d-1111-4222-8333-444455556666";
+    const still = { ...FIXTURE_ENTRY, jobId: stillJob, kind: "image" as const, capability: "t2i", input: { kind: "none" as const }, width: 1280, height: 718 };
+    const alive = { ...FIXTURE_ENTRY, input: { kind: "operator_job" as const, jobId: stillJob, assetId: "0e0e0e0e-1111-4222-8333-444455556666" } };
+    const files = { ...FIXTURE_FILES, [stillJob]: { poster: "/still.webp", posterSm: "/still-sm.webp", clip: null } };
+    expect(sourceOnlyJobs([alive, still]).has(stillJob)).toBe(true);
+    const { container } = render(<ShowcaseGallery t={t} locale="en" entries={[alive, still]} files={files} />);
+    expect(container.querySelector(`[data-showcase-entry="${stillJob}"]`)).toBeNull();
+    expect(container.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`)).not.toBeNull();
   });
 
   it("a card whose tool has no Studio form is not a link, with the same media, mark and caption", () => {

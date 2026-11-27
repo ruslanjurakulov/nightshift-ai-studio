@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import type { Dictionary, Locale } from "@/lib/i18n";
-import { SHOWCASE_ENTRIES, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
+import { SHOWCASE_ENTRIES, sourceOnlyJobs, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { tryHref } from "@/lib/site/showcase-link";
 import { cardWords } from "@/lib/site/card-words";
 import { cardTitle } from "@/lib/site/card-titles";
@@ -18,8 +18,20 @@ import "@/components/site/media-card.css";
 
 export { GRID_GUTTER_ROWS, gridSpan };
 
-/** The entries the page can show: those whose files are here (an entry without its files is never shown as a gap). */
+/**
+ * The entries a grid can show: those whose files are here (an entry without its files is never shown as a gap), less the pictures
+ * that are only an animation's starting frame (lib/site/showcase.ts sourceOnlyJobs: a starting frame is not its own sample).
+ */
 export function showcaseItems(
+  entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES,
+  files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES,
+): { e: ShowcaseEntry; f: ShowcaseFiles }[] {
+  const sources = sourceOnlyJobs(entries);
+  return showcaseItemsWithSources(entries, files).filter(({ e }) => !sources.has(e.jobId));
+}
+
+/** Every entry whose files are here, starting frames included: for looking a clip's source up, and for a slot that names one. */
+export function showcaseItemsWithSources(
   entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES,
   files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES,
 ): { e: ShowcaseEntry; f: ShowcaseFiles }[] {

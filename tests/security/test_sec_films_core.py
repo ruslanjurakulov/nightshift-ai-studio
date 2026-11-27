@@ -381,8 +381,13 @@ def test_save_and_archive_are_refused_once_the_film_has_left_draft(db, a, status
     db.su("update public.films set status = %s where id = %s", [status, fid])
     assert err(lambda: db.save(a.editor, fid, 1, {"title": "Too late"}))[:2] == ("NS409", "film_not_editable")
     assert err(lambda: db.save(a.owner, fid, 1, {"scenes": scenes(1)}))[:2] == ("NS409", "film_not_editable")
-    assert err(lambda: db.archive(a.owner, fid))[:2] == ("NS409", "film_not_editable")
     assert db.read(a.viewer, fid)["editable"] is False
+    if status in ("paused", "cancelled"):
+        # 0215 (switch-on gate G1): a film that stopped (paused) or was stopped (cancelled) may be put away; nothing else may.
+        assert db.archive(a.owner, fid)["film"]["status"] == "archived"
+        assert [e[0] for e in db.events(fid)] == ["created", "archived"]
+        return
+    assert err(lambda: db.archive(a.owner, fid))[:2] == ("NS409", "film_not_editable")
     assert [e[0] for e in db.events(fid)] == ["created"]
 
 

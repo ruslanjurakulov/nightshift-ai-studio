@@ -205,6 +205,19 @@ export function modelLeftOut(e: { operatorPreview?: boolean; shutdownOn?: string
   return null;
 }
 
+/**
+ * The pictures that are only an animation's starting frame: a picture entry that is the `operator_job` input of some i2v entry.
+ * Atlas/owner decision 22 Nov: a starting frame is not its own sample. The grids leave these out (components/site/ShowcaseGallery
+ * showcaseItems); the clip's dialog ("made from this picture"), picture → video and the slots still show them, beside their clip or
+ * where a slot names them. Derived, so a future export's source is hidden without anyone listing it.
+ */
+export function sourceOnlyJobs(entries: readonly ShowcaseEntry[]): Set<string> {
+  const images = new Set(entries.filter((e) => e.kind === "image").map((e) => e.jobId));
+  const out = new Set<string>();
+  for (const e of entries) if (e.capability === "i2v" && e.input.kind === "operator_job" && images.has(e.input.jobId)) out.add(e.input.jobId);
+  return out;
+}
+
 /** Every well-formed entry, newest first, each job once. */
 export function parseShowcase(raw: unknown): ShowcaseEntry[] {
   const list = isObj(raw) && Array.isArray(raw.entries) ? raw.entries : [];
