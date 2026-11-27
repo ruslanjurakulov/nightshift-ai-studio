@@ -2502,6 +2502,8 @@ models the Studio sells on the web, for first-party marketing samples made by th
   - a ByteDance / BytePlus model (`oauth_creative_bytedance`: id `seedance` / `seedream`, provider `bytedance` / `byteplus`, adapter
     `video.seedance*` / `image.seedream*`, or the vendor's model id) is `not_offered` for every workspace, the operator's included:
     BytePlus's service terms §4.2.3 forbid re-integrating its video API into an AI content-creation tool (`docs/FILM_STUDIO.md`);
+    ByteDance models stay hidden on every surface, the web Studio included, until a terms review says otherwise (BytePlus service
+    terms §4.2.3);
   - otherwise 0191's `oauth_creative_model_state(capability, model)`, called unchanged (its body is guarded, not replaced);
   - only in the operator's workspace, where that answer is `not_offered`: 0191's gates again without the two third-party ones
     (`spec.mcp_oauth_exposure` and the `mcp` surface). Still required: one of the API's capabilities (never captions), no

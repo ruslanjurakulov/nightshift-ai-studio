@@ -20,6 +20,8 @@
 --     the operator's included: BytePlus's service terms §4.2.3 forbid re-integrating its video API into an AI content-creation tool
 --     (docs/FILM_STUDIO.md, "Models"; 0166's film_check_model refuses Seedance for the same reason). Seedream (pictures) is
 --     included: the same vendor, the same terms, and an assistant connector is that kind of tool.
+--     ByteDance models stay hidden on every surface, the web Studio included, until a terms review says otherwise (BytePlus service
+--     terms §4.2.3).
 --   * oauth_creative_org_model_state(org, capability, model): the one judgement the list, the quote and the create now share.
 --       - a ByteDance model: 'not_offered', for everyone;
 --       - otherwise 0191's oauth_creative_model_state(capability, model), unchanged and called as it is, for every organization;

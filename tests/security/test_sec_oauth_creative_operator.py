@@ -50,6 +50,7 @@ MODELS = [
     ("img-web-ack", ["t2i"], {"api_exposure": "web_only", "requires_acknowledgement": ["likeness_photo"]}, "acme", "image.acme", None),
     ("img-web-off", ["t2i"], {"api_exposure": "web_only"}, "acme", "image.acme", None),
     ("img-web-hidden", ["t2i"], {"api_exposure": "web_only"}, "acme", "image.acme", None),
+    ("img-web-terms", ["t2i"], {"api_exposure": "web_only"}, "acme", "image.acme", None),
     # ByteDance, by each of its names, each one otherwise fully on for assistants.
     ("seedance-lab", ["t2i"], {"api_exposure": "web_mcp", "mcp_oauth_exposure": True}, "acme", "image.acme", None),
     ("bd-provider", ["t2i"], {"api_exposure": "web_mcp", "mcp_oauth_exposure": True}, "bytedance", "image.acme", None),
@@ -184,7 +185,7 @@ def jobs(db, grant):
 def test_the_operator_lists_quotes_and_creates_a_web_only_model_and_the_route_is_recorded(db):
     tok, grant = connection(db, UOP, OPERATOR)
     listed = {m["id"]: m for m in models(db, tok)["data"]["models"]}
-    assert sorted(listed) == ["img-any-off", "img-mcp", "img-web", "img-web-sw"], sorted(listed)
+    assert sorted(listed) == ["img-any-off", "img-mcp", "img-web", "img-web-sw", "img-web-terms"], sorted(listed)
     assert listed["img-web"]["operator_only"] is True and listed["img-web"]["capabilities"] == ["edit", "t2i"]
     assert listed["img-web"]["availability_note"] == "Operator workspace only (first-party use)."
     assert listed["img-mcp"]["operator_only"] is False and "availability_note" not in listed["img-mcp"]
@@ -474,6 +475,58 @@ def test_no_route_around_the_country_gate_for_the_operator(db):
         assert c.execute("select public.oauth_creative_org_model_state(%s, 't2i', 'img-web')", [OPERATOR]).fetchone()[0] == "not_offered"
         c.rollback()
     assert db.su("select public.oauth_creative_org_model_state(%s, 't2i', 'img-web')", [OPERATOR])[0][0] == "ok_operator"
+
+
+def test_a_terms_gated_model_is_never_opened_by_the_operator_route(db):
+    # A terms gate keeps a model off sale (0035; the table's own model_registry_terms_before_sale refuses it on a model on sale). Lift
+    # that CHECK inside a transaction that is undone, so a web_only row verified, probed and priced carries a terms gate while beta:
+    # the operator route still neither lists, quotes nor creates it, and a quote stored for it by hand is not spent.
+    tok, grant = connection(db, UOP, OPERATOR)
+    assert code(quote(db, tok, "img-web-terms")) is None        # on sale and reachable before the gate is set
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute("alter table public.model_registry drop constraint if exists model_registry_terms_before_sale")
+        c.execute("update public.model_registry set spec = spec || '{\"terms_gate\": \"written_consent_required\"}'::jsonb "
+                  "where id = 'img-web-terms'")
+        assert c.execute("select availability from public.model_registry where id = 'img-web-terms'").fetchone()[0] == "beta"
+        assert c.execute("select public.oauth_creative_org_model_state(%s, 't2i', 'img-web-terms')", [OPERATOR]).fetchone()[0] \
+            == "not_offered"
+        qid = c.execute("insert into public.oauth_creative_quotes (grant_id, org_id, capability, model, params, credits, quote, "
+                        "expires_at, exposure) values (%s, %s, 't2i', 'img-web-terms', %s::jsonb, 6, '{}'::jsonb, "
+                        "now() + interval '15 minutes', 'operator') returning id::text", [grant, OPERATOR, json.dumps(PROMPT)]).fetchone()[0]
+        c.execute("select set_config('request.jwt.claims', %s, true)", [claims("anon")])
+        c.execute("set local role anon")
+        listed = c.execute("select public.oauth_creative_models(%s, null, null)", [tok]).fetchone()[0]
+        assert "img-web-terms" not in [m["id"] for m in listed["data"]["models"]], listed
+        q = c.execute("select public.oauth_creative_quote(%s, 't2i', 'img-web-terms', %s::jsonb, null)", [tok, json.dumps(PROMPT)]).fetchone()[0]
+        assert q["status"] == 422 and code(q) == "model_not_offered", q
+        made = c.execute("select public.oauth_creative_create(%s, %s, 'terms-1', null)", [tok, qid]).fetchone()[0]
+        assert made["status"] == 422 and code(made) == "model_not_offered", made
+        c.execute("reset role")
+        assert c.execute("select count(*) from public.oauth_creative_jobs where grant_id = %s", [grant]).fetchone()[0] == 0
+        c.rollback()
+
+
+def test_a_customer_grant_shaped_exactly_like_the_operators_gets_none_of_the_operator_models(db):
+    op, op_grant = connection(db, UOP, OPERATOR)
+    cu, cu_grant = connection(db, UCU, CUSTOMER)
+    shape = "select scopes, resource, monthly_limit_credits, activated_at is not null, revoked_at is null from public.oauth_grants where id = %s"
+    assert db.su(shape, [op_grant]) == db.su(shape, [cu_grant])   # the same permissions, resource and limit; only the workspace differs
+    operator_only = sorted(m["id"] for m in models(db, op)["data"]["models"] if m["operator_only"])
+    assert operator_only and "img-web" in operator_only, operator_only
+    theirs = models(db, cu)["data"]["models"]
+    assert not {m["id"] for m in theirs} & set(operator_only) and not any(m["operator_only"] for m in theirs), theirs
+    # The capability that takes a prompt alone: t2i for a picture model, t2v for a clip model.
+    caps = {m["id"]: ("t2i" if "t2i" in m["capabilities"] else "t2v") for m in models(db, op)["data"]["models"]}
+    before = credits(db, CUSTOMER)
+    for mid in operator_only:
+        res = quote(db, cu, mid, caps[mid])
+        assert res["status"] == 422 and code(res) == "model_not_offered", (mid, res)
+        params = PROMPT if caps[mid] == "t2i" else {**PROMPT, "duration_s": REGISTRY[mid]["durations_s"][0]}
+        op_q = quote(db, op, mid, caps[mid], params)
+        assert op_q["ok"], (mid, op_q)
+        res = create(db, cu, op_q["data"]["quote_id"])
+        assert res["status"] == 404 and code(res) == "quote_not_found", (mid, res)
+    assert credits(db, CUSTOMER) == before and jobs(db, cu_grant) == 0
 
 
 # ── replay and rollback (last: it ends where it began) ─────────────────────
