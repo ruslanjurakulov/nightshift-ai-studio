@@ -93,7 +93,8 @@ export const characterStudioUz: CharacterStudioDictionary = {
     charged: "{credits} kredit yechildi",
     open: "Kutubxonada ochish",
     cancel: "Bekor qilish",
-    aiLabel: "Sunʼiy intellekt yaratgan",
+    aiLabel: "AI",
+    aiLabelName: "Sunʼiy intellekt yaratgan",
   },
 
   errors: {

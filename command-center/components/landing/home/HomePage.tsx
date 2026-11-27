@@ -1,27 +1,22 @@
 import Link from "next/link";
-import { preload } from "react-dom";
 import { ArrowRight, Download, Lightbulb, ShieldCheck, Sparkles } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import type { Locale } from "@/lib/i18n/core";
 import type { PricingTeaser } from "@/lib/landing";
 import type { PriceRates } from "@/lib/site/price-check";
 import type { PublicModel } from "@/lib/public-models";
-import { posterSrcSet } from "@/lib/site/renditions";
 import { buttonClass } from "@/components/ds/button-class";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
-import { MotionToggle } from "@/components/site/MotionToggle";
+import { ClipPause } from "@/components/site/ClipPause";
 import { PriceBlock } from "@/components/landing/PriceBlock";
 import { Faq } from "@/components/landing/Faq";
 import { GoogleData } from "@/components/landing/Landing";
 import { AutopilotDemo } from "@/components/site/AutopilotDemo";
 import type { PackExpiry } from "@/lib/plans";
-import { HERO_JOB, PIECE_SIZE, reelItem, studioPieces } from "@/components/landing/home/home-reel";
+import { PIECE_SIZE, studioPieces } from "@/components/landing/home/home-reel";
 import { StudioClip, TemplateClip } from "@/components/site/StudioClip";
-import { IdeaBox } from "@/components/landing/home/IdeaBox";
+import { HomeHero } from "@/components/landing/home/HomeHero";
 import "@/components/landing/home/home.css";
-
-/** The hero picture's widths, as the browser should choose them: the whole screen. */
-const HERO_SIZES = "100vw";
 
 /**
  * The public landing page "/" (S4 sprint): a cinematic first screen, the Studio's own clips, how it works in three steps, the
@@ -30,7 +25,7 @@ const HERO_SIZES = "100vw";
  * Performance (LCP < 2.5 s on mobile 4G, no layout shift): the first screen's largest thing is the hero STILL, preloaded with
  * a phone-sized candidate in its srcset; its clip is fetched only after load and idle, and never under reduced motion, Save-Data
  * or a slow link (components/site/LoopClip.tsx). Every other clip waits until it is near the screen. Every picture box has its
- * size before anything loads. The display face is preloaded only here (components/site/fonts.ts preloadDisplayFont).
+ * size before anything loads. Headings are Onest, the face every page already preloads (components/site/fonts.ts).
  */
 export function HomePage({
   t,
@@ -56,16 +51,14 @@ export function HomePage({
   dodo: boolean;
 }) {
   const h = t.landingHome;
-  const hero = reelItem(HERO_JOB);
-  if (hero) preload(hero.f.posterSm, { as: "image", imageSrcSet: posterSrcSet(hero.f), imageSizes: HERO_SIZES, fetchPriority: "high" });
   return (
     <div className="hm-root">
-      <Hero t={t} />
+      <HomeHero t={t} />
       <Reel t={t} locale={locale} />
       <How t={t} />
       {/* The stages of one real run, each with its real file (id="autopilot": /solutions links here). */}
       <AutopilotDemo copy={t.site.autopilot.demo} />
-      {models && models.length > 0 && <Models h={h} models={models} />}
+      {models && models.length > 0 && <Models h={h} models={models} pause={t.site.fx.pause} />}
       <Mcp h={h} live={oauthLive} />
       <section id="pricing" aria-label={t.site.pricingTeaser.title} className="hm-pricing">
         <PriceBlock t={t} locale={locale} teaser={pricing} rates={rates} />
@@ -76,50 +69,6 @@ export function HomePage({
       <Faq t={t} plansOnSale={pricing.kind === "plans"} expiry={expiry} aside={<GoogleData t={t} />} dodo={dodo} />
       <Final h={h} />
     </div>
-  );
-}
-
-function Hero({ t }: { t: Dictionary }) {
-  const h = t.landingHome.hero;
-  const item = reelItem(HERO_JOB);
-  return (
-    // Dark whatever the page's theme: the words sit on a moving picture, and the picture is night.
-    <section aria-labelledby="hm-hero-title" className="hm-hero" data-theme-scope="dark">
-      {item && (
-        <div className="hm-hero-media" data-clip="sample" aria-hidden="true">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={item.f.posterSm}
-            srcSet={posterSrcSet(item.f)}
-            sizes={HERO_SIZES}
-            width={item.e.width}
-            height={item.e.height}
-            alt=""
-            className="hm-hero-still"
-            fetchPriority="high"
-          />
-          <ShowcaseClip jobId={item.e.jobId} compact={false} early />
-        </div>
-      )}
-      <div className="hm-hero-veil" aria-hidden="true" />
-      <div className="hm-wrap hm-hero-body">
-        <p className="hm-eyebrow">{h.eyebrow}</p>
-        <h1 id="hm-hero-title" className="ds-display hm-hero-title">
-          {h.title}
-        </h1>
-        <p className="hm-hero-lead">{h.lead}</p>
-        <IdeaBox copy={h.idea} />
-        <a href="#how" className="hm-idea-more">
-          {h.secondary}
-        </a>
-      </div>
-      {item && (
-        <p className="hm-hero-credit">
-          <span className="hm-badge">{h.ai}</span> {h.reelLabel}
-        </p>
-      )}
-      <MotionToggle pause={t.site.fx.pause} />
-    </section>
   );
 }
 
@@ -157,9 +106,9 @@ function Reel({ t, locale }: { t: Dictionary; locale: Locale }) {
                   {p.kind === "video" && p.media.type === "studio" && <StudioClip slug={p.media.slug} captionsLabel={h.captions} />}
                   {p.media.type === "sample" && <ShowcaseClip jobId={p.media.jobId} together />}
                   {p.media.type === "template" && <TemplateClip slug={p.media.slug} />}
-                  {/* The picture's description already says it is AI-generated; the badge is for the eye. */}
+                  {/* The picture's description already says it is AI-generated; the badge is for the eye, and reads just "AI" (owner, 2026-11-22). */}
                   <span className="hm-badge hm-reel-badge" aria-hidden="true">
-                    {h.ai}
+                    {t.site.gallery.badge}
                   </span>
                 </div>
                 <figcaption className="hm-reel-cap">
@@ -217,7 +166,49 @@ function How({ t }: { t: Dictionary }) {
   );
 }
 
-function Models({ h, models }: { h: Dictionary["landingHome"]; models: PublicModel[] }) {
+/**
+ * How many chips one half of the ribbon holds at least. The loop slides by exactly one half, so a half narrower than the screen
+ * would open a gap at the right end: with three or four models on sale, one copy of the list is far shorter than 1920 px.
+ */
+export const RIBBON_MIN_PER_HALF = 10;
+
+/** How many times the list is repeated in each half of the ribbon (at least once). */
+export function ribbonRepeats(n: number): number {
+  return n > 0 ? Math.max(1, Math.ceil(RIBBON_MIN_PER_HALF / n)) : 0;
+}
+
+/**
+ * The models on sale today (0193), as a slow ribbon on a dark band (the old landing's ModelMarquee look, its data source not).
+ *
+ * The first list is the accessible one: each model once, with its kinds and its 18+ mark, so a screen reader hears each name
+ * once. The repeats that make the loop seamless are one more list, hidden from assistive technology. The band stops under the
+ * pointer, with focus inside it, with the page's pause switch, and on a tap (lib/site/motion.ts TAP_AREAS); its keyboard pause key
+ * (ClipPause) stays invisible until focused (the owner's rule: no visible pause button). Under reduced motion the repeats are not
+ * drawn and the names sit still in a wrapped row (home.css).
+ */
+function Models({ h, models, pause }: { h: Dictionary["landingHome"]; models: PublicModel[]; pause: string }) {
+  const k = ribbonRepeats(models.length);
+  const chip = (m: PublicModel, key: string) => (
+    <li key={key} className="hm-model">
+      <span className="hm-model-name">{m.name}</span>
+      {m.adultOnly && (
+        <span className="hm-adult" data-adult-only="">
+          {h.models.adultOnly}
+        </span>
+      )}
+      {m.kinds.length > 0 && (
+        <span className="hm-model-kinds">
+          {m.kinds.map((kind) => (
+            <span key={kind} className="hm-kind" data-kind={kind}>
+              {h.models.kinds[kind]}
+            </span>
+          ))}
+        </span>
+      )}
+    </li>
+  );
+  // 2k copies in all: the accessible list is the first, the hidden list the other 2k - 1, so the track's half is k copies.
+  const repeats = Array.from({ length: 2 * k - 1 }, (_, c) => models.map((m) => chip(m, `${c}-${m.name}`))).flat();
   return (
     <section aria-labelledby="hm-models-title" className="hm-section hm-models">
       <div className="hm-wrap">
@@ -225,27 +216,17 @@ function Models({ h, models }: { h: Dictionary["landingHome"]; models: PublicMod
           {h.models.title}
         </h2>
         <p className="hm-lead">{h.models.lead}</p>
-        <ul className="hm-model-list" aria-label={h.models.listLabel}>
-          {models.map((m) => (
-            <li key={m.name} className="hm-model">
-              <span className="hm-model-name">{m.name}</span>
-              {m.adultOnly && (
-                <span className="hm-adult" data-adult-only="">
-                  {h.models.adultOnly}
-                </span>
-              )}
-              {m.kinds.length > 0 && (
-                <span className="hm-model-kinds">
-                  {m.kinds.map((k) => (
-                    <span key={k} className="hm-kind" data-kind={k}>
-                      {h.models.kinds[k]}
-                    </span>
-                  ))}
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
+      </div>
+      <div className="hm-ribbon" data-theme-scope="dark" style={{ "--hm-rb-n": k * models.length } as React.CSSProperties}>
+        <div className="hm-ribbon-track">
+          <ul className="hm-model-list" aria-label={h.models.listLabel}>
+            {models.map((m) => chip(m, m.name))}
+          </ul>
+          <ul className="hm-model-list" data-copy="repeat" aria-hidden="true">
+            {repeats}
+          </ul>
+        </div>
+        <ClipPause label={pause} />
       </div>
     </section>
   );
