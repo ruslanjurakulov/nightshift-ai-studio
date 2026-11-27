@@ -24,7 +24,10 @@ What one segment does is ``modules/film_orchestrator.py``. This file wires it up
   its deadline and grace, or one nobody claimed, settles while its hold is open, even while this worker drives a long film. It is
   called through 0212's ``film_sweep('worker')``, which records the run; the worker is one of three runners (with pg_cron where
   installed and the film-sweep service, ``tools/film_sweep.py --loop``), so a stopped worker no longer stops the sweep;
-* stored error text is scrubbed of every secret in this process's environment (the pipeline worker's scrubber).
+* stored error text is scrubbed of every secret in this process's environment (the pipeline worker's scrubber);
+* it reports to ``worker_status`` (0045, ``modules/worker_status.py``, kind ``other``, id ``film-<host>-<pid>``): 'starting', then
+  'running' as a heartbeat, 'failed' with the remedy when it refuses to start (variable names, never values), 'stopped' at the end,
+  and 'stopped' with "NIGHTSHIFT_FILM_WORKER is not on" while switched off. The operator's "worker lost" alert reads it (gate G4).
 
 SIGTERM (``docker stop``) stops between calls: a take waiting on its provider leaves its task id stored, and the next claim polls it.
 """
@@ -152,9 +155,35 @@ def loop(orch, db, stop: threading.Event, *, once: bool) -> int:
     return 0
 
 
+def status_id(worker_id: str) -> str:
+    """The worker_status id: ``film-<host>-<pid>`` (or ``film-`` + NIGHTSHIFT_WORKER_ID). The prefix is what the operator
+    alerts group by (kind 'other' is shared with the e-mail worker), so one's heartbeat never hides the other's silence."""
+    return ("film-" + str(worker_id or "").removeprefix("film-"))[:64]
+
+
+def default_reporter(url: str, key: str, worker_id: str, env: Mapping[str, str]):
+    from modules.worker_status import WorkerStatusReporter  # noqa: PLC0415
+
+    return WorkerStatusReporter(url, key, worker_id=status_id(worker_id), kind="other", scrub=make_scrubber(env))
+
+
+class _NoReporter:
+    """No SUPABASE_URL / key: nowhere to report to, and the log line already names what is missing."""
+
+    def report(self, state, detail=None):
+        return False
+
+    def start_heartbeat(self):
+        return None
+
+    def close(self, state="stopped", detail=None):
+        return False
+
+
 def main(argv: Optional[List[str]] = None, env: Optional[Mapping[str, str]] = None, *,
          make_db: Callable[[str, str], object] = lambda url, key: fo.FilmRest(url, key),
          make_orchestrator: Optional[Callable[..., object]] = None,
+         make_reporter: Optional[Callable[..., object]] = None,
          stop: Optional[threading.Event] = None) -> int:
     env = os.environ if env is None else env
     parser = argparse.ArgumentParser(description="Drive Film Studio segments (migrations 0171, 0198)")
@@ -164,22 +193,38 @@ def main(argv: Optional[List[str]] = None, env: Optional[Mapping[str, str]] = No
     logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(asctime)s film_worker %(levelname)s %(message)s")
     stop = stop or threading.Event()
 
+    url = str(env.get("SUPABASE_URL", "") or "").strip()
+    key = str(env.get("SUPABASE_SERVICE_KEY", "") or "").strip()
+    # worker_status (0045): without it a dead film worker was invisible to the operator's "worker lost" alert (gate G4).
+    # Every detail below names a variable or a module, never a value, and goes through the secret scrubber anyway.
+    if not url or not key:
+        reporter = _NoReporter()
+    else:
+        reporter = (make_reporter or default_reporter)(url, key, args.worker_id, env)
+
+    def refuse(detail: str) -> int:
+        reporter.close("failed", detail)
+        return 2
+
     if not enabled(env):
         logger.info("%s is not 'on': this worker claims nothing and sweeps nothing", FLAG)
+        # 'stopped' is never "lost": an operator who switched it off is not paged for it.
+        reporter.close("stopped", f"{FLAG} is not on")
         if not args.once:
             stop.wait()
         return 0
 
-    url = str(env.get("SUPABASE_URL", "") or "").strip()
-    key = str(env.get("SUPABASE_SERVICE_KEY", "") or "").strip()
     if not url or not key:
         logger.error("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in the worker's env file: the film segments live in Supabase")
         return 2
+    reporter.report("starting")
     missing = assembly_missing(env)
     if missing:
         # Deliberately NOT fully idle: the sweep never claims and never spends. It only runs 0171's rules, so a queued segment nobody
         # can assemble is settled at 0 after the unclaimed hours and its fm- hold released, instead of holding a customer's credits open.
         logger.warning("%s: no film segment is claimed until the assembly can run; only the sweep runs", missing)
+        # 'failed', not 'running': the switch says films should be made here and none can be, which is the operator's to fix.
+        reporter.close("failed", f"{missing}: no film segment is claimed until the assembly can run; only the sweep runs")
         db = make_db(url, key)
         sweep_once(db)
         if not args.once:
@@ -188,24 +233,25 @@ def main(argv: Optional[List[str]] = None, env: Optional[Mapping[str, str]] = No
     spec = str(env.get(cw.ADAPTERS_ENV, "") or "").strip()
     if not spec:
         logger.error("%s is not set: no provider adapters, so no take could be made; nothing is claimed", cw.ADAPTERS_ENV)
-        return 2
+        return refuse(f"{cw.ADAPTERS_ENV} is not set: no provider adapters, so no take could be made; nothing is claimed")
     try:
         resolver = cw.load_resolver(spec)
     except Exception as e:
-        logger.error("%s=%s could not be loaded (%s); nothing is claimed", cw.ADAPTERS_ENV, spec, type(e).__name__)
-        return 2
+        # The variable's name and the exception's type only: the value is whatever was typed into the env file.
+        logger.error("%s could not be loaded (%s); nothing is claimed", cw.ADAPTERS_ENV, type(e).__name__)
+        return refuse(f"{cw.ADAPTERS_ENV} could not be loaded ({type(e).__name__}); nothing is claimed")
     raw = str(env.get("NIGHTSHIFT_MEDIA_DIR", "") or "").strip()
     media_root = Path(raw) if raw else None
     if media_root is None or not media_root.is_absolute() or not media_root.is_dir() or not os.access(media_root, os.W_OK):
         logger.error("NIGHTSHIFT_MEDIA_DIR must be the media library volume, writable here: a take's file is registered into the "
                      "library; nothing is claimed")
-        return 2
+        return refuse("NIGHTSHIFT_MEDIA_DIR must be the media library volume, writable here; nothing is claimed")
     from modules import media_library as ml  # noqa: PLC0415
 
     tools = ml.find_tools()
     if tools is None:
         logger.error("ffmpeg and ffprobe are needed (a clip's last frame, the narration's clock and loudness); nothing is claimed")
-        return 2
+        return refuse("ffmpeg and ffprobe are needed (a clip's last frame, the narration's clock and loudness); nothing is claimed")
 
     db = make_db(url, key)
     out_dir = Path(str(env.get("NIGHTSHIFT_FILM_DIR", "") or "").strip() or media_root / ".film-segments")
@@ -227,17 +273,30 @@ def main(argv: Optional[List[str]] = None, env: Optional[Mapping[str, str]] = No
 
     every = expire_every(env)
     logger.info("film worker %s started (sweep every %s s, media library read/write)", args.worker_id, every)
-    sweep_once(db)
-    prune_cache(media_root)
-    if args.once:
-        return loop(orch, db, stop, once=True)
     t = threading.Thread(target=sweeper, args=(db, stop, every), daemon=True, name="film-sweep")
-    t.start()
+    if args.once:
+        reporter.report("running")
+    else:
+        # 'running' now and every 30 s on its own thread, so a take that waits minutes on its provider still beats.
+        reporter.start_heartbeat()
     try:
-        return loop(orch, db, stop, once=False)
+        sweep_once(db)
+        prune_cache(media_root)
+        if args.once:
+            rc = loop(orch, db, stop, once=True)
+        else:
+            t.start()
+            rc = loop(orch, db, stop, once=False)
+    except BaseException as e:
+        # Not 'stopped': a worker that died on an error must read as failed, by its exception's name only.
+        reporter.close("failed", f"the film worker stopped on an unexpected error ({type(e).__name__}); restart it")
+        raise
     finally:
         stop.set()
-        t.join(timeout=5)
+        if t.is_alive():
+            t.join(timeout=5)
+    reporter.close("stopped")
+    return rc
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@
         key frames                (they are what the clips start from, and a clip may END on the next scene's key frame)
         clips and extends         scene by scene, shot by shot: shot 1 from its first frame, shots 2-3 from the shot before's last frame
         narration                 one film-level take, last
+      once a take failed for good (or cannot begin for a failed input) nothing new begins: P4a refuses that film, so it settles
+      'takes_failed' before charging for takes no film can use (rule 6)
       film_studio_on_for(org)     the platform's switch and the organization's (0198), asked again before every take: off = stop
       film_begin_take             marked running BEFORE the billable call
       film_take_job               the take's creative job (0198): payer 'film', no hold of its own, the inputs decided by the database
@@ -451,12 +453,18 @@ class FilmOrchestrator:
                     break
                 if seg.get("status") == "draining":
                     break
+                if not ready or self._unassemblable(takes):
+                    # A take failed for good, or this one can never begin because its input did: P4a refuses a film with any
+                    # missing take (docs/FILM_STUDIO.md, Assembly), so every take begun from here on would be charged to the
+                    # customer for a film that cannot come out (S2_GAPS G5: the narration was voiced and captured). Nothing new
+                    # begins (rule 6); what is planned is skipped at 0 by the settle. A superseded attempt 1 is not "failed": its
+                    # planned attempt 2 still runs. Takes already running were driven first (_next_take) and are unaffected.
+                    stopped = "takes_failed"
+                    break
             if not self.db.studio_on_for(org):
                 stopped = "film_studio_off"
                 break
             attempted.add(str(take["id"]))
-            if not ready:
-                continue  # its input failed for good: it never begins, and the settle skips it at 0
             try:
                 began = self.db.begin_take(str(take["id"]), self.worker_id)
             except FilmRefused as r:
@@ -491,6 +499,12 @@ class FilmOrchestrator:
                                  int(t["attempt"])))
         t = todo[0]
         return t, t["status"] == "running" or self._inputs_ready(t, takes, scenes)
+
+    @staticmethod
+    def _unassemblable(takes: Sequence[Mapping[str, Any]]) -> bool:
+        """A take of this segment ended for good without a result. 0171 marks a failure 'failed' only when no retry is left (one
+        with its retry left is 'superseded', and its attempt 2 is planned), and 'skipped' only at the settle."""
+        return any(t["status"] in ("failed", "skipped") for t in takes)
 
     @staticmethod
     def _slot(takes, kind_ok: Callable[[str], bool], scene_id: str, shot: Optional[int]) -> Optional[str]:

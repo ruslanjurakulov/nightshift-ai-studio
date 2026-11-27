@@ -3946,6 +3946,8 @@ export const uz: Dictionary = {
     snapAuto: "Bu yerda hech bir model {from} yaratmaydi — {to} tanlandi.",
     snapModelDefault: "oʻzining standart qiymati",
     noLength: "{model} bu yerda hech qanday klip davomiyligini taklif qilmaydi, shuning uchun narxini aytib boʻlmaydi. Boshqa model tanlang.",
+    modelGone: "Soʻralgan model bu vosita uchun mavjud emas, shuning uchun {default} tanlandi.",
+    modelGoneNamed: "{model} modeli bu vosita uchun mavjud emas, shuning uchun {default} tanlandi.",
     sheetAt: "{settings} uchun",
     modelLabel: "Model",
     beta: "beta",
