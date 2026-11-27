@@ -9,7 +9,7 @@
  */
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const panel = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }));
 vi.mock("@/components/studio/GeneratePanel", () => ({
@@ -18,7 +18,13 @@ vi.mock("@/components/studio/GeneratePanel", () => ({
     return <div data-testid="panel" />;
   },
 }));
-vi.mock("@/components/studio/JobFeed", () => ({ JobFeed: () => <div data-testid="feed" /> }));
+const feed = vi.hoisted(() => ({ props: null as Record<string, unknown> | null }));
+vi.mock("@/components/studio/JobFeed", () => ({
+  JobFeed: (p: Record<string, unknown>) => {
+    feed.props = p;
+    return <div data-testid="feed" />;
+  },
+}));
 vi.mock("@/components/studio/TemplateGallery", () => ({ TemplateGallery: () => null }));
 vi.mock("@/components/studio/Availability", () => ({ DeskAvailabilityNote: () => null, NothingOnSaleNote: () => null }));
 vi.mock("next/navigation", () => ({
@@ -40,7 +46,7 @@ import { beforeAfterPairs } from "@/lib/site/carousel";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { linksSample, signupTryHref, studioTryHref, tryHref } from "@/lib/site/showcase-link";
 import { SAMPLE_PARAM, isShippedPicture, resolveSampleSource, sampleSourcePicture, type SampleSource } from "@/lib/site/sample-source";
-import { SAMPLE_ASSET_KEY } from "@/lib/creative/sample-preload";
+import { SAMPLE_ASSET_KEY, SAMPLE_TICKET_KEY, copySample, copySampleOnce, type SamplePicture } from "@/lib/creative/sample-preload";
 import { cleanLinkPrompt, prefillFromImprove } from "@/lib/creative/improve";
 import { prefillFromQuery } from "@/lib/creative/studio";
 import { prefillModel } from "@/lib/models-discovery";
@@ -50,6 +56,7 @@ import type { StudioModel } from "@/lib/creative/studio";
 const ORIGIN = "https://app.example";
 const ORG = "11111111-1111-4111-8111-111111111111";
 const ASSET = "22222222-2222-4222-8222-222222222222";
+const ME = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const TICKET = "33333333-3333-4333-8333-333333333333";
 
 const I2V = SHOWCASE_ENTRIES.filter((e) => e.capability === "i2v");
@@ -246,8 +253,13 @@ const READY: Extract<SampleSource, { state: "ready" }> = {
 
 let fetchMock: ReturnType<typeof vi.fn>;
 let quota = false;
+/** The ticket's answer: the worker has it, it is still checking, or the library will not show it to this account. */
+let ticketAnswer: "ingested" | "pending" | "forbidden" = "ingested";
 /** The workspace's library as the name search answers it: what an earlier copy (another tab, another day) left there. */
 let library: Array<Record<string, unknown>> = [];
+/** Uploads of this person still being sent or checked, as `?mine=1` answers them. */
+let pendingUploads: Array<Record<string, unknown>> = [];
+const THUMB = `/api/media/file/${ASSET}/thumb?t=image%2Fwebp&exp=9&sig=abc_-1`;
 const writes = () =>
   fetchMock.mock.calls.filter(([, init]) => ((init as RequestInit | undefined)?.method ?? "GET") !== "GET").map(([url, init]) => `${(init as RequestInit).method} ${url}`);
 const gets = () => fetchMock.mock.calls.filter(([, init]) => ((init as RequestInit | undefined)?.method ?? "GET") === "GET").map(([url]) => String(url));
@@ -256,23 +268,30 @@ const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { sta
 beforeEach(() => {
   panel.props = [];
   quota = false;
+  ticketAnswer = "ingested";
+  feed.props = null;
   library = [];
+  pendingUploads = [];
   sessionStorage.clear();
   Element.prototype.scrollIntoView = vi.fn();
   window.history.replaceState(null, "", `/all-channels/create?tool=i2v&model=m&${SAMPLE_PARAM}=${READY.sampleId}&prompt=drift`);
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = (init?.method ?? "GET").toUpperCase();
     if (url === READY.src) return { ok: true, status: 200, blob: async () => new Blob([new Uint8Array([82, 73, 70, 70, 1, 2, 3, 4])], { type: "image/webp" }) };
-    if (url.startsWith("/api/media?") && method === "GET") return json({ assets: library });
+    if (url.startsWith("/api/media?") && method === "GET") return json({ assets: library, uploads: pendingUploads });
     if (url === "/api/media/uploads" && method === "POST")
       return quota ? json({ error: "quota_exceeded" }, 409) : json({ ticket: TICKET, upload_url: `/api/media/uploads/${TICKET}`, name: READY.name });
     if (url === `/api/media/uploads/${TICKET}` && method === "PUT") {
       // What the worker registers: the copy, by its name and the size it measured.
-      library = [{ id: ASSET, kind: "image", name: READY.name, width: READY.width, height: READY.height }];
+      library = [{ id: ASSET, kind: "image", name: READY.name, width: READY.width, height: READY.height, createdBy: ME }];
       return json({ ok: true });
     }
-    if (url === `/api/media/uploads/${TICKET}`) return json({ status: "ingested", asset_id: ASSET });
-    if (url === `/api/media/${ASSET}`) return json({ asset: { id: ASSET, kind: "image" } });
+    if (url === `/api/media/uploads/${TICKET}`) {
+      if (ticketAnswer === "forbidden") return json({ error: "forbidden" }, 403);
+      if (ticketAnswer === "pending") return json({ status: "ingesting" });
+      return json({ status: "ingested", asset_id: ASSET });
+    }
+    if (url === `/api/media/${ASSET}`) return json({ asset: { id: ASSET, kind: "image" }, urls: { thumb: THUMB } });
     return json({ jobs: [], templates: [] });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -284,7 +303,7 @@ afterEach(() => {
 
 const sourceAsked = () => (last()?.sourceRequest as { id: string } | null | undefined)?.id ?? null;
 const section = (sample: SampleSource | null, locale: "en" | "ru" | "uz" = "en") =>
-  wrap(<GenerateSection orgId={ORG} models={[]} desk="video" initial={I2V_FORM} sample={sample} />, locale);
+  wrap(<GenerateSection orgId={ORG} models={[]} desk="video" initial={I2V_FORM} sample={sample} userId={ME} />, locale);
 const posts = () => writes().filter((w) => w.startsWith("POST"));
 
 describe("GenerateSection with a sample's picture", () => {
@@ -320,13 +339,15 @@ describe("GenerateSection with a sample's picture", () => {
       render(section(READY));
       fireEvent.click(screen.getByTestId("sample-use"));
       await waitFor(() => expect(sourceAsked()).toBe(ASSET), { timeout: 4000 });
-      expect(screen.getByTestId("sample-source").textContent).toBe(en.gen.sampleSource.ready);
+      expect(screen.getByTestId("sample-source").textContent).toBe(en.gen.sampleSource.readyCopied);
       expect(screen.queryByTestId("sample-proposed")).toBeNull();
+      // The ADOPTED file's own thumbnail from the library, not the site's poster.
+      expect(screen.getByTestId("sample-used-thumb").getAttribute("src")).toBe(THUMB);
       expect((last().initial as { prompt: string; capability: string }).prompt).toBe("drift");
       expect((last().initial as { capability: string }).capability).toBe("i2v");
       expect(writes()).toEqual(["POST /api/media/uploads", `PUT /api/media/uploads/${TICKET}`]);
       // It looked for an earlier copy first, by name, in this workspace.
-      expect(gets()).toContain(`/api/media?org=${ORG}&q=${encodeURIComponent(READY.name)}`);
+      expect(gets()).toContain(`/api/media?org=${ORG}&q=${encodeURIComponent(READY.name)}&mine=1`);
       expect(fetchMock.mock.calls.some(([u]) => String(u).startsWith("/api/creative"))).toBe(false);
       expect(new URL(window.location.href).searchParams.get("source")).toBe(ASSET);
       expect(new URL(window.location.href).searchParams.has(SAMPLE_PARAM)).toBe(false);
@@ -459,5 +480,119 @@ describe("a starting frame is not its own sample (Atlas/owner decision 22 Nov)",
     expect(slot.kind === "ai" ? slot.entry.jobId : null).toBe("1504b313-3a3c-4e78-bfda-5bca3ef7f3da");
     const pairs = beforeAfterPairs(showcaseItemsWithSources()).map((p) => p.picture.e.jobId);
     expect(pairs).toContain("e3da9148-f2f8-443e-95b1-8ed36ef3dea4");
+  });
+});
+
+describe("Lens and Breach on the press (S8 review)", () => {
+  const PIC: SamplePicture = { sampleId: READY.sampleId, src: READY.src, name: READY.name, sourceJobId: SOURCE_JOB, width: READY.width, height: READY.height };
+  const memStore = (init: Record<string, string> = {}) => {
+    const m = new Map(Object.entries(init));
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k), m };
+  };
+  const fast = { sleep: async () => {} };
+
+  it("two presses at once (two sections, a double tap) make one copy and get the same file", async () => {
+    const store = memStore();
+    const [a, b] = await Promise.all([
+      copySampleOnce({ orgId: ORG, userId: ME, sample: PIC, fetchImpl: fetchMock as unknown as typeof fetch, storage: store, ...fast }),
+      copySampleOnce({ orgId: ORG, userId: ME, sample: PIC, fetchImpl: fetchMock as unknown as typeof fetch, storage: store, ...fast }),
+    ]);
+    expect(a).toEqual(b);
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("a remembered file that is gone (404) is not used: a fresh copy is made", async () => {
+    const GONE = "55555555-5555-4555-8555-555555555555";
+    const store = memStore({ [`${SAMPLE_ASSET_KEY}:${ORG}:${SOURCE_JOB}`]: GONE });
+    const r = await copySample({ orgId: ORG, userId: ME, sample: PIC, fetchImpl: fetchMock as unknown as typeof fetch, storage: store, ...fast });
+    expect(r).toMatchObject({ ok: true, assetId: ASSET, reused: false });
+    expect(gets()).toContain(`/api/media/${GONE}`);
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("still being checked, then pressed again: the same upload is asked about, exactly one POST, and it lands", async () => {
+    ticketAnswer = "pending";
+    let t = 0;
+    const clock = { now: () => t, sleep: async (ms: number) => void (t += ms) };
+    const store = memStore();
+    const first = await copySample({ orgId: ORG, userId: ME, sample: PIC, fetchImpl: fetchMock as unknown as typeof fetch, storage: store, ...clock });
+    expect(first).toMatchObject({ ok: false, error: "still_checking" });
+    expect(store.m.get(`${SAMPLE_TICKET_KEY}:${ORG}:${SOURCE_JOB}`)).toBe(TICKET);
+    ticketAnswer = "ingested";
+    t = 0;
+    const second = await copySample({ orgId: ORG, userId: ME, sample: PIC, fetchImpl: fetchMock as unknown as typeof fetch, storage: store, ...clock });
+    expect(second).toMatchObject({ ok: true, assetId: ASSET });
+    expect(posts()).toHaveLength(1);
+    expect(store.m.has(`${SAMPLE_TICKET_KEY}:${ORG}:${SOURCE_JOB}`)).toBe(false);
+  });
+
+  it("a reload mid-copy (the first page gone while the worker checks) sends nothing again", async () => {
+    ticketAnswer = "pending";
+    const store = memStore();
+    // The first page: sent, then left while it waits (its wait never returns).
+    void copySample({ orgId: ORG, userId: ME, sample: PIC, fetchImpl: fetchMock as unknown as typeof fetch, storage: store, sleep: () => new Promise(() => {}) });
+    await waitFor(() => expect(store.m.get(`${SAMPLE_TICKET_KEY}:${ORG}:${SOURCE_JOB}`)).toBe(TICKET));
+    // The reloaded page, same tab: it asks about that upload.
+    ticketAnswer = "ingested";
+    const r = await copySample({ orgId: ORG, userId: ME, sample: PIC, fetchImpl: fetchMock as unknown as typeof fetch, storage: store, ...fast });
+    expect(r).toMatchObject({ ok: true, assetId: ASSET });
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("another tab mid-copy: an upload of this person's of that name still being checked is followed, not sent again", async () => {
+    pendingUploads = [{ id: TICKET, name: READY.name, status: "ingesting" }];
+    const r = await copySample({ orgId: ORG, userId: ME, sample: PIC, fetchImpl: fetchMock as unknown as typeof fetch, storage: memStore(), ...fast });
+    expect(r).toMatchObject({ ok: true, assetId: ASSET });
+    expect(posts()).toHaveLength(0);
+  });
+
+  it("without knowing who is signed in, no file is anyone's copy: one is made", async () => {
+    library = [{ id: ASSET, kind: "image", name: READY.name, width: READY.width, height: READY.height, createdBy: ME }];
+    const r = await copySample({ orgId: ORG, sample: PIC, fetchImpl: fetchMock as unknown as typeof fetch, storage: memStore(), ...fast });
+    expect(r).toMatchObject({ ok: true, reused: false });
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("an earlier copy of yours is said to be reused, with its own thumbnail", async () => {
+    library = [{ id: ASSET, kind: "image", name: READY.name, width: READY.width, height: READY.height, createdBy: ME }];
+    render(section(READY));
+    fireEvent.click(screen.getByTestId("sample-use"));
+    await waitFor(() => expect(screen.getByTestId("sample-source").textContent).toBe(en.gen.sampleSource.readyReused));
+    expect(screen.getByTestId("sample-used-thumb").getAttribute("src")).toBe(THUMB);
+    expect(posts()).toHaveLength(0);
+  });
+
+  it("a refusal names its remedy: the library will not show the upload to this account -> sign in again; no source", async () => {
+    ticketAnswer = "forbidden";
+    render(section(READY));
+    fireEvent.click(screen.getByTestId("sample-use"));
+    await waitFor(() => expect(screen.getByTestId("sample-source").textContent).toBe(en.gen.sampleSource.signIn), { timeout: 4000 });
+    expect(sourceAsked()).toBeNull();
+    expect((screen.getByTestId("sample-use") as HTMLButtonElement).disabled).toBe(false);
+  }, 8000);
+
+  it(
+    "a copy that lands after the person put another form in (Try again) does not take it over or change the address",
+    async () => {
+      render(section(READY));
+      fireEvent.click(screen.getByTestId("sample-use"));
+      // The upload waits for the worker (the first poll is 1.5 s away): meanwhile the person picks another form.
+      await waitFor(() => expect(writes()).toContain(`PUT /api/media/uploads/${TICKET}`));
+      act(() => (feed.props!.onRetry as (v: unknown) => void)({ capability: "t2v", model: "", prompt: "a whale", aspect: "16:9", duration: 5 }));
+      expect(screen.queryByTestId("sample-proposed")).toBeNull();
+      await waitFor(() => expect(screen.getByTestId("sample-source").textContent).toBe(en.gen.sampleSource.inLibrary), { timeout: 4000 });
+      expect(sourceAsked()).toBeNull();
+      expect((last().initial as { capability: string }).capability).toBe("t2v");
+      expect(new URL(window.location.href).searchParams.has("source")).toBe(false);
+    },
+    8000,
+  );
+
+  it("the proposed card goes once the person chose another source for the form", () => {
+    render(section(READY));
+    expect(screen.getByTestId("sample-proposed")).toBeTruthy();
+    act(() => (feed.props!.onUseAsSource as (id: string) => void)("99999999-9999-4999-8999-999999999999"));
+    expect(screen.queryByTestId("sample-proposed")).toBeNull();
+    expect(writes()).toEqual([]);
   });
 });

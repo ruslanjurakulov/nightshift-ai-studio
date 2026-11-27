@@ -324,6 +324,8 @@ export default async function CreatePage({
             // The start box's "AI edit" kept its words in this browser (lib/site/idea-handoff.ts): the composer takes them once.
             idea={ideaPickup}
             sample={sampleSource}
+            // Only a copy of the sample's picture this person made is ever reused (lib/creative/sample-preload.ts).
+            userId={user?.id ?? null}
           />
         ) : (
           <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.desk.noOrg}</p>

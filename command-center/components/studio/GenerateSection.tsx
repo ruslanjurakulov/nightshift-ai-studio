@@ -16,7 +16,7 @@ import { DeskAvailabilityNote, NothingOnSaleNote } from "@/components/studio/Ava
 import { toolOpen } from "@/lib/tool-availability";
 import { IDEA_PARAM, takeIdea } from "@/lib/site/idea-handoff";
 import { attachErrorKey, attachWords } from "@/lib/creative/attach";
-import { copySampleOnce } from "@/lib/creative/sample-preload";
+import { copySampleOnce, type SamplePreloadError } from "@/lib/creative/sample-preload";
 import { SAMPLE_PARAM, type SampleSource } from "@/lib/site/sample-source";
 import { formatMediaBytes } from "@/lib/media";
 import "@/components/studio/desk.css";
@@ -49,6 +49,7 @@ export function GenerateSection({
   unavailable = [],
   idea = false,
   sample = null,
+  userId = null,
 }: {
   /**
    * The desk this section is (lib/creative/desks): its tools only, laid out
@@ -80,6 +81,8 @@ export function GenerateSection({
    * (lib/site/sample-source.ts): the sample's own starting picture, shown as a proposed source until "Use this picture", or a refusal said.
    */
   sample?: SampleSource | null;
+  /** The signed-in person: only a copy of the sample's picture THEY made is reused (lib/creative/sample-preload.ts). */
+  userId?: string | null;
 }) {
   const [prefill, setPrefill] = useState<{ nonce: number; value: StudioPrefill } | null>(
     initial ? { nonce: 0, value: initial } : null,
@@ -93,9 +96,14 @@ export function GenerateSection({
 
   const toComposer = () => top.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
 
+  // Bumped by every form put in the composer other than the sample's own picture (a template, "Try again", "Use as picture"): a copy
+  // that finishes after one of those must not take over the form the person chose (StudioHome's attachSeq guard, the same idea).
+  const formGen = useRef(0);
   const fill = (value: StudioPrefill) => {
+    formGen.current += 1;
     // A fresh composer: a picture handed in earlier must not come back with it.
     setSourceRequest(null);
+    setSampleNote(null);
     setPrefill((p) => ({ nonce: (p?.nonce ?? 0) + 1, value }));
     toComposer();
   };
@@ -132,15 +140,22 @@ export function GenerateSection({
     setSourceRequest((r) => ({ nonce: (r?.nonce ?? 0) + 1, id }));
     toComposer();
   };
+  // "Use as picture" from a result: the person's own choice of source, so a late sample copy leaves it alone.
+  const [otherSource, setOtherSource] = useState(false);
+  const resultAsSource = (id: string) => {
+    formGen.current += 1;
+    setOtherSource(true);
+    setSampleNote(null);
+    pickAsSource(id);
+  };
 
   // A sample's starting picture (`sample=`, lib/site/sample-source.ts): shown as a PROPOSED source, and nothing is written on load
   // (Atlas decision 22 Nov). Only "Use this picture" copies it into the library, once per workspace (lib/creative/sample-preload.ts),
   // and makes it the form's source; the price is asked only then, and Generate stays its own press (rule 3). A refused or failed one
   // says so and leaves no source: never a form that looks as if the picture were there (rule 5).
-  const [samplePhase, setSamplePhase] = useState<"proposed" | "copying" | "used" | "refused">(
-    sample?.state === "ready" ? "proposed" : sample?.state === "refused" ? "refused" : "proposed",
-  );
-  const [sampleError, setSampleError] = useState<string | null>(null);
+  const [samplePhase, setSamplePhase] = useState<"proposed" | "copying" | "used" | "refused">(sample?.state === "refused" ? "refused" : "proposed");
+  // The line under the key while it is offered (an error with its remedy), or the outcome once it is not.
+  const [sampleNote, setSampleNote] = useState<{ tone: "ok" | "error"; text: string; thumb?: string | null } | null>(null);
   const sampleLive = useRef(true);
   useEffect(() => {
     sampleLive.current = true;
@@ -148,27 +163,40 @@ export function GenerateSection({
       sampleLive.current = false;
     };
   }, []);
+  const ss = t.gen.sampleSource;
+  /** Every refusal names its remedy (rule 6): sign in again, try again, or the picture cannot be used. */
+  const sampleRefusal = (error: SamplePreloadError, maxBytes: number | null | undefined): string => {
+    if (error === "picture_unavailable") return ss.unavailable;
+    const key = attachErrorKey(error);
+    if ("flow" in key) {
+      if (key.flow === "stillChecking") return ss.checking;
+      if (key.flow === "uploadForbidden") return ss.signIn;
+      if (key.flow === "rejected" || key.flow === "wrongKind") return ss.cannotUse;
+      return ss.retry;
+    }
+    const media = t.media.errors as Record<string, string>;
+    return media[key.media] && key.media !== "failed"
+      ? fmt(ss.failedWhy, { reason: fmt(media[key.media], { max: formatMediaBytes(maxBytes ?? null) || "—" }) })
+      : ss.failed;
+  };
   const takeSample = async () => {
     if (sample?.state !== "ready" || samplePhase === "copying") return;
     setSamplePhase("copying");
-    setSampleError(null);
+    setSampleNote(null);
+    const startedOn = formGen.current;
     const { sampleId, src, name, sourceJobId, width, height } = sample;
-    const r = await copySampleOnce({ orgId, sample: { sampleId, src, name, sourceJobId, width, height } });
+    const r = await copySampleOnce({ orgId, userId, sample: { sampleId, src, name, sourceJobId, width, height } });
     if (!sampleLive.current) return;
     if (!r.ok) {
-      const key = r.error === "picture_unavailable" ? null : attachErrorKey(r.error);
-      const media = t.media.errors as Record<string, string>;
-      const text =
-        key && "flow" in key && key.flow === "stillChecking"
-          ? t.gen.sampleSource.checking
-          : key && "media" in key && media[key.media] && key.media !== "failed"
-            ? fmt(t.gen.sampleSource.failedWhy, { reason: fmt(media[key.media], { max: formatMediaBytes(r.maxBytes ?? null) || "—" }) })
-            : key === null
-              ? t.gen.sampleSource.unavailable
-              : t.gen.sampleSource.failed;
-      // The key stays: the person can free space, sign in again or try later, and press it again.
-      setSampleError(text);
+      // The key stays: the person can sign in, free space or wait, and press it again (it never copies twice).
+      setSampleNote({ tone: "error", text: sampleRefusal(r.error, r.maxBytes) });
       setSamplePhase("proposed");
+      return;
+    }
+    setSamplePhase("used");
+    if (formGen.current !== startedOn) {
+      // The person put another form in meanwhile: theirs stays; the copy is only said to be in the library.
+      setSampleNote({ tone: "ok", text: ss.inLibrary });
       return;
     }
     // The address now names the library file: a reload opens the form on it and copies nothing.
@@ -178,10 +206,10 @@ export function GenerateSection({
       u.searchParams.set("source", r.assetId);
       window.history.replaceState(window.history.state, "", `${u.pathname}${u.search}${u.hash}`);
     } catch {
-      // The name in the library still finds the copy again.
+      // The library's own search still finds the copy again.
     }
     pickAsSource(r.assetId);
-    setSamplePhase("used");
+    setSampleNote({ tone: "ok", text: r.reused ? ss.readyReused : ss.readyCopied, thumb: r.thumbUrl });
   };
 
   const describe = (id: string) => {
@@ -208,27 +236,19 @@ export function GenerateSection({
     />
   );
 
-  const ss = t.gen.sampleSource;
-  const sampleNote =
+  // The proposed picture is offered only while the form is still the sample's: picture to video with no source of the person's own.
+  const formValue = prefill?.value ?? null;
+  const offered = sample?.state === "ready" && samplePhase !== "used" && (formValue?.capability ?? "i2v") === "i2v" && !formValue?.sourceId && !otherSource;
+  const sampleBlock =
     sample === null ? null : samplePhase === "refused" ? (
       <p className="m-0 text-sm text-[var(--color-muted)]" role="status" data-testid="sample-source" data-tone="error">
         {ss.refused}
       </p>
-    ) : samplePhase === "used" ? (
-      <p className="m-0 text-sm text-[var(--color-muted)]" role="status" data-testid="sample-source" data-tone="ok">
-        {ss.ready}
-      </p>
-    ) : sample.state === "ready" ? (
+    ) : offered && sample.state === "ready" ? (
       <div className="studio-field flex items-start gap-3 p-3" data-testid="sample-proposed">
         {/* The site's own hashed poster (same origin, resolved by the server from the shipped data): shown, not uploaded. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={sample.src}
-          alt={ss.alt}
-          width={sample.width}
-          height={sample.height}
-          className="h-16 w-auto max-w-24 shrink-0 rounded-md object-cover"
-        />
+        <img src={sample.src} alt={ss.alt} width={sample.width} height={sample.height} className="h-16 w-auto max-w-24 shrink-0 rounded-md object-cover" />
         <div className="flex min-w-0 flex-col gap-1">
           <p className="m-0 text-sm font-medium">{ss.label}</p>
           <p className="m-0 text-xs text-[var(--color-muted)]">{ss.proposed}</p>
@@ -247,10 +267,21 @@ export function GenerateSection({
           <p id="sample-use-note" className="m-0 text-xs text-[var(--color-muted)]">
             {ss.useNote}
           </p>
-          <p className="m-0 text-xs text-[var(--color-muted)]" role="status" data-testid="sample-source" data-tone={sampleError ? "error" : "busy"}>
-            {sampleError ?? (samplePhase === "copying" ? ss.copying : "")}
+          <p className="m-0 text-xs text-[var(--color-muted)]" role="status" data-testid="sample-source" data-tone={sampleNote ? sampleNote.tone : "busy"}>
+            {sampleNote?.text ?? (samplePhase === "copying" ? ss.copying : "")}
           </p>
         </div>
+      </div>
+    ) : sampleNote && samplePhase === "used" ? (
+      <div className="flex items-center gap-3" data-testid="sample-used">
+        {/* The ADOPTED file's own thumbnail, signed by the library: what the form will animate, not the site's poster. */}
+        {sampleNote.thumb ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={sampleNote.thumb} alt={ss.altCopy} className="h-12 w-auto max-w-20 shrink-0 rounded-md object-cover" data-testid="sample-used-thumb" />
+        ) : null}
+        <p className="m-0 text-sm text-[var(--color-muted)]" role="status" data-testid="sample-source" data-tone={sampleNote.tone}>
+          {sampleNote.text}
+        </p>
       </div>
     ) : null;
 
@@ -278,7 +309,7 @@ export function GenerateSection({
       <div className="flex flex-col gap-4">
       {fromProject}
       {cutNote}
-      {sampleNote}
+      {sampleBlock}
       {/* Which of this desk's tools have nothing on sale, said before a tab is pressed (lib/tool-availability.ts). */}
       <DeskAvailabilityNote desk={desk} />
       <div className="desk-layout" data-desk={desk} style={dock}>
@@ -299,7 +330,7 @@ export function GenerateSection({
             onRetry={fill}
             // A picture result goes back into this desk's picture tools; Describe and
             // "Make similar" only where the desk has those tools (the Image desk).
-            onUseAsSource={tools.some((c) => c === "edit" || c === "i2v" || c === "upscale" || c === "remove_bg") ? pickAsSource : undefined}
+            onUseAsSource={tools.some((c) => c === "edit" || c === "i2v" || c === "upscale" || c === "remove_bg") ? resultAsSource : undefined}
             onDescribe={deskHas("describe") ? describe : undefined}
             onMakeSimilar={deskHas("t2i") ? fill : undefined}
             project={project}
@@ -317,7 +348,7 @@ export function GenerateSection({
     <div className="flex flex-col gap-4">
     {fromProject}
     {cutNote}
-    {sampleNote}
+    {sampleBlock}
     <NothingOnSaleNote />
     <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(340px,384px)_minmax(0,1fr)]" style={dock}>
       <div
@@ -335,7 +366,7 @@ export function GenerateSection({
           models={models}
           refreshKey={refreshKey}
           onRetry={fill}
-          onUseAsSource={pickAsSource}
+          onUseAsSource={resultAsSource}
           onDescribe={describe}
           onMakeSimilar={fill}
           project={project}
