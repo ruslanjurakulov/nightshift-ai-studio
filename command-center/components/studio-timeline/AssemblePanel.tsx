@@ -10,11 +10,14 @@ import { refreshCredits } from "@/lib/credits-live";
 import { filmErrorFromResponse, newIdempotencyKey, type FilmError } from "@/lib/films";
 import { assembleLabel, coerceQuote, coerceStart, startOnce, type FilmQuote, type StartOutcome } from "@/lib/studio/timeline";
 
+/** Line refusals of quote_film (0218) that name their own fix; each has a sentence in lib/i18n `creative.errors`. */
+const FIXABLE_LINE_REFUSALS = ["prompt_too_long", "negative_prompt_not_supported", "seed_not_supported"] as const;
+
 type Phase =
   | { at: "idle" }
   | { at: "quoting" }
   | { at: "quoted"; quote: FilmQuote }
-  | { at: "unpriced"; error?: FilmError }
+  | { at: "unpriced"; error?: FilmError; refusal?: string | null }
   | { at: "confirm"; quote: FilmQuote }
   | { at: "starting"; quote: FilmQuote }
   | { at: "started"; replayed: boolean }
@@ -139,7 +142,7 @@ export function AssemblePanel({
       if (starter.busy) return;
       quoteRef.current = q;
       starter.reset();
-      setPhase(q.priced ? { at: "quoted", quote: q } : { at: "unpriced" });
+      setPhase(q.priced ? { at: "quoted", quote: q } : { at: "unpriced", refusal: q.refusal });
     } catch {
       if (stale()) return;
       setProblem("quoteFailed");
@@ -213,6 +216,10 @@ export function AssemblePanel({
   if (!editable && phase.at !== "started") note = fmt(c.notEditable, { status: statusWord });
   else if (problem === "notEditableNow") note = fmt(c.notEditable, { status: statusWord });
   else if (problem) note = c[problem];
+  // 0218: a scene line the person can fix (a prompt too long for its model, a negative prompt or a seed the model does not take)
+  // says what to change, never "can't be worked out right now".
+  else if (phase.at === "unpriced" && phase.refusal && (FIXABLE_LINE_REFUSALS as readonly string[]).includes(phase.refusal))
+    note = t.creative.errors[phase.refusal as (typeof FIXABLE_LINE_REFUSALS)[number]];
   else if (phase.at === "unpriced") note = <><b>{c.noPrice}</b> {c.noPriceBody}</>;
   else if (phase.at === "quoted" && blocked.length) note = blocked.map((b) => c.blocked[b]).join(" ");
   else if (phase.at === "quoted" && !q?.mayStart) note = c.notAdmin;
