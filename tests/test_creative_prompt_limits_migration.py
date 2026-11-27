@@ -180,7 +180,10 @@ FILM_HUNKS = [
 ]
 
 HUNKS = {"creative_params_problem": PARAMS_HUNKS, "creative_price": PRICE_HUNKS, "film_price": FILM_HUNKS}
-LATER = sorted(p.name for p in MIG.glob("*.sql") if p.name[:4] > "0218")
+#: 0228 (music per request, S6) replaces creative_params_problem and creative_price on purpose, with one marked hunk each on 0218's
+#: and 0224's bodies; tests/test_music_per_request_migration.py pins that it changes nothing else. Every other later file must not.
+REVIEWED_REPLACERS = ("0228_music_per_request_price.sql",)
+LATER = sorted(p.name for p in MIG.glob("*.sql") if p.name[:4] > "0218" and p.name not in REVIEWED_REPLACERS)
 
 
 class CreativePromptLimitsMigration(unittest.TestCase):
@@ -340,10 +343,11 @@ class CreativePromptLimitsMigration(unittest.TestCase):
         self.assertIn("ON_0156 = (*ON_0156, MIGRATION_0218.name)", LAB)
         off = LAB[LAB.index("def take_off_0208("):LAB.index("def put_back_0208(")]
         self.assertLess(off.index("take_off_0218(conn)"), off.index("rollback_0208_body()"))
-        self.assertIn("return rollback_0218_if_on() +", LAB[LAB.index("def rollback_0208_body("):LAB.index("def take_off_0208(")])
+        # 0228's rollback (harmless where 0228 is not on) goes first: it sits on 0218's creative_params_problem.
+        self.assertIn("rollback_0218_if_on() +", LAB[LAB.index("def rollback_0208_body("):LAB.index("def take_off_0208(")])
         self.assertIn("put_back_0218(conn)", LAB[LAB.index("def put_back_0208("):LAB.index("def rollback_0159_body(")])
         self.assertIn("ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0218.name), MIGRATION_0218.name)", LAB)
-        self.assertIn('"0218_creative_prompt_limits.sql")', LAB[LAB.index("ON_0124 = ("):])
+        self.assertIn('"0218_creative_prompt_limits.sql",', LAB[LAB.index("ON_0124 = ("):])
         off = LAB[LAB.index("def take_off_0171("):LAB.index("def put_back_0171(")]
         self.assertLess(off.index("take_off_0218(conn)"), off.index("rollback_0171_body("))
         self.assertIn("put_back_0218(", LAB[LAB.index("def put_back_0171("):LAB.index("MIGRATION_0174 =")])

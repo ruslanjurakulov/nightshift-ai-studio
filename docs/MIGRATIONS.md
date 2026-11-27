@@ -2743,3 +2743,45 @@ table or grant; `film_expire_segments` is called, never replaced. It spends noth
   what the old functions wrote in between.
 - Lab: `tests/security/test_sec_worker_identity_reads.py`. Rollback: `docs/sql/rollback_0225_creative_jobs_member_columns.sql`
   restores the table grant only; the redaction is not undone (the worker ids are not stored anywhere else).
+
+## The database knows `music`, and a model priced per request is quoted for one request (0228)
+
+0228 (`0228_music_per_request_price.sql`, stream S6) is **live on apply**. It writes no row and grants nothing, and it puts nothing
+on sale.
+
+- **What it changes.**
+  - `music` is added to 0100's `model_registry_capabilities_check` and `model_probe_runs_capability_check`. That is the only value
+    added.
+  - `creative_params_problem` is 0218's body plus one hunk: music may come without `duration_s`. A duration that is given is still
+    held to 1..60.
+  - `creative_price` is 0224's body plus one hunk, right after the quantity is read:
+    - a model whose `spec.pricing.unit` is `request` is quoted for a quantity of 1. Every per-request model sold before 0228 is a
+      describe model, whose quantity was already 1;
+    - a music quote with no duration on any other model is refused `invalid_params`, naming `duration_s`.
+- **Why.** Google Lyria 3.5 is "$0.08 per song" and has no duration field (docs/research/lyria-3-5.md). Before 0228, music could only
+  be asked a duration and billed by the second.
+- **Order (enforced).** Apply after S10's 0224 (#945). The drift guard accepts only:
+  - `creative_price` `ea2b58e88fe34ae18b261e5a0fbef435` (0218 plus 0224's line) and `creative_params_problem`
+    `cb7ad6cd459f31259445bedd1a4a0c88` (0218);
+  - or its own bodies on a replay: `c586c11789c90db275ddbe03c6fb1000` and `0570bb5a1f749b7e3d556c87443bf17b`.
+
+  On 0218's `creative_price` alone it refuses and names 0224.
+- **Nothing on sale.**
+  - No credit price is seeded: a music quote is `unpriced` until the owner sets one, after a passing probe and the legal sign-off.
+  - The code keeps `music` in `REGISTRY_ONLY_CAPABILITIES`, so the sync never writes a music row before this file is live. A later
+    small PR removes it once 0228 is confirmed live.
+  - Lyria's registry entry also carries `terms_gate`, `web_only` and `requires_adult`. A vocal-activity check on the returned MP3
+    is a condition of sale that does not exist yet.
+- **Backslash-free.** The `creative_price` body is written with `@@0228_BACKSLASH@@` and put back with `chr(92)`, which is 0224's
+  technique. The end state checks the md5 of what results.
+- **Rollback.** `docs/sql/rollback_0228_music_per_request_price.sql` (owner-applied):
+  - it puts 0218's `creative_params_problem` and 0224's `creative_price` back byte for byte, and takes `music` out of both checks;
+  - it refuses while a `model_registry` row or a `model_probe_runs` row names music. Probe results are append-only, so after a
+    music probe has been recorded the value cannot be taken out again; that is the owner's decision, never the rollback's;
+  - it is harmless where 0228 is not on.
+- **Lab.**
+  - `tests/security/test_sec_music_per_request_0228.py`, with the contract in `tests/security/sec_music_per_request_0228.py`;
+  - `sec_db.take_off_0228` and `put_back_0228` run inside the 0218 chain. Once 0224 is merged, `take_off_0224` must call
+    `take_off_0228` first, and `put_back_0224` must call `put_back_0228` last.
+  - Static: `tests/test_music_per_request_migration.py`.
+- **Verify** (the SQL editor): the query at the end of the file. Every column should read true.

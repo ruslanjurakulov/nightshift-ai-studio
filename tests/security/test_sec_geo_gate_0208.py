@@ -182,7 +182,7 @@ GID = "gemini-3.1-flash-image"
 
 
 def test_the_shipped_lists_block_russia_and_belarus_and_not_uzbekistan():
-    assert len(GOOGLE) == 12
+    assert len(GOOGLE) == 13  # 12, and google-lyria-3.5 (S6)
     for gid, lst in GOOGLE.items():
         assert "RU" in lst and "BY" in lst and "UZ" not in lst, gid
 

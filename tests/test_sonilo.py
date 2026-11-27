@@ -159,8 +159,11 @@ class CapabilityTests(unittest.TestCase):
     def test_the_registry_only_set_is_exactly_what_the_database_does_not_list(self):
         # The migration that teaches the database a capability must also take it out of REGISTRY_ONLY_CAPABILITIES, and
         # nothing may be called registry-only that the database already knows.
+        # 0228 teaches the database `music` (Lyria 3.5), and the code keeps it registry-only until Atlas confirms 0228 is live: a sync
+        # from code merged before the migration is applied must never send a music row (one row outside the check fails the whole
+        # sync). A later small PR takes MUSIC out of REGISTRY_ONLY_CAPABILITIES, and this line loses its `| {MUSIC}`.
         for constraint in ("model_registry_capabilities_check", "model_probe_runs_capability_check"):
-            self.assertEqual(set(CAPABILITIES) - REGISTRY_ONLY_CAPABILITIES, _db_capabilities(constraint), constraint)
+            self.assertEqual((set(CAPABILITIES) - REGISTRY_ONLY_CAPABILITIES) | {MUSIC}, _db_capabilities(constraint), constraint)
         # video_character_swap (0137) is sold through its own tables, never as a creative job: registry-only for good.
         self.assertEqual(REGISTRY_ONLY_CAPABILITIES, {"music", "video_music", "video_character_swap"})
 

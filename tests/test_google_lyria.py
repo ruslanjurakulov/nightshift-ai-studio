@@ -150,7 +150,12 @@ class RegistryEntryTests(unittest.TestCase):
         for folder in ("supabase/migrations", "docs/sql", "deploy", "command-center/lib", "command-center/app"):
             for path in (ROOT / folder).rglob("*"):
                 if path.is_file() and path.suffix in (".sql", ".ts", ".tsx", ".json", ".yml", ".txt"):
-                    if re.search(rf"\b{self.e.credit_unit}\b", path.read_text(errors="ignore")):
+                    text = path.read_text(errors="ignore")
+                    if path.name.startswith("0228_"):
+                        # 0228 names the unit only to check, read-only, that no price exists: it must never write one.
+                        if re.search(rf"insert[^;]*\b{self.e.credit_unit}\b", text, re.IGNORECASE | re.S):
+                            hits.append(str(path.relative_to(ROOT)))
+                    elif re.search(rf"\b{self.e.credit_unit}\b", text):
                         hits.append(str(path.relative_to(ROOT)))
         self.assertEqual(hits, [], "a credit_prices row would make Lyria priced before the probe and the owner's sign-off")
 

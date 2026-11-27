@@ -41,7 +41,8 @@ ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0147_mcp_free_tier.sql"
 # 0198 (Film Studio's switch per organization) sits on 0192's quote_film and start_film: off before 0192, on after it.
 # 0218 (creative_price on 0208's body) comes off before 0208 and goes back after it.
 # 0215 (archive and resume) sits on 0198's start_film and film_claim_segment: off before 0198.
-LATER = [(sec_db.MIGRATION_0218, sec_db.ROLLBACK_0218),
+LATER = [(sec_db.MIGRATION_0228, sec_db.ROLLBACK_0228),  # 0228 sits on 0218's creative_params_problem (and 0224's creative_price)
+         (sec_db.MIGRATION_0218, sec_db.ROLLBACK_0218),
          (sec_db.MIGRATION_0215, sec_db.ROLLBACK_0215),
          (sec_db.MIGRATION_0208, sec_db.ROLLBACK_0208),  # 0208 sits on 0196's reroute_creative_job, which 0196's rollback refuses
          (sec_db.MIGRATION_0198, sec_db.ROLLBACK_0198),
