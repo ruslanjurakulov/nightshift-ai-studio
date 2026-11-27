@@ -561,11 +561,116 @@ _RUNWAY_URI = re.compile(r"^runway://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]{1,4990
 _FPS_DEMUXERS = {".mp4": "mov", ".mov": "mov", ".webm": "matroska", ".mkv": "matroska"}
 
 
+#: The largest ``moov`` box the container read loads (its sample tables; a 200 MB upload's are a few MB at most).
+_MOOV_MAX_BYTES = 32 * 1024 * 1024
+#: Boxes the container read descends into on the way to a video track's timing.
+_MP4_CONTAINERS = {b"trak", b"mdia", b"minf", b"stbl"}
+
+
+def _boxes(buf: bytes, start: int, end: int):
+    """(type, payload start, payload end) of each box in ``buf[start:end]``; stops at the first malformed header."""
+    pos = start
+    while pos + 8 <= end:
+        size = int.from_bytes(buf[pos:pos + 4], "big")
+        kind = buf[pos + 4:pos + 8]
+        head = 8
+        if size == 1:
+            if pos + 16 > end:
+                return
+            size, head = int.from_bytes(buf[pos + 8:pos + 16], "big"), 16
+        elif size == 0:
+            size = end - pos
+        if size < head or pos + size > end:
+            return
+        yield kind, pos + head, pos + size
+        pos += size
+
+
+def _track_fps(buf: bytes, start: int, end: int) -> Optional[float]:
+    """A ``trak``'s average frame rate from its own sample table (samples x timescale / total sample time), when its
+    handler is video; None otherwise."""
+    handler = timescale = None
+    frames = ticks = 0
+    stack = [(b"trak", start, end)]
+    while stack:
+        parent, s, e = stack.pop()
+        for kind, ps, pe in _boxes(buf, s, e):
+            if kind in _MP4_CONTAINERS:
+                stack.append((kind, ps, pe))
+            elif kind == b"hdlr" and parent == b"mdia" and pe - ps >= 12:
+                # Only the media handler names the track's kind: a QuickTime file has a second hdlr in minf (the data
+                # handler, "alis"), which would otherwise hide that the track is video.
+                handler = buf[ps + 8:ps + 12]
+            elif kind == b"mdhd" and pe - ps >= 24:
+                # version 1 carries 64-bit creation/modification times before the timescale.
+                at = ps + (20 if buf[ps] == 1 else 12)
+                timescale = int.from_bytes(buf[at:at + 4], "big")
+            elif kind == b"stts" and pe - ps >= 8:
+                count = int.from_bytes(buf[ps + 4:ps + 8], "big")
+                if 8 + count * 8 > pe - ps:
+                    return None
+                for i in range(count):
+                    at = ps + 8 + i * 8
+                    n, delta = int.from_bytes(buf[at:at + 4], "big"), int.from_bytes(buf[at + 4:at + 8], "big")
+                    frames += n
+                    ticks += n * delta
+    if handler != b"vide" or not timescale or not frames or not ticks:
+        return None
+    return frames * timescale / ticks
+
+
+def mp4_fps(path: str) -> Optional[float]:
+    """The first video track's average frame rate read from an MP4 / MOV file's own sample table, without ffprobe, or
+    None when it cannot be read. The same figure ffprobe reports as ``avg_frame_rate``: every frame, over the time they
+    span. Never a guess: a file without a ``moov`` box, a malformed box or a track with no timing is None."""
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, 2)
+            total = fh.tell()
+            pos = 0
+            while pos + 8 <= total:
+                fh.seek(pos)
+                head = fh.read(16)
+                size, kind, skip = int.from_bytes(head[:4], "big"), head[4:8], 8
+                if size == 1 and len(head) == 16:
+                    size, skip = int.from_bytes(head[8:16], "big"), 16
+                elif size == 0:
+                    size = total - pos
+                if size < skip or pos + size > total:
+                    return None
+                if kind == b"moov":
+                    if size > _MOOV_MAX_BYTES:
+                        return None
+                    fh.seek(pos + skip)
+                    buf = fh.read(size - skip)
+                    for k, ps, pe in _boxes(buf, 0, len(buf)):
+                        if k == b"trak":
+                            fps = _track_fps(buf, ps, pe)
+                            if fps:
+                                return fps
+                    return None
+                pos += size
+    except OSError:
+        return None
+    return None
+
+
 def video_fps(path: str, *, timeout: int = 30) -> Optional[float]:
     """The first video stream's frame rate as ffprobe reads it, or None when
-    it cannot be read (no ffprobe, not a video, a 0/0 rate). Never a guess."""
+    it cannot be read (not a video, a 0/0 rate). Never a guess.
+
+    Without ffprobe on the machine, an MP4 / MOV is read from its own sample
+    table (``mp4_fps``). The Probe models workflow's runner installs no system
+    ffmpeg and the pinned imageio-ffmpeg ships no ffprobe; the live Runway
+    upscale probe of 2026-11-27 was refused with "frame rate could not be
+    read" before any call, although the drawn clip is a plain 24 fps MP4
+    that ffprobe reads (tests/test_runway_upscale_probe_fps.py reproduces
+    the refusal with ffprobe absent). WebM and MKV still need ffprobe, which
+    the worker image has."""
     exe = shutil.which("ffprobe")
     if not exe:
+        if Path(str(path)).suffix.lower() in (".mp4", ".mov"):
+            return mp4_fps(str(path))
         return None
     # The file is a member's library copy: only the file protocol, and the
     # demuxer its type names (as the media library's own probe does), so a
