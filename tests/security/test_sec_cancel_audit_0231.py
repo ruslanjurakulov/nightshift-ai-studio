@@ -37,7 +37,6 @@ from test_sec_breach_org_spender_0226 import (  # noqa: F401  (w is the fixture)
 
 MIGRATION = sec_db.MIGRATION_0231
 ROLLBACK = sec_db.ROLLBACK_0231
-SIG, _SRC, WAS, NOW = audit0231.BODIES[0]
 
 
 
@@ -305,9 +304,33 @@ def _body(path):
     return "\n".join(ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip() not in ("begin;", "commit;"))
 
 
-def test_the_live_body_and_policy_are_the_files(conn):
-    assert md5_of(conn, SIG) == NOW
-    assert _policy(conn) == [("a", False, "{authenticated}", "(action <> ALL (ARRAY['workflow.cancel'::text, 'creative.cancel'::text]))")]
+def _state(c):
+    return tuple(md5_of(c, sig) for sig, *_ in audit0231.BODIES), _policy(c)
+
+
+NOWS = tuple(now_ for *_, now_ in audit0231.BODIES)
+WASES = tuple(was for _sig, _src, was, _now in audit0231.BODIES)
+#: A drifted body: the live one with a comment line added (prosrc keeps comments, so the md5 moves; signature and defaults stay).
+TAMPER = ("do $t$ begin execute replace(pg_get_functiondef(to_regprocedure(%s)), 'AS $function$', "
+          "'AS $function$' || chr(10) || '-- drifted'); end $t$")
+FAKES = {sig: sig for sig, *_ in audit0231.BODIES}
+
+
+def _tamper(c, sig):
+    c.execute(TAMPER.replace("%s", "'" + sig + "'"))
+
+
+def test_the_live_bodies_and_policy_are_the_files(conn):
+    assert _state(conn) == (NOWS, [("a", False, "{authenticated}",
+                                    "(action <> ALL (ARRAY['workflow.cancel'::text, 'creative.cancel'::text]))")])
+
+
+def test_the_file_replaces_exactly_these_four_bodies_and_names_them_in_its_header():
+    text = MIGRATION.read_text(encoding="utf-8")
+    replaced = sorted(ln.split("(")[0].split(".")[1] for ln in text.splitlines() if ln.startswith("create or replace function public."))
+    assert replaced == sorted(sig.split("(")[0].split(".")[1] for sig, *_ in audit0231.BODIES)
+    for sig, src, was, now_ in audit0231.BODIES:
+        assert f"{was} ({src}) -> {now_}" in text, sig
 
 
 def test_neither_the_file_nor_its_rollback_holds_a_backslash():
@@ -317,61 +340,80 @@ def test_neither_the_file_nor_its_rollback_holds_a_backslash():
 
 def test_a_replay_changes_nothing(conn):
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
-        before = (md5_of(c, SIG), _policy(c))
+        before = _state(c)
         c.execute(MIGRATION.read_text(encoding="utf-8"))
         c.execute(MIGRATION.read_text(encoding="utf-8"))
-        assert (md5_of(c, SIG), _policy(c)) == before
+        assert _state(c) == before
         c.rollback()
 
 
-@pytest.mark.parametrize("tamper,message", [
-    ("create or replace function public.cancel_creative_job(p_job uuid) returns jsonb language plpgsql security definer "
-     "set search_path = public, pg_temp as $$ begin return '{}'::jsonb; end $$",
-     "0231 found public.cancel_creative_job(uuid) with a body that is neither 0198's nor 0231's"),
-    ("drop policy app_audit_log_no_cancel_rows on public.app_audit_log; create policy app_audit_log_no_cancel_rows on "
-     "public.app_audit_log as restrictive for insert to authenticated with check (true)",
-     "0231 found a policy app_audit_log_no_cancel_rows on public.app_audit_log that is not this file's"),
-])
-def test_the_drift_guard_refuses_a_body_or_a_policy_that_is_not_its_own(conn, tamper, message):
+@pytest.mark.parametrize("sig", list(FAKES))
+def test_the_drift_guard_refuses_a_body_that_is_not_its_own(conn, sig):
+    src = dict((b[0], b[1]) for b in audit0231.BODIES)[sig]
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
-        c.execute(tamper)
+        _tamper(c, sig)
         with pytest.raises(psycopg.Error) as e:
             c.execute(MIGRATION.read_text(encoding="utf-8"))
-        assert message in str(e.value), str(e.value)
+        assert f"0231 found {sig} with a body that is neither {src}'s nor 0231's" in str(e.value), str(e.value)
         c.rollback()
 
 
-def test_it_refuses_to_apply_without_0226s_cancel_workflow_run(conn):
+def test_the_drift_guard_refuses_a_policy_that_is_not_its_own(conn):
+    with psycopg.connect(st._dsn(conn), autocommit=False) as c:
+        c.execute("drop policy app_audit_log_no_cancel_rows on public.app_audit_log; create policy app_audit_log_no_cancel_rows on "
+                  "public.app_audit_log as restrictive for insert to authenticated with check (true)")
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(MIGRATION.read_text(encoding="utf-8"))
+        assert "0231 found a policy app_audit_log_no_cancel_rows on public.app_audit_log that is not this file's" in str(e.value)
+        c.rollback()
+
+
+@pytest.mark.parametrize("dropped", ["creative.cancel", "workflow.cancel"])
+def test_it_refuses_to_apply_when_a_cancel_action_is_off_the_audit_list(conn, dropped):
+    """Breach's note on round 4: with either action off 0087's list app_audit_log_stamp refuses the definer's own insert, so every
+    cancel would fail, and cancel_workflow_run's step cancel swallows that in its when others. The file refuses to apply instead."""
+    with psycopg.connect(st._dsn(conn), autocommit=False) as c:
+        c.execute("create or replace function public.audit_action_allowed(p_action text) returns boolean language sql immutable "
+                  "set search_path = public, pg_temp as $$ select coalesce(p_action, '') <> '" + dropped + "' $$")
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(MIGRATION.read_text(encoding="utf-8"))
+        assert "0231 needs creative.cancel and workflow.cancel on audit_action_allowed's list (0087)" in str(e.value), str(e.value)
+        c.rollback()
+
+
+def test_it_refuses_to_apply_without_0226(conn):
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
         sec_db.take_off_0226(c)
         assert not sec_db.has_0231(c)
         with pytest.raises(psycopg.Error) as e:
             c.execute(MIGRATION.read_text(encoding="utf-8"))
-        assert "0231 needs 0226's cancel_workflow_run" in str(e.value), str(e.value)
+        message = str(e.value)
+        # 0215 (is_org_spender) may still be on: then the body guard names 0226's create_creative_job or cancel_workflow_run.
+        assert ("0231 needs 0226" in message or "neither 0226's nor 0231's" in message), message
         c.rollback()
 
 
-def test_the_rollback_puts_0198s_body_back_drops_the_policy_and_0231_applies_again(conn):
+def test_the_rollback_puts_the_four_earlier_bodies_back_drops_the_policy_and_0231_applies_again(conn):
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
         c.execute(_body(ROLLBACK))
-        assert md5_of(c, SIG) == WAS and _policy(c) == []
+        assert _state(c) == (WASES, [])
         c.execute(MIGRATION.read_text(encoding="utf-8"))
-        assert md5_of(c, SIG) == NOW and len(_policy(c)) == 1
+        assert _state(c)[0] == NOWS and len(_policy(c)) == 1
         c.rollback()
 
 
-def test_the_rollback_refuses_a_body_that_is_not_0231s(conn):
+@pytest.mark.parametrize("sig", list(FAKES))
+def test_the_rollback_refuses_a_body_that_is_not_0231s(conn, sig):
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
-        c.execute("create or replace function public.cancel_creative_job(p_job uuid) returns jsonb language plpgsql security definer "
-                  "set search_path = public, pg_temp as $$ begin return '{}'::jsonb; end $$")
+        _tamper(c, sig)
         with pytest.raises(psycopg.Error) as e:
             c.execute(_body(ROLLBACK))
-        assert "rollback 0231: public.cancel_creative_job(uuid) is not 0231's body" in str(e.value), str(e.value)
+        assert f"rollback 0231: {sig} is not 0231's body" in str(e.value), str(e.value)
         c.rollback()
 
 
 def test_sec_dbs_take_off_and_put_back_chain_goes_through_0231(conn):
-    """0198's rollback refuses 0231's cancel_creative_job, and 0231 asks for 0226: take_off_0226 (reached from take_off_0215,
+    """0198's, 0192's and 0226's rollbacks refuse 0231's bodies, and 0231 asks for 0226: take_off_0226 (reached from take_off_0215,
     take_off_0198 and take_off_0192) takes 0231 off first, put_back_0226 puts it back."""
     for off, back in ((sec_db.take_off_0231, sec_db.put_back_0231), (sec_db.take_off_0226, sec_db.put_back_0226),
                       (sec_db.take_off_0198, sec_db.put_back_0198), (sec_db.take_off_0192, sec_db.put_back_0192)):
@@ -379,5 +421,218 @@ def test_sec_dbs_take_off_and_put_back_chain_goes_through_0231(conn):
             off(c)
             assert not sec_db.has_0231(c), off.__name__
             back(c)
-            assert sec_db.has_0231(c) and md5_of(c, SIG) == NOW and len(_policy(c)) == 1, back.__name__
+            assert sec_db.has_0231(c) and _state(c)[0] == NOWS and len(_policy(c)) == 1, back.__name__
             c.rollback()
+
+
+# ── Breach round 4 (27 Nov, on bec25b2c2): 0231 attacked ─────────────────────
+
+from test_sec_breach_org_spender_0226 import _finish_first_step, _second_step  # noqa: E402
+from sec_db import ANON  # noqa: E402
+
+
+def test_a_viewer_cannot_stop_a_members_run_by_taking_its_next_steps_idempotency_key(w):
+    """BREACH 0231-R4-1 (medium; pre-existing since 0073/BR-L-005, and it defeats 0231's "a viewer who could not stop the run cannot
+    stop it through its step either"). workflow_advance_locked makes step N's job with the idempotency key 'wf:<run>:<N>', and
+    create_creative_job's key is unique per organization, not per caller. A VIEWER may create creative jobs (0226 asks
+    is_org_spender(org, 'viewer')) and reads run ids (workflow_runs_select). So the viewer creates an ordinary job under the NEXT
+    step's key and cancels it at once (nothing spent, the hold goes back). When step 1 is due, create_creative_job answers
+    idempotency_conflict (or a replay, which advance refuses as BR-L-005), the step fails and the run ends failed/step_failed: a
+    member's paid run stopped by someone cancel_workflow_run refuses, with no workflow.cancel row; the only row is a creative.cancel
+    on the viewer's own ordinary job, which names no run. Measured on bec25b2c2: run ('failed', 'step_failed'), step 1
+    ('failed', 'idempotency_conflict'). Fails until a caller cannot take a key in the 'wf:' namespace (reserved to
+    workflow_advance_locked), or the step's key is one no member can know or pre-empt."""
+    s = w.su
+    viewer = _person(s, "viewer-squat")
+    _seat(s, w.org, viewer, "viewer")
+    run = _run_confirmed_by(s, w, w.member)
+    held = money(s, w.org)
+    squat = as_(s, viewer, base.CREATE, [w.org, base.MODEL_SOLD, f"wf:{run}:1"])
+    if squat.ok:
+        assert as_(s, viewer, CANCEL, [squat.rows[0][0]["job"]["id"]]).ok
+        assert money(s, w.org)[0] == held[0]  # the squat cost the organization nothing
+    _finish_first_step(s, run)
+    assert as_(s, w.member, "select public.advance_workflow_run(%s)", [run]).ok
+    step = _second_step(s, run)
+    assert (_run_state(s, run)[0], step[0]) == ("running", "running"), (
+        "a viewer stopped a member's workflow run by taking its next step's idempotency key", squat, _run_state(s, run), step)
+
+
+def test_a_cancel_of_a_run_that_already_ended_writes_no_workflow_cancel_row(w):
+    """BREACH 0231-R4-2 (low; 0226's cancel_workflow_run, next to 0231's "an answer that the job had already ended writes nothing").
+    cancel_workflow_run writes its workflow.cancel row whatever the run's status: after staff stopped a run, any editor (or any
+    seatless platform admin, in any organization) may call it again and again, and each call adds a workflow.cancel row naming them
+    for a stop that never happened. Only detail.status ('cancelled', not 'running') tells the rows apart; 0231 closed the same padding
+    for a browser's own insert (R3-2) and for cancel_creative_job's already-ended answer, not for this one. Measured on bec25b2c2:
+    three rows (staff 'running', member 'cancelled' twice). Fails until a call on a run that is not running writes no row."""
+    s = w.su
+    run = _run_confirmed_by(s, w, w.member)
+    assert as_(s, w.staff, "select public.cancel_workflow_run(%s)", [run]).ok
+    for _ in range(2):
+        assert as_(s, w.member, "select public.cancel_workflow_run(%s)", [run]).ok
+    assert [str(r[0]) for r in _audit(s, "workflow.cancel", run)] == [w.staff.uid], _audit(s, "workflow.cancel", run)
+
+
+def test_held_the_creative_cancel_row_names_the_session_not_a_forged_email_claim(w):
+    s = w.su
+    job = _job(s, w.org, w.member)
+    forged = w.member.claims()
+    forged["email"] = "ceo@victim.test"
+    become(s, None)
+    s.conn.execute("select set_config('request.jwt.claims', %s, true)", [json.dumps(forged)])
+    s.conn.execute("set local role authenticated")
+    assert s.run(CANCEL, [job]).ok
+    become(s, None)
+    assert [(str(a), e) for a, e in _audit(s, "creative.cancel", job)] == [(w.member.uid, w.member.email)]
+
+
+def test_held_no_browser_path_writes_a_cancel_row_anon_upsert_or_update(w):
+    """anon has no permissive insert policy; an upsert onto an existing row needs an update policy, which app_audit_log has none of;
+    a plain update of another action into a cancel one is refused the same way."""
+    s = w.su
+    job = _job(s, w.org, w.member)
+    assert as_(s, w.member, CANCEL, [job]).ok
+    become(s, None)
+    row = s.value("select id from public.app_audit_log where action = 'creative.cancel' and target = %s", [job])
+    for action in ("creative.cancel", "workflow.cancel"):
+        out = as_(s, ANON, "insert into public.app_audit_log (action, target, detail) values (%s, %s, '{}') returning 1", [action, job])
+        assert not out.ok and out.sqlstate == "42501", out
+        out = as_(s, w.member, "insert into public.app_audit_log (id, actor_user_id, action, target, detail, channel_id) "
+                               "values (%s, %s, 'workflow.run', 'x', '{}', %s) on conflict (id) do update set action = %s returning 1",
+                  [row, w.member.uid, w.channel, action])
+        assert not out.ok, out
+    other = as_(s, w.member, "insert into public.app_audit_log (actor_user_id, action, target, detail, channel_id) "
+                             "values (%s, 'workflow.run', 'lab', '{}', %s) returning id", [w.member.uid, w.channel])
+    assert other.ok, other
+    out = as_(s, w.member, "update public.app_audit_log set action = 'creative.cancel' where id = %s returning 1", [other.rows[0][0]])
+    assert out.ok and out.rows == [], out
+    assert len(_audit(s, "creative.cancel", job)) == 1
+
+
+def test_held_a_viewer_cannot_end_a_steps_job_by_any_member_callable_function(w):
+    """The member-callable functions that end a creative job: cancel_creative_job (editor for a step, 0231) and cancel_workflow_run
+    (editor). The others (expire_creative_jobs, claim/finish/advance/reroute, film_*, model_switch_stop_jobs behind
+    owner_set_model_switch) are service-only or platform-owner. create_creative_job's creative_expire_locked(org) ends only jobs past
+    their expires_at, which the sweep would end anyway."""
+    s = w.su
+    viewer = _person(s, "viewer-any")
+    _seat(s, w.org, viewer, "viewer")
+    run = _run_confirmed_by(s, w, w.member)
+    job = _step_job(s, run)
+    for q, p in ((CANCEL, [job]), ("select public.cancel_workflow_run(%s)", [run]), ("select public.advance_workflow_run(%s)", [run]),
+                 ("select public.expire_creative_jobs()", None)):
+        assert not as_(s, viewer, q, p).ok, q
+    assert _status(s, job) == "queued" and _run_state(s, run)[0] == "running"
+
+
+# ── 0231-R4-1 and R4-2, pinned ───────────────────────────────────────────────
+
+MARK = "nightshift.workflow_step_key"
+
+
+def _jobs_under(s, org, key):
+    become(s, None)
+    return s.value("select count(*) from public.creative_jobs where org_id = %s and idempotency_key = %s", [org, key])
+
+
+@pytest.mark.parametrize("seat", ["viewer", "editor", "admin"])
+def test_no_member_takes_a_key_in_a_workflow_runs_namespace_and_the_refusal_holds_nothing(w, seat):
+    """Any seat, not only a viewer: the key is the run's, whoever could have started it. NS400 invalid_idempotency_key before anything
+    is locked, held or written; the detail names the remedy."""
+    s = w.su
+    person = _person(s, f"{seat}-wf")
+    _seat(s, w.org, person, seat)
+    run = _run_confirmed_by(s, w, w.member)
+    before = money(s, w.org)
+    for key in (f"wf:{run}:1", f"wf:{run}:0", "wf:anything", "wf:"):
+        out = as_(s, person, base.CREATE, [w.org, base.MODEL_SOLD, key])
+        assert not out.ok and out.sqlstate == "NS400" and "invalid_idempotency_key" in out.error, (key, out)
+        assert _jobs_under(s, w.org, key) == (1 if key == f"wf:{run}:0" else 0), key  # step 0's own job, made by the run
+    assert money(s, w.org) == before
+
+
+def test_the_refusal_names_the_remedy(w):
+    s = w.su
+    become(s, w.member)
+    with pytest.raises(psycopg.Error) as e:
+        s.conn.execute("savepoint k")
+        try:
+            s.conn.execute(base.CREATE, [w.org, base.MODEL_SOLD, "wf:mine"])
+        finally:
+            s.conn.execute("rollback to savepoint k")
+    become(s, None)
+    assert e.value.diag.message_primary == "invalid_idempotency_key"
+    assert "choose a key that does not begin with wf:" in (e.value.diag.message_detail or ""), e.value.diag.message_detail
+
+
+def test_keys_that_only_look_like_the_namespace_are_still_a_members_own(w):
+    """Only the exact prefix wf: is the run's: wf-..., wf_..., WF:... and a key with wf: further in stay as 0036 has them."""
+    s = w.su
+    for key in (f"wf-{uuid.uuid4().hex}", f"wf_{uuid.uuid4().hex}", f"WF:{uuid.uuid4().hex}", f"x-wf:{uuid.uuid4().hex}"):
+        assert as_(s, w.member, base.CREATE, [w.org, base.MODEL_SOLD, key]).ok, key
+
+
+def test_the_marker_admits_only_the_one_key_it_names(w):
+    """Even with the setting in hand (it is not: see the next test) a caller gets exactly that one key, never another of the run's or
+    another run's."""
+    s = w.su
+    run = _run_confirmed_by(s, w, w.member)
+    become(s, w.member)
+    s.conn.execute("select set_config(%s, %s, true)", [MARK, f"wf:{run}:1"])
+    for key in (f"wf:{run}:2", f"wf:{uuid.uuid4()}:1"):
+        out = s.run(base.CREATE, [w.org, base.MODEL_SOLD, key])
+        assert not out.ok and out.sqlstate == "NS400" and "invalid_idempotency_key" in out.error, (key, out)
+    s.conn.execute("select set_config(%s, '', true)", [MARK])
+    become(s, None)
+
+
+def test_no_function_a_browser_may_call_sets_a_setting_it_is_handed(conn):
+    """The marker is sound only while a browser cannot set nightshift.workflow_step_key. set_config is pg_catalog's (PostgREST exposes
+    the public schema only), and no function anon or authenticated may execute calls set_config with anything but a literal name, or
+    carries the marker in its own SET clause. workflow_advance_locked, which sets it, is executable by neither."""
+    exposed = conn.execute(
+        "select p.oid::regprocedure::text, p.prosrc, coalesce(array_to_string(p.proconfig, ','), '') from pg_proc p "
+        "join pg_namespace n on n.oid = p.pronamespace where n.nspname not in ('pg_catalog', 'information_schema') "
+        "and (has_function_privilege('anon', p.oid, 'execute') or has_function_privilege('authenticated', p.oid, 'execute'))").fetchall()
+    import re
+    for sig, src, config in exposed:
+        for arg in re.findall(r"set_config\s*\(\s*([^,]*),", src or ""):
+            assert re.fullmatch(r"'[a-z_.]+'", arg.strip()), (sig, arg)
+            assert arg.strip() != f"'{MARK}'", sig
+        assert MARK not in config, sig
+    for role in ("anon", "authenticated"):
+        assert not conn.execute("select has_function_privilege(%s, 'public.workflow_advance_locked(uuid, boolean)', 'execute')",
+                                [role]).fetchone()[0], role
+
+
+def test_the_only_callers_of_create_creative_job_make_their_own_keys(conn):
+    """The browser is the one caller that chooses a raw key. The API's and connected apps' keys are 'api-'/'oa-' + a hash, so a
+    caller's 'wf:...' never reaches the refusal; the workflow's own is the only wf: key."""
+    callers = dict(conn.execute(
+        "select p.oid::regprocedure::text, p.prosrc from pg_proc p where p.prosrc ~ 'create_creative_job[(]' "
+        "and p.pronamespace = 'public'::regnamespace and p.proname <> 'create_creative_job'").fetchall())
+    assert sorted(callers) == sorted(["workflow_advance_locked(uuid,boolean)",
+                                      "api_creative_create(text,text,text,jsonb,text,numeric,text,text,text)",
+                                      "oauth_creative_create(text,uuid,text,text)"]), sorted(callers)
+    assert "v_idem := 'api-' || encode(sha256(" in callers["api_creative_create(text,text,text,jsonb,text,numeric,text,text,text)"]
+    assert "v_key := 'oa-' || encode(sha256(" in callers["oauth_creative_create(text,uuid,text,text)"]
+
+
+def test_a_workflow_still_makes_each_steps_job_under_its_key_and_leaves_no_marker(w):
+    s = w.su
+    run = _run_confirmed_by(s, w, w.member)
+    _finish_first_step(s, run)
+    become(s, w.member)
+    assert s.run("select public.advance_workflow_run(%s)", [run]).ok
+    assert s.value("select current_setting(%s, true)", [MARK]) in ("", None)
+    become(s, None)
+    assert _run_state(s, run)[0] == "running" and _second_step(s, run)[0] == "running"
+    assert _jobs_under(s, w.org, f"wf:{run}:1") == 1
+
+
+def test_a_cancel_of_a_running_run_still_writes_its_one_row(w):
+    s = w.su
+    run = _run_confirmed_by(s, w, w.member)
+    assert as_(s, w.member, "select public.cancel_workflow_run(%s)", [run]).ok
+    assert as_(s, w.member, "select public.cancel_workflow_run(%s)", [run]).ok
+    assert [str(r[0]) for r in _audit(s, "workflow.cancel", run)] == [w.member.uid]

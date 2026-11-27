@@ -1198,28 +1198,39 @@ CANCEL_CREATIVE_JOB_0198 = "2720d62c17ae26bce439a28280964575"
 CANCEL_CREATIVE_JOB_0231 = "c210f8e4684e154d40f7029b5c94b893"
 
 
+def _0231_bodies():
+    import sec_cancel_audit_0231  # the one list of the four bodies: signature, earlier file, earlier md5, 0231's md5
+
+    return sec_cancel_audit_0231.BODIES
+
+
 def has_0231(conn_or_session) -> bool:
+    """Any of the four bodies is 0231's. Not all: a lab that replays 0036, 0073, 0074 or 0083 puts one body back silently and leaves the
+    rest, which still has to come off before an earlier rollback runs."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
-    return _live_md5(SimpleSession(conn), "public.cancel_creative_job(uuid)") == CANCEL_CREATIVE_JOB_0231
+    session = SimpleSession(conn)
+    return any(_live_md5(session, sig) == now_ for sig, _src, _was, now_ in _0231_bodies())
 
 
 def take_off_0231(conn_or_session) -> None:
-    """0231 (a workflow step's job is cancelled by the run's rule, every cancel recorded, a browser writes no cancel row) replaces
-    0198's cancel_creative_job, which 0198's rollback and guard refuse, and asks for 0226's cancel_workflow_run: take_off_0226 takes
-    it off first (take_off_0215 and take_off_0198 reach it through it)."""
+    """0231 (a workflow step's job is cancelled by the run's rule, every cancel and every real stop recorded, a browser writes no cancel
+    row, a member takes no workflow step's key) replaces 0198's cancel_creative_job, 0226's create_creative_job and cancel_workflow_run
+    and 0192's workflow_advance_locked, which those files' rollbacks and guards refuse: take_off_0226 takes it off first (take_off_0215,
+    take_off_0198 and take_off_0192 reach it through it)."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if has_0231(conn):
+        # Whole first (its guard takes a mix of the earlier and its own bodies), so that its rollback, which asks for all four, runs.
+        conn.execute(MIGRATION_0231.read_text(encoding="utf-8"))
         text = ROLLBACK_0231.read_text(encoding="utf-8")
         conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
 
 
 def put_back_0231(conn_or_session) -> None:
-    """0231 again, when it is not on and its guard would take it: 0226's cancel_workflow_run live and cancel_creative_job 0198's."""
+    """0231 again, when it is not on and its guard would take it: 0226 on and each of the four bodies the earlier file's."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     session = SimpleSession(conn)
     if (not has_0231(conn) and has_0226(conn)
-            and _live_md5(session, "public.cancel_creative_job(uuid)") == CANCEL_CREATIVE_JOB_0198
-            and _live_md5(session, "public.cancel_workflow_run(uuid)") == "427ead0896b4881c0739b944997c6b50"):
+            and all(_live_md5(session, sig) == was for sig, _src, was, _now in _0231_bodies())):
         conn.execute(MIGRATION_0231.read_text(encoding="utf-8"))
 
 

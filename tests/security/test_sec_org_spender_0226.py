@@ -925,12 +925,19 @@ CONFIRMER = "workflow_confirmer_may_spend"
 RECORD = "cancel_workflow_run"
 
 
+def _live_now(sig, now_):
+    """0226's body, or 0231's for the two 0231 builds on (create_creative_job, cancel_workflow_run) once 0231 is on."""
+    import sec_cancel_audit_0231
+
+    return {b[0]: b[3] for b in sec_cancel_audit_0231.BODIES}.get(sig, now_)
+
+
 def test_the_file_replaces_exactly_the_twenty_two_bodies_and_each_spend_path_asks_is_org_spender_with_its_role(conn):
     bodies = _bodies()
     assert sorted(bodies) == sorted(sig.split("(")[0].removeprefix("public.") for sig, *_ in spender.PATHS)
     for sig, role, _src, _was, now_ in spender.PATHS:
         name = sig.split("(")[0].removeprefix("public.")
-        assert md5_of(conn, sig) == now_, sig
+        assert md5_of(conn, sig) in (now_, _live_now(sig, now_) if sec_db.has_0231(conn) else now_), sig
         if name in (CONFIRMER, RECORD):
             continue
         assert f"is_org_spender(" in bodies[name] and f"'{role}')" in bodies[name].split("is_org_spender(", 1)[1].split("\n", 1)[0], name
@@ -980,6 +987,7 @@ select md5(string_agg(p.oid::regprocedure::text || md5(p.prosrc) || coalesce(arr
 
 def test_a_replay_changes_nothing(conn):
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
+        sec_db.take_off_0231(c)  # 0231 replaces two of 0226's bodies, which 0226's guard and rollback refuse
         before = c.execute(SNAPSHOT).fetchone()[0]
         c.execute(MIGRATION.read_text(encoding="utf-8"))
         c.execute(MIGRATION.read_text(encoding="utf-8"))
@@ -993,6 +1001,7 @@ def test_the_drift_guard_refuses_a_body_that_is_neither_the_earlier_files_nor_it
     args = {"public.request_download": "p_video_id text, p_quality text, p_max_credits numeric default null",
             "public.oauth_ctx": "p_hash text, p_endpoint text, p_request_id text"}[name]
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
+        sec_db.take_off_0231(c)  # 0231 replaces two of 0226's bodies, which 0226's guard and rollback refuse
         c.execute(f"create or replace function {name}({args}) returns jsonb language plpgsql "
                   "security definer set search_path = public, pg_temp as $$ begin return '{}'::jsonb; end $$")
         with pytest.raises(psycopg.Error) as e:
@@ -1007,6 +1016,7 @@ def _rollback_text():
 
 def test_the_rollback_puts_every_earlier_body_back_then_0226_applies_again(conn):
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
+        sec_db.take_off_0231(c)  # 0231 replaces two of 0226's bodies, which 0226's guard and rollback refuse
         grants = {sig: c.execute("select proacl::text from pg_proc where oid = to_regprocedure(%s)", [sig]).fetchone()[0]
                   for sig, *_ in spender.PATHS}
         c.execute(_rollback_text())
@@ -1022,6 +1032,7 @@ def test_the_rollback_puts_every_earlier_body_back_then_0226_applies_again(conn)
 
 def test_the_rollback_refuses_a_body_that_is_not_0226s(conn):
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
+        sec_db.take_off_0231(c)  # 0231 replaces two of 0226's bodies, which 0226's guard and rollback refuse
         c.execute("create or replace function public.advance_workflow_run(p_run uuid) returns jsonb language plpgsql "
                   "security definer set search_path = public, pg_temp as $$ begin return '{}'::jsonb; end $$")
         with pytest.raises(psycopg.Error) as e:
@@ -1041,7 +1052,7 @@ def test_sec_dbs_take_off_and_put_back_chain_goes_through_0226(conn):
             back(c)
             assert sec_db.has_0226(c), back.__name__
             for sig, *_rest, now_ in spender.PATHS:
-                assert md5_of(c, sig) == now_, (back.__name__, sig)
+                assert md5_of(c, sig) == _live_now(sig, now_), (back.__name__, sig)  # put_back_0226 puts 0231 back too
             c.rollback()
 
 
