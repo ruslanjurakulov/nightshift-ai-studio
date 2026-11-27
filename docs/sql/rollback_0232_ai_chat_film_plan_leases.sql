@@ -1,25 +1,27 @@
 -- rollback_0232_ai_chat_film_plan_leases.sql — takes migration 0232 (one storyboard plan per film, its turns reserved at begin) out.
 -- OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
--- WHAT COMES BACK, verbatim: ai_chat_used and ai_chat_trial_left as 0199 wrote them, ai_chat_reserve_turn and ai_chat_plan_end as 0226
---   wrote them, with their grants. A plan's turns are again counted as they are taken, with nothing reserved (BR-FILM-03 open again),
---   and two conversations can again plan one film at once (BR-FILM-01/02 open again; the route's own per-person yield stays).
--- WHAT GOES: ai_chat_film_plan_begin, ai_chat_reserved, ai_chat_reserved_by and the ai_chat_film_plan_leases table (which plans held
---   which film, and what they reserved and released). Dropped, not kept: it references films, and a kept table would stop 0166's
---   own rollback. Turns, calls, conversations and BRIEFs are 0199's and are kept. The app degrades by itself: without
---   ai_chat_film_plan_begin (PGRST202 / 42883) both routes plan as before 0232 and claim no reservation.
+-- WHAT COMES BACK, verbatim: ai_chat_reserve_turn and ai_chat_plan_end as 0226 wrote them and ai_chat_quota as 0199 wrote it, with
+--   their grants. A plan's turns are again counted as they are taken, with nothing reserved (BR-FILM-03 open again), and two
+--   conversations can again plan one film at once (BR-FILM-01/02 open again; the route's own per-person yield stays).
+-- WHAT GOES: ai_chat_film_plan_begin, ai_chat_film_plan_max_turns, ai_chat_reserved, ai_chat_reserved_until, ai_chat_reserved_by and
+--   the ai_chat_film_plan_leases table. Dropped, not kept: it references films, and a kept table would stop 0166's own rollback.
+--   Nothing else depends on it (no view, function or foreign key of another file names it). Plans RUNNING when this is applied lose
+--   their lease and their reservation at once: their remaining turns are then counted as they are taken, as before 0232, and may meet
+--   the cap part-way. Apply it when no storyboard is being written if that matters. Turns, calls, conversations and BRIEFs are 0199's
+--   and are kept. The app degrades by itself: without ai_chat_film_plan_begin (PGRST202 / 42883) both routes plan as before 0232 and
+--   claim no reservation, and the panel reads no `reserved` from ai_chat_quota (shown as none).
 --
 -- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) if any of the four bodies is not 0232's (a later change would be undone).
+--   0. REFUSES (changes nothing) if any of the three bodies is not 0232's (a later change would be undone).
 --   1. Puts the earlier bodies back, verbatim, with their grants.
 --   2. Drops what 0232 added.
 --   3. Asserts the end state.
 --
 -- The bodies (md5, whitespace runs read as one space; 0232 -> earlier):
---   ai_chat_used           013c1080dad4cfbf0bef33ab0ce30e49 -> fe5ef9dd20a20de48d022406e2621fb3 (0199)
---   ai_chat_trial_left     f2a0591c649062cf03fa016fa66ce375 -> ec3fc5ff3303d80274626a4b31a6ea2d (0199)
---   ai_chat_reserve_turn   f4a9279015cfbd9557e712080c0692ad -> e105fa9373fac86e9a36cf4a945a21b4 (0226)
+--   ai_chat_reserve_turn   51ecb8f5cd0226a0f89a3aa7571c605f -> e105fa9373fac86e9a36cf4a945a21b4 (0226)
 --   ai_chat_plan_end       71c2feb9b1b12295bef680822ab80c91 -> 4df6a1c4054bcacedf971a0b79f997d6 (0226)
+--   ai_chat_quota          09b69b04c1073ad8e79bbc8107e92f81 -> 7c17f9749127303a53d039bbdc15e8c2 (0199)
 --
 -- NO BACKSLASH in this file: ai_chat_reserve_turn's two E'' character lists are written as 0226 writes them, an EXECUTE whose
 -- backslashes are a token that replace() turns back into chr(92).
@@ -33,10 +35,9 @@ declare
   h text;
 begin
   for r in select * from (values
-      ('public.ai_chat_used(uuid)', '013c1080dad4cfbf0bef33ab0ce30e49'),
-      ('public.ai_chat_trial_left(uuid)', 'f2a0591c649062cf03fa016fa66ce375'),
-      ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', 'f4a9279015cfbd9557e712080c0692ad'),
-      ('public.ai_chat_plan_end(uuid, integer, text, text)', '71c2feb9b1b12295bef680822ab80c91')) v(sig, want) loop
+      ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', '51ecb8f5cd0226a0f89a3aa7571c605f'),
+      ('public.ai_chat_plan_end(uuid, integer, text, text)', '71c2feb9b1b12295bef680822ab80c91'),
+      ('public.ai_chat_quota(uuid)', '09b69b04c1073ad8e79bbc8107e92f81')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0232: % is not 0232''s body (md5 %): read the live body first', r.sig, h;
@@ -44,25 +45,23 @@ begin
   end loop;
 end $$;
 
--- The workspace's turns in the last 24 hours. A failure at the vendor counts (it may have cost money); a turn that never reached the
--- vendor (not_sent) or that a safety rule refused does not: the person is not charged a turn for those (Lens on 0199).
-create or replace function public.ai_chat_used(p_org uuid) returns integer
-  language sql stable security definer set search_path = public, pg_temp as $$
-  select count(*)::integer from public.ai_chat_calls c where c.org_id = p_org and c.created_at > now() - interval '24 hours'
-     and c.outcome not in ('not_sent', 'not_configured', 'vendor_refused', 'refused')
-$$;
-
--- The Free plan (plans.is_default): the trial messages left in the workspace's whole life (every turn it ever took counts). Only Free:
--- a paid plan without a cap row (a new plan nobody priced the Brain for) is refused as "not on this plan", never handed Free's trial,
--- and never unlimited. A subscription to an unknown plan id cannot exist (0034's foreign key on subscriptions.plan_id).
-create or replace function public.ai_chat_trial_left(p_org uuid) returns integer
-  language sql stable security definer set search_path = public, pg_temp as $$
-  select case when public.org_plan_internal(p_org) is distinct from (select p.id from public.plans p where p.is_default limit 1) then 0
-              else greatest(0, (select trial_messages from public.ai_chat_settings where id)
-                               - (select count(*)::integer from public.ai_chat_calls c where c.org_id = p_org
-                                    -- Every outcome uses the trial: a refusal on Free is a paid vendor call, and a call a member
-                                    -- finishes by hand as not_sent still stores their message (Breach on 0199: both kept the trial).
-                                    )) end
+-- What the panel shows: the plan's cap, what is used, the longest message. A member's own workspace only. `limit` null = no Brain on
+-- this plan (the panel shows the upgrade), never 0 read as "used up".
+create or replace function public.ai_chat_quota(p_org uuid) returns jsonb
+  language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  if auth.uid() is null or p_org is null or not public.is_org_member(p_org, 'viewer') then
+    perform public.creative_refuse('forbidden', 'not a member of this workspace', 'NS403');
+  end if;
+  -- The model is the owner's and its id names the vendor: a member gets only a reference the server maps to its own list
+  -- (lib/server/brain/session modelFromRef), never the id itself. This keeps the id out of every answer and screen; it is not a secret
+  -- against a member who hashes the few public candidate ids: the web server reads as the member (anon key only, CLAUDE.md rule 3),
+  -- so nothing it can read is hidden from them (Lens and Breach on 0199).
+  return jsonb_build_object('used', public.ai_chat_used(p_org), 'limit', public.ai_chat_cap(p_org),
+                            'trial_left', case when public.ai_chat_cap(p_org) is null then public.ai_chat_trial_left(p_org) end,
+                            'max_input_chars', (select max_input_chars from public.ai_chat_settings where id),
+                            'model_ref', (select md5('nightshift-chat-model:' || model) from public.ai_chat_settings where id));
+end
 $$;
 
 -- This body holds a backslash. A backslash can be rewritten on its way through an apply tool, so this file holds none:
@@ -190,15 +189,17 @@ begin
 end
 $$;
 
-revoke all on function public.ai_chat_used(uuid) from public, anon, authenticated, service_role;
-revoke all on function public.ai_chat_trial_left(uuid) from public, anon, authenticated, service_role;
+revoke all on function public.ai_chat_quota(uuid) from public, anon, authenticated, service_role;
+grant execute on function public.ai_chat_quota(uuid) to authenticated;
 revoke all on function public.ai_chat_reserve_turn(uuid, text, boolean, text) from public, anon, authenticated, service_role;
 grant execute on function public.ai_chat_reserve_turn(uuid, text, boolean, text) to authenticated;
 revoke all on function public.ai_chat_plan_end(uuid, integer, text, text) from public, anon, authenticated, service_role;
 grant execute on function public.ai_chat_plan_end(uuid, integer, text, text) to authenticated;
 
 drop function if exists public.ai_chat_film_plan_begin(uuid, uuid, integer);
+drop function if exists public.ai_chat_film_plan_max_turns(integer);
 drop function if exists public.ai_chat_reserved_by(uuid);
+drop function if exists public.ai_chat_reserved_until(uuid);
 drop function if exists public.ai_chat_reserved(uuid);
 drop table if exists public.ai_chat_film_plan_leases;
 
@@ -208,10 +209,9 @@ declare
   h text;
 begin
   for r in select * from (values
-      ('public.ai_chat_used(uuid)', 'fe5ef9dd20a20de48d022406e2621fb3'),
-      ('public.ai_chat_trial_left(uuid)', 'ec3fc5ff3303d80274626a4b31a6ea2d'),
       ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', 'e105fa9373fac86e9a36cf4a945a21b4'),
-      ('public.ai_chat_plan_end(uuid, integer, text, text)', '4df6a1c4054bcacedf971a0b79f997d6')) v(sig, want) loop
+      ('public.ai_chat_plan_end(uuid, integer, text, text)', '4df6a1c4054bcacedf971a0b79f997d6'),
+      ('public.ai_chat_quota(uuid)', '7c17f9749127303a53d039bbdc15e8c2')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0232 end state: % is not the earlier body (md5 %)', r.sig, h;
@@ -219,7 +219,9 @@ begin
   end loop;
   if to_regclass('public.ai_chat_film_plan_leases') is not null
      or to_regprocedure('public.ai_chat_film_plan_begin(uuid, uuid, integer)') is not null
+     or to_regprocedure('public.ai_chat_film_plan_max_turns(integer)') is not null
      or to_regprocedure('public.ai_chat_reserved(uuid)') is not null
+     or to_regprocedure('public.ai_chat_reserved_until(uuid)') is not null
      or to_regprocedure('public.ai_chat_reserved_by(uuid)') is not null then
     raise exception 'rollback 0232 end state: an 0232 object is still there';
   end if;

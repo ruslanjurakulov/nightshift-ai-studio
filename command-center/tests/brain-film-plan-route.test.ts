@@ -580,6 +580,25 @@ describe("0232: one plan per project, its turns reserved when it begins", () => 
     expect(called("ai_chat_plan_end").at(-1)).toMatchObject({ p_state: "failed", p_reason: "plan_over_cap" });
   });
 
+  it("on the Free trial the refusal says scope trial (its remedy is a plan, not tomorrow)", async () => {
+    lease.state.film = "on";
+    lease.state.quota = () => ({ used: 0, limit: null, trial_left: 2 });
+    const res = await press();
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ error: "plan_over_cap", left: 2, scope: "trial" });
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+  });
+
+  it("a film the database says no plan may write (archived, not editable, has scenes): film_not_editable, no turn", async () => {
+    lease.state.film = "on";
+    lease.state.notPlannable = true;
+    const res = await press();
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "film_not_editable" });
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+    expect(called("ai_chat_plan_end").at(-1)).toMatchObject({ p_state: "failed", p_reason: "film_not_editable" });
+  });
+
   it("a film-lease answer that carries no reservation plans nothing", async () => {
     lease.state.film = "on";
     const real = lease.rpc;

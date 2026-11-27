@@ -52,10 +52,15 @@ export async function beginFilmLease(supabase: SupabaseClient, sessionId: string
       const d = overCap(r.error.details);
       return { ok: false, reason: "plan_over_cap", res: brainJson({
         error: "plan_over_cap", needed: turns.at_most, about: turns.about, left: d ? d.left : null,
-        ...(d?.scope === "person" ? { scope: "person" } : {}),
+        // The person's own limit and the Free trial each have a remedy of their own (wait; choose a plan): the panel says which.
+        ...(d?.scope === "person" || d?.scope === "trial" ? { scope: d.scope } : {}),
       }, 429) };
     }
     if (r.error.message === "film_not_found") return { ok: false, reason: "not_found", res: brainJson({ error: "not_found" }, 404) };
+    // Archived, not editable, or it has scenes (0232 asks what filmRefusal asks): the words of the route's own refusal.
+    if (r.error.message === "film_not_plannable") {
+      return { ok: false, reason: "film_not_editable", res: brainJson({ error: "film_not_editable" }, 409) };
+    }
     const res = dbRefusal(r.error);
     const body = res ? ((await res.clone().json().catch(() => ({}))) as { error?: unknown }) : {};
     return { ok: false, reason: typeof body.error === "string" ? body.error.slice(0, 40) : "unavailable",

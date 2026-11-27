@@ -62,7 +62,11 @@ export async function GET(request: Request) {
   const latest = (sessions.data ?? [])[0] ?? null;
   return brainJson({
     // limit null: no Brain on this plan; trial_left then says how many of its lifetime trial messages remain (0 = the upgrade).
-    plan: { used: q.used ?? null, limit: q.limit ?? null, trial_left: typeof q.trial_left === "number" ? q.trial_left : null, max_input_chars: q.max_input_chars ?? 2000 },
+    // reserved / reserved_until (0232): turns held by storyboards being written, and when the last hold ends. Before 0232 nothing can
+    // be held, so an answer without them is none held.
+    plan: { used: q.used ?? null, limit: q.limit ?? null, trial_left: typeof q.trial_left === "number" ? q.trial_left : null, max_input_chars: q.max_input_chars ?? 2000,
+            reserved: typeof (q as { reserved?: unknown }).reserved === "number" ? Math.max(0, (q as { reserved: number }).reserved) : 0,
+            reserved_until: typeof (q as { reserved_until?: unknown }).reserved_until === "string" ? (q as { reserved_until: string }).reserved_until : null },
     model: model.ok ? model.state : "unknown",
     gate,
     canEdit: role.ok,

@@ -739,12 +739,38 @@ describe("choose → 0232's film lease on the draft", () => {
     setup(180, [60, 60, 60]);
     lease.state.film = "on";
     lease.state.quota = () => ({ used: 3, limit: 30 });
-    lease.films.set("dddddddd-0000-4000-8000-000000000004", { session: "cccccccc-0000-4000-8000-000000000009", attempt: 1, reserved: 27,
+    lease.films.set("dddddddd-0000-4000-8000-000000000004", { session: "cccccccc-0000-4000-8000-000000000009", attempt: 1, reserved: 26,
                                                               taken: 0, state: "running", expires: Date.now() + 100_000 });
     const res = await choose();
     expect(res.status).toBe(429);
     const n = windowsOf(180, [60, 60, 60]);
-    expect(await res.json()).toEqual({ error: "plan_over_cap", needed: 2 * n, about: n, left: 0 });
+    expect(await res.json()).toEqual({ error: "plan_over_cap", needed: 2 * n, about: n, left: 1 });
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+    nothingPriced();
+  });
+
+  it("everything left is held by another plan: chat_reserved with the numbers and when it ends, no turn", async () => {
+    setup(180, [60, 60, 60]);
+    lease.state.film = "on";
+    lease.state.quota = () => ({ used: 3, limit: 30 });
+    const expires = Date.now() + 100_000;
+    lease.films.set("dddddddd-0000-4000-8000-000000000004", { session: "cccccccc-0000-4000-8000-000000000009", attempt: 1, reserved: 27,
+                                                              taken: 0, state: "running", expires });
+    const res = await choose();
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ error: "chat_reserved", used: 3, reserved: 27, limit: 30, until: new Date(expires).toISOString() });
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+    nothingPriced();
+  });
+
+  it("a Free workspace with no trial left: chat_plan_required (402) from the film lease, before any turn", async () => {
+    setup(180, [60, 60, 60]);
+    state.quota = { used: 0, limit: null, trial_left: 0 };
+    lease.state.film = "on";
+    lease.state.quota = () => ({ used: 0, limit: null, trial_left: 0 });
+    const res = await choose();
+    expect(res.status).toBe(402);
+    expect(await res.json()).toEqual({ error: "chat_plan_required" });
     expect(called("ai_chat_reserve_turn")).toHaveLength(0);
     nothingPriced();
   });

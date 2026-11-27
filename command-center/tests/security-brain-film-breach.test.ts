@@ -175,10 +175,13 @@ const client = {
       const sid = String(args.p_session);
       const list = db.messages.get(sid) ?? [];
       if (args.p_retry && list.at(-1)?.role !== "user") return refuse("nothing_to_retry");
-      // 0232: running film plans' reservations count as used; this conversation's own plan takes its turn out of its reservation
-      // first (with 0232 off, both are 0 and this is 0199's rule).
+      // 0232: this conversation's own plan takes its turn out of its reservation first; then the charged cap (chat_daily_cap), then
+      // what other plans hold (chat_reserved). With 0232 off nothing is held and this is 0199's rule.
       const own = lease.outstanding(sid) > 0 ? 1 : 0;
-      if (db.limit !== null && db.used + lease.reserved() - own >= db.limit) return refuse("chat_daily_cap", "NS429", `used=${db.used} limit=${db.limit}`);
+      if (db.limit !== null && db.used >= db.limit) return refuse("chat_daily_cap", "NS429", `used=${db.used} limit=${db.limit}`);
+      if (db.limit !== null && db.used + lease.reserved() - own >= db.limit) {
+        return refuse("chat_reserved", "NS429", `used=${db.used} reserved=${lease.reserved() - own} limit=${db.limit} until=`);
+      }
       lease.take(sid);
       if (!args.p_retry) db.messages.set(sid, [...list, { id: ++db.msgId, role: "user", content: String(args.p_text) }]);
       db.used += 1;
@@ -326,7 +329,11 @@ describe("metering: turns spent with no storyboard saved", () => {
     const turnsOf = (id: string) => calls("ai_chat_reserve_turn").filter((r) => r.p_session === sessionOf(id)).length;
     const outcome = [{ film: FILM, status: a.status, body: await a.json() }, { film: FILM2, status: b.status, body: await b.json() }];
     // A press that did not save its storyboard took no turn: it was refused up front (plan_over_cap), never part-way.
-    for (const o of outcome.filter((x) => x.status !== 200)) expect({ error: o.body.error, turns: turnsOf(o.film) }).toEqual({ error: "plan_over_cap", turns: 0 });
+    // (Since 0232 a press that finds everything left held by the other plan is told chat_reserved: refused up front all the same.)
+    for (const o of outcome.filter((x) => x.status !== 200)) {
+      expect({ error: ["plan_over_cap", "chat_reserved"].includes(o.body.error) ? "refused up front" : o.body.error, turns: turnsOf(o.film) })
+        .toEqual({ error: "refused up front", turns: 0 });
+    }
   });
 
   /**

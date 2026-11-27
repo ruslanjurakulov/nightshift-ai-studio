@@ -1,5 +1,5 @@
-"""Migration 0232: one storyboard plan per film, and its turns reserved when it begins (ai_chat_film_plan_begin; ai_chat_used,
-ai_chat_trial_left, ai_chat_reserve_turn and ai_chat_plan_end replaced).
+"""Migration 0232: one storyboard plan per film, and its turns reserved when it begins (ai_chat_film_plan_begin; ai_chat_quota,
+ai_chat_reserve_turn and ai_chat_plan_end replaced; ai_chat_used and ai_chat_trial_left stay 0199's: "used" means charged).
 
 Breach on #953 (tests/security/test_sec_brain_film_breach.py, command-center/tests/security-brain-film-breach.test.ts) found that
 nothing in the database ties a plan to a FILM (BR-FILM-01/02: 0211's lease is per conversation) and that the up-front cap check
@@ -11,7 +11,10 @@ reserves nothing (BR-FILM-03: two plans at the cap both start, the second stops 
 * a plan whose server died gives its unused turns back when its lease expires, the turns it took stay taken, and the next begin's
   sweep records it and closes its pending calls as failures;
 * the chat's draft and the film editor's button on one film: one plan wins, the other is told `plan_running`, one reservation;
-* a viewer, another tenant and a seatless platform admin begin nothing and reserve nothing;
+* a viewer, another tenant and a seatless platform admin begin nothing and reserve nothing; a member removed or demoted mid-plan
+  holds nothing;
+* a reservation is never more than the film's own worst case, nor for a film no plan could write into;
+* a hold is reported as reserved (with when it ends), never as used, and a turn that only finds the rest held is told chat_reserved;
 * 0232 refuses a database whose bodies are 0211's (0226 not on), replays onto itself, and its rollback puts the earlier bodies back.
 """
 
@@ -85,8 +88,9 @@ def w(conn, sc):
         room(su, x.org, 1000)
         x.colleague = member(su, x.org, "editor")
         x.viewer = member(su, x.org, "viewer")
-        x.film_a = FILM["a"]
-        x.film_b = film(su, x.alice, x.org)
+        # Two empty drafts of hers (the seeded FILM["a"] has scenes: no plan may write into it, film_not_plannable).
+        x.film_a = film(su, x.alice, x.org, 180)
+        x.film_b = film(su, x.alice, x.org, 60)
         yield x
 
 
@@ -107,15 +111,9 @@ def staff(su):
 
 
 def used(su, org) -> int:
+    """The workspace's CHARGED turns (0199's ai_chat_used, unchanged by 0232): never what plans only hold."""
     become(su, None)
     return su.value("select public.ai_chat_used(%s)", [org])
-
-
-def charged(su, org) -> int:
-    """The 0199 count alone (charged turns, no reservation), read straight from the calls."""
-    become(su, None)
-    return su.value("select count(*)::integer from public.ai_chat_calls c where c.org_id = %s and c.created_at > now() - interval '24 hours' "
-                    "and c.outcome not in ('not_sent', 'not_configured', 'vendor_refused', 'refused')", [org])
 
 
 def reserved(su, org) -> int:
@@ -133,9 +131,9 @@ def room(su, org, n: int) -> int:
     return cap
 
 
-def film(su, who, org):
-    out = as_(su, who, "select public.create_film_draft(%s, null, 'topic', 'A second film', %s::jsonb, %s)",
-              [org, json.dumps({"title": "Second", "language": "en", "target_seconds": 60}), f"lease0232-{uuid.uuid4().hex[:8]}"])
+def film(su, who, org, seconds=60):
+    out = as_(su, who, "select public.create_film_draft(%s, null, 'topic', 'A film to plan', %s::jsonb, %s)",
+              [org, json.dumps({"title": "To plan", "language": "en", "target_seconds": seconds}), f"lease0232-{uuid.uuid4().hex[:8]}"])
     assert out.ok, out
     return out.rows[0][0]["film"]["id"]
 
@@ -155,6 +153,21 @@ def plan(su, who, sid, film_id, at_most):
 
 def turn(su, who, sid, text="go", retry=False):
     return as_(su, who, TURN, [sid, "" if retry else text, retry, None])
+
+
+def first_expiry(su, film_id) -> str:
+    become(su, None)
+    return su.value("""select to_char(expires_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') from public.ai_chat_film_plan_leases """
+                    "where film_id = %s", [film_id])
+
+
+def free_with_trial(su, org, left: int) -> None:
+    """The workspace on Free (its subscription lapsed) with `left` trial messages still to take in its whole life."""
+    import test_sec_ai_chat as chat
+
+    chat._free(su, org)
+    calls = su.value("select count(*)::integer from public.ai_chat_calls where org_id = %s", [org])
+    chat._trial(su, calls + left)
 
 
 def lease_row(su, film_id):
@@ -201,14 +214,18 @@ def test_a_plans_reservation_blocks_other_chat_turns_past_the_cap_and_its_own_tu
     cap = room(s, w.org, 5)
     attempt, begun = plan(s, w.alice, planner, w.film_a, 5)
     assert begun.ok, begun
-    assert used(s, w.org) == cap
-    # Another conversation's turn sees the reserved five as used: the cap is reached.
+    # Held, not used: the charged count does not move at begin.
+    assert used(s, w.org) == cap - 5 and reserved(s, w.org) == 5
+    # Another conversation's turn finds the rest held: chat_reserved with the real numbers and when the hold ends, not the daily cap.
     out = turn(s, w.colleague, chatter, "hello")
-    assert not out.ok and out.error == "chat_daily_cap", out
-    # The plan's own turn is one of the five: it passes, and the total does not move (one fewer reserved, one more taken).
+    assert not out.ok and out.error == "chat_reserved" and out.sqlstate == "NS429", out
+    until = first_expiry(s, w.film_a)
+    assert refusal(s, w.colleague, TURN, [chatter, "hello", False, None]) == (
+        "chat_reserved", f"used={cap - 5} reserved=5 limit={cap} until={until}")
+    # The plan's own turn is one of the five: it passes, counted once (one fewer held, one more charged).
     mine = turn(s, w.alice, planner, "plan it")
-    assert mine.ok and mine.rows[0][0]["used"] == cap, mine
-    assert used(s, w.org) == cap and reserved(s, w.org) == 4
+    assert mine.ok and mine.rows[0][0]["used"] == cap - 4 and mine.rows[0][0]["reserved"] == 4, mine
+    assert used(s, w.org) == cap - 4 and reserved(s, w.org) == 4
     # The plan ends after one turn: the four it did not take come back at once, and the colleague's turn goes through.
     assert as_(s, w.alice, PLAN_END, [planner, attempt, "done", None]).ok
     row = lease_row(s, w.film_a)
@@ -225,8 +242,8 @@ def test_a_plan_cannot_begin_over_turns_chat_already_took(w):
     _, begun = plan(s, w.alice, planner, w.film_a, 3)
     assert not begun.ok and begun.error == "plan_over_cap", begun
     assert refusal(s, w.alice, FILM_BEGIN, [planner, w.film_a, 3]) == ("plan_over_cap", "left=2 needed=3 scope=workspace")
-    # Nothing written: the film keeps its earlier, finished lease (the scenario's), and nothing is reserved.
-    assert lease_row(s, w.film_a)[4] == "done" and reserved(s, w.org) == 0
+    # Nothing written, nothing reserved.
+    assert lease_row(s, w.film_a) is None and reserved(s, w.org) == 0
 
 
 def test_the_persons_own_limit_is_reserved_too(w):
@@ -265,11 +282,12 @@ def test_a_forgiven_plan_turn_gives_its_turn_back_and_is_never_counted_twice(w):
     _, begun = plan(s, w.alice, a, w.film_a, 4)
     assert begun.ok, begun
     call = turn(s, w.alice, a, "first").rows[0][0]["call_id"]
-    assert used(s, w.org) == cap
-    # The vendor refused it: the plan's cap forgives it (0199), so the total drops by one; it is out of the reservation either way.
+    assert used(s, w.org) == cap - 3 and reserved(s, w.org) == 3
+    # The vendor refused it: the plan's cap forgives it (0199), so the charged count drops by one; it is out of the reservation
+    # either way (Sentinel F: it goes back to the workspace's pool, not to the plan; noted in the 0232 header).
     assert as_(s, w.alice, "select public.ai_chat_finish_turn(%s, 'vendor_refused', null, null, null, null, null, null, null, null)",
                [call]).ok
-    assert used(s, w.org) == cap - 1 and reserved(s, w.org) == 3
+    assert used(s, w.org) == cap - 4 and reserved(s, w.org) == 3
 
 
 # ── a crash mid-plan ───────────────────────────────────────────────────────────
@@ -283,7 +301,7 @@ def test_a_crashed_plan_gives_its_unused_turns_back_at_expiry_and_the_ones_it_to
     assert begun.ok, begun
     # Two of six turns taken, then the server dies: no finish, no end.
     calls = [turn(s, w.alice, a, "first").rows[0][0]["call_id"], turn(s, w.alice, a, retry=True).rows[0][0]["call_id"]]
-    assert used(s, w.org) == base + 6 and reserved(s, w.org) == 4
+    assert used(s, w.org) == base + 2 and reserved(s, w.org) == 4
     # Its 320 s run out (the clock, moved for the lease and its calls: now() is the transaction's in this lab).
     s.rows("update public.ai_chat_film_plan_leases set started_at = now() - interval '400 seconds', "
            "expires_at = now() - interval '80 seconds' where film_id = %s returning 1", [w.film_a])
@@ -299,7 +317,7 @@ def test_a_crashed_plan_gives_its_unused_turns_back_at_expiry_and_the_ones_it_to
     assert row[1:6] == (6, 2, 4, "failed", "expired"), row
     outcomes = s.rows("select outcome, tokens_in, tokens_out from public.ai_chat_calls where id = any(%s::uuid[])", [calls])
     assert outcomes == [("vendor_error", None, None)] * 2, outcomes
-    assert used(s, w.org) == base + 2 + 3
+    assert used(s, w.org) == base + 2 and reserved(s, w.org) == 3
 
 
 def test_an_expired_plan_of_a_film_is_taken_over_by_the_next_press_on_it(w):
@@ -355,6 +373,111 @@ def test_a_film_lease_rides_on_a_running_conversation_lease(w):
     assert lease_row(s, w.film_a)[4:6] == ("failed", "vendor_error")
 
 
+# ── "used" means charged; a hold is reported as held ─────────────────────────────
+
+def test_a_running_plans_reservation_is_reported_as_reserved_never_as_used(w):
+    s = w.su
+    a = conversation(s, w.alice, w.org)
+    room(s, w.org, 10)
+    before = as_(s, w.alice, "select public.ai_chat_quota(%s)", [w.org]).rows[0][0]
+    assert before["reserved"] == 0 and before["reserved_until"] is None, before
+    _, begun = plan(s, w.alice, a, w.film_a, 5)
+    assert begun.ok, begun
+    q = as_(s, w.alice, "select public.ai_chat_quota(%s)", [w.org]).rows[0][0]
+    assert q["used"] == before["used"] and q["reserved"] == 5 and q["reserved_until"] == first_expiry(s, w.film_a), q
+    # A viewer reads the same numbers (ai_chat_quota is a member's read).
+    v = as_(s, w.viewer, "select public.ai_chat_quota(%s)", [w.org]).rows[0][0]
+    assert (v["used"], v["reserved"]) == (q["used"], 5)
+
+
+def test_a_free_workspace_whose_trial_is_only_held_can_start_and_is_told_chat_reserved(w):
+    s = w.su
+    planner = conversation(s, w.alice, w.org)
+    free_with_trial(s, w.org, 3)
+    _, begun = plan(s, w.alice, planner, w.film_b, 3)
+    assert begun.ok and begun.rows[0][0]["scope"] == "trial" and begun.rows[0][0]["left"] == 0, begun
+    # The trial is only held: starting a conversation is not refused as "Nightshift AI is on the paid plans" (chat_plan_required).
+    out = as_(s, w.colleague, "select public.ai_chat_start(%s, null)", [w.org])
+    assert out.ok, out
+    other = str(out.rows[0][0])
+    out = turn(s, w.colleague, other, "hello")
+    assert not out.ok and out.error == "chat_reserved", out
+    message, detail = refusal(s, w.colleague, TURN, [other, "hello", False, None])
+    assert message == "chat_reserved" and detail.startswith("used=") and " reserved=3 limit= until=" in detail, detail
+    # The plan's own turns are its own.
+    assert turn(s, w.alice, planner, "go").ok
+
+
+def test_film_plan_begin_on_a_free_workspace_with_no_trial_left_says_chat_plan_required(w):
+    s = w.su
+    a = conversation(s, w.alice, w.org)
+    free_with_trial(s, w.org, 0)
+    _, begun = plan(s, w.alice, a, w.film_b, 3)
+    assert not begun.ok and (begun.sqlstate, begun.error) == ("NS402", "chat_plan_required"), begun
+
+
+def test_film_plan_begin_at_the_cap_says_chat_daily_cap_with_used_and_limit(w):
+    s = w.su
+    a, chatter = conversation(s, w.alice, w.org), conversation(s, w.colleague, w.org)
+    # One charged turn, then a cap of exactly what is charged (a cap of 0 would be "no Nightshift AI on this plan" instead).
+    room(s, w.org, 1)
+    assert turn(s, w.colleague, chatter, "hello").ok
+    cap = room(s, w.org, 0)
+    assert as_(s, w.alice, PLAN_BEGIN, [a]).ok
+    assert refusal(s, w.alice, FILM_BEGIN, [a, w.film_b, 3]) == ("chat_daily_cap", f"used={cap} limit={cap}")
+
+
+def test_film_plan_begin_with_everything_left_held_says_chat_reserved(w):
+    s = w.su
+    a, b = conversation(s, w.alice, w.org), conversation(s, w.colleague, w.org)
+    cap = room(s, w.org, 5)
+    assert plan(s, w.alice, a, w.film_a, 5)[1].ok
+    assert as_(s, w.colleague, PLAN_BEGIN, [b]).ok
+    assert refusal(s, w.colleague, FILM_BEGIN, [b, w.film_b, 3]) == (
+        "chat_reserved", f"used={cap - 5} reserved=5 limit={cap} until={first_expiry(s, w.film_a)}")
+
+
+# ── what a reservation may be ─────────────────────────────────────────────────
+
+@pytest.mark.parametrize("seconds,pinned", [(60, 7), (61, 7), (90, 9), (180, 15), (600, 15), (1200, 15)])
+def test_film_plan_begin_accepts_exactly_the_bound_for_each_length(w, seconds, pinned):
+    s = w.su
+    assert s.value("select public.ai_chat_film_plan_max_turns(%s)", [seconds]) == pinned
+    f = film(s, w.alice, w.org, seconds)
+    a = conversation(s, w.alice, w.org)
+    assert as_(s, w.alice, PLAN_BEGIN, [a]).ok
+    assert refusal(s, w.alice, FILM_BEGIN, [a, f, pinned + 1]) == ("invalid_params", f"at most {pinned} turns for this film")
+    assert lease_row(s, f) is None
+    out = as_(s, w.alice, FILM_BEGIN, [a, f, pinned])
+    assert out.ok and out.rows[0][0]["reserved"] == pinned, out
+
+
+def test_a_film_with_a_scene_takes_no_lease(w):
+    s = w.su
+    a = conversation(s, w.alice, w.org)
+    version = s.value("select version from public.films where id = %s", [w.film_b])
+    assert as_(s, w.alice, "select public.save_film(%s, %s, %s::jsonb)",
+               [w.film_b, version, json.dumps({"scenes": [{"title": "Mine", "planned_seconds": 10}]})]).ok
+    _, begun = plan(s, w.alice, a, w.film_b, 3)
+    assert not begun.ok and (begun.sqlstate, begun.error) == ("NS409", "film_not_plannable"), begun
+    # The seeded project with scenes too.
+    out = as_(s, w.alice, FILM_BEGIN, [a, FILM["a"], 3])
+    assert not out.ok and out.error == "film_not_plannable", out
+    assert lease_row(s, w.film_b) is None and reserved(s, w.org) == 0
+
+
+def test_a_member_demoted_to_viewer_mid_plan_holds_nothing(w):
+    s = w.su
+    planner, chatter = conversation(s, w.colleague, w.org), conversation(s, w.alice, w.org)
+    room(s, w.org, 6)
+    _, begun = plan(s, w.colleague, planner, w.film_b, 6)
+    assert begun.ok, begun
+    assert not turn(s, w.alice, chatter, "hello").ok
+    s.rows("update public.org_members set role = 'viewer' where org_id = %s and user_id = %s returning 1", [w.org, w.colleague.uid])
+    assert reserved(s, w.org) == 0
+    assert turn(s, w.alice, chatter, "hello").ok
+
+
 # ── who may begin ─────────────────────────────────────────────────────────────
 
 def test_a_viewer_another_tenant_and_a_seatless_platform_admin_begin_nothing_and_reserve_nothing(w):
@@ -390,6 +513,8 @@ def test_no_api_role_reaches_the_film_lease_table_or_the_helpers(w):
                      ("delete from public.ai_chat_film_plan_leases", []),
                      ("select public.ai_chat_reserved(%s)", [w.org]),
                      ("select public.ai_chat_reserved_by(%s)", [w.alice.uid]),
+                     ("select public.ai_chat_reserved_until(%s)", [w.org]),
+                     ("select public.ai_chat_film_plan_max_turns(60)", []),
                      ("select public.ai_chat_used(%s)", [w.org])):
             out = as_(s, who, q, p)
             assert not out.ok and out.sqlstate == "42501", (who.name, q, out)
@@ -402,7 +527,7 @@ def test_bad_parameters_are_refused(w):
     s = w.su
     a = conversation(s, w.alice, w.org)
     as_(s, w.alice, PLAN_BEGIN, [a])
-    for at_most in (0, -1, 501, None):
+    for at_most in (0, -1, 16, 501, None):
         out = as_(s, w.alice, FILM_BEGIN, [a, w.film_a, at_most])
         assert not out.ok and out.error == "invalid_params", (at_most, out)
 
@@ -440,7 +565,9 @@ def test_0232_refuses_a_body_it_was_not_written_on(conn):
                   "security definer set search_path = public, pg_temp as $$ begin return null; end $$")
         with pytest.raises(psycopg.Error) as e:
             c.execute(MIGRATION.read_text(encoding="utf-8"))
-        assert "0232 found public.ai_chat_plan_state(uuid) with a body that is not the one 0226 leaves" in str(e.value), str(e.value)
+        msg = str(e.value)
+        assert "0232 found public.ai_chat_plan_state(uuid) with an unknown body" in msg and "changed by hand?" in msg, msg
+        assert "apply 0226 first" not in msg, msg
         c.rollback()
 
 
@@ -478,19 +605,33 @@ def test_the_rollback_puts_the_earlier_bodies_back_then_0232_applies_again(conn)
 
 def test_the_rollback_refuses_a_body_that_is_not_0232s(conn):
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
-        c.execute("create or replace function public.ai_chat_used(p_org uuid) returns integer language sql stable "
-                  "security definer set search_path = public, pg_temp as $$ select 0 $$")
+        c.execute("create or replace function public.ai_chat_quota(p_org uuid) returns jsonb language sql stable "
+                  "security definer set search_path = public, pg_temp as $$ select '{}'::jsonb $$")
         with pytest.raises(psycopg.Error) as e:
             c.execute("\n".join(ln for ln in ROLLBACK.read_text(encoding="utf-8").splitlines() if ln.strip() not in ("begin;", "commit;")))
-        assert "rollback 0232: public.ai_chat_used(uuid) is not 0232's body" in str(e.value), str(e.value)
+        assert "rollback 0232: public.ai_chat_quota(uuid) is not 0232's body" in str(e.value), str(e.value)
         c.rollback()
 
 
-def test_each_replaced_turn_and_end_body_is_0226s_with_only_marked_0232_lines_added(conn):
-    """ai_chat_reserve_turn and ai_chat_plan_end: 0226's source, line for line, plus inserted lines, every inserted run of them
-    opening with a 0232 comment. Nothing of 0226's body is changed or dropped."""
+def test_each_replaced_body_is_the_earlier_one_with_only_marked_0232_lines_added_and_the_table_has_its_shape(conn):
+    """ai_chat_reserve_turn and ai_chat_plan_end (0226's) and ai_chat_quota (0199's): the earlier source, line for line, plus inserted
+    lines, every inserted run of them opening with a 0232 comment. Nothing earlier is changed or dropped. And the table's columns and
+    indexes are the ones the file declares (the full ones on the two cascading keys included)."""
+    cols = conn.execute("select string_agg(column_name || ':' || data_type || ':' || is_nullable, ',' order by ordinal_position) "
+                        "from information_schema.columns where table_schema = 'public' and table_name = 'ai_chat_film_plan_leases'").fetchone()[0]
+    assert cols == ("film_id:uuid:NO,org_id:uuid:NO,session_id:uuid:NO,created_by:uuid:NO,attempt:integer:NO,reserved:integer:NO,"
+                    "taken:integer:NO,released:integer:YES,state:text:NO,reason:text:YES,started_at:timestamp with time zone:NO,"
+                    "expires_at:timestamp with time zone:NO,finished_at:timestamp with time zone:YES"), cols
+    idx = dict(conn.execute("select indexname, indexdef from pg_indexes where schemaname = 'public' "
+                            "and tablename = 'ai_chat_film_plan_leases'").fetchall())
+    assert idx["ai_chat_film_plan_leases_session"].endswith("USING btree (session_id)"), idx
+    assert idx["ai_chat_film_plan_leases_org"].endswith("USING btree (org_id)"), idx
+    assert "UNIQUE" in idx["ai_chat_film_plan_leases_one_per_session"] and "WHERE (state = 'running'::text)" in idx[
+        "ai_chat_film_plan_leases_one_per_session"], idx
+    assert conn.execute("select pg_get_constraintdef(oid) from pg_constraint where conname = 'ai_chat_film_plan_leases_reserved_check'"
+                        ).fetchone()[0] == "CHECK (((reserved >= 1) AND (reserved <= 15)))"
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
-        sigs = ("public.ai_chat_reserve_turn(uuid, text, boolean, text)", "public.ai_chat_plan_end(uuid, integer, text, text)")
+        sigs = tuple(lease.REPLACED)
         src = lambda sig: c.execute("select prosrc from pg_proc where oid = to_regprocedure(%s)", [sig]).fetchone()[0]  # noqa: E731
         now_ = {sig: src(sig) for sig in sigs}
         sec_db.take_off_0232(c)
@@ -501,7 +642,8 @@ def test_each_replaced_turn_and_end_body_is_0226s_with_only_marked_0232_lines_ad
         ops = difflib.SequenceMatcher(a=a, b=b, autojunk=False).get_opcodes()
         assert all(op in ("equal", "insert") for op, *_ in ops), (sig, [o for o in ops if o[0] not in ("equal", "insert")])
         inserted = [b[j1:j2] for op, _i1, _i2, j1, j2 in ops if op == "insert"]
-        assert inserted and all(run[0].strip().startswith("-- 0232") for run in inserted), (sig, inserted)
+        # Every inserted run carries its 0232 comment (difflib may align a run that repeats an earlier check one line off its start).
+        assert inserted and all(any(ln.strip().startswith("-- 0232") for ln in run) for run in inserted), (sig, inserted)
 
 
 @pytest.mark.parametrize("name,loud", [("0199_studio_ai_chat.sql", False), ("0211_ai_chat_plan_leases.sql", False),

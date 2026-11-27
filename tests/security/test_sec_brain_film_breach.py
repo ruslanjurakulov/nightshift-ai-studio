@@ -26,6 +26,16 @@ from sec_films_0166 import FILM
 BEGIN = "select public.ai_chat_plan_begin(%s, 0, 0)"
 # What both routes take after 0211's lease, before the plan's first turn (migration 0232): the film's own lease, with the turns reserved.
 FILM_BEGIN = "select public.ai_chat_film_plan_begin(%s, %s, 5)"
+
+
+def _empty_film(conn, who, org: str) -> str:
+    """An empty draft to plan (the seeded film has scenes, which 0232 refuses as film_not_plannable)."""
+    with acting(conn, who, commit=True) as s:
+        fid = s.value("select public.create_film_draft(%s, null, 'topic', 'A film to plan', %s::jsonb, %s)",
+                      [org, json.dumps({"title": "To plan", "language": "en", "target_seconds": 180}),
+                       f"br-film-{uuid.uuid4().hex[:8]}"])["film"]["id"]
+    _back(conn)
+    return fid
 SAVE_BRIEF = "select public.ai_chat_save_brief(%s, %s::jsonb, 'ready')"
 
 
@@ -61,12 +71,13 @@ def test_one_person_cannot_run_two_plans_of_one_film_at_once(conn, sc):
     with as_superuser(conn, commit=False) as su:
         _cap(su, sc.alice.org, 1000)
         # Two first presses that raced (tests BR-FILM-01 in the vitest file): each made and marked its own conversation.
-        a = _marked_conversation(conn, sc.alice.actor, sc.alice.org, FILM["a"])
-        b = _marked_conversation(conn, sc.alice.actor, sc.alice.org, FILM["a"])
+        target = _empty_film(conn, sc.alice.actor, sc.alice.org)
+        a = _marked_conversation(conn, sc.alice.actor, sc.alice.org, target)
+        b = _marked_conversation(conn, sc.alice.actor, sc.alice.org, target)
         with acting(conn, sc.alice.actor, commit=True) as s:
             assert s.run(BEGIN, [a]).ok and s.run(BEGIN, [b]).ok  # 0211: one lease per conversation, both granted
-            first = s.run(FILM_BEGIN, [a, FILM["a"]])
-            second = s.run(FILM_BEGIN, [b, FILM["a"]])
+            first = s.run(FILM_BEGIN, [a, target])
+            second = s.run(FILM_BEGIN, [b, target])
         _back(conn)
         assert first.ok, first
         # The safe answer: the film is being planned already, and the second press reserves nothing.
@@ -78,15 +89,16 @@ def test_two_editors_cannot_run_two_plans_of_one_film_at_once(conn, sc):
     with as_superuser(conn, commit=False) as su:
         _cap(su, sc.alice.org, 1000)
         colleague = _member(su, sc.alice.org, "editor")
-        a = _marked_conversation(conn, sc.alice.actor, sc.alice.org, FILM["a"])
-        b = _marked_conversation(conn, colleague, sc.alice.org, FILM["a"])
+        target = _empty_film(conn, sc.alice.actor, sc.alice.org)
+        a = _marked_conversation(conn, sc.alice.actor, sc.alice.org, target)
+        b = _marked_conversation(conn, colleague, sc.alice.org, target)
         with acting(conn, sc.alice.actor, commit=True) as s:
             assert s.run(BEGIN, [a]).ok
-            first = s.run(FILM_BEGIN, [a, FILM["a"]])
+            first = s.run(FILM_BEGIN, [a, target])
         _back(conn)
         with acting(conn, colleague, commit=True) as s:
             assert s.run(BEGIN, [b]).ok
-            second = s.run(FILM_BEGIN, [b, FILM["a"]])
+            second = s.run(FILM_BEGIN, [b, target])
         _back(conn)
         assert first.ok, first
         assert not second.ok and second.error == "plan_running", second

@@ -12,10 +12,9 @@ from __future__ import annotations
 
 #: (signature, the md5 0232 is written on, 0232's own md5: the same for a body it only relies on).
 GUARD = (
-    ("public.ai_chat_used(uuid)", "fe5ef9dd20a20de48d022406e2621fb3", "013c1080dad4cfbf0bef33ab0ce30e49"),
-    ("public.ai_chat_trial_left(uuid)", "ec3fc5ff3303d80274626a4b31a6ea2d", "f2a0591c649062cf03fa016fa66ce375"),
-    ("public.ai_chat_reserve_turn(uuid, text, boolean, text)", "e105fa9373fac86e9a36cf4a945a21b4", "f4a9279015cfbd9557e712080c0692ad"),
+    ("public.ai_chat_reserve_turn(uuid, text, boolean, text)", "e105fa9373fac86e9a36cf4a945a21b4", "51ecb8f5cd0226a0f89a3aa7571c605f"),
     ("public.ai_chat_plan_end(uuid, integer, text, text)", "4df6a1c4054bcacedf971a0b79f997d6", "71c2feb9b1b12295bef680822ab80c91"),
+    ("public.ai_chat_quota(uuid)", "7c17f9749127303a53d039bbdc15e8c2", "09b69b04c1073ad8e79bbc8107e92f81"),
     ("public.ai_chat_plan_session(uuid)", "75c679292759d14dc51ba865f32d6f8e", "75c679292759d14dc51ba865f32d6f8e"),
     ("public.ai_chat_plan_begin(uuid, bigint, integer)", "2002d73eb60ad129f7318416ba560da6", "2002d73eb60ad129f7318416ba560da6"),
     ("public.ai_chat_plan_state(uuid)", "c2aede96712ab6d28dc6d29c060eb5f2", "c2aede96712ab6d28dc6d29c060eb5f2"),
@@ -33,10 +32,12 @@ def extend(tables: dict, functions: dict) -> None:
     })
     functions.update({
         "ai_chat_film_plan_begin": USER,
-        # What running film plans still hold, of a workspace and of a person: internal, read by ai_chat_used, ai_chat_trial_left,
-        # ai_chat_reserve_turn and ai_chat_film_plan_begin.
+        # What running film plans still hold, of a workspace and of a person, and until when; the most a film's plan may hold:
+        # internal, read by ai_chat_quota, ai_chat_reserve_turn and ai_chat_film_plan_begin.
         "ai_chat_reserved": SERVICE,
+        "ai_chat_reserved_until": SERVICE,
         "ai_chat_reserved_by": SERVICE,
+        "ai_chat_film_plan_max_turns": SERVICE,
     })
 
 

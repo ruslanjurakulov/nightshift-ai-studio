@@ -271,15 +271,32 @@ source text, language, aspect, `target_seconds`). Code: `app/api/brain/film/rout
   and asks each other one's lease: while any is running, or cannot be read, it ends its own lease and answers `plan_running` (409)
   with no turn taken. Then it takes migration 0232's film lease (`ai_chat_film_plan_begin(session, film, at_most)`, also taken by
   the chat's `choose` on the draft it plans): one running plan per FILM in the database, whoever presses (another editor, the
-  chat's draft and this button), refused `plan_running` with when it ends; and the plan's worst case of turns reserved under the
-  workspace's cap lock against the workspace's daily cap (or the Free trial) and the person's own limit, refused `plan_over_cap`
-  (429) with the real `left` when it does not fit. The plan's own turns come out of that reservation; every other turn sees it as
-  used; what is not taken comes back at `ai_chat_plan_end` and, for a server that died, the moment the 320 s lease expires. It then
-  reads the project again: scenes are `film_has_scenes`, a moved version `plan_superseded`, again with no turn. **Until 0232 is
-  applied** the function is missing and the press goes on as before: one plan at a time per person only (two editors pressing on
-  the same empty project within ~5 min: one plan is superseded, its turns are spent, the project is never double-written), and
-  the cap check is a read, so a plan may stop halfway when other chats or plans use today's messages meanwhile. A press with 0232
-  answers `reserved` (the turns held for it); without it, no `reserved` is claimed.
+  chat's draft and this button), refused `plan_running` with when it ends; only for a film a plan could write into (editable, not
+  archived, no scene: else `film_not_editable`, 409); and the plan's worst case of turns (the film route 1 + 2 x windows incl. the
+  outline call, the chat's choose 2 x windows) reserved under the workspace's cap lock against the workspace's daily cap (or the
+  Free trial) and the person's own limit. The number is bounded by the film: at most `least(15, 1 + 2 x ceil(target_seconds / 24))`
+  (`ai_chat_film_plan_max_turns`; the TypeScript twin `filmLeaseMaxTurns` and tests/brain-film-lease-bound.test.ts keep both
+  planners under it), refused above it, never cut down. Refusals, on charged numbers and in a turn's own order:
+  `chat_plan_required` (no cap and no trial, or a cap of 0), `chat_daily_cap` (charged at the cap), `chat_reserved` (429, the rest
+  held by other plans: `used`, `reserved`, `limit`, `until`), `plan_over_cap` (429, the real `left`; `scope: trial` on the Free
+  trial, whose remedy is a plan, and `scope: person` for the person's own limit). The plan's own turns come out of its reservation.
+  **"Used" means charged.** A hold is never counted as used: `ai_chat_quota` answers `used` (charged), `reserved` and
+  `reserved_until`, the panel's meter shows the held part beside it ("held by a storyboard being written; what it does not need
+  comes back by {time}"), and a turn that only finds the rest held is refused `chat_reserved` with Retry and no plans link, never
+  "24 hours". A hold counts only while its author is still an editor or above of the workspace (a member removed or demoted
+  mid-plan holds nothing). What is not taken comes back at `ai_chat_plan_end` and, for a server that died, the moment the 320 s
+  lease expires. It then reads the project again: scenes are `film_has_scenes`, a moved version `plan_superseded`, again with no
+  turn. **Until 0232 is applied** the function is missing and the press goes on as before: one plan at a time per person only (two
+  editors pressing on the same empty project within ~5 min: one plan is superseded, its turns are spent, the project is never
+  double-written), and the cap check is a read, so a plan may stop halfway when other chats or plans use today's messages
+  meanwhile. A press with 0232 answers `reserved` (the turns held for it); without it, no `reserved` is claimed.
+- **Known limits of 0232, not closed yet** (Sentinel's review): a person's holds across several films are bounded only by their own
+  daily limit, each film at most 15 (follow-up: a per-person, per-workspace sum of at most 15); a plan turn the cap forgives
+  (vendor_refused, refused, not_sent) goes back to the workspace's pool, not to the plan (follow-up: `ai_chat_finish_turn` gives it
+  back to its lease; test `test_a_forgiven_plan_turn_goes_back_to_its_own_plan`); the chat's choose saving a storyboard already
+  stored in its conversation takes no film lease (it spends nothing; follow-up: a non-reserving hold of the film); an expired lease
+  the sweep skipped (another transaction held it) and a new begin then wrote over keeps its pending calls pending until 0211's own
+  takeover (follow-up: close them in the overwrite, with a two-connection lab test).
 - **Never over a person's work.** A project with scenes is refused `film_has_scenes` (409) before any turn; the panel also stays
   off while the editor has scenes or unsaved changes. `save_film` is called at the version read first: an edit made meanwhile is
   `plan_superseded`, and nothing is written. While the plan writes (or another tab's is followed, or a lost answer is confirmed)

@@ -176,7 +176,7 @@ export async function planPrecheck(supabase: SupabaseClient, film: PlanFilm): Pr
 
   const q0 = (await supabase.rpc("ai_chat_quota", { p_org: film.orgId })) as Rpc;
   if (q0.error) return { ok: false, res: dbRefusal(q0.error) ?? brainJson({ error: "unavailable" }, 503) };
-  const q = (q0.data ?? {}) as { used?: unknown; limit?: unknown; trial_left?: unknown; model_ref?: unknown };
+  const q = (q0.data ?? {}) as { used?: unknown; limit?: unknown; trial_left?: unknown; model_ref?: unknown; reserved?: unknown; reserved_until?: unknown };
   const state = await chosenModelState(supabase, modelFromRef(q.model_ref));
   if (!state.ok) return { ok: false, res: brainJson({ error: "unavailable" }, 503) };
   if (state.state !== "available" || !state.id) return { ok: false, res: brainJson({ error: "model_unavailable", reason: state.state }, 409) };
@@ -189,10 +189,16 @@ export async function planPrecheck(supabase: SupabaseClient, film: PlanFilm): Pr
   // No cap row for the plan and no trial left: the database refuses every turn (0199 chat_plan_required). Said before the press.
   if (limit === null && trial === 0) return { ok: false, res: brainJson({ error: "chat_plan_required" }, 402) };
   if (limit === 0) return { ok: false, res: brainJson({ error: "chat_plan_required" }, 402) };
-  const left = limit !== null ? (used === null ? null : Math.max(0, limit - used)) : trial;
-  if (left === 0 && limit !== null) return { ok: false, res: brainJson({ error: "chat_daily_cap", used, limit }, 429) };
+  // What other plans hold (0232's ai_chat_quota `reserved`; absent before 0232, when nothing can be held): not used, and not free.
+  const reserved = typeof q.reserved === "number" ? Math.max(0, q.reserved) : 0;
+  const until = typeof q.reserved_until === "string" ? q.reserved_until : null;
+  if (limit !== null && used !== null && used >= limit) return { ok: false, res: brainJson({ error: "chat_daily_cap", used, limit }, 429) };
+  const left = limit !== null ? (used === null ? null : Math.max(0, limit - used - reserved)) : trial === null ? null : Math.max(0, trial - reserved);
+  // Everything left is held by storyboards being written: back within minutes (`until`), never "come back in 24 hours".
+  if (left === 0 && reserved > 0) return { ok: false, res: brainJson({ error: "chat_reserved", used, reserved, limit, until }, 429) };
   if (left !== null && left < turns.at_most) {
-    return { ok: false, res: brainJson({ error: "plan_over_cap", needed: turns.at_most, about: turns.about, left }, 429) };
+    return { ok: false, res: brainJson({ error: "plan_over_cap", needed: turns.at_most, about: turns.about, left,
+                                          ...(limit === null ? { scope: "trial" } : {}) }, 429) };
   }
   return { ok: true, ready: { slots, models, limits, turns, model: state.id, left, scope: limit !== null ? "plan" : "trial", catalogue } };
 }

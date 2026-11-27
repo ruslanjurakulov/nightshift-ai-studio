@@ -76,6 +76,18 @@ function skeleton(target: number, chapters: { id: string; seconds: number }[]): 
 
 export interface FilmPlanTurns { about: number; at_most: number; windows: number }
 
+/** The most turns migration 0232 lets any plan of a film reserve, whatever its length. */
+export const FILM_LEASE_MAX_TURNS = 15;
+
+/**
+ * The most turns 0232 lets a plan of a film this long reserve: the TypeScript twin of ai_chat_film_plan_max_turns
+ * (least(15, 1 + 2 x ceil(t / 24))). The database refuses a bigger number, so both routes' worst cases must stay under it
+ * (tests/brain-film-lease-bound.test.ts runs both planners over every length and clip shape against it).
+ */
+export function filmLeaseMaxTurns(targetSeconds: number): number {
+  return Math.min(FILM_LEASE_MAX_TURNS, 1 + 2 * Math.ceil(targetSeconds / 24));
+}
+
 /**
  * How many of today's messages writing this project's storyboard takes: the outline call, then one call per window, each window
  * asked again at most once (G1). Null when the length cannot be planned (outside the film's range, or more than 60 scenes at the clip

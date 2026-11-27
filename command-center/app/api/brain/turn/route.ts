@@ -404,9 +404,15 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
       if (!turns) return brainJson({ error: "plan_failed", reason: "not_plannable", step: null }, 409);
       // Every call is a turn under the daily cap. A plan is begun only when today's turns cover its worst case (every window asked
       // again once), so it can never stop halfway for the plan's cap and price nothing. Zero left is the database's own refusal.
+      // What other plans hold (0232's `reserved`; absent before 0232, when nothing can be held) is not left: subtracted here too.
       const used = typeof q.used === "number" ? q.used : null;
-      const left = typeof q.limit === "number" ? (used === null ? null : Math.max(0, q.limit - used)) : typeof q.trial_left === "number" ? q.trial_left : null;
-      if (left !== null && left > 0 && left < turns.at_most) return brainJson({ error: "plan_over_cap", needed: turns.at_most, about: turns.about, left }, 429);
+      const held = typeof (q as { reserved?: unknown }).reserved === "number" ? Math.max(0, (q as { reserved: number }).reserved) : 0;
+      const left = typeof q.limit === "number" ? (used === null ? null : Math.max(0, q.limit - used - held))
+        : typeof q.trial_left === "number" ? Math.max(0, q.trial_left - held) : null;
+      if (left !== null && left > 0 && left < turns.at_most) {
+        return brainJson({ error: "plan_over_cap", needed: turns.at_most, about: turns.about, left,
+                           ...(typeof q.limit === "number" ? {} : { scope: "trial" }) }, 429);
+      }
       // 2. One plan at a time per conversation (0211). Without the lease there is no plan: never two of them, never one unguarded.
       const refused = await beginLease(turns);
       if (refused) return refused;
