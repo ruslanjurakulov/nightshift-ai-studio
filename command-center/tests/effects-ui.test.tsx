@@ -33,7 +33,7 @@ vi.mock("@/lib/channels-client", () => ({
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, fmt, type Locale } from "@/lib/i18n";
-import { EFFECTS, effectById, effectDeskCards, effectFace, publicEffectHref, resolveEffect } from "@/lib/effects/catalog";
+import { EFFECTS, effectById, effectChoice, effectDeskCards, effectFace, publicEffectHref, resolveEffect } from "@/lib/effects/catalog";
 import type { StudioModel } from "@/lib/creative/studio";
 import { EffectsDesk } from "@/components/effects/EffectsDesk";
 import { EffectBanner } from "@/components/effects/EffectBanner";
@@ -155,7 +155,7 @@ describe("the Studio's Effects desk", () => {
 describe("the banner over the composer", () => {
   it("for a words effect, is a GET form back to this page with the effect and the subject, and names the model", () => {
     const giant = effectById("giant-in-the-city")!;
-    render(withI18n(<EffectBanner effect={effectFace(giant)} availability={resolveEffect(giant, OPERATOR)} subject="a red fox" />));
+    render(withI18n(<EffectBanner effect={effectFace(giant)} availability={effectChoice(resolveEffect(giant, OPERATOR))} subject="a red fox" />));
     const field = screen.getByLabelText(en.effects.items["giant-in-the-city"].subject!) as HTMLInputElement;
     expect(field.value).toBe("a red fox");
     expect(field.maxLength).toBe(120);
@@ -171,7 +171,7 @@ describe("the banner over the composer", () => {
 
   it("for a picture effect, asks for the picture in the form below and has no subject field", () => {
     const burst = effectById("product-burst")!;
-    render(withI18n(<EffectBanner effect={effectFace(burst)} availability={resolveEffect(burst, OPERATOR)} subject="" />));
+    render(withI18n(<EffectBanner effect={effectFace(burst)} availability={effectChoice(resolveEffect(burst, OPERATOR))} subject="" />));
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.getByText(new RegExp(en.effects.banner.pictureHint))).toBeTruthy();
   });

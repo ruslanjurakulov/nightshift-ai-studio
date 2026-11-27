@@ -169,7 +169,7 @@ export function InlineComposer({
   const input = inputOf(state, node, jobs);
   const [mounted] = useState(() => node.id);
   const prefill = useMemo(
-    () => nodePrefill(node, input ? { type: input.type, assetId: input.assetId, text: input.text } : null, data.effects ?? [], upstreamWords(state, node)),
+    () => nodePrefill(node, input ? { type: input.type, assetId: input.assetId, text: input.text } : null, data.effects, upstreamWords(state, node)),
     // The form mounts once per input: later typing lives in the form (and in node.draft through onDraftChange).
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [mounted, input?.type, input?.assetId],

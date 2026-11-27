@@ -6,12 +6,12 @@ import { ArrowRight } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
-import { effectSection, type EffectAvailability, type EffectDeskCard, type EffectFace } from "@/lib/effects/shared";
+import { effectSection, type EffectChoice, type EffectDeskCard, type EffectFace } from "@/lib/effects/shared";
 import { EffectFrame } from "@/components/effects/EffectFrame";
 import "@/components/effects/effects.css";
 
 /** The shape an effect's clip comes out in, as the card says it: the picture's, the model's own, or the effect's. */
-export function shapeText(t: Dictionary, effect: Pick<EffectFace, "input" | "aspect">, a: EffectAvailability): string {
+export function shapeText(t: Dictionary, effect: Pick<EffectFace, "input" | "aspect">, a: EffectChoice): string {
   if (effect.input === "picture") return t.effects.desk.pictureShape;
   if (a.state === "ready" && a.fixedShape) return t.effects.desk.ownShape;
   return effect.aspect;
@@ -47,7 +47,7 @@ export function EffectsDesk({ cards }: { cards: readonly EffectDeskCard[] }) {
   );
 }
 
-function EffectCard({ effect, a, href }: { effect: EffectFace; a: EffectAvailability; href: string }) {
+function EffectCard({ effect, a, href }: { effect: EffectFace; a: EffectChoice; href: string }) {
   const { t } = useI18n();
   const fx = t.effects;
   const copy = fx.items[effect.id];
@@ -81,7 +81,7 @@ function EffectCard({ effect, a, href }: { effect: EffectFace; a: EffectAvailabi
               <span className="fx-chip-key">{fx.desk.length}</span> {fmt(fx.desk.seconds, { n: effect.duration })}
             </li>
           </ul>
-          {ready && a.rank > 0 && <p className="fx-note">{fx.desk.nextChoice}</p>}
+          {ready && a.nextChoice && <p className="fx-note">{fx.desk.nextChoice}</p>}
           {ready && a.preview && <p className="fx-note">{fx.desk.previewNote}</p>}
           {ready ? (
             <Link href={href} className="fx-use" aria-label={fmt(fx.desk.useAria, { name: copy.name })}>

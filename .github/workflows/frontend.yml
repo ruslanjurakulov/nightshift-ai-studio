@@ -127,8 +127,11 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/billing-bundle-check.mjs
       # Each effect's model preference order and prompt (lib/effects/effects.json), the provider display map and the cost
-      # ledger's vendor-named units each reached a public chunk through a client module. They are server-only now; this reads
-      # them from those sources and fails if any .js under .next/static (or a prerendered page) still carries them.
+      # ledger's vendor-named units each reached a static chunk through a client module. They are server-only now; this reads
+      # them from those sources and fails if any .js under .next/static, or a file the build wrote for a browser under
+      # .next/server (a prerendered page or route body, when there is one), still carries them. Pages rendered per request
+      # are not build files and are not covered here (it prints how many app pages were prerendered, usually 0); their
+      # props are held by tests/pricing-finder-props.test.tsx and tests/effects-gallery-props.test.tsx.
       - name: Static chunks carry no vendor routing, vendor map or vendor metering units
         if: ${{ !cancelled() }}
         run: node scripts/vendor-bundle-check.mjs

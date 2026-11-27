@@ -50,14 +50,15 @@ afterEach(() => {
   for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true });
 });
 
-const e0 = effects[0];
+const e0 = [...effects].sort((a, b) => b.models.length - a.models.length)[0];
+const FILLED = effects.find((e) => e.prompt.includes("{subject}"))!;
 
 describe("vendor-bundle-check", () => {
   it("passes a clean build, and what the site may show is not a leak", () => {
     const root = fakeBuild();
     // A model's display name and id alone (the Studio picker names models by design), one vendor name in some copy, a dictionary
-    // that labels a unit, and an effect's id and colours.
-    put(root, "static/chunks/77-ok.js", 'm={id:"runway-gen4.5",name:"Runway Gen-4.5"};c={runway:"Runway"};u={gemini_input_tokens:"LLM input tokens"};f={id:"photo-to-life",hues:["#f6d365","#fda085"]}');
+    // that labels a vendor-free unit, and an effect's id and colours.
+    put(root, "static/chunks/77-ok.js", 'm={id:"runway-gen4.5",name:"Runway Gen-4.5"};c={runway:"Runway"};u={tts_characters:"TTS characters"};f={id:"photo-to-life",hues:["#f6d365","#fda085"]}');
     const r = run(root);
     expect(r.out).toContain("clean");
     expect(r.code).toBe(0);
@@ -74,6 +75,13 @@ describe("vendor-bundle-check", () => {
     ["the ledger unit list", "static/chunks/743-a.js", 'o=["gemini_input_tokens","gemini_output_tokens","tts_characters"]', "ledger unit list"],
     ["a lazy chunk no manifest lists", "static/chunks/9999-lazy.js", 'o=["pexels_requests","upload_bytes"]', "ledger unit list"],
     ["a prerendered .rsc payload", "server/app/index.rsc", `1:{"models":${JSON.stringify(e0.models)}}`, `effect ${e0.id} model order`],
+    ["two consecutive choices only", "static/chunks/155-e.js", `r=${JSON.stringify(e0.models.slice(1, 3))}`, `effect ${e0.id} model order`],
+    ["a filled prompt", "static/chunks/155-f.js", `p=${JSON.stringify(FILLED.prompt.replace("{subject}", "a red fox"))}`, `effect ${FILLED.id} prompt`],
+    ["HTML-entity JSON", "server/app/x.html", `<i data-x="${JSON.stringify({ m: e0.models }).replace(/"/g, "&#34;")}">`, `effect ${e0.id} model order`],
+    ["a thrice-escaped JSON string", "static/chunks/155-g.js", JSON.stringify(JSON.stringify(JSON.stringify({ m: e0.models }))), `effect ${e0.id} model order`],
+    ["a route handler .body", "server/app/api/x.body", JSON.stringify({ m: e0.models }), `effect ${e0.id} model order`],
+    ["a vendor-named unit as a dictionary key", "static/chunks/3425-a.js", 'units:{gemini_input_tokens:"tokens"}', "vendor-named ledger unit gemini_input_tokens"],
+    ["a vendor-named unit inside a longer string", "static/chunks/3425-b.js", '"unit pexels_requests is unpriced"', "vendor-named ledger unit pexels_requests"],
   ])("fails on %s", (_label, rel, text, expected) => {
     const root = fakeBuild();
     put(root, rel, text);
@@ -88,6 +96,19 @@ describe("vendor-bundle-check", () => {
       put(root, "static/chunks/1-e.js", `m=${JSON.stringify(e.models)}`);
       expect(run(root).out, e.id).toContain(`effect ${e.id} model order`);
     }
+  });
+
+  it("says plainly when no app page was prerendered, and does not count an error page as one", () => {
+    const r = run(fakeBuild());
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("(0 app pages prerendered)");
+  });
+
+  it("does not scan the server's own code under server/app (it legitimately holds the catalog)", () => {
+    const root = fakeBuild();
+    put(root, "server/app/(app)/[channel]/create/page.js", `m=${JSON.stringify(e0.models)}`);
+    put(root, "server/app/(app)/[channel]/create/page.js.nft.json", '{"files":["../../lib/effects/effects.json"]}');
+    expect(run(root).code).toBe(0);
   });
 
   // Positive controls: a pass must never come from scanning nothing, or from a source the script can no longer read.
@@ -117,5 +138,24 @@ describe("vendor-bundle-check", () => {
     const units = readFileSync(path.join(CC, "lib/server/ledger-units.ts"), "utf8").replace("export const LEDGER_UNITS", "export const RENAMED");
     expect(run(fakeBuild({ "lib/server/ledger-units.ts": units })).code).toBe(2);
     expect(run(fakeBuild({ "lib/effects/effects.json": '{"version":1,"effects":[]}' })).code).toBe(2);
+  });
+});
+
+describe("vendor-bundle-check as a module", () => {
+  it("importing it runs no scan (main() only when run as a script), and its helpers read the forms the product writes", async () => {
+    const exit = process.exitCode;
+    const mod = (await import("../scripts/vendor-bundle-check.mjs")) as {
+      normalize: (s: string) => string;
+      promptWindows: (p: string) => string[];
+      PROMPT_WINDOW: number;
+    };
+    expect(process.exitCode).toBe(exit);
+    expect(mod.normalize('a=\\\\\\"x\\\\\\"&quot;y&#34;&#x22;&#39;')).toBe(`a="x""y""'`);
+    // Every part between slots that is long enough gives windows, each PROMPT_WINDOW long and in the prompt.
+    for (const e of effects) {
+      const w = mod.promptWindows(e.prompt);
+      expect(w.length, e.id).toBeGreaterThan(0);
+      for (const x of w) expect(x.length === mod.PROMPT_WINDOW && e.prompt.includes(x), `${e.id}: ${x}`).toBe(true);
+    }
   });
 });

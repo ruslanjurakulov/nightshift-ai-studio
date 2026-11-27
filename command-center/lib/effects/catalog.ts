@@ -40,6 +40,7 @@ import {
   type EffectDeskCard,
   type EffectFace,
   type EffectId,
+  effectChoice,
 } from "@/lib/effects/shared";
 
 export * from "@/lib/effects/shared";
@@ -171,6 +172,12 @@ export function effectPrefill(effect: Effect, modelId: string, subject: string, 
 
 // ── what a Client Component is handed ───────────────────────────────────────
 
+/** The effect's sample cut to what the frame reads (effectSample, the same call the browser made). */
+function faceSample(effect: Effect): EffectFace["sample"] {
+  const s = effectSample(effect);
+  return s ? { entry: { jobId: s.entry.jobId, width: s.entry.width, height: s.entry.height }, files: s.files } : null;
+}
+
 /** What a card draws: the effect's tool, shape, length and drawing, and its real sample when it has one. No models, no prompt. */
 export function effectFace(effect: Effect): EffectFace {
   return {
@@ -181,13 +188,13 @@ export function effectFace(effect: Effect): EffectFace {
     duration: effect.duration,
     motif: effect.motif,
     hues: [effect.hues[0], effect.hues[1]],
-    sample: effectSample(effect),
+    sample: faceSample(effect),
   };
 }
 
 /** The Studio's Effects desk for a workspace offered `models`: each effect's face and the model it will use here (resolveEffect). */
 export function effectDeskCards(models: readonly OfferedModel[], effects: readonly Effect[] = EFFECTS): EffectDeskCard[] {
-  return effects.map((e) => ({ face: effectFace(e), availability: resolveEffect(e, models) }));
+  return effects.map((e) => ({ face: effectFace(e), availability: effectChoice(resolveEffect(e, models)) }));
 }
 
 /**

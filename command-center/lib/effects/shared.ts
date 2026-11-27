@@ -79,6 +79,15 @@ export interface EffectSample {
 }
 
 /**
+ * The sample as a card is handed it: the showcase job (its clip's address), its size and its files. Not the card's model id
+ * or tool: the frame never reads them, and the model that made the preview is the start of the effect's routing.
+ */
+export interface FaceSample {
+  entry: Pick<ShowcaseCard, "jobId" | "width" | "height">;
+  files: ShowcaseFiles;
+}
+
+/**
  * What a card, a banner or the public gallery draws for an effect, and all a Client Component is ever handed of it: never its
  * models, its prompt or its preview job id (the sample, when there is one, was resolved on the server).
  */
@@ -90,7 +99,7 @@ export interface EffectFace {
   duration: VideoDuration;
   motif: EffectMotif;
   hues: readonly [string, string];
-  sample: EffectSample | null;
+  sample: FaceSample | null;
 }
 
 export type EffectAvailability =
@@ -102,10 +111,23 @@ export type EffectAvailability =
   /** None of the effect's models is offered here: nothing is filled and nothing can run from the card. */
   | { state: "unavailable" };
 
+/**
+ * resolveEffect's answer as a Client Component is handed it: the model it will use, and only whether that is not the first
+ * choice (the card says so), never its place in the effect's preference order.
+ */
+export type EffectChoice =
+  | { state: "ready"; modelId: string; modelName: string; nextChoice: boolean; preview: boolean; fixedShape: boolean }
+  | { state: "unavailable" };
+
+export function effectChoice(a: EffectAvailability): EffectChoice {
+  if (a.state !== "ready") return { state: "unavailable" };
+  return { state: "ready", modelId: a.modelId, modelName: a.modelName, nextChoice: a.rank > 0, preview: a.preview, fixedShape: a.fixedShape };
+}
+
 /** One card of the Studio's Effects desk: the effect's face, and the model it will use in this workspace (or that none is open). */
 export interface EffectDeskCard {
   face: EffectFace;
-  availability: EffectAvailability;
+  availability: EffectChoice;
 }
 
 /**

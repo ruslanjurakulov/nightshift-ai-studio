@@ -54,6 +54,12 @@ export interface CreditPrice {
 
 export type PriceMap = Record<string, CreditPrice>;
 
+/** One unit's price as the customer is charged it, the margin folded in on the server: all a Client Component is handed. */
+export interface ChargedRate {
+  unit: string;
+  credits: number;
+}
+
 export interface CreditAccount {
   balance: number;
   reserved: number;

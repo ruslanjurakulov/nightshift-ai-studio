@@ -30,9 +30,6 @@ import { SceneActionContext } from "./SceneActionContext";
 import "@/components/studio/desk.css";
 import "@/components/studio/availability.css";
 
-/** No effects handed in (a test, or a page before canvasEffects): every Effects node reads as not open here. */
-const NO_EFFECTS: readonly CanvasEffect[] = [];
-
 export interface PanelData {
   orgId: string | null;
   models: StudioModel[];
@@ -42,7 +39,7 @@ export interface PanelData {
   defaultStyleKitId: string | null;
   /** The effects, each with its composer prefill where one of its models is offered here, resolved on the server
    *  (lib/effects/catalog.ts canvasEffects): the effects' model order and prompts are not in the canvas's chunk. */
-  effects?: readonly CanvasEffect[];
+  effects: readonly CanvasEffect[];
 }
 
 /**
@@ -50,7 +47,7 @@ export interface PanelData {
  * turns into a clip from words). Edit · Upscale offers the picture or the clip operations by what is wired in; Voice
  * offers speech from words, or the recording tools when a recording is wired in.
  */
-export function toolsFor(node: CanvasNode, input: PortType | null, effects: readonly CanvasEffect[] = []): StudioCapability[] {
+export function toolsFor(node: CanvasNode, input: PortType | null, effects: readonly CanvasEffect[]): StudioCapability[] {
   switch (node.kind) {
     case "image":
       return ["t2i"];
@@ -72,7 +69,7 @@ export function toolsFor(node: CanvasNode, input: PortType | null, effects: read
 }
 
 /** The tool a node's form starts on. */
-export function startCapability(node: CanvasNode, input: PortType | null, effects: readonly CanvasEffect[] = []): StudioCapability | null {
+export function startCapability(node: CanvasNode, input: PortType | null, effects: readonly CanvasEffect[]): StudioCapability | null {
   return toolsFor(node, input, effects)[0] ?? null;
 }
 
@@ -203,7 +200,7 @@ export function Inspector({
     setSourceRequest((r) => ({ nonce: (r?.nonce ?? 0) + 1, id: sourceId }));
   }, [sourceId]);
 
-  const effects = data.effects ?? NO_EFFECTS;
+  const effects = data.effects;
   const only = toolsFor(node, input?.type ?? null, effects);
   const prefill = useMemo(
     () =>

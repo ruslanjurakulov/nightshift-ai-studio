@@ -1472,12 +1472,10 @@ export const ru: Dictionary = {
     unpricedIn: "в {n} видео",
     empty: "За последние {days} дн. ни одно видео не записало затрат.",
     unattributed: "{n} строк(и) реестра без видео и slug не учтены.",
+    // The vendor-named units (gemini_*, pexels_*) are in lib/server/ledger-unit-labels.ts: this dictionary ships to the browser.
     units: {
-      gemini_input_tokens: "Входные токены LLM",
-      gemini_output_tokens: "Выходные токены LLM",
       tts_characters: "Символы TTS",
       render_seconds: "Секунды рендера",
-      pexels_requests: "Запросы стоковых медиа",
       upload_bytes: "Байты загрузки",
       video_gen_clips: "Сгенерированные клипы",
       image_generations: "Сгенерированные изображения",

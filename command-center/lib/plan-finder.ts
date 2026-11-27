@@ -20,7 +20,7 @@
  * (estimateRunCredits reads no voice); the page says that rather than invent a premium.
  */
 
-import { UNIT_JOB_MINIMUM, UNIT_VIDEO_MINUTE, chargePerUnit, estimateRunCredits, roundUpCredits, type PriceMap } from "@/lib/credits";
+import { UNIT_JOB_MINIMUM, UNIT_VIDEO_MINUTE, chargePerUnit, estimateRunCredits, roundUpCredits, type ChargedRate, type PriceMap } from "@/lib/credits";
 import { quoteLike } from "@/lib/plans";
 import { lowestRate, type DiscoveryModel, type DiscoveryState, type PriceUnit } from "@/lib/models-discovery";
 
@@ -52,11 +52,7 @@ export const VOICE_TIERS: readonly VoiceTier[] = ["standard", "premium"];
 /** When the rates were known: the price list's own `updated_at` (signed in), else the day the page read them. */
 export type RateStamp = { kind: "set"; at: string } | { kind: "read"; at: string };
 
-/** One unit's price as the customer is charged it: the credits per unit with any margin already folded in. */
-export interface ChargedRate {
-  unit: string;
-  credits: number;
-}
+export type { ChargedRate };
 
 /**
  * The two units a YouTube video is quoted from. Only `{ unit, credits }` crosses to the browser: never the margin, the

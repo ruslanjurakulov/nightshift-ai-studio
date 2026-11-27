@@ -203,13 +203,13 @@ describe("downloadPrices: what the video page hands the Download menu", () => {
     { unit: "video_minute", credits_per_unit: 10 },
   ]);
 
-  it("keeps only the HD download units and their floor, as charged: no margin, no note", () => {
+  it("keeps only the HD download units and their floor, as charged: { unit, credits } and nothing else", () => {
     const p = downloadPrices(LIST);
     expect(Object.keys(p).sort()).toEqual(["download_1080p_minute", "download_720p_minute", "download_minimum"]);
-    expect(Object.values(p).every((r) => r.margin === 0 && r.note === null)).toBe(true);
-    expect(p.download_720p_minute.creditsPerUnit).toBe(3);
+    expect(JSON.stringify(p)).not.toMatch(/margin|note|updatedAt|creditsPerUnit/);
+    expect(p.download_720p_minute).toEqual({ unit: "download_720p_minute", credits: 3 });
     // The floor is flat: its margin is ignored, as request_download ignores it.
-    expect(p.download_minimum.creditsPerUnit).toBe(5);
+    expect(p.download_minimum).toEqual({ unit: "download_minimum", credits: 5 });
   });
 
   it("prices every download exactly as the full list did", () => {

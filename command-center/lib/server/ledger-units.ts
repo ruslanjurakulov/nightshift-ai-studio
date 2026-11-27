@@ -19,3 +19,13 @@ export const LEDGER_UNITS = [
   "image_generations",
   "vision_calls",
 ] as const;
+
+export type LedgerUnit = (typeof LEDGER_UNITS)[number];
+
+/**
+ * The ledger units whose NAME carries a vendor. No browser chunk may hold any of these in any form, a dictionary key
+ * included (scripts/vendor-bundle-check.mjs reads this list); their words are in lib/server/ledger-unit-labels.ts.
+ * tests/ledger-units.test.ts holds every other unit to a vendor-free first word, so a new vendor unit cannot be left off.
+ */
+export const VENDOR_NAMED_LEDGER_UNITS = ["gemini_input_tokens", "gemini_output_tokens", "pexels_requests"] as const satisfies readonly LedgerUnit[];
+export type VendorNamedLedgerUnit = (typeof VENDOR_NAMED_LEDGER_UNITS)[number];

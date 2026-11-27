@@ -1,7 +1,8 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { fmt, type Dictionary } from "@/lib/i18n";
-import { EFFECTS, effectFace, publicEffectHref, type Effect } from "@/lib/effects/catalog";
+import { EFFECTS, effectFace } from "@/lib/effects/catalog";
+import { publicEffectHref, type Effect } from "@/lib/effects/shared";
 import { levelSpans, masonryColumns, masonrySpan } from "@/lib/effects/masonry";
 import { EffectFrame } from "@/components/effects/EffectFrame";
 import { effectFrameRatio, effectSample } from "@/components/effects/effect-sample";

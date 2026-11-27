@@ -42,16 +42,22 @@ describe("an effect's face carries what the card draws and nothing it does not",
     const wire = JSON.stringify(face);
     expect(wire).not.toContain(e.prompt.slice(0, 40));
     expect(wire).not.toMatch(/"models"|"prompt"|"previewJobId"|"slotHint"/);
-    // The sample is the one the browser found before (same function, same client-safe slice).
-    expect(face.sample).toEqual(effectSample(e));
+    // The sample is the one the browser found before (same function, same client-safe slice), cut to what the frame reads.
+    const s = effectSample(e);
+    expect(face.sample).toEqual(s ? { entry: { jobId: s.entry.jobId, width: s.entry.width, height: s.entry.height }, files: s.files } : null);
+    if (face.sample) expect(Object.keys(face.sample.entry).sort()).toEqual(["height", "jobId", "width"]);
   });
 
   it("the desk's cards are resolveEffect's answer for the same list, in the gallery's order", () => {
     for (const models of [[], OPERATOR, CUSTOMER]) {
       const cards = effectDeskCards(models);
       expect(cards.map((c) => c.face.id)).toEqual(EFFECTS.map((e) => e.id));
-      cards.forEach((c, i) => expect(c.availability).toEqual(resolveEffect(EFFECTS[i], models)));
-      expect(JSON.stringify(cards)).not.toMatch(/"models"|"prompt"|"previewJobId"/);
+      cards.forEach((c, i) => {
+        const a = resolveEffect(EFFECTS[i], models);
+        // The same model and the same "not the first choice" note, without the place in the order.
+        expect(c.availability).toEqual(a.state === "ready" ? { state: "ready", modelId: a.modelId, modelName: a.modelName, nextChoice: a.rank > 0, preview: a.preview, fixedShape: a.fixedShape } : { state: "unavailable" });
+      });
+      expect(JSON.stringify(cards)).not.toMatch(/"models"|"prompt"|"previewJobId"|"rank"/);
     }
   });
 });
