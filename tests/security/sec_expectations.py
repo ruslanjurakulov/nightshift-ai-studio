@@ -177,6 +177,7 @@ TABLES: Dict[str, Kind] = {
     # probe runs are the operator's evidence
     "model_registry": Public(),
     "model_probe_runs": Platform(),
+    "model_terms_acceptance": Service(),
     # creative generations (0036) and their provider cost (0037: operator economics)
     "creative_jobs": Org(),
     "creative_job_events": Org(),
@@ -388,6 +389,9 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     # what a video costs in credits, for the public price pages (0089)
     "public_video_rates": PRICE_LIST,
     "model_registry_admin": USER,
+    "model_terms_acceptance_admin": USER,
+    "owner_accept_model_terms": USER,
+    "owner_revoke_model_terms": USER,
     "record_model_probe": SERVICE,
     "sync_model_registry": SERVICE,
     # creative jobs (0036): members quote / create / cancel; the worker runs them

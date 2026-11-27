@@ -32,6 +32,8 @@ export interface ConfirmOptions {
   details?: ConfirmDetail[];
   /** Tier 3: this text must be typed (case, spaces and ʻ ignored) before the key works. */
   typeToConfirm?: string;
+  /** Require an exact match for identifiers that the server compares verbatim. */
+  exactConfirmation?: boolean;
   /**
    * A statement the person must tick before the key works ("I checked rights and AI-content labels"). Unticked on
    * every new question; the key stays disabled until it is ticked.
@@ -125,9 +127,11 @@ export function ConfirmDialog({
     };
   }, [open]);
 
+  const matches = (word: string) => options?.exactConfirmation ? typed === word : typedMatches(typed, word);
+
   async function go() {
     if (lock.current || !options) return;
-    if (options.typeToConfirm && !typedMatches(typed, options.typeToConfirm)) return;
+    if (options.typeToConfirm && !matches(options.typeToConfirm)) return;
     if (options.acknowledge && !acknowledged) return;
     if (!options.run) {
       onResolve(true);
@@ -182,7 +186,7 @@ export function ConfirmDialog({
 
   const danger = (options.tone ?? "danger") === "danger";
   const needsWord = Boolean(options.typeToConfirm);
-  const wordOk = (!needsWord || typedMatches(typed, options.typeToConfirm ?? "")) && (!options.acknowledge || acknowledged);
+  const wordOk = (!needsWord || matches(options.typeToConfirm ?? "")) && (!options.acknowledge || acknowledged);
 
   return createPortal(
     <div className="fixed inset-0 z-[130] flex items-end justify-center p-4 sm:items-center" onKeyDown={onKeyDown}>
