@@ -324,8 +324,10 @@ def snapshot(su):
 def test_applying_it_again_changes_nothing(conn):
     with as_superuser(conn, commit=False) as su:
         before = snapshot(su)
+        sec_db.take_off_0227(su)
         su.conn.execute(sec_db.MIGRATION_0145.read_text(encoding="utf-8"))
         su.conn.execute(sec_db.MIGRATION_0145.read_text(encoding="utf-8"))
+        sec_db.put_back_0227(su)
         assert snapshot(su) == before
 
 
@@ -344,7 +346,7 @@ def test_the_rollback_restores_what_0145_replaced_and_the_migration_applies_agai
     base = f"ns_mfk_base_{uuid.uuid4().hex[:8]}"
     base_dsn = sec_db.create_database(admin, base)
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0145_")])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0145_", "0227_"))])
         import psycopg
 
         with psycopg.connect(base_dsn, autocommit=True) as b:
@@ -367,4 +369,5 @@ def test_the_rollback_restores_what_0145_replaced_and_the_migration_applies_agai
         assert su.value("select count(*) from information_schema.columns where table_name = 'videos' "
                         "and column_name like 'made_for_kids%'") == 6
         sec_db.put_back_0145(su)
+        sec_db.put_back_0227(su)
         assert snapshot(su) == after

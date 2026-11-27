@@ -2446,6 +2446,41 @@ video is cross-posted.
 - **Requires** 0029 and 0112. The body is replaced only if it is 0029's or 0205's (md5 guard).
 - **Undo.** `docs/sql/rollback_0205_publish_refusal_gate_verdict.sql` puts 0029's body back exactly.
 
+## Film voice: does the voice model speak the film's language (0214)
+
+0214 (`0214_voice_language_check.sql`, provisional number) adds one helper, `public.voice_language_problem(model, language)`. It
+reads `model_registry.spec -> 'languages'`, which `schemas/model_registry.json` now lists for every `tts` entry (equal to
+`modules/tts_languages.MODEL_LANGUAGES`, held by `tests/test_tts_registry_languages.py`).
+
+- **Why.** `quote_film` (0171) quotes and holds credits for an Uzbek film whose voice is Eleven Multilingual v2, which does not
+  speak Uzbek; the take then fails in the TTS adapter after the clips were paid (docs/studio/S6_GAPS.md, G1).
+- **What.** NULL when the model lists the language. Otherwise `{priced: false, reason, detail}`:
+  - `voice_language_unsupported` when the model's list does not hold it. For Uzbek the detail says "choose Eleven v3, a voice
+    model that lists Uzbek" (v3 only, like `tts_languages.UZBEK_FIX`: v4 is untried);
+  - `voice_language_unknown` when there is no row, no list, no language, or a language outside en/ru/uz. The lists cover only
+    the three languages that were checked, so unknown is never "speaks" and never "does not speak".
+- **Who.** No role may execute it (revoked from public, anon, authenticated and service_role, like `film_model_problem`);
+  `quote_film` runs as its owner and calls it from inside.
+- **Not done here.** No money function changes. S2 adds the call to `quote_film`'s narration branch, second in its
+  `coalesce`: after `film_model_problem` (so a hidden or unavailable model is answered `model_not_available`, never with a
+  language detail naming a row the member cannot see) and before `film_try_price`. The line is in the migration's header.
+- **The sync un-verifies the voice models.** `model_registry_guard` (0100) treats a change of `spec.languages` as a new claim:
+  a TTS row that is verified today loses its verification, and one on sale (beta/ga) goes back to hidden. A row that is not
+  verified today is not changed. The Probe models workflow always passes `--sync`, so ANY probe run, of any model, is that
+  sync. Check first: `select id, availability, verified_at from public.model_registry where 'tts' = any(capabilities);`.
+- **Deploy order.**
+  1. Apply 0214 and run its Verify block.
+  2. Sync the registry (any probe run does it).
+  3. Probe each voice model by name. `--all` skips terms-gated entries and all four are gated, so name them, with a voice id
+     from the account's list (`--voice-id` or `ELEVENLABS_VOICE_ID`): `python tools/probe_models.py --sync --model
+     elevenlabs-v4 --model elevenlabs-v3 --model elevenlabs-multilingual-v2 --model elevenlabs-flash-v2.5 --voice-id <id>`,
+     or one Probe models workflow run per id. Each probe is a real, paid call.
+  4. The owner puts the re-verified models back on sale.
+  5. Only then S2 wires `quote_film`.
+- **Requires** 0035. **Undo.** `docs/sql/rollback_0214_voice_language_check.sql` (refuses while any function still calls it).
+- Lab: `tests/security/sec_voice_language_0214.py`, `tests/security/test_sec_voice_language.py`. Static:
+  `tests/test_voice_language_check_migration.py`.
+
 ## Film Studio: archive and resume a project that stopped, re-run a failed assembly, and only a member spends (0215)
 
 0215 (`0215_film_archive_resume.sql`, provisional number) closes switch-on gate G1 (`docs/FILM_STUDIO.md`, "Resume";
@@ -2708,3 +2743,18 @@ table or grant; `film_expire_segments` is called, never replaced. It spends noth
   what the old functions wrote in between.
 - Lab: `tests/security/test_sec_worker_identity_reads.py`. Rollback: `docs/sql/rollback_0225_creative_jobs_member_columns.sql`
   restores the table grant only; the redaction is not undone (the worker ids are not stored anywhere else).
+
+
+
+## Owner model terms acceptance (0227)
+
+0227 (`0227_owner_model_terms_acceptance.sql`) adds an owner-only approval for a model's exact vendor terms gate.
+Applying it leaves existing model rows untouched. Owners confirm the model ID and use the existing availability control
+to offer a model after approval. The probe and pricing requirements still apply. ByteDance terms cannot be approved.
+
+The registry preserves approvals for matching gates. A changed gate on a model with an earlier approval hides the model
+if it is on sale. Revoking an approval hides it if it is on sale and restores the recorded gate when there is no newer gate.
+The audit allow-list adds `model.terms_accept` and `model.terms_revoke`.
+
+Apply as one transaction after 0018 (platform role), 0035 (registry), 0107 (operator MFA) and 0145 (audit allow-list).
+The owner-applied rollback is `docs/sql/rollback_0227_owner_model_terms_acceptance.sql`.

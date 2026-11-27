@@ -62,6 +62,7 @@ from modules.capabilities.base import (
     VIDEO_REFRAME,
     VIDEO_REMOVE_BG,
     VIDEO_UPSCALE,
+    TTS,
     CapabilityRequest,
 )
 
@@ -524,10 +525,15 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             errors.append(_err(mid, "a picture-op model lists only picture ops"))
         if any(c in PICTURE_OPS for c in caps) and m["api_exposure"] != "web_only":
             errors.append(_err(mid, "picture ops are a web tool until the API documents them: api_exposure must be web_only"))
-        if (DUB in caps or CAPTIONS in caps or DIALOGUE in caps) != bool(m.get("languages")):
+        if (DUB in caps or CAPTIONS in caps or TTS in caps or DIALOGUE in caps) != bool(m.get("languages")):
             # 0050 sells a dub only into a language the model lists; 0072
-            # sells captions only in a spoken language it lists; a dialogue is spoken only in one it lists.
-            errors.append(_err(mid, "languages is required with dub, captions or dialogue and only with them"))
+            # sells captions only in a spoken language it lists; a dialogue is spoken only in one it lists. A voice model
+            # lists what it speaks so a film's quote can refuse an Uzbek film
+            # read by a model that does not speak Uzbek before the hold (0214),
+            # and so the Brain proposes only a voice that speaks the film's
+            # language. A voice model without the list would read as "unknown"
+            # there, never as "speaks", so the entry may not omit it.
+            errors.append(_err(mid, "languages is required with dub, captions, tts or dialogue and only with them"))
         if (VIDEO_UPSCALE in caps) != bool(m.get("upscale_targets")):
             # 0052 sells a video upscale only at a target the model lists.
             errors.append(_err(mid, "upscale_targets is required with video_upscale and only with it"))

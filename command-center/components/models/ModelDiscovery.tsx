@@ -604,7 +604,9 @@ function ModelDetail({ model: m, task, operator }: { model: DiscoveryModel; task
   else if (s.audioOut) settings.push([c.setSound, c.soundYes]);
   if (s.upscaleFactors.length) settings.push([c.setUpscale, vals(s.upscaleFactors.map((f) => `${f}×`))]);
   if (s.upscaleTargets.length) settings.push([c.setTargets, vals(s.upscaleTargets)]);
-  if (s.languages.length) settings.push([c.setLanguages, vals(s.languages.map((l) => (l in c.languages ? c.languages[l as keyof Copy["languages"]] : l)))]);
+  // A voice model's list covers only the three languages that were checked (modules/tts_languages), not everything it speaks:
+  // shown here it would read as complete, so only a dub or captions model's list (what it is sold for) is drawn.
+  if (s.languages.length && !m.capabilities.includes("tts")) settings.push([c.setLanguages, vals(s.languages.map((l) => (l in c.languages ? c.languages[l as keyof Copy["languages"]] : l)))]);
   if (s.endFrame) settings.push([c.setEndFrame, c.endFrameYes]);
   if (s.maxSourceSeconds) settings.push([c.setLongest, <span key="l" className="ns-tc">{dur(s.maxSourceSeconds)}</span>]);
 

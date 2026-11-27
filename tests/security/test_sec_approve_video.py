@@ -449,6 +449,7 @@ def test_applying_it_again_changes_nothing(conn):
         su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))   # 0117 replaces the audit list once more
         sec_db.put_back_0119(su)
         sec_db.put_back_0121(su)
+        sec_db.put_back_0227(su)
         assert snapshot(su) == before
 
 
@@ -474,7 +475,7 @@ def test_the_rollback_restores_what_0112_replaced_and_the_migration_applies_agai
     base_dsn = sec_db.create_database(admin, base)
     try:
         sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence()
-                                      if not f.name.startswith(("0112_", "0116_", "0117_", "0119_", "0121_", "0145_", *sec_db.NEEDS_0112_0116))])
+                                      if not f.name.startswith(("0112_", "0116_", "0117_", "0119_", "0121_", "0145_", "0227_", *sec_db.NEEDS_0112_0116))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             fns = [r[0] for r in b.execute("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace order by 1")]
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
@@ -520,4 +521,5 @@ def test_the_rollback_restores_what_0112_replaced_and_the_migration_applies_agai
         sec_db.put_back_0121(su)
         sec_db.put_back_0164(su)
         sec_db.put_back_0202(su)
+        sec_db.put_back_0227(su)
         assert snapshot(su) == after

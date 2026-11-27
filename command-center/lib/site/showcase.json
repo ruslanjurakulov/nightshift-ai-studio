@@ -1730,6 +1730,90 @@
       "slot": null,
       "caption": null,
       "exportedAt": "2026-11-14T03:53:30Z"
+    },
+    {
+      "jobId": "495ebf91-84df-4c76-a6c4-a3ca6e4eb82d",
+      "assetId": "d2edcabc-0ecf-51b8-acc2-ae1d8953794a",
+      "sha256": "2973363262edd250639486b6a2a051d50bfbf9f1186cb9319284d41338732460",
+      "modelId": "ideogram-3",
+      "modelName": "Ideogram 3",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Vertical real-camera portrait photograph: a young woman with long wavy dark hair and a light linen dress stands in a wide sunflower field at golden hour, looking softly toward the camera, gentle wind, warm backlight, natural skin texture, shallow depth of field, 35mm film look, photorealistic. No text.",
+      "createdAt": "2026-11-14T03:32:00Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2282,
+      "slot": null,
+      "caption": "start frame of 49af4517",
+      "exportedAt": "2026-11-27T13:59:00Z",
+      "audio": false,
+      "cardLine": null
+    },
+    {
+      "jobId": "94baf12a-60db-42f6-a000-fcc118e344a0",
+      "assetId": "96e47558-15a3-5354-8c33-6faadf485a8f",
+      "sha256": "4a8cd61fb3d2bba9bae0597fd04e49b76d635b178bbf327dc090413aaceca15b",
+      "modelId": "ideogram-3",
+      "modelName": "Ideogram 3",
+      "provider": "ideogram",
+      "operatorPreview": true,
+      "shutdownOn": null,
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "capability": "t2i",
+      "kind": "image",
+      "prompt": "Vertical luxury studio product photograph: a sleek minimalist smartwatch with a glossy black glass face and a brushed titanium case, standing upright on a polished black stone plinth, dark seamless background, soft studio key light with crisp specular highlights and a subtle rim light, centred composition with empty space around, photorealistic commercial product shot. No text, no logos, no labels, no watermark.",
+      "createdAt": "2026-11-14T03:41:52Z",
+      "input": {
+        "kind": "none"
+      },
+      "endFrame": null,
+      "cost": {
+        "usdEstimate": null,
+        "priceSource": null,
+        "rows": 1,
+        "vendor": [
+          {
+            "provider": "ideogram",
+            "vendorModel": "TURBO",
+            "unit": "image",
+            "quantity": 1.0
+          }
+        ]
+      },
+      "width": 1280,
+      "height": 2282,
+      "slot": null,
+      "caption": "start frame of cf2af7b1",
+      "exportedAt": "2026-11-27T14:00:33Z",
+      "audio": false,
+      "cardLine": null
     }
   ]
 }
