@@ -32,6 +32,7 @@ import { LiveStats } from "@/components/site/LiveStats";
 import type { PublicStats } from "@/lib/public-stats";
 import { landingGalleryExclude, landingTileJobs } from "@/components/site/landing-samples";
 import "@/components/site/explore-hover.css";
+import { AiMark } from "@/components/site/AiMark";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 
@@ -234,7 +235,7 @@ function ModelTiles({ t, items, tiles }: { t: Dictionary; items: { e: ShowcaseEn
                   {e.kind === "video" && f.clip && <ShowcaseClip jobId={e.jobId} together />}
                 </div>
                 {/* Over the top corner of the picture, read before the name: what the picture is. */}
-                <span className="nx-ai-badge">{g.badge}</span>
+                <span className="nx-ai-badge"><AiMark short={g.badge} name={g.badgeName} /></span>
                 <h3 className="nx-model-name">{e.modelName}</h3>
                 <div className="nx-model-body">
                   {/* The words the sample was made from, quoted (the browser's own quotes for the page's language), over the

@@ -45,6 +45,7 @@ import {
   defaultDescribeLanguage,
   durationsFor,
   effectiveQuality,
+  effectiveImageSize,
   entitlementReason,
   effectiveSound,
   errorAction,
@@ -79,6 +80,7 @@ import {
   type DubLanguage,
   type ExpandAspect,
   type ImageQuality,
+  type ImageSize,
   type ModelLock,
   type QuoteState,
   routedLine,
@@ -323,6 +325,8 @@ export function GeneratePanel({
   );
   // 0060: the picture's render quality; null = not picked, so the model's default (medium) applies.
   const [quality, setQuality] = useState<ImageQuality | null>(initial?.quality ?? null);
+  // 0208: the picture size, for a model priced by size; the model's smallest until one is picked (shown, never implied).
+  const [imageSize, setImageSize] = useState<ImageSize | null>(null);
   // 0070: a clip's soundtrack; null = not picked, so the model's default (silent) applies.
   const [sound, setSound] = useState<boolean | null>(initial?.audio ?? null);
   // What the person has set, as asked (not the effective values, which also move when the models or the style kits load): a change
@@ -415,6 +419,8 @@ export function GeneratePanel({
   const effectiveLook = capability !== "relight" ? null : look && looks.includes(look) ? look : null;
   // A tier only for a picture tool on a model that sells tiers; another model never gets one.
   const effectiveQ = !routed && takesQuality(capability) ? effectiveQuality(current, quality) : null;
+  // A size only for a picture tool on a model priced by size; another model never gets one.
+  const effectiveSize = !routed && takesQuality(capability) ? effectiveImageSize(current, imageSize) : null;
   // A soundtrack choice only for a video tool on a model that sells it; another model never gets one.
   const effectiveSnd = !routed && takesSound(capability) ? effectiveSound(current, sound) : null;
   // The shapes, lengths and resolutions come from the picked model's own spec (Auto: every model's that this organization can
@@ -470,6 +476,7 @@ export function GeneratePanel({
     describeLanguage,
     quality: effectiveQ,
     audio: effectiveSnd,
+    imageSize: effectiveSize,
     noAspect: shapeless,
   };
   const params = useMemo(
@@ -492,9 +499,10 @@ export function GeneratePanel({
         describeLanguage,
         quality: effectiveQ,
         audio: effectiveSnd,
+        imageSize: effectiveSize,
         noAspect: shapeless,
       }),
-    [capability, prompt, effectiveAspect, effectiveSeconds, effectiveRes, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, effectiveShape, effectiveLook, describeLanguage, effectiveQ, effectiveSnd, shapeless],
+    [capability, prompt, effectiveAspect, effectiveSeconds, effectiveRes, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, effectiveShape, effectiveLook, describeLanguage, effectiveQ, effectiveSnd, effectiveSize, shapeless],
   );
   const paramsKey = JSON.stringify(params);
   // A price is asked for only once the form is complete (the picture, the words).
@@ -616,7 +624,7 @@ export function GeneratePanel({
     selectedId: effectiveModel,
     params: sheetParams,
     // Each model at ITS shape, length and resolution (the ones it would be sent if picked).
-    settingsFor: sheetSettings,
+    settingsFor: withSizes(sheetSettings, takesQuality(capability) ? available.map((m) => [m.id, effectiveImageSize(m, imageSize)]) : []),
     // Each model is priced at ITS tier: a model without tiers is asked without one.
     // Likewise its soundtrack: a model that offers no choice is asked without one.
     soundFor: takesSound(capability) ? Object.fromEntries(available.map((m) => [m.id, effectiveSound(m, sound)])) : undefined,
@@ -1575,6 +1583,35 @@ export function GeneratePanel({
       </div>
     ) : null;
 
+  // 0208: the picked model's sizes; the price of the picked one is the quote's (the database's), never a number from here.
+  const sizes: readonly ImageSize[] = takesQuality(capability) && !locked ? (current?.imageSizes ?? []) : [];
+  const imageSizeBlock =
+    sizes.length > 0 && effectiveSize ? (
+      <div className="flex flex-col gap-2" data-testid="gen-size">
+        <span className="studio-label" id="gen-size-label">
+          {t.gen.sizeLabel}
+        </span>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="gen-size-label">
+          {sizes.map((z) => (
+            <button
+              key={z}
+              type="button"
+              data-testid={`gen-size-${z}`}
+              aria-pressed={effectiveSize === z}
+              onClick={() => {
+                setImageSize(z);
+                edited();
+              }}
+              className="studio-chip"
+            >
+              {z}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-[var(--color-muted)]">{t.gen.sizeNote}</span>
+      </div>
+    ) : null;
+
   const soundBlock = soundChoice ? (
     <div className="flex flex-col gap-2" data-testid="gen-sound">
       <span className="studio-label" id="gen-sound-label">
@@ -2274,6 +2311,7 @@ export function GeneratePanel({
             {promptBlock}
             {styleBlock}
             {qualityBlock}
+            {imageSizeBlock}
             {modelBlock}
             {goneNote}
           </>,
@@ -2304,6 +2342,7 @@ export function GeneratePanel({
           {lookBlock}
           {promptBlock}
           {qualityBlock}
+          {imageSizeBlock}
           {soundBlock}
           {styleBlock}
         </>,
@@ -2312,4 +2351,18 @@ export function GeneratePanel({
       {dialogs}
     </section>
   );
+}
+
+/**
+ * 0208: each model's own size merged into the sheet's per-model settings: a model priced by size is asked at its effective size, and
+ * every other model with the key left out (null), so the form's size never reaches a model that is not sold by size.
+ */
+function withSizes(
+  settings: Record<string, Record<string, string | number | null>> | undefined,
+  sizes: Array<[string, ImageSize | null]>,
+): Record<string, Record<string, string | number | null>> | undefined {
+  if (sizes.length === 0) return settings;
+  const out: Record<string, Record<string, string | number | null>> = { ...(settings ?? {}) };
+  for (const [id, size] of sizes) out[id] = { ...(out[id] ?? {}), image_size: size };
+  return out;
 }

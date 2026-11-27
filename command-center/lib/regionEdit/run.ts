@@ -1,4 +1,4 @@
-import { effectiveQuality, type StudioModel } from "@/lib/creative/studio";
+import { effectiveImageSize, effectiveQuality, type StudioModel } from "@/lib/creative/studio";
 import { regionsToRun } from "@/lib/regionEdit/request";
 import { DEFAULT_FEATHER, MAX_PARAMS_BYTES, type WireRegion } from "@/lib/regionEdit/geometry";
 
@@ -72,6 +72,7 @@ export interface RunRegionParam {
 export interface RunParams {
   source_asset_id: string;
   quality?: string;
+  image_size?: string;
   regions: RunRegionParam[];
   region_feather: number;
 }
@@ -80,12 +81,16 @@ export interface RunParams {
  * The params of the creative job for these regions: the picture, the model's own tier (the one its price is by, or none),
  * the regions that have words — each with an id r1, r2, ... in order — and the edge blend. Nothing else is sent (the database
  * refuses any other key next to `regions`), and no prompt of its own: each region carries its words.
+ * 0208: a model sold by picture size is asked its smallest listed size: the database refuses such a model with no size (it would
+ * otherwise bill the vendor's default under a price read for none), and refuses a size on any other model, so none is sent there.
  */
 export function buildRunParams(model: StudioModel, sourceAssetId: string, regions: readonly WireRegion[], feather: number = DEFAULT_FEATHER): RunParams {
   const quality = effectiveQuality(model, null);
+  const imageSize = effectiveImageSize(model, null);
   return {
     source_asset_id: sourceAssetId,
     ...(quality ? { quality } : {}),
+    ...(imageSize ? { image_size: imageSize } : {}),
     regions: regionsToRun(regions).map(({ region }, i) => ({
       id: `r${i + 1}`,
       name: region.name,

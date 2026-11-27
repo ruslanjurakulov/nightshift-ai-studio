@@ -5,15 +5,18 @@ import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { HERO_JOB, reelItem } from "@/components/landing/home/home-reel";
 import { IdeaBox } from "@/components/landing/home/IdeaBox";
+import { AiMark } from "@/components/site/AiMark";
 import "@/components/landing/home/home.css";
 
 /** The hero picture's widths, as the browser should choose them: the whole screen. */
 const HERO_SIZES = "100vw";
 
 /**
- * The first screen of "/": one of our own Studio's clips edge to edge (orbit, the night city, the steaming street stall), one
- * headline, one sentence and the idea box. Its own file because two pages draw it: the owner kept this first screen when "/" went
- * back to the pre-20-November Landing (2026-11-22), so Landing and HomePage both start with it and it can never drift between them.
+ * The first screen of "/": one of our own Studio's clips edge to edge (orbit, the night city, the steaming street stall), and over it,
+ * centred, one headline, one line and the idea box as a single glass bar with its note under it (the owner's "in this style", after
+ * kling.ai's hero, 2026-11-22). Nothing else: the page's nav already leads to "How it works", and the eyebrow said the brand the
+ * header says. Its own file because two pages draw it: the owner kept this first screen when "/" went back to the pre-20-November
+ * Landing (2026-11-22), so Landing and HomePage both start with it and it can never drift between them.
  *
  * Performance (LCP < 2.5 s on mobile 4G, no layout shift): the largest thing is the STILL, preloaded with a phone-sized candidate in
  * its srcset; the clip is fetched only after load and idle, and never under reduced motion, Save-Data or a slow link
@@ -48,19 +51,18 @@ export function HomeHero({ t }: { t: Dictionary }) {
       )}
       <div className="hm-hero-veil" aria-hidden="true" />
       <div className="hm-wrap hm-hero-body">
-        <p className="hm-eyebrow">{h.eyebrow}</p>
         <h1 id="hm-hero-title" className="ds-display hm-hero-title">
           {h.title}
         </h1>
-        <p className="hm-hero-lead">{h.lead}</p>
-        <IdeaBox copy={h.idea} />
-        <a href="#how" className="hm-idea-more">
-          {h.secondary}
-        </a>
+        <p className="hm-hero-sub">{h.subline}</p>
+        <IdeaBox copy={h.idea} thumb={item?.f.posterSm} mirror={item ? `sample-${item.e.jobId}` : undefined} />
       </div>
       {item && (
+        // Just "AI" for the eye (the owner, 2026-11-22); a screen reader hears what it means and where it was made (AiMark).
         <p className="hm-hero-credit">
-          <span className="hm-badge">{h.ai}</span> {h.reelLabel}
+          <span className="hm-badge">
+            <AiMark short={t.site.gallery.badge} name={h.aiCredit} />
+          </span>
         </p>
       )}
       <MotionToggle pause={t.site.fx.pause} />

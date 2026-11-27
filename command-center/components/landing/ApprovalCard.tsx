@@ -2,6 +2,7 @@ import { Check, Lock } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import { EXAMPLE_THUMB_JOB, exampleMedia } from "@/components/site/samples";
 import { PlaceFill, placeBox } from "@/components/site/PlaceFill";
+import { AiMark } from "@/components/site/AiMark";
 
 /**
  * The Approvals band's picture: a drawn approval screen, so the band shows what its words say ("Nothing airs until you say so")
@@ -28,7 +29,7 @@ export function ApprovalCard({ t }: { t: Dictionary }) {
         <span className="nx-approve-thumb" {...(m ? placeBox(m) : {})}>
           {/* The description is the figure's (aria-label above); inside the aria-hidden drawing the picture has an empty alt. */}
           {m && <PlaceFill media={m} s={t.site} alt="" className="nx-approve-shot" compact sizes="(min-width: 860px) 360px, 90vw" labels={false} />}
-          {m && <span className="nx-ai-badge">{t.site.gallery.badge}</span>}
+          {m && <span className="nx-ai-badge"><AiMark short={t.site.gallery.badge} name={t.site.gallery.badgeName} /></span>}
           <span className="nx-approve-private">
             <Lock aria-hidden />
             {approve.lamp}

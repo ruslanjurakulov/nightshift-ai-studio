@@ -1,17 +1,51 @@
 /* The shared Nightshift AI chat shell (ChatShell.tsx). Black in both themes, like the reference phone chats: the shell sets its own
    tokens, so anything a caller nests inside (a draft, an error, a .btn-quiet) is drawn dark too and never a light card on black.
-   Contrast on #000: --color-fg 18.1:1, --color-muted (#a1a1aa) 8.3:1, both above WCAG AA for small text. */
+   The history panel (.chat-frame, ChatHistory.tsx) wraps the shell and takes the same block: its drawer sits outside .chat-shell.
 
-.chat-shell {
+   Why every nested token is pinned here, not just the colours: on the light theme a .btn-quiet kept the page's silver glass
+   (--glass-tint is white at 0.55 there) under the shell's white legend, and measured 2.4:1 (Pixel on #900). So the glass, the
+   edges, the hover and the focus colours a nested key reads are set to the dark values too, and the shell reads the same in both.
+
+   Contrast, measured: --color-fg #f4f4f5 on #000 19.1:1, --color-muted #a1a1aa 8.2:1 (7.7:1 on the drawer's #0b0b0d);
+   the white legend on a hovered quiet key, worst case over a #121214 card, 8.5:1. --chat-edge #71717a is the edge of every
+   control and field (WCAG 1.4.11 asks 3:1): 4.35:1 on #000, 3.87:1 on a #121214 card, 3.60:1 on the composer pill, 3.24:1 on
+   the #232327 bubble. --chat-focus #8ab4ff 10.0:1 on #000. */
+
+.chat-shell,
+.chat-frame {
+  --chat-edge: #71717a;
+  --chat-focus: #8ab4ff;
   --color-bg: #000;
   --color-fg: #f4f4f5;
   --color-muted: #a1a1aa;
   --color-panel: #121214;
   --color-panel-2: #232327;
-  --color-border: #34343a;
+  --color-border: var(--chat-edge);
   --color-hover: #1d1d21;
-  --chat-focus: #8ab4ff;
+  --studio-field: #121214;
+  --ns-rule-strong: var(--chat-edge);
+  --ns-key-hi: #2a2a2f;
+  --ns-hover: #1d1d21;
+  --ns-act: var(--chat-focus);
+  --ns-act-soft: rgb(138 180 255 / 0.14);
+  --ns-focus: var(--chat-focus);
+  --glass-tint: rgb(255 255 255 / 0.06);
+  --glass-tint-hover: rgb(255 255 255 / 0.1);
+  --glass-tint-strong: rgb(255 255 255 / 0.12);
+  --glass-solid: #232327;
+  --glass-gloss: rgb(255 255 255 / 0.08);
+  --glass-rim-hi: rgb(255 255 255 / 0.14);
+  --glass-rim-lo: rgb(0 0 0 / 0.35);
+  --glass-edge-hi: var(--chat-edge);
+  --glass-edge-lo: var(--chat-edge);
+  --glass-sheen: rgb(255 255 255 / 0.06);
+  --glass-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 16px -8px rgb(0 0 0 / 0.6);
+  --glass-shadow-hover: 0 2px 4px rgb(0 0 0 / 0.3), 0 12px 26px -10px rgb(0 0 0 / 0.7);
+  --glass-press: inset 0 1px 3px rgb(0 0 0 / 0.5);
   color-scheme: dark;
+}
+
+.chat-shell {
   position: relative;
   isolation: isolate;
   overflow: clip;
@@ -21,6 +55,8 @@
   background: #000;
   color: var(--color-fg);
 }
+/* A Studio card nested in the chat (a question, a scenario, the plan) is edged like a control, never a 1.1:1 shade on black. */
+.chat-shell .studio-field { border-color: var(--chat-edge); }
 
 /* ── the glow: idle is deep blue at the bottom; while an answer is on its way a green-teal aurora fades in and drifts ── */
 .chat-glow { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
@@ -94,6 +130,7 @@
   margin: 0;
   max-width: min(85%, 36rem);
   padding: 0.65rem 1.1rem;
+  border: 1px solid var(--chat-edge);
   border-radius: 1.4rem;
   background: var(--color-panel-2);
   white-space: pre-wrap;
@@ -237,3 +274,16 @@
   .chat-typing span { animation: none; opacity: 0.8; }
   .chat-act[data-tip]::after { transition: none; }
 }
+
+/* ── the composer's state line (a cap reached, a plan without the chat) and the caller's meter ── */
+.chat-status { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.6rem 0.9rem; border: 1px solid var(--color-border); border-radius: 1rem; background: var(--color-panel); font-size: 0.9rem; line-height: 1.45; }
+.chat-status p { margin: 0; }
+.chat-pill[data-disabled] { opacity: 0.6; }
+.chat-input:disabled { cursor: not-allowed; }
+
+/* ── contained: a fixed-height column (the Studio's side panel) — the thread scrolls inside the shell, never the page ── */
+.chat-shell[data-contained] { min-height: 0; height: 100%; }
+.chat-shell[data-contained] .chat-thread { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.chat-shell[data-contained] .chat-empty { min-height: 0; }
+.chat-shell[data-contained] .chat-greeting { font-size: clamp(1.6rem, 5vw, 2.25rem); }
+.chat-shell[data-contained] .chat-keys { display: none; }
