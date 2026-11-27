@@ -3949,6 +3949,8 @@ export const ru: Dictionary = {
     snapAuto: "Здесь ни одна модель не делает {from} — выбрано {to}.",
     snapModelDefault: "её значение по умолчанию",
     noLength: "{model} не предлагает здесь ни одной длины клипа, поэтому цену не назвать. Выберите другую модель.",
+    modelGone: "Запрошенная модель недоступна для этого инструмента — выбрана {default}.",
+    modelGoneNamed: "Модель {model} недоступна для этого инструмента — выбрана {default}.",
     sheetAt: "при {settings}",
     modelLabel: "Модель",
     beta: "бета",

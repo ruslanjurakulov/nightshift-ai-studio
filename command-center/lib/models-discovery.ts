@@ -772,8 +772,9 @@ export function linksFor(m: Pick<DiscoveryModel, "id" | "capabilities">, task: T
 /**
  * The model the Studio is asked to start with (`/create?tool=…&model=…`),
  * added to a prefill the tool already produced. Shape only: a model that is
- * not one the Studio offers for that tool is ignored by the panel, which then
- * picks the first it does offer. Without a tool there is no prefill to add to.
+ * not one the Studio offers for that tool is not taken by the panel, which then
+ * picks the first it does offer and says so in one line (owner decision 22 Nov,
+ * CLAUDE.md #4: never a silent swap). Without a tool there is no prefill to add to.
  */
 export function prefillModel<T extends { model: string }>(initial: T | null, raw: unknown): T | null {
   if (!initial) return initial;

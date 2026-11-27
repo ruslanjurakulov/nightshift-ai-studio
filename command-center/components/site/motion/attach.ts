@@ -357,6 +357,9 @@ export function attachNavBusy(doc: Document = document, win: Window = window): C
   };
 }
 
+/** A bar item: a link, or a panel trigger (components/legal/PublicMegaMenu.tsx), so the glass treats both alike. */
+const NAV_ITEM = ".st-nav a, .st-nav .st-mm-trigger";
+
 /**
  * 7. The header's links share one glass indicator (site-motion.css, ".st-nav[data-glass]::before") that slides and stretches
  * to the link under a mouse or the link the keyboard focused. The script writes the link's place and size relative to the nav
@@ -385,7 +388,7 @@ export function attachNavGlass(doc: Document = document): Cleanup {
     nav.style.removeProperty("--glass-y");
   };
   const linkIn = (e: Event) => {
-    const a = (e.target as Element | null)?.closest?.<HTMLElement>(".st-nav a") ?? null;
+    const a = (e.target as Element | null)?.closest?.<HTMLElement>(NAV_ITEM) ?? null;
     return a ? { a, nav: a.closest<HTMLElement>(".st-nav")! } : null;
   };
   const onOver = (e: PointerEvent) => {
@@ -398,7 +401,7 @@ export function attachNavGlass(doc: Document = document): Cleanup {
     if (!nav) return;
     const to = e.relatedTarget as Element | null;
     // Still on a link of the same nav: the next pointerover moves it. Between two links (the gap) or off the nav: it goes.
-    if (to && to.closest?.(".st-nav a") && nav.contains(to)) return;
+    if (to && to.closest?.(NAV_ITEM) && nav.contains(to)) return;
     if (nav.contains(doc.activeElement) && (doc.activeElement as Element).matches?.(":focus-visible")) {
       show(nav, doc.activeElement as HTMLElement);
       return;

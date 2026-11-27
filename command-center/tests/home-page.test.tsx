@@ -26,7 +26,8 @@ vi.mock("next/link", () => ({
 }));
 
 import { dictionaries, LOCALES } from "@/lib/i18n";
-import { HomePage } from "@/components/landing/home/HomePage";
+import { HomePage, RIBBON_MIN_PER_HALF, ribbonRepeats } from "@/components/landing/home/HomePage";
+import { setMotionPaused } from "@/lib/site/motion";
 import { HERO_JOB, REEL, reelItem, studioPieces } from "@/components/landing/home/home-reel";
 import { SHOWCASE_ITEMS } from "@/lib/showcase/items";
 import { REGISTRY_NAMES } from "@/lib/creative/model-names";
@@ -133,7 +134,8 @@ describe("the landing's pictures are our own Studio's", () => {
     cards.forEach((card, i) => {
       const p = pieces[i];
       expect(card.dataset.piece).toBe(p.id);
-      expect(within(card).getByText(h.ai)).toBeTruthy();
+      // Just "AI" on the picture (owner, 2026-11-22); the picture's description below says it in full.
+      expect(card.querySelector(".hm-reel-badge")?.textContent).toBe(dictionaries[code].site.gallery.badge);
       const credit = card.querySelector(".hm-reel-credit")?.textContent ?? "";
       for (const m of p.models) expect(credit).toContain(m);
       expect(credit.startsWith(h.credit.split("{model}")[0])).toBe(true);
@@ -169,16 +171,39 @@ describe("the landing's pictures are our own Studio's", () => {
 });
 
 describe("the hero", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the one sentence is the page's h1, then the idea box and the way to how it works", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the one sentence is the page's h1, then one line and the idea box, and nothing else", (code) => {
     const { container } = page(code);
     const h = dictionaries[code].landingHome.hero;
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(h.title);
-    const hero = within(container.querySelector(".hm-hero") as HTMLElement);
-    // The idea box is the first call to action: a labelled field and one button, in the visitor's language.
-    expect(hero.getByLabelText(h.idea.label).tagName).toBe("TEXTAREA");
+    const box = container.querySelector(".hm-hero") as HTMLElement;
+    const hero = within(box);
+    expect(box.querySelector(".hm-hero-sub")?.textContent).toBe(h.subline);
+    // The idea box is the first call to action: a field still named by its label (visually hidden) and one button.
+    expect(hero.getByLabelText(h.idea.label).tagName).toBe("INPUT");
     expect(hero.getByRole("button", { name: new RegExp(h.idea.submit) })).toBeTruthy();
     expect(hero.getByText(h.idea.note)).toBeTruthy();
-    expect(hero.getByRole("link", { name: h.secondary }).getAttribute("href")).toBe("#how");
+    // The reference's first screen: no eyebrow, no long lead, no second way out (the page's nav leads to "How it works").
+    const body = box.querySelector(".hm-hero-body") as HTMLElement;
+    expect([...body.children].map((c) => c.className.split(" ")[0])).toEqual(["ds-display", "hm-hero-sub", "hm-idea"]);
+    expect(body.textContent).not.toContain(h.eyebrow);
+    expect(box.textContent).not.toContain(h.lead);
+    expect(box.querySelectorAll("a")).toHaveLength(0);
+  });
+
+  it("styles the bar after the reference: a fixed-height glass pill, the black key inside it, the note a 13 px caption, the label hidden only from the eye", () => {
+    const css = readFileSync(path.join(process.cwd(), "components/landing/home/home.css"), "utf8");
+    const rule = (sel: string) => css.match(new RegExp(`\\n  ${sel.replace(/[.()]/g, "\\$&")} \\{[^}]*\\}`))?.[0] ?? "";
+    // Its height is the stylesheet's, never its content's: the hero is the same box before and after hydration (CLS 0).
+    expect(rule(".hm-idea-row")).toMatch(/height: 80px;[^}]*border-radius: 999px;[^}]*backdrop-filter: blur/);
+    expect(css).toMatch(/@media \(max-width: 640px\) \{\s*\.hm-idea-row \{[^}]*height: 132px;/);
+    expect(rule(".hm-idea .hm-idea-go")).toMatch(/--_bg: #000;[^}]*--_fg: #fff;[^}]*border-radius: 999px;[^}]*font-weight: 700;/);
+    expect(rule(".hm-idea-note")).toMatch(/font-size: 0\.8125rem;/);
+    expect(rule(".hm-idea-label")).toMatch(/position: absolute; width: 1px; height: 1px;[^}]*clip-path: inset\(50%\)/);
+    expect(rule(".hm-idea-label")).not.toMatch(/display: none|visibility: hidden/);
+    // A keyboard sees where it is: the bar draws the field's ring, and only where :has() can (elsewhere the field keeps its own).
+    expect(css).toMatch(/@supports selector\(:has\(\*\)\) \{\s*\.hm-idea-field:focus-visible \{ outline: none; \}\s*\.hm-idea-row:has\(\.hm-idea-field:focus-visible\) \{ outline: 3px solid/);
+    // Centred, as the reference is.
+    expect(rule(".hm-hero-body")).toMatch(/align-items: center;[^}]*text-align: center;/);
   });
 
   it("says the brief's sentence in each language, the dash kept with the words before it", () => {
@@ -230,6 +255,86 @@ describe("the model strip is the database's list or nothing", () => {
     expect(items[0].querySelector("[data-adult-only]")?.textContent).toBe(m.adultOnly);
     expect(m.adultOnly).toContain("18+");
     expect(items[1].querySelector("[data-adult-only]")).toBeNull();
+  });
+
+  // The ribbon (owner, 2026-11-22: "the models used to move as a ribbon with a nice background").
+  const THREE = [
+    { name: "Model A", kinds: ["video"], adultOnly: false },
+    { name: "Model B", kinds: ["image"], adultOnly: true },
+    { name: "Model C", kinds: ["image", "video"], adultOnly: false },
+  ] satisfies Parameters<typeof HomePage>[0]["models"];
+
+  it("moves as a ribbon on a dark band, the list once for a screen reader and the seamless repeats hidden", () => {
+    const { container } = page("en", { models: THREE });
+    const band = container.querySelector("section.hm-models .hm-ribbon") as HTMLElement;
+    expect(band).toBeTruthy();
+    // Dark in either theme, like the old strip's band.
+    expect(band.getAttribute("data-theme-scope")).toBe("dark");
+    const lists = band.querySelectorAll(".hm-ribbon-track > ul");
+    expect(lists).toHaveLength(2);
+    // What would break: a screen reader hearing each model 2k times, or not at all.
+    expect(lists[0].getAttribute("aria-hidden")).toBeNull();
+    expect(lists[1].getAttribute("aria-hidden")).toBe("true");
+    const named = screen.getAllByRole("list", { name: dictionaries.en.landingHome.models.listLabel });
+    expect(named).toHaveLength(1);
+    expect(named[0]).toBe(lists[0]);
+    expect(within(named[0]).getAllByRole("listitem")).toHaveLength(THREE.length);
+    // Role queries skip aria-hidden subtrees: the repeats' chips are not in the accessibility tree at all.
+    expect(screen.queryAllByRole("listitem").filter((li) => li.closest(".hm-ribbon"))).toHaveLength(THREE.length);
+  });
+
+  it("repeats the list into two equal halves at least RIBBON_MIN_PER_HALF chips wide, so a short list leaves no gap in the loop", () => {
+    const { container } = page("en", { models: THREE });
+    const k = ribbonRepeats(THREE.length);
+    expect(k * THREE.length).toBeGreaterThanOrEqual(RIBBON_MIN_PER_HALF);
+    const names = [...container.querySelectorAll(".hm-ribbon-track .hm-model-name")].map((n) => n.textContent);
+    // 2k copies in order: sliding the track by half (CSS translateX(-50%)) lands on the same chip.
+    expect(names).toEqual(Array.from({ length: 2 * k }, () => THREE.map((m) => m.name)).flat());
+    const band = container.querySelector(".hm-ribbon") as HTMLElement;
+    expect(band.style.getPropertyValue("--hm-rb-n")).toBe(String(k * THREE.length));
+    // The repeats keep each chip's words (kinds, 18+), so the moving band looks the same all along.
+    expect(container.querySelectorAll(".hm-ribbon-track [data-adult-only]")).toHaveLength(2 * k);
+    expect(ribbonRepeats(1)).toBe(RIBBON_MIN_PER_HALF);
+    expect(ribbonRepeats(RIBBON_MIN_PER_HALF + 3)).toBe(1);
+  });
+
+  it("has no visible pause button: one keyboard pause key, the page's own switch (ClipPause, hidden until focused)", () => {
+    const { container } = page("en", { models: THREE });
+    const keys = container.querySelectorAll(".hm-ribbon button");
+    expect(keys).toHaveLength(1);
+    expect(keys[0].classList.contains("nx-clip-pause")).toBe(true);
+    expect(keys[0].textContent).toBe(dictionaries.en.site.fx.pause);
+  });
+
+  it("a tap on the moving band pauses it (a touch screen has no hover to stop it, WCAG 2.2.2)", () => {
+    const { container } = page("en", { models: THREE });
+    setMotionPaused(false);
+    // The band's ClipPause mounts the page's one delegated listener (useMotionTap), so a real click reaches motionTap.
+    const lead = container.querySelector("section.hm-models .hm-lead")!;
+    lead.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0, detail: 1 }));
+    expect(document.documentElement.getAttribute("data-motion"), "a tap outside the band is not a pause").toBeNull();
+    container.querySelector(".hm-ribbon .hm-model-name")!.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0, detail: 1 }));
+    expect(document.documentElement.getAttribute("data-motion")).toBe("paused");
+    setMotionPaused(false);
+  });
+
+  it("the stylesheet slides only after load, stops on hover, focus and the page switch, and sits still in a wrapped row under reduced motion", () => {
+    const css = readFileSync(path.join(process.cwd(), "components/landing/home/home.css"), "utf8");
+    // What follows a block's opening, up to the next at-rule (`^[^@]*`): the rules that really sit inside that block.
+    const after = (open: string) => {
+      expect(css.indexOf(open), open).toBeGreaterThanOrEqual(0);
+      return css.slice(css.indexOf(open) + open.length);
+    };
+    const noPref = after("@media (prefers-reduced-motion: no-preference) {\n    /* After load");
+    expect(noPref).toMatch(/^[^@]*html\[data-fx="on"\] \.hm-ribbon-track \{ animation: hm-ribbon /);
+    expect(noPref).toMatch(/^[^@]*\.hm-ribbon:hover \.hm-ribbon-track,\s*\.hm-ribbon:focus-within \.hm-ribbon-track \{ animation-play-state: paused; \}/);
+    expect(css).toContain('html[data-motion="paused"] .hm-ribbon-track { animation-play-state: paused !important; }');
+    expect(css).toContain("@keyframes hm-ribbon { to { transform: translateX(-50%); } }");
+    // The only animation of the track is inside the no-preference block: reduced motion never moves it.
+    expect(css.match(/animation: hm-ribbon/g)).toHaveLength(1);
+    const reduce = after("@media (prefers-reduced-motion: reduce) {\n    .hm-ribbon-track");
+    expect(reduce).toMatch(/^[^@]*\.hm-model-list \{ flex-wrap: wrap; padding: 0; \}/);
+    expect(reduce).toMatch(/^[^@]*\.hm-model-list\[data-copy="repeat"\] \{ display: none; \}/);
   });
 
   it("parses the 0193 answer: names once, codes to words, unknown codes dropped, junk refused", () => {

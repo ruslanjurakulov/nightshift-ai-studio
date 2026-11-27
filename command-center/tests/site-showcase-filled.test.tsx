@@ -53,12 +53,13 @@ describe("with one sample merged", () => {
     const { container } = render(<Landing t={t} locale={code} pricing={{ kind: "announced" }} anchor={NO_MONEY} showcase={[]} />);
     const section = container.querySelector("section#samples") as HTMLElement;
     expect(section).toBeTruthy();
-    // Round 10: the explore grid comes first (as on an AI studio's page), the model tiles after it, the showcases and the
-    // hands-on example later.
+    // The explore grid comes first (as on an AI studio's page), the model tiles after it, then how it works. Since 2026-11-22 it is
+    // the page's one gallery: no showcase band and no plan demo after it.
     const order = [...container.querySelectorAll("section[id]")].map((s) => s.id);
+    expect(order.indexOf("samples")).toBeGreaterThanOrEqual(0);
     expect(order.indexOf("samples")).toBeLessThan(order.indexOf("models"));
-    expect(order.indexOf("models")).toBeLessThan(order.indexOf("studio"));
-    expect(order.indexOf("samples")).toBeLessThan(order.indexOf("try"));
+    expect(order.indexOf("models")).toBeLessThan(order.indexOf("how"));
+    for (const gone of ["studio", "approvals", "try", "watch", "picture-to-video"]) expect(order, gone).not.toContain(gone);
     // The one model's tile is inside the sample's own box, and links down to its card.
     const tile = container.querySelector(`#models [data-showcase-entry="${FIXTURE_JOB}"]`)!;
     expect(tile.querySelector(`a[href="#sample-${FIXTURE_JOB}"]`)).toBeTruthy();
@@ -66,7 +67,7 @@ describe("with one sample merged", () => {
     // The card is its picture and the AI-generated badge (media first); its model is named in the dialog it opens, which is the
     // sample's own box too (components/site/SampleDetail.tsx).
     const card = section.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`) as HTMLElement;
-    expect(card.textContent).toContain(t.site.gallery.badge);
+    expect(card.textContent).toContain(t.site.gallery.badgeName);
     expect(card.textContent).not.toMatch(/Runway/);
     const back = vi.spyOn(window.history, "back").mockImplementation(() => window.dispatchEvent(new PopStateEvent("popstate")));
     fireEvent.click(card.querySelector("button.nx-gallery-open")!);
