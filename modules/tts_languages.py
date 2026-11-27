@@ -53,6 +53,16 @@ MODEL_LANGUAGES: dict[str, tuple[str, ...]] = {
     "eleven_multilingual_ttv_v2": ("ru", "en"),
 }
 
+#: Vendor models that take ``language_code`` in a TTS or Text to Dialogue body, which "enforces language and normalisation".
+#: Without it a v3/v4 model guesses the language from the text, and Uzbek in Latin letters can be read with another
+#: language's numbers and stress: the quiet downgrade rule 4 forbids. Sources, read 2026-11-22:
+#: https://elevenlabs.io/docs/api-reference/text-to-speech/convert ("not supported for multilingual_v2 models"; a code the
+#: model does not support "will be ignored") and https://elevenlabs.io/docs/overview/models, which says of v4, v4 Turbo, v3
+#: and v3 Conversational alike "The `language_code` parameter accepts ISO 639-1 two-letter codes". Left out on purpose:
+#: eleven_flash_v2_5 (the models page does not mention ``language_code`` for it, and a field the docs do not promise is not
+#: sent), the deprecated eleven_turbo_v2_5, and every multilingual_v2 model (the API reference refuses them by name).
+LANGUAGE_CODE_MODELS = frozenset({"eleven_v4", "eleven_v4_turbo", "eleven_v3", "eleven_v3_conversational"})
+
 #: Models the docs mark as deprecated. Turbo v2.5 is equivalent to Flash v2.5.
 DEPRECATED_MODELS = ("eleven_turbo_v2_5",)
 
@@ -120,6 +130,15 @@ def language_code(language) -> Optional[str]:
         return _TAG_ALIASES.get(primary, primary)
     # "Uzbek (Latin script)", "Oʻzbek tili" and the like: the first word names the language.
     return LANGUAGE_NAMES.get(value) or LANGUAGE_NAMES.get(value.split(" (")[0].split(" ")[0])
+
+
+def vendor_language_code(model: str, language) -> Optional[str]:
+    """The ISO 639-1 code to send as ``language_code`` for ``language`` on ``model``, or None to send nothing: the model does
+    not take the field, or the language is not one of VERIFIED_LANGUAGES (an unverified code is not ours to enforce)."""
+    code = language_code(language)
+    if model not in LANGUAGE_CODE_MODELS or code not in VERIFIED_LANGUAGES:
+        return None
+    return code
 
 
 def speaks(model: str, language) -> Optional[bool]:

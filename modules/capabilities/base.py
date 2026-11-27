@@ -34,7 +34,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -73,8 +73,11 @@ VIDEO_MUSIC = "video_music"  # video → music that follows it; the output is th
 #: input_images) + words that say who becomes whom → the same scene with those people replaced. Sold through 0137's own tables,
 #: never through creative_jobs, so the registry entries that list it are registry-only.
 VIDEO_CHARACTER_SWAP = "video_character_swap"
+#: Dialogue (no migration yet, see REGISTRY_ONLY_CAPABILITIES): the lines of one scene, each with its character's voice
+#: (CapabilityRequest.dialogue_lines) → one audio file of the whole exchange, with each line's times (docs/studio/S6_GAPS.md §4).
+DIALOGUE = "dialogue"
 CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE,
-                CAPTIONS, *PICTURE_OPS, *VIDEO_OPS, MUSIC, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP)
+                CAPTIONS, *PICTURE_OPS, *VIDEO_OPS, MUSIC, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP, DIALOGUE)
 #: Capabilities the DATABASE does not list yet. Migration 0100's ``model_registry_capabilities_check`` and
 #: ``model_probe_runs_capability_check`` are closed lists, and ``sync_model_registry`` is one statement: a single row with
 #: a capability outside them would fail the sync of EVERY model. So an entry that lists one of these is REGISTRY-ONLY: it
@@ -83,13 +86,14 @@ CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE,
 #: migrations, so the migration that teaches the database a capability is also the change that takes it out of here.
 #: A character swap is not a creative job at all (0137 prices, holds and runs it in its own tables), so it stays here for good:
 #: the creative system must never be able to sell it.
-REGISTRY_ONLY_CAPABILITIES = frozenset({MUSIC, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP})
+#: Dialogue waits for the migration that teaches model_registry the capability (docs/studio/S6_GAPS.md G5).
+REGISTRY_ONLY_CAPABILITIES = frozenset({MUSIC, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP, DIALOGUE})
 OUTPUT_OF = {T2I: "image", EDIT: "image", T2V: "video", I2V: "video", TTS: "audio", SFX: "audio",
              UPSCALE: "image", REMOVE_BG: "image", VOICE_CHANGE: "audio", DUB: "audio",
              VIDEO_UPSCALE: "video", DESCRIBE: "text", CAPTIONS: "text",
              EXPAND: "image", RELIGHT: "image", ERASE: "image",
              VIDEO_EDIT: "video", VIDEO_REFRAME: "video", VIDEO_REMOVE_BG: "video",
-             MUSIC: "audio", VIDEO_MUSIC: "audio", VIDEO_CHARACTER_SWAP: "video"}
+             MUSIC: "audio", VIDEO_MUSIC: "audio", VIDEO_CHARACTER_SWAP: "video", DIALOGUE: "audio"}
 #: Capabilities whose input is an image (CapabilityRequest.input_images).
 #: A character swap takes pictures too (the characters), beside its video.
 IMAGE_INPUT = frozenset({EDIT, I2V, UPSCALE, REMOVE_BG, DESCRIBE, *PICTURE_OPS, VIDEO_CHARACTER_SWAP})
@@ -127,8 +131,9 @@ FILE_INPUT = MEDIA_INPUT | VIDEO_INPUT
 #: describe sends no prompt of the person's: the adapter writes the request.
 #: expand and relight (0099) are asked by a shape / a look: their words are optional.
 #: A soundtrack for a video (video_music) is scored to the picture; words only steer it.
+#: A dialogue's words are its lines (CapabilityRequest.dialogue_lines), never the prompt.
 PROMPT_OPTIONAL = frozenset({I2V, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE, CAPTIONS,
-                             EXPAND, RELIGHT, VIDEO_REFRAME, VIDEO_REMOVE_BG, VIDEO_MUSIC})
+                             EXPAND, RELIGHT, VIDEO_REFRAME, VIDEO_REMOVE_BG, VIDEO_MUSIC, DIALOGUE})
 
 # ── task states ──────────────────────────────────────────────────────────────
 PENDING = "pending"
@@ -302,7 +307,7 @@ class CapabilityRequest:
     #: ask aggregators to send so abuse is traced to one user, not our account.
     end_user: Optional[str] = None
     voice_id: Optional[str] = None          # TTS
-    #: The language the text is written in (``tts`` only): a name or a tag
+    #: The language the text is written in (``tts`` and ``dialogue``): a name or a tag
     #: ("Uzbek", "uz"). None = not said, and nothing is refused for it. A model
     #: whose docs do not list that language is refused (modules/tts_languages.py).
     text_language: Optional[str] = None
@@ -337,6 +342,10 @@ class CapabilityRequest:
     #: The light a ``relight`` is asked for by name (0099): one of RELIGHT_LOOKS,
     #: which the entry's ``relight_looks`` must list. None = the prompt names it.
     look: Optional[str] = None
+    #: ``dialogue`` only: the scene's lines in speaking order, each ``(character_id, voice_id, text)``. The voice is one from
+    #: the account's own list (20 alphanumerics), never guessed; the character id is the film's, echoed back with the line's
+    #: times so the assembly never has to work out who spoke when.
+    dialogue_lines: Sequence[Tuple[str, str, str]] = ()
 
 
 @dataclass
@@ -350,6 +359,10 @@ class Output:
     #: Held in memory only; never serialised, never repr'd, and dropped on any
     #: redirect (see :meth:`HttpAdapter._download`).
     url_headers: Dict[str, str] = field(default_factory=dict, repr=False)
+    #: What the vendor's answer says about the file that the bytes cannot (a dialogue's per-line times): the caller copies it
+    #: into the asset's provenance. ``fetch`` writes the bytes only; this stays on the Output, so read it before discarding the
+    #: PollResult. None = nothing beyond the file.
+    provenance: Optional[Dict[str, Any]] = field(default=None, repr=False)
 
 
 @dataclass

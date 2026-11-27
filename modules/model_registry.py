@@ -31,10 +31,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from urllib.parse import unquote
 
+from modules import tts_languages
 from modules.capabilities import ADAPTERS
 from modules.capabilities.base import (
     CAPTIONS,
     DESCRIBE,
+    DIALOGUE,
     DUB,
     ERASE,
     EXPAND,
@@ -369,6 +371,17 @@ class ModelEntry:
             out.append(f"{self.id} does not relight with the {request.look} look")
         if cap != RELIGHT and request.look is not None:
             out.append(f"a look does not apply to {cap}")
+        # A dialogue's words are its lines; a prompt beside them would be text nobody hears. Its language is one the entry lists
+        # (checked against the vendor's model page), never a language the model was merely not refused for.
+        if cap == DIALOGUE and not request.dialogue_lines:
+            out.append("dialogue needs its lines")
+        if cap == DIALOGUE and (request.prompt or "").strip():
+            out.append("a prompt does not apply to dialogue: the lines are the words")
+        if cap == DIALOGUE and request.text_language is not None \
+                and tts_languages.language_code(request.text_language) not in self.languages:
+            out.append(f"{self.id} does not speak {request.text_language}")
+        if cap != DIALOGUE and request.dialogue_lines:
+            out.append(f"dialogue lines do not apply to {cap}")
         return out
 
     def probe_request(self, *, voice_id: Optional[str] = None,
@@ -402,16 +415,18 @@ class ModelEntry:
         # probe names one (the database sends exactly one of look / prompt).
         # A video edit and a character swap are asked by their words; the other video tools take none.
         wordless = (speech or (cap in VIDEO_INPUT and cap not in (VIDEO_EDIT, VIDEO_CHARACTER_SWAP)) or cap == DESCRIBE or cap == EXPAND
-                    or (cap == RELIGHT and p.get("look")))
+                    or (cap == RELIGHT and p.get("look")) or cap == DIALOGUE)
         return CapabilityRequest(capability=cap, prompt="" if wordless else p["prompt"],
                                  look=p.get("look"),
                                  aspect_ratio=p.get("aspect_ratio"), resolution=p.get("resolution"),
                                  image_size=p.get("image_size"), quality=p.get("quality"),
                                  duration_s=p.get("duration_s"),
-                                 voice_id=None if cap in (DUB, CAPTIONS) else voice_id, input_images=tuple(images),
+                                 voice_id=None if cap in (DUB, CAPTIONS, DIALOGUE) else voice_id, input_images=tuple(images),
                                  scale=p.get("factor"), input_media=tuple(media),
                                  target_language=p.get("target_language"), end_image=end,
-                                 upscale_target=p.get("upscale_target"))
+                                 upscale_target=p.get("upscale_target"),
+                                 # A dialogue is probed as one line in the probe's voice. It is registry-only, so no probe runs it yet.
+                                 dialogue_lines=(("probe", voice_id or "", p["prompt"]),) if cap == DIALOGUE else ())
 
 
 def _entry(m: Mapping) -> ModelEntry:
@@ -498,10 +513,10 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             errors.append(_err(mid, "a picture-op model lists only picture ops"))
         if any(c in PICTURE_OPS for c in caps) and m["api_exposure"] != "web_only":
             errors.append(_err(mid, "picture ops are a web tool until the API documents them: api_exposure must be web_only"))
-        if (DUB in caps or CAPTIONS in caps) != bool(m.get("languages")):
+        if (DUB in caps or CAPTIONS in caps or DIALOGUE in caps) != bool(m.get("languages")):
             # 0050 sells a dub only into a language the model lists; 0072
-            # sells captions only in a spoken language it lists.
-            errors.append(_err(mid, "languages is required with dub or captions and only with them"))
+            # sells captions only in a spoken language it lists; a dialogue is spoken only in one it lists.
+            errors.append(_err(mid, "languages is required with dub, captions or dialogue and only with them"))
         if (VIDEO_UPSCALE in caps) != bool(m.get("upscale_targets")):
             # 0052 sells a video upscale only at a target the model lists.
             errors.append(_err(mid, "upscale_targets is required with video_upscale and only with it"))

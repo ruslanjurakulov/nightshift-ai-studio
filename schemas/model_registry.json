@@ -5043,6 +5043,124 @@
       }
     },
     {
+      "id": "elevenlabs-dialogue-v3",
+      "display_name": "ElevenLabs v3 Dialogue",
+      "provider": "elevenlabs",
+      "adapter": "audio.elevenlabs_dialogue",
+      "vendor_model": "eleven_v3",
+      "capabilities": [
+        "dialogue"
+      ],
+      "output": "audio",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "languages": [
+        "uz",
+        "ru",
+        "en"
+      ],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://elevenlabs.io/docs/api-reference/text-to-dialogue/convert-with-timestamps",
+        "checked_at": "2026-11-22",
+        "source": "vendor_docs_search",
+        "evidence": "ElevenLabs API reference read 2026-11-22: POST /v1/text-to-dialogue/with-timestamps, inputs[] of {text, voice_id}, at most 10 unique voices and 2,000 characters; answers audio_base64, voice_segments[] and alignment.",
+        "note": "Models page (read 2026-11-22): 'With Eleven v3 comes a new Text to Dialogue API'. Languages uz/ru/en as in modules/tts_languages.py. Never called through this adapter."
+      },
+      "pricing": {
+        "unit": "character",
+        "provider_usd_per_unit": null,
+        "source_url": "https://elevenlabs.io/pricing/api",
+        "as_of": "2026-11-22",
+        "confirmed": false,
+        "note": "UNVERIFIED on purpose: the pricing page lists no Text to Dialogue rate. That it bills the model's TTS rate per character ($0.08 per 1K for v3/v4) is a guess, so no vendor price and no credit price are recorded."
+      },
+      "credit_unit": "model_elevenlabs_dialogue_v3_character",
+      "entitlement": "models_audio:premium",
+      "terms_gate": "plan_required:scale",
+      "terms_notes": [
+        "ElevenLabs OEM Terms (elevenlabs.io/oem-terms, 'Last Updated: 28 February 2025', re-read 2026-11-22): offering the service to end users needs a Scale, Business or Enterprise plan (§1.D, §2.B(f)), and end users must accept terms at least as restrictive.",
+        "Same OEM Terms §2.B(a): Customer may not 'Make Available a Service to any third party who will itself Make Available the applicable Service or Bundled Service'. Hence api_exposure web_only.",
+        "REGISTRY-ONLY: the database has no 'dialogue' capability yet (docs/studio/S6_GAPS.md G5). Nothing is synced, probed, priced or sold before a migration teaches it the capability and a real call through this adapter has succeeded."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 4
+      },
+      "quality_tier": 5,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "dialogue",
+        "prompt": "Hello from Nightshift."
+      }
+    },
+    {
+      "id": "elevenlabs-dialogue-v4",
+      "display_name": "ElevenLabs v4 Dialogue",
+      "provider": "elevenlabs",
+      "adapter": "audio.elevenlabs_dialogue",
+      "vendor_model": "eleven_v4",
+      "capabilities": [
+        "dialogue"
+      ],
+      "output": "audio",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "languages": [
+        "uz",
+        "ru",
+        "en"
+      ],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://elevenlabs.io/docs/api-reference/text-to-dialogue/convert-with-timestamps",
+        "checked_at": "2026-11-22",
+        "source": "vendor_docs_search",
+        "evidence": "ElevenLabs API reference read 2026-11-22: POST /v1/text-to-dialogue/with-timestamps, inputs[] of {text, voice_id}, at most 10 unique voices and 2,000 characters; answers audio_base64, voice_segments[] and alignment.",
+        "note": "Models page (read 2026-11-22): 'Eleven v4 is available via the Text to Dialogue API'. Languages uz/ru/en as in modules/tts_languages.py. Untried, like v3: never called through this adapter."
+      },
+      "pricing": {
+        "unit": "character",
+        "provider_usd_per_unit": null,
+        "source_url": "https://elevenlabs.io/pricing/api",
+        "as_of": "2026-11-22",
+        "confirmed": false,
+        "note": "UNVERIFIED on purpose: the pricing page lists no Text to Dialogue rate. That it bills the model's TTS rate per character ($0.08 per 1K for v3/v4) is a guess, so no vendor price and no credit price are recorded."
+      },
+      "credit_unit": "model_elevenlabs_dialogue_v4_character",
+      "entitlement": "models_audio:premium",
+      "terms_gate": "plan_required:scale",
+      "terms_notes": [
+        "ElevenLabs OEM Terms (elevenlabs.io/oem-terms, 'Last Updated: 28 February 2025', re-read 2026-11-22): offering the service to end users needs a Scale, Business or Enterprise plan (§1.D, §2.B(f)), and end users must accept terms at least as restrictive.",
+        "Same OEM Terms §2.B(a): Customer may not 'Make Available a Service to any third party who will itself Make Available the applicable Service or Bundled Service'. Hence api_exposure web_only.",
+        "REGISTRY-ONLY: the database has no 'dialogue' capability yet (docs/studio/S6_GAPS.md G5). Nothing is synced, probed, priced or sold before a migration teaches it the capability and a real call through this adapter has succeeded."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 4
+      },
+      "quality_tier": 5,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "dialogue",
+        "prompt": "Hello from Nightshift."
+      }
+    },
+    {
       "id": "elevenlabs-multilingual-v2",
       "display_name": "ElevenLabs Multilingual v2",
       "provider": "elevenlabs",

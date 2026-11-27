@@ -12,6 +12,7 @@ from typing import Dict, Mapping, Optional, Type
 from modules.capabilities import alibaba, audio, bfl, google_interactions, image, image_ops, minimax, recraft, transcribe, video, video_ops, xai
 from modules.capabilities.base import HttpAdapter
 from modules.capabilities import character_swap, describe_llm, krea, ltx, luma, meta, pika, sonilo, vidu
+from modules.capabilities import dialogue
 
 #: adapter key → class. The registry's "adapter" values must all resolve here
 #: (tests/test_model_registry.py pins that).
@@ -33,6 +34,7 @@ ADAPTERS: Dict[str, Type[HttpAdapter]] = {
         *bfl.ADAPTERS,
         *recraft.ADAPTERS,
         *audio.ADAPTERS,
+        *dialogue.ADAPTERS,
         *sonilo.ADAPTERS,
         *transcribe.ADAPTERS,
         *xai.ADAPTERS,
