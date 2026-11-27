@@ -52,7 +52,7 @@ def refused(db, who, q, p=None):
 
 def replay_history_redaction(db):
     """The fix's history redaction (a migration marked BR-0036-02), replayed over rows seeded after the lab was built, as
-    test_sec_breach_leaks replays 0088 over its seeded rows. Before the fix no migration carries the marker and nothing runs."""
+    test_sec_breach_leaks replays 0088 over its seeded rows (0225)."""
     for f in sec_db.migration_files():
         text = f.read_text(encoding="utf-8")
         if "BR-0036-02" in text:
@@ -61,7 +61,6 @@ def replay_history_redaction(db):
 
 # ── BR-0036-01 ───────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="BR-0036-01 open")
 def test_BR_0036_01_no_member_reads_a_creative_jobs_worker_id(db, a):
     _fid, _seg, jid = film_take_job(db, a)
     assert db.su("select has_table_privilege('authenticated', 'public.creative_jobs', 'SELECT')") == [(False,)], \
@@ -86,7 +85,6 @@ def test_what_the_app_reads_of_a_creative_job_stays_readable(db, a):
 
 # ── BR-0036-02 ───────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="BR-0036-02 open")
 def test_BR_0036_02_rows_written_before_0215_carry_no_worker_id_for_a_member(db, a):
     fid, seg, jid = film_take_job(db, a)
     # As 0171's / 0198's film_claim_segment and 0036's / 0198's claim_creative_job wrote them (insert is allowed: append-only).
@@ -144,7 +142,6 @@ def test_the_tables_that_already_withhold_a_worker_id_still_do(db):
         assert db.su("select has_column_privilege('authenticated', %s, %s, 'SELECT')", ["public." + table, column]) == [(False,)], table
 
 
-@pytest.mark.xfail(strict=True, reason="BR-S-031 open")
 def test_BR_S_031_a_film_takes_provider_task_id_is_not_readable_on_its_creative_job(db, a):
     _fid, _seg, jid = film_take_job(db, a)
     assert refused(db, a.viewer, "select provider_task_id from public.creative_jobs where id = %s", [jid]) == "42501"
