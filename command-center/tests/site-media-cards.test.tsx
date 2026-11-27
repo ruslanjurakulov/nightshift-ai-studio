@@ -437,3 +437,56 @@ describe("the Shorts feed is media first", () => {
     expect(readFileSync(join(ROOT, "components/site/autopilot-demo.css"), "utf8")).not.toMatch(/\.nx-shorts-ai\s*\{/);
   });
 });
+
+/**
+ * The clip's sound toggle (#937, components/site/SoundToggle.tsx) sits inside a gallery card's media, over the card's stretched
+ * link (z-index 5 above 1) and marked data-tap-ignore. What would break: a finger on the speaker revealing the caption or opening
+ * the Studio instead of turning the sound on.
+ */
+describe("a sound toggle inside a gallery card", () => {
+  it("is not held by TapReveal, reveals nothing and never reaches the card's link; it turns the sound on", async () => {
+    const { I18nContext } = await import("@/lib/i18n/public-context");
+    const { SoundToggle } = await import("@/components/site/SoundToggle");
+    const { registerSound, setSoundLive, resetSoundForTests } = await import("@/lib/site/sound");
+    const { act } = await import("@testing-library/react");
+    const onSale = { ...FIXTURE_ENTRY, operatorPreview: false, modelId: "minimax-hailuo-2.3", capability: "t2v" };
+    const { container } = render(<ShowcaseGallery t={dictionaries.en} locale="en" entries={[onSale]} files={FIXTURE_FILES} />);
+    const card = container.querySelector<HTMLElement>("[data-mf-card]")!;
+    const link = card.querySelector<HTMLAnchorElement>("a.mf-card-link")!;
+    const opened = vi.fn();
+    link.addEventListener("click", opened);
+    // Where LoopClip draws it: inside the card's media box, a sibling of the link, not inside it.
+    const slot = document.createElement("div");
+    card.querySelector(".nx-gallery-pic")!.appendChild(slot);
+    const video = document.createElement("video");
+    const ctx = { locale: "en", t: dictionaries.en, fmt: () => "", setLocale: () => undefined, full: false } as never;
+    render(
+      <I18nContext.Provider value={ctx}>
+        <SoundToggle clip="card-sound" />
+      </I18nContext.Provider>,
+      { container: slot },
+    );
+    act(() => {
+      registerSound("card-sound", video);
+      setSoundLive(video, true);
+    });
+    const button = card.querySelector<HTMLButtonElement>("button.nx-clip-sound")!;
+    expect(button).toBeTruthy();
+    expect(button.hasAttribute("data-tap-ignore")).toBe(true);
+    expect(link.contains(button)).toBe(false);
+    const down = new MouseEvent("pointerdown", { bubbles: true, cancelable: true });
+    Object.defineProperty(down, "pointerType", { value: "touch" });
+    act(() => {
+      button.dispatchEvent(down);
+      fireEvent.click(button, { detail: 1 });
+    });
+    expect(card.hasAttribute("data-revealed")).toBe(false);
+    expect(opened).not.toHaveBeenCalled();
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(video.muted).toBe(false);
+    // The stylesheet lays it above the card's link and focus ring.
+    const css = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
+    expect(css).toMatch(/\.nx-clip-sound \{ position: absolute; z-index: 5;/);
+    resetSoundForTests();
+  });
+});
