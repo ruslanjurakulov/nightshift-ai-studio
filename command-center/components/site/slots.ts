@@ -7,7 +7,8 @@ import type { ClipId } from "@/components/site/clip-assets";
 import { MEDIA, type MediaId } from "@/lib/site/media";
 // The client-safe slice, not lib/site/showcase.ts: the sign-in stages (components/auth/AuthShell.tsx, a Client Component) resolve
 // their slot in the browser, so whatever this module reads is shipped. Every helper is typed on a card, which a full entry is too.
-import type { ShowcaseCard, ShowcaseFiles } from "@/lib/site/showcase";
+import type { ShowcaseFiles } from "@/lib/site/showcase";
+import { showcaseCard, type ShowcaseCard } from "@/lib/site/showcase-card";
 import { SHOWCASE_CARDS, SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { TOOL_JOBS } from "@/lib/site/tool-samples";
 
@@ -72,7 +73,8 @@ export function placeMedia(
 ): PlaceMedia {
   const entry = def.ai ? entries.find((e) => e.jobId === def.ai) : name ? entries.find((e) => e.slot === name) : undefined;
   const f = entry ? files[entry.jobId] : undefined;
-  if (entry && f) return { kind: "ai", entry, files: f, moving: entry.kind === "video" && f.clip !== null, position: def.aiPosition };
+  // A copy, not the list's object: a server caller may pass full entries, and a place's media can become a client prop.
+  if (entry && f) return { kind: "ai", entry: showcaseCard(entry), files: f, moving: entry.kind === "video" && f.clip !== null, position: def.aiPosition };
   return { kind: "stock", id: def.id, footage: MEDIA[def.id].kind === "video", clip: def.clip ?? null, position: def.position };
 }
 
@@ -102,7 +104,7 @@ export const EXAMPLE_JOBS: readonly string[] = [EXAMPLE_PHONE_JOB, EXAMPLE_THUMB
 export function exampleMedia(job: string, entries: readonly ShowcaseCard[] = SHOWCASE_CARDS, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): Extract<PlaceMedia, { kind: "ai" }> | null {
   const entry = entries.find((e) => e.jobId === job);
   const f = entry ? files[entry.jobId] : undefined;
-  return entry && f ? { kind: "ai", entry, files: f, moving: entry.kind === "video" && f.clip !== null } : null;
+  return entry && f ? { kind: "ai", entry: showcaseCard(entry), files: f, moving: entry.kind === "video" && f.clip !== null } : null;
 }
 
 /** The showcase jobs these slots show right now: a page leaves them out of its own gallery, so no clip is shown twice on it. */

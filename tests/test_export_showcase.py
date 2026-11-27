@@ -840,7 +840,16 @@ class ClientSliceTest(unittest.TestCase):
                                 "slot": None, "input": {"kind": "operator_job", "jobId": PARENT_JOB}})
         module = x.render_assets_module([self.entry()])
         for private in ("provider", "vendorModel", "modelName", "operatorPreview", "sha256", "Runway", "runwayml", "attribution", "assetId"):
-            self.assertNotIn(private, module.split("SHOWCASE_CARDS")[1], private)
+            # After the export, not the first mention: the header's comment and import name SHOWCASE_CARDS / ShowcaseCard too, and
+            # splitting there would scan the files map and header instead of the cards.
+            self.assertNotIn(private, module.split("export const SHOWCASE_CARDS")[1], private)
+
+    def test_a_trailing_newline_never_passes_an_id_check(self):
+        # `$` matches before a final newline; written into TypeScript, "id\n" would break the string literal.
+        self.assertEqual(x.showcase_cards([self.entry(jobId=JOB + "\n")]), [])
+        self.assertEqual(x.showcase_cards([self.entry(modelId="runway-gen4.5\n")]), [])
+        self.assertEqual(x.showcase_cards([self.entry(slot="hero\n")]), [])
+        self.assertEqual(x.showcase_cards([self.entry(capability="i2v\n")]), [])
 
     def test_the_site_art_input_keeps_its_kind_and_not_its_file_or_hash(self):
         (card,) = x.showcase_cards([self.entry(input={"kind": "site_art", "file": "a.webp", "sha256": "b" * 64})])

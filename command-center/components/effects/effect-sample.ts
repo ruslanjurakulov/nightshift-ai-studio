@@ -1,5 +1,6 @@
 import { isEffectPrompt, type Effect } from "@/lib/effects/catalog";
-import type { ShowcaseCard, ShowcaseFiles } from "@/lib/site/showcase";
+import type { ShowcaseFiles } from "@/lib/site/showcase";
+import { showcaseCard, type ShowcaseCard } from "@/lib/site/showcase-card";
 import { SHOWCASE_CARDS, SHOWCASE_FILES } from "@/components/site/showcase-assets";
 
 // Its own module, not EffectFrame.tsx: that file is a Client Component, and a Server Component that imports a plain function
@@ -28,7 +29,8 @@ export function effectSample(
   if (!entry || !f || entry.kind !== "video" || !f.clip) return null;
   if (entry.capability !== effect.capability || !effect.models.includes(entry.modelId)) return null;
   if (entry.prompt !== undefined && !isEffectPrompt(effect, entry.prompt)) return null;
-  return { entry, files: f };
+  // A copy: EffectFrame (a Client Component) takes this as its `sample` prop, and a full entry there would cross whole.
+  return { entry: showcaseCard(entry), files: f };
 }
 
 /** The effect's own shape, height / width: what its drawing reserves. */

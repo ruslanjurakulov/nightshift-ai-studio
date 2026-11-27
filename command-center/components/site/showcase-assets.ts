@@ -8,7 +8,8 @@
  * full manifest (lib/site/showcase.ts) is server-only, because it carries each job's vendor, vendor model, cost, maker credit and
  * file hash, and it shipped in public JavaScript on every page that drew a slot or an effect.
  */
-import type { ShowcaseCard, ShowcaseFiles } from "@/lib/site/showcase";
+import type { ShowcaseFiles } from "@/lib/site/showcase";
+import type { ShowcaseCard } from "@/lib/site/showcase-card";
 import s0Poster from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/poster.webp";
 import s0PosterSm from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/poster-sm.webp";
 import s0Mp4 from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/clip.mp4";
