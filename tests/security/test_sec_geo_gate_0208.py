@@ -371,7 +371,7 @@ def test_rollback_and_replay(db):
     q = ("select (select count(*) from pg_trigger where tgrelid = 'public.creative_jobs'::regclass and tgname = 'creative_jobs_geo_gate'), "
          "md5(regexp_replace((select prosrc from pg_proc where oid = 'public.creative_price(uuid,text,text,jsonb)'::regprocedure), '\\s+', ' ', 'g'))")
     with psycopg.connect(db.dsn, autocommit=False) as c:
-        sec_db.take_off_0218(c)  # 0218 sits on 0208's creative_price: 0208 is compared on its own, inside this rolled-back transaction
+        sec_db.take_off_0218(c)  # 0218 (and 0224 on it) sit on 0208's creative_price: 0208 is compared on its own, inside this rolled-back transaction
         assert c.execute(q).fetchone() == (1, sec_db.CREATIVE_PRICE_0208)
         c.execute(mig)                                                   # a replay changes nothing
         assert c.execute(q).fetchone() == (1, sec_db.CREATIVE_PRICE_0208)
@@ -385,6 +385,6 @@ def test_rollback_and_replay(db):
         c.execute(sec_db.rollback_0208_body())                           # twice: harmless
         c.execute(mig)
         assert c.execute(q).fetchone() == (1, sec_db.CREATIVE_PRICE_0208)
-        sec_db.put_back_0224(c)
+        sec_db.put_back_0218(c)                                          # and 0224 on it, as the lab was built
         assert c.execute(q).fetchone() == (1, sec_db.CREATIVE_PRICE_0224)
         c.rollback()

@@ -3,8 +3,9 @@
 Our customer price must never fall below the vendor's cost, not even for a day. The vendor's cost lives in
 schemas/model_registry.json (``pricing.changes``: an announced, dated rate change); the database cannot read that file, so this test
 is the check. It fails when a model carries a dated change and docs/MIGRATIONS.md does not hold the credit_price_schedule row
-(migration 0224) for each of the model's credit units at that exact moment, or holds one that scales the live rate by less than the
-largest rise among the rates (if the live rate covers today's cost, a factor at least as large covers the new cost).
+(migration 0224) for each of the model's credit units at that moment or up to a day before it (early is the safe side: the hold of
+a job quoted just before lives two hours), or holds one that scales the live rate by less than the largest rise among the rates (if
+the live rate covers today's cost, a factor at least as large covers the new cost).
 
 It checks what is documented, not what the owner ran: the live database is not reachable from here. The SQL editor query in the
 document's step 3 is how the owner checks the row exists.
@@ -16,7 +17,7 @@ import copy
 import json
 import re
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from fractions import Fraction
 from pathlib import Path
 
@@ -33,12 +34,16 @@ def documented_rows():
     """(unit, effective_at, factor) for every documented schedule insert that scales the live rate."""
     out = []
     for stmt in INSERT_RE.findall(DOC):
-        unit = re.search(r"where unit = '([a-z0-9_]+)'", stmt)
+        unit = re.search(r"\bunit = '([a-z0-9_]+)'", stmt)
         at = re.search(r"'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)'", stmt)
         factor = re.search(r"credits_per_unit \* \(([0-9.]+) / ([0-9.]+)\)", stmt)
         if unit and at and factor:
             out.append((unit.group(1), at.group(1), Fraction(factor.group(1)) / Fraction(factor.group(2))))
     return out
+
+
+def _at(text):
+    return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 
 
 def units_of(m):
@@ -56,7 +61,9 @@ class DatedVendorPrices(unittest.TestCase):
         for m, change in changes():
             rise = max(Fraction(str(r["to"])) / Fraction(str(r["from"])) for r in change["rates"].values())
             for unit in units_of(m):
-                found = [f for u, at, f in rows if u == unit and at == change["effective_at"]]
+                due = _at(change["effective_at"])
+                # Never after the vendor's moment (a day of selling below cost is what D7 forbids), never so early it is a guess.
+                found = [f for u, at, f in rows if u == unit and due - timedelta(days=1) <= _at(at) <= due]
                 self.assertTrue(found, f"{m['id']}: no credit_price_schedule row for {unit} at {change['effective_at']} in "
                                        "docs/MIGRATIONS.md: the price would stay below the new cost from that moment")
                 if rise > 1:
@@ -73,7 +80,8 @@ class DatedVendorPrices(unittest.TestCase):
         self.assertEqual(m["credit_unit"], "model_gemini_3_6_flash_request")
         # Still no per-request figure claimed: a token-billed model has none (CLAUDE.md #5).
         self.assertIsNone(m["pricing"]["provider_usd_per_unit"])
-        self.assertIn(("model_gemini_3_6_flash_request", "2027-01-01T00:00:00Z", Fraction(2)), documented_rows())
+        # Two hours early: the hold lifetime of a creative job (creative_jobs.expires_at, 0036).
+        self.assertIn(("model_gemini_3_6_flash_request", "2026-12-31T22:00:00Z", Fraction(2)), documented_rows())
 
     def test_the_parser_sees_a_missing_or_short_row(self):
         # The positive control: without the document's row, or with a factor below the rise, the main test would fail.

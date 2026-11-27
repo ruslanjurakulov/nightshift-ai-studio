@@ -2,12 +2,13 @@
 -- not a day later when someone remembers.
 --
 -- *** LIVE ON APPLY. *** It changes NO quote by itself: it creates an empty table, and with no row in it every quote is answered
--- exactly as 0208 answers it (credits_per_unit_now returns the credit_prices rate). It inserts no price: prices are the owner's
--- (docs/MIGRATIONS.md "Dated credit prices (0224)" has the one row for D7).
+-- exactly as 0218 answers it (credits_per_unit_now returns the credit_prices rate). It inserts no price: prices are the owner's
+-- (docs/MIGRATIONS.md "Dated credit prices (0224)" has the one row for D7). The one behaviour that changes at once: none, until a
+-- dated row exists; from then on, that unit's list rate can no longer be edited (the remedy is another dated row).
 --
 -- EVIDENCE. Google doubles gemini-3.6-flash's paid-tier rates on 2027-01-01: input $0.75 -> $1.50 and output $3.75 -> $7.50 per 1M
 --   tokens ("$0.75 through December 31, 2026", "$1.50 starting January 1, 2027"; aistudio.google.com/docs/pricing, read 2026-11-22).
---   The Studio's describe tool on that model is quoted by creative_price (0208's body) from credit_prices.credits_per_unit of
+--   The Studio's describe tool on that model is quoted by creative_price (0218's body) from credit_prices.credits_per_unit of
 --   model_gemini_3_6_flash_request (schemas/model_registry.json credit_unit). credit_prices holds one rate per unit and no date, so
 --   the only way to change it at midnight was a person running an UPDATE at midnight.
 -- DECISION (owner, D7, 2026-11-22): raise the customer price exactly when the cost rises, keep the model, and never sell below cost for
@@ -17,22 +18,25 @@
 --     moment; reason required; created_by / created_at stamped by the database. RLS on, no policy, no privilege for anon,
 --     authenticated or service_role: the owner writes it in the SQL editor, and nothing on the API can read or change it. A row is
 --     accepted only for a unit creative_price reads through the schedule (a model's credit unit or a variant of it) that already has
---     a credit_prices row: anything else would be a price change that changes nothing.
+--     a credit_prices row, and never for the base row of a model sold by variant: anything else would be a price change that
+--     changes nothing.
 --   credits_per_unit_now(unit)  the latest schedule row in force (effective_at <= now()), else the credit_prices rate, else null.
 --     Not callable by any API role (the schedule's future rows are the owner's plans).
---   creative_price  0208's body plus ONE line: the rate it read from credit_prices is replaced by credits_per_unit_now(rate.unit).
---     The margin, the job minimum, every refusal and the unpriced path are 0208's; the quote's credits_per_unit names the rate
---     charged.
+--   credit_prices_dated_guard  BEFORE INSERT OR UPDATE on credit_prices: a change of credits_per_unit (or a new row) for a unit with a
+--     dated row is refused NS428 dated_price_scheduled, naming the remedy. A margin or note edit is allowed.
+--   creative_price  0218's body plus ONE line: the rate it read from credit_prices is replaced by credits_per_unit_now(rate.unit).
+--     The margin, the job minimum, every refusal and the unpriced path are 0218's; the quote's credits_per_unit names the rate
+--     charged. The line is byte for byte the one 0218's own 0224 branch writes (0218 + 0224 = ea2b58e88fe34ae18b261e5a0fbef435 either way).
 --   What it does NOT do: price anything that is not a model's credit unit (job_minimum, video_minute, downloads, reply_draft, scene
 --     and film units are read by their own functions and keep reading credit_prices); change the catalog's displayed per-unit rate
---     (sellable_models / credit_rates still read credit_prices: after a dated row takes effect the catalog shows the earlier rate
---     until the owner also updates credit_prices; the quote the person confirms is the dated one); re-price a job already held (a job
+--     (sellable_models / credit_rates still read credit_prices: docs/MIGRATIONS.md "Not covered"); re-price a job already held (a job
 --     quoted before effective_at keeps its hold).
 --
--- REPLACES (md5 drift guard, white space folded): creative_price (0208) before f61aaddd5686045961addd6f14a02c32, after d5bc7c5ef1c3d823ece05b9d00274042.
---   The lab chain: sec_db.rollback_0208_body runs this file's rollback first (0208's rollback refuses any other body).
--- NUMBER. 0224 (assigned by the lead for stream S10). Needs 0020 (credit_prices), 0035 (model_registry) and 0208's creative_price.
--- Rollback: docs/sql/rollback_0224_dated_credit_price.sql (owner-applied; puts 0208's creative_price back, keeps the table).
+-- REPLACES (md5 drift guard, white space folded): creative_price (0218) before 59c5c289009a874af043c534b29934ee, after ea2b58e88fe34ae18b261e5a0fbef435.
+--   The lab chain: sec_db.take_off_0218 takes this file off first (0218's rollback would keep the line without 0224's guard).
+-- NUMBER. 0224 (assigned by the lead for stream S10). Needs 0020 (credit_prices), 0035 (model_registry) and 0218's creative_price
+--   (apply order 0208 -> 0218 -> 0224).
+-- Rollback: docs/sql/rollback_0224_dated_credit_price.sql (owner-applied; puts 0218's creative_price back, keeps the table).
 
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
 set local lock_timeout = '5s';
@@ -46,8 +50,8 @@ begin
   end if;
   select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p
    where p.oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)');
-  if h is null or h <> all (array['f61aaddd5686045961addd6f14a02c32', 'd5bc7c5ef1c3d823ece05b9d00274042']) then
-    raise exception '0224 found creative_price with a body that is neither 0208''s nor 0224''s (md5 %): read the live body first', h;
+  if h is null or h <> all (array['59c5c289009a874af043c534b29934ee', 'ea2b58e88fe34ae18b261e5a0fbef435']) then
+    raise exception '0224 found creative_price with a body that is neither 0218''s nor 0224''s (md5 %): read the live body first (0218 must be applied before 0224)', h;
   end if;
 end $$;
 
@@ -96,6 +100,20 @@ begin
     raise exception 'credit_price_schedule: % is not a model''s credit unit; only creative_price reads a dated price', new.unit
       using errcode = '23514';
   end if;
+  -- A model sold by variant is quoted at <credit_unit>_<variant>, never at its base row (creative_price's variant settings; the base
+  -- row only lists it): a dated base row would change no quote. The same test creative_price uses: quality, image_size,
+  -- upscale_target, audio and resolution_audio always, resolution only for a model that pins a default_resolution.
+  if exists (select 1 from public.model_registry r
+              where r.credit_unit = new.unit
+                and (coalesce(r.spec -> 'pricing' -> 'variants' ->> 'by', '') in ('quality', 'image_size', 'upscale_target', 'audio',
+                                                                                     'resolution_audio')
+                     or (r.spec -> 'pricing' -> 'variants' ->> 'by' = 'resolution'
+                         and nullif(r.spec ->> 'default_resolution', '') is not null))) then
+    raise exception 'credit_price_schedule: % is the base row of a model sold by variant (%); schedule each variant unit (%_<variant>) instead',
+      new.unit,
+      (select r.spec -> 'pricing' -> 'variants' ->> 'by' from public.model_registry r where r.credit_unit = new.unit limit 1), new.unit
+      using errcode = '23514';
+  end if;
   -- Who and when are the database's, never typed: the record of a price decision must not be one a writer can backdate.
   new.created_by := session_user;
   new.created_at := now();
@@ -132,7 +150,43 @@ create trigger credit_price_schedule_no_truncate
   for each statement execute function public.credit_price_schedule_append_only();
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 2. The rate in force now
+-- 2. The list rate of a scheduled unit is not edited behind the schedule
+-- ───────────────────────────────────────────────────────────────────────────
+
+create or replace function public.credit_prices_dated_guard() returns trigger
+  language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  -- Once a unit has a dated row (in force or pending), its list rate is no longer the whole story: editing it would either be
+  -- ignored (a row in force wins) or move the price under a dated rise the owner planned against it (a pending one). The Credits page
+  -- would show a figure nobody is charged. Refused, with the remedy; a margin or note edit stays allowed. SECURITY DEFINER: a
+  -- platform admin's direct write runs as `authenticated`, which cannot read the schedule.
+  if tg_op = 'UPDATE' then
+    if new.credits_per_unit is distinct from old.credits_per_unit or new.unit is distinct from old.unit then
+      if exists (select 1 from public.credit_price_schedule s where s.unit in (old.unit, new.unit)) then
+        raise exception 'dated_price_scheduled: a dated price is in force or scheduled for %: add a credit_price_schedule row (effective_at = now()) instead of editing the list price', old.unit
+          using errcode = 'NS428';
+      end if;
+    end if;
+  -- An INSERT that is a new row (not the insert half of an upsert onto an existing one, which reaches the UPDATE branch): a deleted
+  -- list row put back at another rate is the same edit by two statements.
+  elsif not exists (select 1 from public.credit_prices cp where cp.unit = new.unit)
+        and exists (select 1 from public.credit_price_schedule s where s.unit = new.unit) then
+    raise exception 'dated_price_scheduled: a dated price is in force or scheduled for %: add a credit_price_schedule row (effective_at = now()) instead of editing the list price', new.unit
+      using errcode = 'NS428';
+  end if;
+  return new;
+end
+$$;
+
+revoke all on function public.credit_prices_dated_guard() from public, anon, authenticated, service_role;
+
+drop trigger if exists credit_prices_dated_guard on public.credit_prices;
+create trigger credit_prices_dated_guard
+  before insert or update on public.credit_prices
+  for each row execute function public.credit_prices_dated_guard();
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 3. The rate in force now
 -- ───────────────────────────────────────────────────────────────────────────
 
 create or replace function public.credits_per_unit_now(p_unit text) returns numeric
@@ -154,10 +208,10 @@ comment on function public.credits_per_unit_now(text) is
   'The rate in force now for a unit (0224): the latest credit_price_schedule row with effective_at <= now(), else credit_prices.credits_per_unit, else null (never 0). Internal: no API role may call it.';
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 3. The quote: 0208's creative_price, one marked line (0224)
+-- 4. The quote: 0218's creative_price, one marked line (0224)
 -- ───────────────────────────────────────────────────────────────────────────
 
--- 0208's quote, at the rate in force now (0224).
+-- 0218's quote, at the rate in force now (0224).
 create or replace function public.creative_price(
   p_org uuid, p_capability text, p_model text, p_params jsonb
 ) returns jsonb
@@ -189,6 +243,9 @@ declare
   vcost   numeric;
   -- 0208: the picture size this quote is for (spec.pricing.variants.by = image_size).
   vsize   text;
+  -- 0218: a limit from the model's spec, and the prompt's length in the worker's units.
+  lim     numeric;
+  units   integer;
 begin
   if cap !~ '^[a-z][a-z0-9_]{0,31}$' then
     perform public.creative_refuse('invalid_params', 'capability is required');
@@ -336,6 +393,43 @@ begin
   if p_params ? 'end_asset_id' and coalesce(m_spec -> 'end_frame', 'false'::jsonb) <> 'true'::jsonb then
     perform public.creative_refuse('invalid_params',
       format('%s cannot end a clip on a chosen picture', mdl));
+  end if;
+  -- 0218: nor a setting the model's adapter would drop, nor a prompt longer than the model takes. Before 0218 each was quoted, held and
+  -- queued, and then either refused by the worker after the hold (the length) or sent without the setting while the person paid for
+  -- it (CLAUDE.md #4). Refused here, before anything is held, on every path that prices through this function (the Studio, the API,
+  -- MCP, the router, Film).
+  -- A seed never gets here: creative_params_problem refuses it, seed_not_supported, before any model is read (and before routing).
+  -- A negative prompt only for a model whose adapter puts it in the vendor's request: the registry's takes_negative_prompt, which the
+  -- sync copies into spec and modules/model_registry.py checks against the adapter. No statement = does not take one. Blank text is no
+  -- negative prompt: only white space, every character Python's str.strip() removes (the worker's test), counts as blank.
+  if coalesce(p_params ->> 'negative_prompt', '') ~ '[^\t\n\u000b\f\r\u001c-\u001f \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]'
+     and coalesce(m_spec -> 'takes_negative_prompt', 'false'::jsonb) <> 'true'::jsonb then
+    perform public.creative_refuse('negative_prompt_not_supported',
+      format('%s does not take a negative prompt; remove it or choose a model that does', mdl), 'NS400');
+  end if;
+  -- The prompt against the model's own limits.max_prompt_chars, in UTF-16 code units, the worker's unit (model_registry.prompt_units):
+  -- one per character, two for a character outside the Basic Multilingual Plane (an emoji). A spec that states no positive number is
+  -- held to creative_params_problem's 4000 only (every registry entry states one; the Verify block lists any row that does not).
+  lim := case when jsonb_typeof(m_spec -> 'limits' -> 'max_prompt_chars') = 'number'
+              then (m_spec -> 'limits' ->> 'max_prompt_chars')::numeric end;
+  if lim > 0 and jsonb_typeof(p_params -> 'prompt') = 'string' then
+    units := 2 * char_length(p_params ->> 'prompt')
+             - char_length(regexp_replace(p_params ->> 'prompt', '[\U00010000-\U0010FFFF]', '', 'g'));
+    if units > lim then
+      perform public.creative_refuse('prompt_too_long',
+        format('%s character%s over this model''s limit of %s; shorten the prompt', units - lim,
+               case when units - lim = 1 then '' else 's' end, lim), 'NS400');
+    end if;
+  end if;
+  -- The negative prompt against limits.max_negative_prompt_chars where the adapter has one of its own (Krea: 1024), in characters
+  -- (code points), the way that adapter counts it.
+  lim := case when jsonb_typeof(m_spec -> 'limits' -> 'max_negative_prompt_chars') = 'number'
+              then (m_spec -> 'limits' ->> 'max_negative_prompt_chars')::numeric end;
+  if lim > 0 and char_length(p_params ->> 'negative_prompt') > lim then
+    perform public.creative_refuse('prompt_too_long',
+      format('%s character%s over this model''s limit of %s for a negative prompt; shorten it',
+             char_length(p_params ->> 'negative_prompt') - lim,
+             case when char_length(p_params ->> 'negative_prompt') - lim = 1 then '' else 's' end, lim), 'NS400');
   end if;
 
   -- A quality the model does not offer is refused, never ignored: the
@@ -561,7 +655,7 @@ declare
   r record;
 begin
   if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
-       where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure) <> 'd5bc7c5ef1c3d823ece05b9d00274042' then
+       where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure) <> 'ea2b58e88fe34ae18b261e5a0fbef435' then
     raise exception '0224 end state: creative_price is not 0224''s body';
   end if;
   if (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
@@ -583,6 +677,11 @@ begin
          and tgname in ('credit_price_schedule_guard', 'credit_price_schedule_append_only', 'credit_price_schedule_no_truncate')) <> 3 then
     raise exception '0224 end state: credit_price_schedule is missing an enabled guard, append-only or truncate trigger';
   end if;
+  if not exists (select 1 from pg_trigger t join pg_proc p on p.oid = t.tgfoid
+                  where t.tgrelid = 'public.credit_prices'::regclass and t.tgname = 'credit_prices_dated_guard'
+                    and p.proname = 'credit_prices_dated_guard' and p.prosecdef and not t.tgisinternal and t.tgenabled = 'O') then
+    raise exception '0224 end state: credit_prices has no enabled SECURITY DEFINER credit_prices_dated_guard trigger';
+  end if;
   -- Nothing priced is null, never 0 (no table row is written: a unit no row can have).
   if public.credits_per_unit_now('zz_0224_no_such_unit') is not null then
     raise exception '0224 end state: an unpriced unit did not read as null';
@@ -592,10 +691,11 @@ end $$;
 -- Verify (the SQL editor, after applying; every column should read true):
 --   select
 --     (select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
---       where oid = 'public.creative_price(uuid,text,text,jsonb)'::regprocedure) = 'd5bc7c5ef1c3d823ece05b9d00274042' as creative_price_0224,
+--       where oid = 'public.creative_price(uuid,text,text,jsonb)'::regprocedure) = 'ea2b58e88fe34ae18b261e5a0fbef435' as creative_price_0224,
 --     (select relrowsecurity from pg_class where oid = 'public.credit_price_schedule'::regclass) as schedule_rls_on,
 --     not has_table_privilege('authenticated', 'public.credit_price_schedule', 'SELECT') as members_cannot_read,
 --     not has_function_privilege('authenticated', 'public.credits_per_unit_now(text)', 'EXECUTE') as members_cannot_ask,
+--     exists (select 1 from pg_trigger where tgrelid = 'public.credit_prices'::regclass and tgname = 'credit_prices_dated_guard') as list_guard,
 --     public.credits_per_unit_now('zz_0224_no_such_unit') is null as unknown_is_null;
 --   -- And what each scheduled unit is quoted at now, beside the price list:
 --   select s.unit, cp.credits_per_unit as list_rate, public.credits_per_unit_now(s.unit) as rate_now, max(s.effective_at) as last_change

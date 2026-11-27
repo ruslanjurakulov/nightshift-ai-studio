@@ -15,7 +15,9 @@ What would break, and which test says so:
   a row that would change nothing (no list row, not a model unit, 0) is accepted     test_a_row_that_would_change_nothing_is_refused
   an unknown price reads as a number                                                  test_nothing_priced_is_null_never_zero
   the stamp can be typed                                                              test_who_and_when_are_the_databases
-  the SQL the owner is given for D7 does not schedule double the live rate at 00:00Z  test_the_owners_d7_sql_schedules_*
+  the SQL the owner is given for D7 compounds when run twice, or ignores the rate read  test_the_owners_d7_sql_*
+  the list rate of a scheduled unit is edited behind the schedule                      test_a_list_rate_edit_*, test_a_margin_*
+  a size-priced model's base row is scheduled (changes no quote), or a size row is not  test_a_size_is_scheduled_*
   the rollback or a replay changes what it should not                                 test_rollback_and_replay
 
 Runs in its own scratch database (it commits).
@@ -42,7 +44,10 @@ def unit_of(mid):
 
 # id -> (credits_per_unit, margin) on the price list. One model per test: the schedule is append-only, so no test can clean up.
 MODELS = {"img-now": (3, 0), "img-past": (3, 0), "img-clock": (3, 0), "img-margin": (2, 1.5), "img-fix": (3, 0),
-          "img-rb": (3, 0), "img-none": None}
+          "img-rb": (3, 0), "img-none": None, "img-list": (3, 0), "img-free": (3, 0), "img-sized": (1, 0)}
+#: A model sold by picture size (0208): its base row only lists it; each size has its own row (4K has none: unpriced).
+SPECS = {"img-sized": {"image_sizes": ["1K", "2K", "4K"],
+                       "pricing": {"unit": "image", "variants": {"by": "image_size", "prices": {"1K": 0.04, "2K": 0.08, "4K": 0.12}}}}}
 
 
 def claims(role, uid=None):
@@ -89,13 +94,14 @@ def db():
     d.su("insert into public.org_members (org_id, user_id, email, role) values (%s,%s,'a@x.io','owner')", [ORG, U_A])
     d.su("select public.grant_credits(%s, 1000, 'test')", [ORG])
     rows = [{"id": m, "display_name": m, "provider": "acme", "adapter": "image.acme", "capabilities": ["t2i"],
-             "credit_unit": unit_of(m), "entitlement": "any", "spec": {"vendor_model": "acme-" + m, "output": "image"}}
+             "credit_unit": unit_of(m), "entitlement": "any", "spec": {"vendor_model": "acme-" + m, "output": "image", **SPECS.get(m, {})}}
             for m in MODELS]
     d.su("select public.sync_model_registry(%s::jsonb)", [json.dumps(rows)])
     for m in MODELS:
         d.su("select public.record_model_probe(%s, 'image.acme', %s, 't2i', true, null, null, 10, 100, 'security-lab')", [m, "acme-" + m])
         d.su("update public.model_registry set availability='beta' where id=%s", [m])
     prices = [f"('{unit_of(m)}', {r[0]}, {r[1]})" for m, r in MODELS.items() if r is not None]
+    prices += [f"('{unit_of('img-sized')}_1k', 5, 0)", f"('{unit_of('img-sized')}_2k', 8, 0)"]
     d.su(f"insert into public.credit_prices (unit, credits_per_unit, margin) values {', '.join(prices)}, ('job_minimum', 1, 0) "
          "on conflict (unit) do update set credits_per_unit = excluded.credits_per_unit, margin = excluded.margin")
     try:
@@ -111,8 +117,9 @@ def err(fn):
     return e.value.sqlstate, str(e.value).splitlines()[0]
 
 
-def quote(db, model):
-    return db.act("authenticated", U_A, "select public.quote_creative_job(%s,'t2i',%s,%s::jsonb)", [ORG, model, json.dumps(T2I)])[0][0]
+def quote(db, model, params=None):
+    return db.act("authenticated", U_A, "select public.quote_creative_job(%s,'t2i',%s,%s::jsonb)",
+                  [ORG, model, json.dumps(params or T2I)])[0][0]
 
 
 def schedule(db, model, credits, at_sql, reason="lab"):
@@ -226,23 +233,82 @@ def test_who_and_when_are_the_databases(db):
     assert (who, recent) == ("postgres", True)
 
 
-def test_the_owners_d7_sql_schedules_double_the_live_rate_at_2027_01_01_utc(db):
-    # The exact SQL docs/MIGRATIONS.md gives the owner, run against a gemini-3.6-flash row shaped like the live one (0.4 at margin 2.0,
-    # docs/sql/prices_corrections_2026_10_01.sql). Before the moment the quote is unchanged; the row says double from 2027-01-01 UTC.
+def _d7_sql(rate):
     doc = (sec_db.REPO / "docs" / "MIGRATIONS.md").read_text(encoding="utf-8")
-    sql_block = doc.split("### D7: gemini-3.6-flash doubles")[1].split("```sql")[1].split("```")[0]
+    block = doc.split("### D7: gemini-3.6-flash doubles")[1].split("```sql")[1].split("```")[0]
+    assert block.count("<RATE_FROM_STEP_1>") == 1
+    return block.replace("<RATE_FROM_STEP_1>", rate)
+
+
+def test_the_owners_d7_sql_schedules_double_the_read_rate_once_two_hours_early(db):
+    # The exact SQL docs/MIGRATIONS.md gives the owner, run against a gemini-3.6-flash row shaped like the live one (0.4 at margin 2.0,
+    # docs/sql/prices_corrections_2026_10_01.sql). Run twice it schedules one row (never 1.6 on top of 0.8); with a rate that is not
+    # the live one it schedules nothing; left with its placeholder it does not run at all; before the moment the rate is unchanged.
     unit = "model_gemini_3_6_flash_request"
     with psycopg.connect(db.dsn, autocommit=False) as c:
         c.execute("select public.sync_model_registry(%s::jsonb)", [json.dumps([{
             "id": "gemini-3.6-flash", "display_name": "Gemini 3.6 Flash", "provider": "google", "adapter": "image.gemini_describe",
             "capabilities": ["describe"], "credit_unit": unit, "entitlement": None, "spec": {"output": "text"}}])])
         c.execute("insert into public.credit_prices (unit, credits_per_unit, margin) values (%s, 0.4, 2.0)", [unit])
-        c.execute(sql_block)
-        row = c.execute("select credits_per_unit::text, effective_at = '2027-01-01T00:00:00Z'::timestamptz, reason like 'D7:%%' "
+        c.execute(_d7_sql("0.5"))                                        # not the rate read: nothing
+        assert c.execute("select count(*) from public.credit_price_schedule where unit = %s", [unit]).fetchone()[0] == 0
+        c.execute(_d7_sql("0.4"))
+        c.execute(_d7_sql("0.4"))                                        # twice: still one row
+        row = c.execute("select credits_per_unit::text, effective_at = '2026-12-31T22:00:00Z'::timestamptz, reason like 'D7:%%' "
                         "from public.credit_price_schedule where unit = %s", [unit]).fetchall()
         assert row == [("0.80000000", True, True)]
         assert c.execute("select public.credits_per_unit_now(%s)::text", [unit]).fetchone()[0] == "0.40000000"
         c.rollback()
+        with pytest.raises(psycopg.errors.SyntaxError):
+            c.execute(_d7_sql("<RATE_FROM_STEP_1>"))                     # the placeholder as written never runs
+        c.rollback()
+
+
+def test_a_list_rate_edit_under_a_dated_row_is_refused_with_the_remedy(db):
+    u = unit_of("img-list")
+    schedule(db, "img-list", 6, "now() + interval '10 days'")        # pending: the list rate still prices today's quotes
+    for q in ("update public.credit_prices set credits_per_unit = 9 where unit = %s",
+              "insert into public.credit_prices (unit, credits_per_unit, margin) values (%s, 9, 0) "
+              "on conflict (unit) do update set credits_per_unit = excluded.credits_per_unit, margin = excluded.margin"):
+        state, msg = err(lambda: db.su(q, [u]))
+        assert state == "NS428" and "dated_price_scheduled" in msg and "add a credit_price_schedule row (effective_at = now())" in msg
+    # The two-statement version of the same edit: delete the list row, then put it back at another rate.
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute("delete from public.credit_prices where unit = %s", [u])
+        with pytest.raises(psycopg.Error) as e:
+            c.execute("insert into public.credit_prices (unit, credits_per_unit, margin) values (%s, 1, 0)", [u])
+        assert e.value.sqlstate == "NS428"
+        c.rollback()
+    assert db.su("select credits_per_unit::float, margin::float from public.credit_prices where unit = %s", [u]) == [(3.0, 0.0)]
+
+
+def test_a_margin_or_note_edit_under_a_dated_row_is_allowed(db):
+    u = unit_of("img-list")
+    schedule(db, "img-list", 6, "now() + interval '11 days'")
+    db.su("update public.credit_prices set margin = 1, note = 'margin only' where unit = %s", [u])
+    assert float(quote(db, "img-list")["credits"]) == 6.0               # 3 x (1 + 1): the list rate, the new margin
+    # The upsert the owner's price function writes, with the same rate: allowed.
+    db.su("insert into public.credit_prices (unit, credits_per_unit, margin) values (%s, 3, 0) "
+          "on conflict (unit) do update set credits_per_unit = excluded.credits_per_unit, margin = excluded.margin", [u])
+    assert db.su("select credits_per_unit::float, margin::float from public.credit_prices where unit = %s", [u]) == [(3.0, 0.0)]
+
+
+def test_a_list_rate_edit_for_a_unit_with_no_dated_row_is_allowed(db):
+    u = unit_of("img-free")
+    db.su("update public.credit_prices set credits_per_unit = 4 where unit = %s", [u])
+    assert float(quote(db, "img-free")["credits"]) == 4.0
+    db.su("update public.credit_prices set credits_per_unit = 3 where unit = %s", [u])
+
+
+def test_a_size_is_scheduled_by_its_own_unit_and_the_base_row_is_refused(db):
+    base = unit_of("img-sized")
+    state, msg = err(lambda: db.su("insert into public.credit_price_schedule (unit, credits_per_unit, effective_at, reason) "
+                                   "values (%s, 2, now(), 'x')", [base]))
+    assert state == "23514" and "schedule each variant unit" in msg and "image_size" in msg
+    db.su("insert into public.credit_price_schedule (unit, credits_per_unit, effective_at, reason) "
+          "values (%s, 16, now() - interval '1 minute', 'the 2K rate rises')", [base + "_2k"])
+    assert float(quote(db, "img-sized", {**T2I, "image_size": "2K"})["credits"]) == 16.0
+    assert float(quote(db, "img-sized", {**T2I, "image_size": "1K"})["credits"]) == 5.0
 
 
 def test_rollback_and_replay(db):
@@ -255,15 +321,18 @@ def test_rollback_and_replay(db):
         c.execute(f"insert into public.credit_price_schedule (unit, credits_per_unit, effective_at, reason) "
                   f"values ('{unit_of('img-rb')}', 6, now() - interval '1 minute', 'rb')")
         c.execute(sec_db.rollback_0224_body())
-        assert c.execute(md5).fetchone()[0] == sec_db.CREATIVE_PRICE_0208
+        assert c.execute(md5).fetchone()[0] == sec_db.CREATIVE_PRICE_0218
         assert c.execute("select to_regprocedure('public.credits_per_unit_now(text)') is null").fetchone()[0]
+        assert c.execute("select count(*) from pg_trigger where tgname = 'credit_prices_dated_guard'").fetchone()[0] == 0
         # The owner's rows stay (and stay append-only); they change no quote without the reader.
         assert c.execute("select count(*) from public.credit_price_schedule where reason = 'rb'").fetchone()[0] == 1
         c.execute(sec_db.rollback_0224_body())                           # twice: harmless
-        c.execute(sec_db.rollback_0208_body())                           # the lab's chain: 0208's after 0224's, from any point
+        sec_db.put_back_0224(c)                                          # back on 0218's body
+        assert c.execute(md5).fetchone()[0] == sec_db.CREATIVE_PRICE_0224
+        c.execute(sec_db.rollback_0208_body())                           # the lab's chain: 0224's, 0218's, then 0208's
         assert c.execute(md5).fetchone()[0] == sec_db.CREATIVE_PRICE_0159
         c.execute(sec_db.MIGRATION_0208.read_text(encoding="utf-8"))
-        sec_db.put_back_0224(c)
+        sec_db.put_back_0218(c)                                          # and 0224 on it
         assert c.execute(md5).fetchone()[0] == sec_db.CREATIVE_PRICE_0224
         c.rollback()
     # Out of the transaction, the live chain is unchanged and the rolled-back row never existed.
