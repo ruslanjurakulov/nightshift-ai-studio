@@ -304,6 +304,8 @@ export const filmStudioUz: FilmStudioDictionary = {
     model_not_available: "Bu model hozir sotuvda emas. Boshqasini tanlang.",
     asset_not_usable: "Tanlangan rasm endi bu ish maydoni kutubxonasida yoʻq. Boshqasini tanlang.",
     reference_missing: "Narx hisoblangandan keyin namuna rasm yoki personaj oʻchirildi. Boshqasini tanlang yoki uni olib tashlang, soʻng narxni qayta soʻrang.",
+    voice_language_unsupported: "Ovoz modeli bu loyiha tilida gapirmaydi. Shu til koʻrsatilgan ovoz modelini tanlang; oʻzbek tili uchun Eleven v3 ni tanlang.",
+    voice_language_unknown: "Bu ovoz modelining tillari nomaʼlum. Loyiha tili koʻrsatilgan ovoz modelini tanlang.",
     film_changed: "Siz loyihani ochganingizdan keyin uni boshqa kimdir oʻzgartirdi. Hech narsa ustidan yozilmadi.",
     film_not_editable: "Bu loyihani endi oʻzgartirib boʻlmaydi.",
     idempotency_conflict: "Bu soʻrov boshqa loyiha uchun ishlatilgan. Formani yoping va qaytadan boshlang.",

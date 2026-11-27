@@ -130,8 +130,7 @@ describe("public landing page", () => {
     const gallery = container.querySelector(GALLERY);
     expect(gallery === null).toBe(shipped.cards === 0);
     const samplePics = [...(gallery?.querySelectorAll("img") ?? [])];
-    // One per card: the card is its picture alone (media first). The picture a clip was animated from is shown in that sample's
-    // dialog (components/site/SampleDetail.tsx), which is not in the page until it is opened (tests/site-showcase.test.tsx).
+    // One per card: the card is its picture alone (media first; owner decision 22 Nov: the card opens the Studio, no dialog).
     expect(samplePics).toHaveLength(shipped.cards);
     for (const img of samplePics) {
       expect(img.closest(SAMPLE_CARD)).toBeTruthy();

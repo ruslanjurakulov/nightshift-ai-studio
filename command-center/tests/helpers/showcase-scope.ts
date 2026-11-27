@@ -97,7 +97,7 @@ export function placeLabelProblems(el: Element, m: PlaceMedia, site: Dictionary[
     if (!text.includes(site.gallery.badge) || !text.includes(site.gallery.badgeName)) out.push("no AI-generated badge");
     if (text.includes(m.entry.modelName)) out.push("names its model");
     if (el.querySelector(".nx-ai-model")) out.push("has a model label");
-    if (el.querySelector(".nx-ai-try") || text.includes(site.gallery.try) || text.includes(site.gallery.use)) out.push("offers its prompt");
+    if (el.querySelector(".nx-ai-try") || text.includes(site.gallery.use)) out.push("offers its prompt");
     if (text.includes(site.gallery.useNote)) out.push("has a footnote");
     out.push(...makerCreditProblems(el));
     for (const w of [s.tag, s.frameTag, s.clipTag]) if (text.includes(w)) out.push(`says "${w}"`);
