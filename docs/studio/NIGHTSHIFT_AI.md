@@ -113,6 +113,125 @@ The BRIEF is stored per conversation and returned by `GET /api/brain/session/<se
 - The slot order and which slot is asked are the **server's** state machine. The option texts come from the model inside strict JSON, are validated and capped (≤ 160 chars each), and are rendered as plain text.
 - A confirmed option or own answer comes back as `{ "action": "answer", "session": "...", "card": "q-uuid", "choice": 1 | 2 | 3 | null, "own": "text" | null }`.
 
+## Proposals and the plan step (S1, `claude/nsai-s1-plan`)
+
+BRIEF v1's fields are unchanged by this section. What changed is what a proposal carries, and that a short film's storyboard is
+written in its own step after the person chooses.
+
+**A proposal is 2–3 outlines.** The proposing turn's `scenarios` (and each stored assistant message's `payload.scenarios`) holds
+outlines, not storyboards:
+
+```jsonc
+{ "title": "", "idea": "", "story": { "logline": "", "conflict": "" },
+  "chapters": [{ "id": "ch1", "title": "", "start_s": 0, "seconds": 20, "beats": [{ "at_s": 0, "text": "" }] }],
+  "characters": [], "locations": [], "props": [],
+  "scenes": [],                                  // always empty in a new proposal: the plan step writes them
+  "target_seconds": 180,                         // the person's chosen length, never the sum of anything the model wrote
+  "plan_turns": { "about": 3, "at_most": 6 } }   // short only, computed by the server on every read, never stored
+```
+
+- `chapters[].seconds` is the outline's own field. For a short film the chapters add up to exactly `target_seconds`, each at least
+  3 s. An outline that does not add up is not proposed. `start_s` is computed from the lengths. The BRIEF's chapters keep v1's
+  shape: `seconds` is dropped there, and `start_s` says where each chapter begins.
+- A payload stored before this change, with `scenes`, is still read. Its scenes are used only when every one is 3–30 s and together
+  they add up to `target_seconds` exactly. Otherwise the outline is planned like a new one, or the scenario is not offered.
+- `plan_turns`: how many of today's messages writing this outline's storyboard uses. `about` is one turn per call. `at_most`
+  counts every call being asked again once. The panel shows it before the press.
+
+**Choosing a short outline** (`{ "action": "choose", "session", "index" }`) writes the storyboard on the server, in this order:
+1. The safety floor, over the outline and the style and audience too (which go into every scene's prompt).
+2. **The plan's lease** (migration 0211, `ai_chat_plan_begin`). It allows one running plan per conversation, granted under the
+   conversation's row lock.
+   - A second tab, a refresh or a repeat is refused `plan_running` while a plan runs (it expires after 320 s).
+   - A failed or expired plan is granted again at once, as the next attempt.
+   - Without 0211 the route answers `plan_unavailable`: there is never a plan without a lease.
+   - The history read (`/api/brain/history?session=`) carries `plan: { state, reason, expires_at, scenario_index }`. With it the
+     panel waits for a running plan, shows a failed one with its reason, or reads a finished one.
+   - `ai_chat_plan_end` is called whatever happens, by the attempt's own number.
+   - Before every write (the unpriced BRIEF, `save_film`, the priced BRIEF) the route asks `ai_chat_plan_state` whether its own
+     attempt still holds the running lease (Breach BR-S1-08). A plan whose server stalled past 320 s and was taken over by another
+     tab writes nothing and answers `plan_superseded`.
+3. The film draft (`create_film_draft`), before any turn is spent: settings only, so a workspace that cannot make it is told now.
+   Its key is `brain-` followed by 40 hex characters of a sha256 of the conversation, proposal and outline. The key never names
+   the conversation, because every viewer of the workspace reads it.
+4. The storyboard, in bounded calls of at most 15 scenes each, packed by the scenes their parts need, at most three at a time.
+   Each call is an ordinary 0199 turn:
+   - the first stores the outline's title as the person's message;
+   - the rest use `p_retry` and add no message;
+   - each request id is `pl` followed by 40 hex characters of a sha256 of the conversation, proposal, outline and attempt, then
+     `-wN` (`-wNr` for the one re-ask).
+5. The storyboard is kept as the BRIEF, unpriced: a refresh, or a draft save that fails, finds it, and choosing again re-reads it
+   without a turn.
+6. It is saved into the draft at the version the draft had. If someone edited the draft meanwhile, their edit wins (`plan_superseded`).
+7. The quote (`quote_film`), then the BRIEF with its price.
+
+**Choosing an outline again never writes over the film** (Lens H1). The draft's key replays the same film, and `create_film_draft`
+answers it as it is now (0166 `film_read`: its version, models and scenes).
+- If the draft already has scenes (this plan's, perhaps edited by the person since), nothing is saved into it and no BRIEF is written:
+  the film is only priced, at its current version, and no lease or turn is taken. Create's own "Get a new price" (S2's
+  `requoteFilm`) does the same and writes nothing.
+- A plan whose replayed draft already has scenes stops before its first turn with `plan_superseded`: the film is left as it is.
+- A stored storyboard that is not in the draft yet (a draft save that failed) is saved under a lease, like a plan.
+
+Code merges the answers into one BRIEF: scenes `s1..sN` in order, at most 60, adding up to `target_seconds` exactly, and referring
+only to the outline's ids. A plan answer may not name a vendor the outline does not, and may never claim that a vendor made it.
+
+**A scene's prompt is never cut** (S9's contract for `creative_price`, migration 0218, which refuses an over-long prompt, a
+`negative_prompt` on a model whose registry row has `takes_negative_prompt = false`, and a `seed` on any model, before the quote):
+- The film gets each scene's whole prompt (`scenePrompt` in `lib/brain/logic.ts`): its visual prompt, then the descriptions of its
+  characters and setting, its spoken lines and the film's style.
+- The limit is the smaller of the picked clip and key-frame models' `limits.max_prompt_chars`, read server-side from their registry
+  rows (`promptLimitOf` in `lib/server/brain/clip.ts`), never typed in code. With neither known, it is the film's own 2000
+  (`film_limits.max_prompt_chars`). It is counted as 0218 counts it, in UTF-16 units (`.length`): an emoji is two.
+- Every plan call is told the limit (`limits.prompt_max_chars`). A scene over it is asked again once with the limit, then refused
+  as `prompt_too_long`. A stored storyboard over it is refused before the draft and before any turn.
+- The BRIEF never carries a `negative_prompt` or a `seed`, so neither reaches the film.
+
+**The models a film is made with are the server's choice** (`lib/brain/film-models.ts`). The model never names one.
+- At `choose`, the server reads the models on sale now (`sellable_models`, web) for clips (i2v) and key frames (t2i, and edit,
+  which 0166 also takes as a film's key-frame model). It picks the first one on sale from a fixed order:
+  - clips: MiniMax H3, then Kling v3 (docs/FILM_STUDIO.md "Models");
+  - key frames: GPT Image 2.6 Sunburst, GPT Image 2.6 Flare, Gemini 3 Pro Image, Nano Banana 2.1 (the most reference pictures).
+- Nothing outside the order is ever taken. With none on sale for a role, that role is left unset and `quote_film`'s
+  `model_not_set` says what to do. A catalogue that cannot be read plans nothing (503, no turn).
+- The picked ids go into the draft's settings (`clip_model`, `keyframe_model`) and into BRIEF v1's existing `scenes[].clip_model` /
+  `scenes[].keyframe_model`.
+- The clip model's longest shot × `max_shots` is the longest scene every call is told to write. Its `durations_s` set each scene's
+  `shot_count` (G4).
+- Choosing again keeps the draft's models only when the stored BRIEF names the server's own (in the fixed order): a BRIEF is its
+  author's to write, so any other id in it is ignored and the server picks again (Breach BR-S1-07). If one has left the catalogue,
+  the quote refuses with its own reason.
+- The card names, and a scene's prompt is measured against, the models the film was actually drafted with: the ones
+  `create_film_draft` answers, a key-frame model read from the t2i and edit catalogues alike.
+- A stored prompt is measured as written, before any reader caps it: a scene over the limit is refused, never cut first.
+- `choose` answers with `models: { clip: { id, name } | null, keyframe: { id, name } | null }`. The card says
+  "Video: {name}" / "Pictures: {name}".
+- A scene with dialogue is saved with `clip_params: { "audio": true }` (G3).
+
+**Errors `choose` adds** (none of them prices anything, and a plan with a chapter missing is never saved):
+
+| Body | Status | Meaning |
+| :-- | :-- | :-- |
+| `{ "error": "plan_over_cap", "needed": 16, "about": 8, "left": 2 }` | 429 | Today's turns cannot cover the plan's worst case (`needed` = `at_most`). Refused before the first call, so a plan never stops halfway for the plan's cap. No turn is taken. With `"scope": "person"`, the cap that does not cover it is the person's own across workspaces (0199 `per_user_daily`, returned by the lease). |
+| `{ "error": "plan_running", "expires_at": "iso" }` | 409 | Another plan of this conversation is running (another tab, or before a refresh). Nothing is reserved or called. The panel waits for it until `expires_at`. |
+| `{ "error": "plan_unavailable" }` | 503 | Migration 0211 is not applied here: the storyboard is not written without a lease. |
+| `{ "error": "plan_superseded", "film_id": "uuid" }` | 409 | The film already has a storyboard that this plan would replace: it was edited while the storyboard was written, it had one from before, or another tab's plan took this one's lease. The film is left as it is and nothing more is written. No credits are charged (the plan's messages are used). Open the project to see it. |
+| `{ "error": "prompt_too_long", "scene": 3, "limit": 1500 }` | 422 | Scene 3's whole prompt is over the models' limit (UTF-16 units). Nothing is cut, saved or priced. From the plan's own calls, after the one re-ask, the answer carries `chapter` and `scene` counts within that chapter. No Retry: choose another scenario. |
+| `{ "error": "proposal_outdated" }` | 409 | A proposal stored before the plan step whose scenes do not add up to the length: ask for new scenarios. |
+| `{ "error": "plan_failed", "reason": "vendor_error", "step": { "window": 2, "windows": 4, "chapter": 3, "chapters": 6 }, "quota": {…} }` | 502 | One call failed (`reason`: the vendor's failure, `timeout`, `invalid_output`, `output_too_long`, `unavailable`). `step` names which part of the plan (null when the merge failed). The panel offers Retry: a new attempt of the lease, with new request ids. |
+| `{ "error": "plan_failed", "reason": "not_plannable", "step": null }` | 409 | The film cannot fit 60 scenes within the clip model's longest scene. |
+| `{ "error": "plan_length_mismatch", "step": { … }, "quota": {…} }` | 502 | A chapter's scenes did not add up to its seconds, even when asked again once with the reason. Nothing is stretched or cut to fit. |
+| `{ "error": "content_refused", "quota": {…} }` | 422 | The plan's own safety refusal, or the vendor's. Not charged as a turn. |
+| `{ "error": "duplicate_request" }` | 409 | A repeat inside one attempt (0199's request id): no call is made. The panel waits for the plan already running. |
+
+A failed plan's `reason` of `not_plannable`, `vendor_auth` or `not_configured` is offered no Retry: a new attempt cannot change it.
+
+**Known, accepted.** A plan call the plan's own safety rule refuses (`refused`), or the vendor's (`vendor_refused`), is forgiven by
+the workspace's plan cap but counted by the person's own daily cap (0199 `per_user_daily`) and the platform's. So an outline written
+to make every chapter refused can make a person spend turns on refusals without spending the workspace's cap. The ceiling on that
+is `per_user_daily` (pinned in tests/security/test_sec_brain_plan_breach.py). The refusal is still said as such each time, and
+nothing is priced.
+
 ## Reading the BRIEF from the canvas (S6b)
 
 - `GET /api/brain/session/<id>` → `{ "brief": BRIEF, "card": card | null, "updated_at": "iso" }`.
