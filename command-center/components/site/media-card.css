@@ -69,16 +69,25 @@
 /* The page's pause switch: the caption still fades in, nothing slides. */
 html[data-motion="paused"] .mf-cap { transform: none; transition: opacity 200ms var(--ns-ease, ease); }
 
-/* A phone's explore grid is two columns of ~165 px cards: at 22/16 px a title showed four letters ("Street-siz…"). Up to 480 px
-   the caption steps down to 17/14 px there; from 481 px up it is the 22/16 px scale above. The Effects cards are full width on a
-   phone and keep it. */
+/* A phone's explore grid is two columns of ~165 px cards, and a 16:9 card there is ~93 px tall: at 22/16 px a title showed four
+   letters ("Street-siz…"), and two lines of title plus a line of prompt ran up under the AI mark (Pixel, 22 Nov). Up to 480 px the
+   caption is the title alone, 15 px, up to three lines hyphenated in the page's language (the title carries `lang`), and it never
+   reaches the mark's row (34 px: the mark's 6 px inset, its height and a gap). From 481 to 1023 px the title is 18 px on three
+   lines; from 1024 px up, the 22/16 px scale above. The Effects cards are full width on a phone and keep their scale. */
 @media (max-width: 480px) {
-  .nx-gallery .mf-title { font-size: 1.0625rem; }
-  .nx-gallery .mf-desc { font-size: 0.875rem; }
-  .nx-gallery .mf-cap { padding: 40px 10px 10px; }
+  .nx-gallery .mf-title { font-size: 0.9375rem; -webkit-line-clamp: 3; line-clamp: 3; hyphens: auto; }
+  .nx-gallery .mf-desc { display: none; }
+  .nx-gallery .mf-cap { padding: 28px 10px 10px; }
+  .mf-cap { max-height: calc(100% - 34px); justify-content: flex-end; overflow: hidden; }
   /* The mark stays legible but smaller than the caption it sits above. */
   .mf-ai { top: 6px; right: 6px; padding: 1px 6px; font-size: 12px; }
 }
+@media (min-width: 481px) and (max-width: 1023px) {
+  .nx-gallery .mf-title { font-size: 1.125rem; -webkit-line-clamp: 3; line-clamp: 3; }
+}
+/* The Shorts feed's mark sits under its top bar (position and Close), not on the Close key. Here, after the queries above and
+   unlayered like them: autopilot-demo.css is in @layer components, so a rule there lost to .mf-ai's own top/right. */
+.nx-shorts .mf-ai.nx-shorts-ai { top: calc(64px + env(safe-area-inset-top)); right: 12px; }
 
 /* Section headings of the media sections: bold, 48 px at 1440 and 32 px at 360 (the owner's ~48 px, Kling's section heads),
    scoped to these sections only so the site's other headings keep theirs. */

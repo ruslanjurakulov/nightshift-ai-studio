@@ -280,7 +280,6 @@ function Feed({
                     poster={it.posterSm}
                     disablePictureInPicture
                     aria-hidden
-                    tabIndex={-1}
                   >
                     <source src={it.sources.smWebm} type="video/webm" />
                     <source src={it.sources.smMp4} type="video/mp4" />

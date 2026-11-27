@@ -119,7 +119,7 @@ export function ShowcaseGallery({
                 // aria-hidden on a link card: the link's own name says the same words once.
                 <span className="mf-cap" data-title={title ? undefined : "none"} aria-hidden={hidden || undefined}>
                   {title && (
-                    <span className="mf-title" data-format={format?.id}>
+                    <span className="mf-title" data-format={format?.id} lang={locale}>
                       {title}
                     </span>
                   )}

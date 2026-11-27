@@ -184,7 +184,7 @@ export const siteUz: SiteDictionary = {
   gallery: {
     label: "Nightshift Studio’da yaratilgan",
     title: "Nightshift’da yaratilgan",
-    lead: "Haqiqiy generatsiyalar: ularni jamoamiz Nightshift Studio’da yaratgan. Nima ekanini oʻqish uchun kursorni ustiga olib boring yoki bir marta bosing; Studiyada uning soʻzlaridan boshlash uchun yana bir marta bosing.",
+    lead: "Jamoamiz Nightshift Studio’da yaratgan haqiqiy generatsiyalar. Nima ekanini koʻrish uchun kursorni olib boring yoki bir marta bosing; promptini Studiyada ochish uchun yana bosing.",
     badge: "AI",
     badgeName: "Sunʼiy intellekt yaratgan",
     model: "Model",

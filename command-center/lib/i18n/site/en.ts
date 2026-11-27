@@ -206,7 +206,7 @@ export const siteEn = {
   gallery: {
     label: "Made in Nightshift Studio",
     title: "Made with Nightshift",
-    lead: "Real generations, made by our team in Nightshift Studio. Hover or tap once to see what it is; tap again to start from its words in the Studio.",
+    lead: "Real generations by our team in Nightshift Studio. Hover or tap a card to see what it is; tap again to open its prompt in the Studio.",
     /**
      * The mark on every one of our samples, as seen: just "AI" (the owner, 2026-11-22: no longer phrases on the pictures). It is
      * never shown alone to a screen reader: `badgeName` is what it says, in words (components/site/AiMark.tsx).

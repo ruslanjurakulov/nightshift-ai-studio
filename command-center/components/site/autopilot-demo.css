@@ -342,13 +342,13 @@
 }
 .nx-shorts-title { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.25; color: #ffffff; text-wrap: balance; }
 /* Media first, like the cards (owner decision 22 Nov): at rest the slide is its clip and the AI mark; a tap on the clip
-   (data-shown) or the keyboard reaching its link (:focus-within) shows the shade, the caption and the link. The caption takes no
+   (data-shown) or the keyboard on its link (:focus-visible inside the caption; not :focus-within, which a tap on the clip also
+   matched once the video took focus, so the second tap never hid it) shows the shade, the caption and the link. The caption takes no
    taps (they reach the clip, which hides it again) except its link once it shows. Opacity only: nothing moves. */
-.nx-shorts .nx-shorts-ai { top: calc(64px + env(safe-area-inset-top)); right: 12px; }
 .nx-shorts-shade, .nx-shorts-cap { opacity: 0; }
 .nx-shorts-cap { pointer-events: none; }
-.nx-shorts-slide:is([data-shown="true"], :focus-within) :is(.nx-shorts-shade, .nx-shorts-cap) { opacity: 1; }
-.nx-shorts-slide:is([data-shown="true"], :focus-within) .nx-shorts-use { pointer-events: auto; }
+.nx-shorts-slide:is([data-shown="true"], :has(.nx-shorts-cap :focus-visible)) :is(.nx-shorts-shade, .nx-shorts-cap) { opacity: 1; }
+.nx-shorts-slide:is([data-shown="true"], :has(.nx-shorts-cap :focus-visible)) .nx-shorts-use { pointer-events: auto; }
 @media (prefers-reduced-motion: no-preference) {
   .nx-shorts-shade, .nx-shorts-cap { transition: opacity 200ms ease; }
 }

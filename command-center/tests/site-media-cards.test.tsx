@@ -314,10 +314,12 @@ describe("the stylesheet", () => {
     expect(css).toContain(".mf-card:has(.mf-card-link:focus-visible)::after { box-shadow: inset 0 0 0 3px #ffa940; }");
   });
 
-  it("steps the explore grid's caption down on a phone's narrow cards and keeps 22/16 px from 481 px", () => {
+  it("on a phone shows the title alone (three hyphenated lines, clear of the mark's row), three 18 px lines to 1023 px, 22/16 px above", () => {
     const phone = css.slice(css.indexOf("@media (max-width: 480px) {"));
-    expect(phone).toMatch(/\.nx-gallery \.mf-title \{ font-size: 1\.0625rem; \}/);
-    expect(phone).toMatch(/\.nx-gallery \.mf-desc \{ font-size: 0\.875rem; \}/);
+    expect(phone).toMatch(/\.nx-gallery \.mf-title \{ font-size: 0\.9375rem; -webkit-line-clamp: 3; line-clamp: 3; hyphens: auto; \}/);
+    expect(phone).toMatch(/\.nx-gallery \.mf-desc \{ display: none; \}/);
+    expect(phone).toMatch(/\.mf-cap \{ max-height: calc\(100% - 34px\);/);
+    expect(css).toContain("@media (min-width: 481px) and (max-width: 1023px) {\n  .nx-gallery .mf-title { font-size: 1.125rem; -webkit-line-clamp: 3; line-clamp: 3; }");
     expect(phone).toContain(".mf-ai { top: 6px; right: 6px; padding: 1px 6px; font-size: 12px; }");
     expect(css).not.toMatch(/@media \(max-width: (?:4(?:8[1-9]|9\d)|[5-9]\d\d)px\)/);
   });
@@ -397,23 +399,42 @@ describe("the Shorts feed is media first", () => {
     const title = cardTitle(tallJob, "ru");
     if (title) expect(slide.querySelector(".nx-shorts-title")?.textContent).toBe(title);
     expect(slide.querySelector(".nx-shorts-prompt")?.textContent).toBe(firstSentence(tall.prompt));
-    // The link is in the page all along (a keyboard reaches it, and :focus-within shows the caption), always "Use".
+    // The link is in the page all along (a keyboard reaches it, and its :focus-visible shows the caption), always "Use".
     const link = slide.querySelector<HTMLAnchorElement>("a.nx-shorts-use")!;
     expect(link.textContent).toContain(g.use);
     expect(link.getAttribute("href")).toBe(tryHref(tall, false));
     fireEvent.click(slide.querySelector(".nx-shorts-media")!);
     expect(slide.getAttribute("data-shown")).toBe("true");
+    // The first tap mounted the clip (nothing starts by itself here). It takes no focus: it is aria-hidden and has no controls,
+    // and a focused clip kept the caption up through the second tap (Pixel, 22 Nov: :focus-within matched it).
+    const video = slide.querySelector("video");
+    expect(video).toBeTruthy();
+    expect(video!.hasAttribute("tabindex")).toBe(false);
     fireEvent.click(slide.querySelector(".nx-shorts-media")!);
     expect(slide.hasAttribute("data-shown")).toBe(false);
+    // Nothing else in the slide shows the caption: no element inside its caption has focus after the taps.
+    expect(slide.querySelector(".nx-shorts-cap")!.contains(document.activeElement)).toBe(false);
   });
 
   it("hides the caption until shown, takes no taps on it but the link's, and only fades", () => {
     const css = readFileSync(join(ROOT, "components/site/autopilot-demo.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     expect(css).toContain(".nx-shorts-shade, .nx-shorts-cap { opacity: 0; }");
     expect(css).toContain(".nx-shorts-cap { pointer-events: none; }");
-    expect(css).toContain('.nx-shorts-slide:is([data-shown="true"], :focus-within) :is(.nx-shorts-shade, .nx-shorts-cap) { opacity: 1; }');
-    expect(css).toContain('.nx-shorts-slide:is([data-shown="true"], :focus-within) .nx-shorts-use { pointer-events: auto; }');
+    // Shown by a tap (data-shown) or by the keyboard on the caption's link only; never by :focus-within on the whole slide, which a
+    // focused clip matched, so the second tap could not hide the caption.
+    expect(css).toContain('.nx-shorts-slide:is([data-shown="true"], :has(.nx-shorts-cap :focus-visible)) :is(.nx-shorts-shade, .nx-shorts-cap) { opacity: 1; }');
+    expect(css).toContain('.nx-shorts-slide:is([data-shown="true"], :has(.nx-shorts-cap :focus-visible)) .nx-shorts-use { pointer-events: auto; }');
+    expect(css).not.toMatch(/\.nx-shorts-slide[^{]*:focus-within/);
     const shorts = css.slice(css.indexOf(".nx-shorts {"));
     expect(shorts).not.toMatch(/\.nx-shorts-(?:cap|shade)[^{]*\{[^}]*(?:transform|translate)/);
+  });
+
+  it("keeps the feed's AI mark under its top bar, not on the Close key: the rule wins over .mf-ai's own, after the phone query", () => {
+    const mc = readFileSync(join(ROOT, "components/site/media-card.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const rule = ".nx-shorts .mf-ai.nx-shorts-ai { top: calc(64px + env(safe-area-inset-top)); right: 12px; }";
+    expect(mc).toContain(rule);
+    expect(mc.indexOf(rule)).toBeGreaterThan(mc.lastIndexOf("@media (max-width: 480px)"));
+    // Not in autopilot-demo.css, whose @layer loses to the unlayered .mf-ai.
+    expect(readFileSync(join(ROOT, "components/site/autopilot-demo.css"), "utf8")).not.toMatch(/\.nx-shorts-ai\s*\{/);
   });
 });
