@@ -68,4 +68,10 @@ export async function channelOrg(supabase: SupabaseClient, channelId: string) {
   return { state: "ok" as const, orgId: data.org_id as string, name: typeof data.name === "string" ? data.name : channelId };
 }
 
+/** An opaque id for the vendor's abuse tooling: the workspace, hashed as the worker does (never the person's own user id). */
+export async function vendorUser(orgId: string): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`nightshift-org:${orgId}`));
+  return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+}
+
 export { CHAT_MODELS };

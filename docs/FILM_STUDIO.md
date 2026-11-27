@@ -394,7 +394,12 @@ the Projects strings: it is read from the app's `nav.hub` key. Code, tables and 
 | Data and state | `components/films/useFilmProject.ts`: the draft, autosave (4 s after the last edit, at least 20 s apart, so at most 180 saves an hour against the database's 240), the version conflict, undo and redo (50 steps), split, merge, insert, delete and reorder, and a pending-edit buffer in the browser so a refresh or a closed tab loses nothing. It knows nothing about how the board is drawn, so a node canvas can replace the scene grid. |
 | Strings | `command-center/lib/i18n/film-studio/{en,ru,uz}.ts` |
 
-What is not available yet, and says so on the screen: writing the storyboard with AI (P3), and Start with a price (P2). Start is
+"Write the storyboard with AI" is Nightshift AI's plan step for this project (`/api/brain/film`, docs/studio/NIGHTSHIFT_AI.md
+"Writing a project's storyboard"). It runs only where Nightshift AI is on for the workspace, only into an EMPTY, saved project,
+and says beforehand how many of today's Nightshift AI messages it uses; otherwise the button is off with the reason. It spends
+messages, never credits, and prices, starts or publishes nothing.
+
+What is not available yet, and says so on the screen: Start with a price (P2). Start is
 drawn disabled with "Pricing for projects is not live yet"; no number, price or quote is shown. Sound, shooting, assembly and the
 handoff are dim stations on the track. Nothing on these screens spends, starts or publishes.
 

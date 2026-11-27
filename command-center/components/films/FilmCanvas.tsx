@@ -16,6 +16,7 @@ import { ProjectPanel, type LibraryCharacter } from "@/components/films/ProjectP
 import { FilmErrorNotice } from "@/components/films/FilmErrorNotice";
 import { CommandPalette, ShortcutsHelp, type CanvasCommand } from "@/components/films/CanvasOverlays";
 import { useFilmProject, type FilmProject } from "@/components/films/useFilmProject";
+import { costText, readCheck, refusalText, type PlanCheck } from "@/lib/brain/film-plan-view";
 
 const isField = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
@@ -184,6 +185,11 @@ export function CanvasView({
     const r = await p.save();
     if (r === "fix") setShowProblems(true);
   }, [p]);
+  // Stable across renders: the AI writer's wait for another tab's plan is a timer keyed on it.
+  const { reload } = p;
+  const onAiWritten = useCallback(async () => {
+    await reload();
+  }, [reload]);
 
   const openScene = useCallback(
     (key: string) => {
@@ -487,14 +493,17 @@ export function CanvasView({
                 )}
               </div>
             </div>
-            <div className="fs-key-reason" style={{ marginBottom: 14, maxWidth: "none" }}>
-              <button type="button" className="btn-quiet min-h-11 self-start px-4 text-sm" disabled aria-describedby={`${ids}-ai`} data-testid="fs-ai">
-                {t.canvas.aiWrite}
-              </button>
-              <span id={`${ids}-ai`} className="fs-small">
-                {t.canvas.aiWriteReason}
-              </span>
-            </div>
+            <AiWriter
+              t={t}
+              filmId={view.film.id}
+              version={view.film.version}
+              canEdit={canEdit}
+              readOnly={readOnly}
+              hasScenes={view.scenes.length > 0 || draft.scenes.length > 0}
+              dirty={dirty}
+              reasonId={`${ids}-ai`}
+              onWritten={onAiWritten}
+            />
 
             {draft.scenes.length === 0 ? (
               <div className="fs-board-empty" data-testid="fs-board-empty">
@@ -644,5 +653,172 @@ function Notices({
         </div>
       ) : null}
     </>
+  );
+}
+
+const FILM_PLAN_URL = "/api/brain/film";
+/** How often a plan another tab is writing (or this one before a refresh) is asked about: its lease ends within 320 s anyway. */
+export const AI_WAIT_POLL_MS = 5_000;
+
+/**
+ * "Write the storyboard with AI" (Nightshift AI's plan step for this project, app/api/brain/film). The button is on only when the
+ * server said, just now, that the plan can run, and it says beforehand what the press uses ("about N of the M messages left
+ * today"); otherwise it is off with the reason and its remedy. It never shows a price: the project's own Start quotes.
+ *
+ * Off without asking the server: a viewer, a project that can no longer be edited, a project that has scenes (saved or not: a
+ * person's scenes are never replaced), and unsaved changes (the plan is written for the project as saved). A plan running in
+ * another tab, or before a refresh, is followed through its lease until it ends, and the project is read again when it wrote.
+ */
+export function AiWriter({
+  t,
+  filmId,
+  version,
+  canEdit,
+  readOnly,
+  hasScenes,
+  dirty,
+  reasonId,
+  onWritten,
+}: {
+  t: FilmStudioDictionary;
+  filmId: string;
+  version: number;
+  canEdit: boolean;
+  readOnly: boolean;
+  hasScenes: boolean;
+  dirty: boolean;
+  reasonId: string;
+  onWritten: () => Promise<void>;
+}) {
+  const w = t.canvas.ai;
+  const [check, setCheck] = useState<PlanCheck | { kind: "checking" }>({ kind: "checking" });
+  const [writingSince, setWritingSince] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [notice, setNotice] = useState<{ tone: "ok" | "fail"; text: string } | null>(null);
+  // A refusal no new press can change (the project's text, a cap, a region): kept until the project itself changes.
+  const [final, setFinal] = useState<{ text: string; version: number } | null>(null);
+  const mounted = useRef(true);
+  const busy = useRef(false);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const local = !canEdit ? w.viewer : readOnly ? w.readOnly : hasScenes ? w.hasScenes : dirty ? w.dirty : null;
+
+  /** GET: what the press would do now. `quiet` keeps what is on screen while it asks (the wait for another tab's plan). */
+  const runCheck = useCallback(
+    async (quiet = false): Promise<Record<string, unknown> | null> => {
+      if (!quiet) setCheck({ kind: "checking" });
+      try {
+        const res = await fetch(`${FILM_PLAN_URL}?film=${encodeURIComponent(filmId)}`, { cache: "no-store" });
+        const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        if (mounted.current) setCheck(readCheck(w, res.status, body));
+        return body;
+      } catch {
+        if (mounted.current) setCheck({ kind: "blocked", text: w.network, retry: true });
+        return null;
+      }
+    },
+    [filmId, w],
+  );
+
+  // Asked whenever a press could be possible: on open, after a press ends, and when the project is empty, saved and editable again.
+  useEffect(() => {
+    if (local || writingSince !== null) return;
+    void runCheck();
+  }, [local, version, writingSince, runCheck]);
+
+  // Another tab's plan (or this one's before a refresh): asked again until its lease ends; the project is read again when it wrote.
+  useEffect(() => {
+    if (check.kind !== "running" || writingSince !== null) return;
+    const id = window.setTimeout(async () => {
+      const body = await runCheck(true);
+      const plan = body?.plan as { state?: unknown } | undefined;
+      if (mounted.current && (body?.error === "film_has_scenes" || plan?.state === "done")) await onWritten();
+    }, AI_WAIT_POLL_MS);
+    return () => window.clearTimeout(id);
+  }, [check, writingSince, runCheck, onWritten]);
+
+  useEffect(() => {
+    if (writingSince === null) return;
+    const id = window.setInterval(() => setElapsed(Math.round((Date.now() - writingSince) / 1000)), 1000);
+    return () => window.clearInterval(id);
+  }, [writingSince]);
+
+  const press = async () => {
+    if (busy.current) return;
+    busy.current = true;
+    setNotice(null);
+    setElapsed(0);
+    setWritingSince(Date.now());
+    try {
+      const res = await fetch(FILM_PLAN_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ film: filmId }) });
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!mounted.current) return;
+      if (res.ok && typeof body.scenes === "number") {
+        setNotice({ tone: "ok", text: fmt(w.done, { n: body.scenes, length: clock(typeof body.seconds === "number" ? body.seconds : 0) }) });
+        await onWritten();
+      } else if (body.error === "plan_running" || body.error === "duplicate_request") {
+        setCheck({ kind: "running", expiresAt: typeof body.expires_at === "string" ? body.expires_at : null });
+      } else {
+        const r = refusalText(w, res.status, body);
+        setNotice({ tone: "fail", text: r.text });
+        if (!r.retry) setFinal({ text: r.text, version });
+        // The project changed while the plan wrote: read it again, so the person sees their own edits (nothing was saved over them).
+        if (body.error === "plan_superseded") await onWritten();
+      }
+    } catch {
+      if (mounted.current) setNotice({ tone: "fail", text: w.network });
+    } finally {
+      busy.current = false;
+      if (mounted.current) setWritingSince(null);
+    }
+  };
+
+  const writing = writingSince !== null;
+  const waiting = check.kind === "running";
+  const finalText = final && final.version === version ? final.text : null;
+  const blocked = local ?? finalText ?? (check.kind === "blocked" ? check.text : check.kind === "checking" ? w.checking : null);
+  const ready = check.kind === "ready" ? check.ready : null;
+  const enabled = !writing && !waiting && !blocked && !!ready;
+  const extras = ready
+    ? [
+        costText(w, ready),
+        ready.sets.clip ? fmt(w.setsClip, { name: ready.sets.clip }) : "",
+        ready.sets.keyframe ? fmt(w.setsKeyframe, { name: ready.sets.keyframe }) : "",
+        ready.lastFailed && !notice ? w.lastFailed : "",
+      ].filter(Boolean).join(" ")
+    : "";
+
+  return (
+    <div className="fs-key-reason" style={{ marginBottom: 14, maxWidth: "none" }} data-testid="fs-ai-panel">
+      <button
+        type="button"
+        className="btn-quiet min-h-11 self-start px-4 text-sm"
+        disabled={!enabled}
+        aria-describedby={reasonId}
+        aria-busy={writing || waiting || undefined}
+        onClick={() => void press()}
+        data-testid="fs-ai"
+      >
+        {notice?.tone === "fail" && enabled ? w.retry : t.canvas.aiWrite}
+      </button>
+      <span id={reasonId} className="fs-small" data-testid="fs-ai-reason">
+        {writing ? `${w.writing} ${fmt(w.writingFor, { time: clock(elapsed) })}` : waiting ? w.writingElsewhere : (blocked ?? extras)}
+      </span>
+      {(writing || waiting) && <progress className="w-full max-w-xs" aria-label={writing ? w.writing : w.writingElsewhere} data-testid="fs-ai-progress" />}
+      {!writing && !waiting && !local && !finalText && check.kind === "blocked" && check.retry && (
+        <button type="button" className="btn-quiet min-h-11 self-start px-4 text-sm" onClick={() => void runCheck()} data-testid="fs-ai-check">
+          {w.checkAgain}
+        </button>
+      )}
+      <p className="fs-small" role={notice?.tone === "fail" ? "alert" : "status"} data-testid="fs-ai-notice">
+        {notice?.text ?? ""}
+      </p>
+    </div>
   );
 }

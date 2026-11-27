@@ -5,6 +5,7 @@ import { aiChatEnv, aiChatMode, aiChatOpenFor } from "@/lib/brain/flag";
 import { readSlots } from "@/lib/brain/logic";
 import { brainJson, channelOrg, chosenModelState, dbRefusal, modelFromRef, notFound } from "@/lib/server/brain/session";
 import { chatGateVerdict, chatModelGate } from "@/lib/server/brain/google-gate";
+import { FILM_PLAN_KEY } from "@/lib/brain/film-plan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,7 +39,10 @@ export async function GET(request: Request) {
   const [quota, sessions, role, admin] = await Promise.all([
     supabase.rpc("ai_chat_quota", { p_org: orgId }),
     (() => {
-      let q = supabase.from("ai_chat_sessions").select("id,channel_id,step,slots,brief,card,updated_at").eq("org_id", orgId).neq("step", "created");
+      // A project's own conversation (the film editor's "Write the storyboard with AI", lib/server/brain/film-plan) is never the
+      // chat's latest: the chat resumes the person's own conversations, as before that button existed.
+      let q = supabase.from("ai_chat_sessions").select("id,channel_id,step,slots,brief,card,updated_at").eq("org_id", orgId).neq("step", "created")
+        .is(`brief->${FILM_PLAN_KEY}`, null);
       q = channelId ? q.eq("channel_id", channelId) : q.is("channel_id", null);
       return q.order("updated_at", { ascending: false }).limit(1);
     })(),

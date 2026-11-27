@@ -145,6 +145,12 @@ describe("the list", () => {
     expect(body.sessions.map((x: { id: string }) => x.id)).toEqual([S1]);
   });
 
+  it("leaves out a project's own conversation (the film editor's storyboard writer): it is not a chat to resume here", async () => {
+    s.sessions = [row({})];
+    await get("?channel=c1");
+    expect(has(sessionsQuery(), "is", "brief->film_plan", null)).toBe(true);
+  });
+
   it("titles a conversation by its plan once there is one, then by the person's first message, cut to 60 characters", async () => {
     s.sessions = [row({ plan_title: "  The   Last Caravan " }), row({ id: S2, ai_chat_messages: [{ content: "x".repeat(80) }] }), row({ id: S3, ai_chat_messages: [] })];
     const body = await (await get("?channel=c1")).json();

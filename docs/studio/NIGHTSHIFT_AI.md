@@ -232,6 +232,33 @@ to make every chapter refused can make a person spend turns on refusals without 
 is `per_user_daily` (pinned in tests/security/test_sec_brain_plan_breach.py). The refusal is still said as such each time, and
 nothing is priced.
 
+### Writing a project's storyboard (the film editor, `/api/brain/film`)
+
+The film editor's "Write the storyboard with AI" is the same plan step for ONE existing project, from its own settings (title,
+source text, language, aspect, `target_seconds`). Code: `app/api/brain/film/route.ts`, `lib/server/brain/film-plan.ts`,
+`lib/brain/film-plan.ts`; the scenes are written by `writeStoryboard` itself.
+
+- `GET ?film=<id>` takes nothing. It answers `{ ready: true, turns: { about, at_most }, left, scope: "plan" | "trial",
+  sets: { clip, keyframe }, plan }`, or `{ ready: false, plan: { state: "running", expires_at } }` while a plan of this project
+  runs, or the press's own refusal (below). `sets` names a model the press would set, only for a role the project has none for.
+- `POST { film }` answers `{ film: { id, version }, scenes, seconds, models, quota }`.
+- **The chapters are the server's** (`filmChapters`: about 60 s each, adding up to `target_seconds` exactly). The model writes their
+  words in ONE outline call (`FILM_OUTLINE_SYSTEM_PROMPT`; the project's title and source text go in the DATA block). Because the
+  lengths are fixed, every window is known before any turn: `at_most` = 1 + 2 × windows, checked up front as in `choose`.
+- **The conversation** is the person's own 0199 conversation for the project's workspace and channel (`ai_chat_start`), marked in its
+  BRIEF with `"film_plan": { "film_id": "uuid" }` (an extra top-level field; the chat ignores it). It is found again by that marker,
+  author and workspace, oldest first. `/api/brain` and the history list leave marked conversations out. The outline call stores the
+  press as the person's message (the project's title); every plan call after it is a `p_retry` turn. The lease is 0211's with
+  proposal 0, outline 0. Request ids: `fo` + 40 hex of a sha256 of the conversation, project and attempt, and the plan's `pl…` ids.
+- **Never over a person's work.** A project with scenes is refused `film_has_scenes` (409) before any turn; the panel also stays
+  off while the editor has scenes or unsaved changes. `save_film` is called at the version read first: an edit made meanwhile is
+  `plan_superseded`, and nothing is written.
+- **Models.** The project's own clip and key-frame models when it has them and they are on sale; one it names that is not on sale is
+  refused `film_model_unavailable` `{ role: "clip" | "keyframe" }` (409), never swapped. A role with none: the server's
+  `FILM_MODEL_PREFERENCE` pick, saved with the storyboard.
+- Errors added: `film_has_scenes`, `film_not_editable`, `film_model_unavailable`, `chat_plan_required` (402) and `chat_daily_cap`
+  (429) said before the press. Everything else is `choose`'s, with the same meaning. No price is attached: the project's Start quotes.
+
 ## Reading the BRIEF from the canvas (S6b)
 
 - `GET /api/brain/session/<id>` → `{ "brief": BRIEF, "card": card | null, "updated_at": "iso" }`.

@@ -40,7 +40,7 @@ import { clipShapeOf, filmCatalogue, promptLimitOf } from "@/lib/server/brain/cl
 import { FILM_MODEL_PREFERENCE, MODEL_ID, pickFilmModel, type OnSaleModel, type PickedModel } from "@/lib/brain/film-models";
 import { writeStoryboard } from "@/lib/server/brain/plan";
 import { planLimits, planTurns, withPlanTurns } from "@/lib/brain/plan";
-import { brainJson, channelOrg, chosenModelState, dbRefusal, modelFromRef, notFound } from "@/lib/server/brain/session";
+import { brainJson, channelOrg, chosenModelState, dbRefusal, modelFromRef, notFound, vendorUser } from "@/lib/server/brain/session";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -79,12 +79,6 @@ async function loadSession(supabase: SupabaseClient, id: unknown): Promise<{ ok:
   if (error) return { ok: false, res: dbRefusal(error) ?? brainJson({ error: "unavailable" }, 503) };
   if (!data || !aiChatOpenFor(data.org_id, aiChatEnv())) return { ok: false, res: notFound() };
   return { ok: true, s: data as Session };
-}
-
-/** An opaque id for the vendor's abuse tooling: the workspace, hashed as the worker does (never the person's own user id). */
-async function vendorUser(orgId: string): Promise<string> {
-  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`nightshift-org:${orgId}`));
-  return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
 }
 
 /** A turn the person is not charged for (not_sent, a safety refusal): the reserve counted it, the finished call does not. */
