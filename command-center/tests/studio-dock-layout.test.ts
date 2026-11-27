@@ -28,6 +28,10 @@ describe("the canvas's docks never cover what is not theirs", () => {
     expect(block(".cv-dockwrap")).toMatch(/position:\s*absolute/);
     expect(block(".react-flow__panel.cv-mini")).toMatch(/margin:\s*12px 12px 80px/);
   });
+  it("keeps the desk dock's keys in view when the Library takes up part of the board", () => {
+    expect(css).toMatch(/^\.cv-dockwrap\[data-drawer\] \.cv-deck \{[^{}]*flex-wrap:\s*wrap;[^{}]*height:\s*auto;/m);
+    expect(css).toMatch(/^\.cv-dockwrap\[data-drawer\] \.cv-qnote \{\s*display:\s*none;/m);
+  });
   it("keys and docks show an edge of at least 3:1 on every ground (the hairline measured 1.22:1)", () => {
     const lum = (hex: string) => {
       const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
@@ -53,14 +57,15 @@ describe("the canvas's docks never cover what is not theirs", () => {
     expect(b).toMatch(/white-space:\s*normal/);
     expect(b).toMatch(/flex:\s*0 1 auto/);
     expect(b).toMatch(/min-width:\s*0/);
-    const docked = block(".grid:has(> .ns-ai-dock) .cv-deck .cv-kbtn.is-primary");
-    expect(docked).toContain("flex-basis: max-content");
-    expect(docked).toContain("min-width: min-content");
+    // No docked max-content rule: it was never shown to fix anything (the +101px does not reproduce on main) and it can push the key
+    // past the viewport when the Library is also open (Pixel on #932, 1440 docked + Library).
+    expect(css).not.toContain(".grid:has(> .ns-ai-dock) .cv-deck .cv-kbtn.is-primary");
     expect(css).not.toMatch(/\.cv-deck[^{}]*dock-quote[^{}]*\{[^{}]*flex:\s*none/);
   });
-  it("keeps Create as the only filled primary action when the phone dock asks for a step", () => {
-    const selector = '.cv-flow-dock .cv-kbtn.is-primary[data-state="choose"]';
-    expect(css).toMatch(/@media \(max-width: 760px\) \{\s*\/\*[^]*?\*\/\s*\.cv-flow-dock \.cv-kbtn\.is-primary\[data-state="choose"\]/);
+  it("keeps Create as the only filled primary action while the tab bar is visible", () => {
+    const selector = ':is(.cv-deck, .cv-flow-dock) .cv-kbtn.is-primary[data-state="choose"]';
+    const quiet = css.match(/@media \(max-width: 1023px\) \{\s*\/\*[^]*?\*\/\s*([^{}]+)\{/);
+    expect(quiet?.[1].trim()).toBe(selector);
     expect(block(selector)).toContain("background: var(--key)");
     expect(block(`${selector}:hover`)).toContain("background: var(--key-hi)");
   });

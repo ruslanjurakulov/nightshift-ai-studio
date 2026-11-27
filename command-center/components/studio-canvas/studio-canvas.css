@@ -635,7 +635,6 @@ main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-heigh
 .cv-port:hover::before { outline: 2px solid var(--pc); outline-offset: 3px; }
 .react-flow__handle.cv-port.connectingto::before,
 .react-flow__handle.cv-port.valid::before { outline: 2px solid var(--amber); outline-offset: 4px; }
-.react-flow__handle.cv-port:focus-visible::before { outline: 2px solid var(--ds-focus); outline-offset: 3px; }
 .cv-port > span { pointer-events: none; }
 
 /* ── minimap: glass, in a corner Fit keeps clear, collapsible ─────────────── */
@@ -677,10 +676,9 @@ main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-heigh
   pointer-events: none;
 }
 .cv-dockwrap[data-drawer] { left: calc(var(--drawer-w) + 22px); }
-@container (max-width: 940px) {
-  /* The open Library takes a column out of the dock even when the board still fits one row. */
-  .cv-dockwrap[data-drawer] .cv-deck { flex-wrap: wrap; height: auto; padding: 6px; }
-}
+/* The open Library takes a column out of the dock even when the board still fits one row. */
+.cv-dockwrap[data-drawer] .cv-deck { flex-wrap: wrap; height: auto; padding: 6px; }
+.cv-dockwrap[data-drawer] .cv-qnote { display: none; }
 .cv-deck {
   display: flex;
   flex: none;
@@ -1335,21 +1333,14 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   text-align: center;
   line-height: 1.15;
 }
-@media (min-width: 1024px) {
-  /* The docked panel can leave too little room for the long label beside the zoom controls. */
-  .grid:has(> .ns-ai-dock) .cv-deck .cv-kbtn.is-primary {
-    flex-basis: max-content;
-    min-width: min-content;
-  }
-}
-@media (max-width: 760px) {
-  /* Choosing a step competed with the tab bar's Create action on phones. */
-  .cv-flow-dock .cv-kbtn.is-primary[data-state="choose"] {
+@media (max-width: 1023px) {
+  /* Choosing a step competes with Create wherever the tab bar is visible. */
+  :is(.cv-deck, .cv-flow-dock) .cv-kbtn.is-primary[data-state="choose"] {
     color: var(--text);
     border-color: var(--edge);
     background: var(--key);
   }
-  .cv-flow-dock .cv-kbtn.is-primary[data-state="choose"]:hover { background: var(--key-hi); }
+  :is(.cv-deck, .cv-flow-dock) .cv-kbtn.is-primary[data-state="choose"]:hover { background: var(--key-hi); }
 }
 /* Below lg the Nightshift AI panel stacks above the canvas. While the person is typing in it (focus inside), the canvas's dock and
    lane step aside, so nothing of the canvas can sit on its box, its Send key or its "nothing is charged" note while a phone's
