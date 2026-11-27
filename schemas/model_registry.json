@@ -4960,6 +4960,11 @@
       "aspect_ratios": [],
       "resolutions": [],
       "durations_s": [],
+      "languages": [
+        "uz",
+        "ru",
+        "en"
+      ],
       "audio_out": false,
       "async": false,
       "api_documented": {
@@ -5014,6 +5019,11 @@
       "aspect_ratios": [],
       "resolutions": [],
       "durations_s": [],
+      "languages": [
+        "uz",
+        "ru",
+        "en"
+      ],
       "audio_out": false,
       "async": false,
       "api_documented": {
@@ -5067,6 +5077,10 @@
       "aspect_ratios": [],
       "resolutions": [],
       "durations_s": [],
+      "languages": [
+        "ru",
+        "en"
+      ],
       "audio_out": false,
       "async": false,
       "api_documented": {
@@ -5120,6 +5134,10 @@
       "aspect_ratios": [],
       "resolutions": [],
       "durations_s": [],
+      "languages": [
+        "ru",
+        "en"
+      ],
       "audio_out": false,
       "async": false,
       "api_documented": {
