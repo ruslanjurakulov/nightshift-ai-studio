@@ -2906,7 +2906,8 @@
         "Same e-mail: 'Entry for application when required: https://platform.minimax.io/console/license'. The owner decided on 2026-11-13 that Nightshift is far below both thresholds.",
         "That e-mail answers the owner's question of 2026-11-11 (to contact.nanonoble@minimax.io): may we sell Hailuo 2.3, H3, H3 Lite and H3 Max to our users for credits inside our own app under 7(c)? It does not quote ToS 7(c).",
         "On that answer the owner cleared terms_gate on 2026-11-13 for every MiniMax video model, H3 Highspeed included (owner decided on 2026-11-13). Re-apply at the console link before annual revenue nears USD 20M (video).",
-        "On sale (beta) since migration 0173 (2026-11-13) priced from credit_prices per resolution, entitlement open (null). Done before that sale: MiniMax's training use is named in the Privacy Policy (processors); per-resolution pricing (0149). Still NOT verified: Uzbekistan billing."
+        "On sale (beta) since migration 0173 (2026-11-13) priced from credit_prices per resolution, entitlement open (null). Done before that sale: MiniMax's training use is named in the Privacy Policy (processors); per-resolution pricing (0149). Still NOT verified: Uzbekistan billing.",
+        "audio_out means an audio track is always returned, not that the clip has sound: measured near-silent (mean −44 to −56 dB) in 4 of 19 H3 clips (S11, 2026-11-27) — never advertise as 'with sound' from the spec alone"
       ],
       "attribution": null,
       "api_exposure": "web_only",
