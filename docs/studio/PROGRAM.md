@@ -97,6 +97,8 @@ all behave. Every screen on the way meets S5's bar.
 
 **creative_price apply order (22 Nov):** 0208 (live) → 0218 → 0219 → 0224. 0224 re-points onto 0218's body; 0218's drift guard also accepts the 0208+0224 body, so either order is safe. 0222 is live.
 
+**0218 live sequence (S9, 27 Nov):** merge #930 before #931 (F2 closes on MCP/API only through #930's TS fix); then merge #931 → run Probe models `--sync` from main (writes takes_negative_prompt) → apply 0218 (it refuses before the sync). If 0218 lands before 0224, 0224's guard must accept 0218's body (34ae574d…) and produce d3e0c73c…, never 0208's body plus its line.
+
 ## Migration numbers assigned (provisional; Atlas renumbers at merge)
 | No. | Stream | What |
 | :-- | :-- | :-- |
