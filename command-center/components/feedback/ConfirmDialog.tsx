@@ -43,9 +43,10 @@ export interface ConfirmOptions {
    * The work itself. With it the sheet stays open while it runs: both keys lock
    * (a second tap does nothing), the key shows a spinner, and a failure — `false`,
    * a returned message or a throw — is shown in the sheet with the keys live
-   * again. Resolves the confirm as `true` only once the work succeeded.
+   * again. Receives the input verbatim (empty when no text is requested).
+   * Resolves the confirm as `true` only once the work succeeded.
    */
-  run?: () => Promise<boolean | string | void>;
+  run?: (typed: string) => Promise<boolean | string | void>;
   /** Shown as a toast once `run` has succeeded (so the result is seen after the sheet closes). */
   successMessage?: string;
 }
@@ -142,7 +143,7 @@ export function ConfirmDialog({
     setFailure(null);
     let problem: string | null = null;
     try {
-      const out = await options.run();
+      const out = await options.run(typed);
       if (out === false) problem = t.ownerSafety.actionFailed;
       else if (typeof out === "string" && out) problem = out;
     } catch {

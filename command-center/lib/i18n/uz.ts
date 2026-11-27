@@ -1568,10 +1568,29 @@ export const uz: Dictionary = {
     termsGate: "Yetkazib beruvchi shartlari hali bajarilmagan ({gate}) — taklif qilib boʻlmaydi.",
     terms: {
       link: "Yetkazib beruvchi shartlarini oʻqish",
-      accept: "Shartlarni oʻqidim — sotishga ruxsat berish",
       confirmTitle: "{model} modeli shartlarini qabul qilasizmi?",
-      confirmMessage: "{gate} shartlarini oʻqiganingizni tasdiqlang. Sinov muvaffaqiyatli oʻtgach va narx belgilanganidan keyin modelni mavjudlik sozlamasi orqali taklif qiling.",
-      confirm: "Shartlarni qabul qilish",
+      requirements: {
+        review: {
+          label: "Yetkazib beruvchi shartlarini koʻrib chiqish",
+          accept: "Yetkazib beruvchining shartlarini oʻqidim",
+          confirmMessage: "Modeldan shu tarzda foydalanish uchun yetkazib beruvchining shartlarini oʻqiganingizni tasdiqlang.",
+        },
+        consent: {
+          label: "Yetkazib beruvchining yozma roziligi",
+          accept: "Yetkazib beruvchining yozma roziligi menda bor",
+          confirmMessage: "Bu modelni foydalanuvchilarga taklif qilish uchun yetkazib beruvchining yozma roziligini olganingizni tasdiqlang.",
+        },
+        plan: {
+          label: "{plan} tarifi",
+          accept: "Yetkazib beruvchi hisobida {plan} tarifi bor",
+          confirmMessage: "Yetkazib beruvchi hisobi {plan} tarifida ekanini tasdiqlang.",
+        },
+        other: {
+          label: "{requirement}",
+          accept: "Bu talabni tekshirdim: {requirement}",
+          confirmMessage: "Bu talabni tekshirganingizni tasdiqlang: {requirement}.",
+        },
+      },
       previousAcceptance: "Avvalgi shartlar ({gate}) {date} kuni qabul qilingan",
       acceptedByYou: "Shartlarni {date} kuni qabul qilgansiz",
       accepted: "Platforma egasi shartlarni {date} kuni qabul qilgan",
@@ -1589,8 +1608,8 @@ export const uz: Dictionary = {
         forbidden: "Shartlarni qabul qilishni boshqarish uchun platforma egasi sifatida kiring.",
         bytedance: "Platforma egasining qaroriga koʻra, ByteDance modellari sotuvga chiqarilmaydi.",
         not_found: "Modellar sahifasini yangilang va roʻyxatda bor modelni tanlang.",
-        gate_changed: "Qabul qilishdan oldin sahifani yangilang va yetkazib beruvchining amaldagi shartlarini oʻqing.",
-        not_accepted: "Shartlarning joriy holatini koʻrish uchun sahifani yangilang.",
+        gate_changed: "Yetkazib beruvchining talabi oʻzgardi. Bu oynani yoping va amaldagi talabni koʻrib chiqing.",
+        not_accepted: "Shartlarning joriy holatini koʻrish uchun bu oynani yoping.",
         not_enabled: "Shartlarni qabul qilishni boshqarish uchun 0227-migratsiyani qoʻllang.",
         not_configured: "Supabaseʼni sozlang, keyin modellar sahifasini yangilang.",
         write_failed: "Shartlarni qabul qilish saqlanmadi. Sahifani yangilang va qayta urinib koʻring.",

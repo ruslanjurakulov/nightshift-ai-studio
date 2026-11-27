@@ -57,6 +57,20 @@ describe("model terms POST", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
+  it.each([undefined, "", 123])("rejects an invalid gate (%s)", async (gate) => {
+    const response = await post({ ...acceptance, gate });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "bad_gate" });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it.each(["gate", "confirm"] as const)("rejects revocation with %s", async (field) => {
+    const response = await post({ id: acceptance.id, revoke: true, [field]: acceptance[field] });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "bad_request" });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it("accepts the named gate through the session RPC and audits it", async () => {
     expect((await post(acceptance)).status).toBe(200);
     expect(rpc).toHaveBeenCalledWith("owner_accept_model_terms", {
@@ -78,6 +92,7 @@ describe("model terms POST", () => {
   });
 
   it.each([
+    ["22023", 400, "bad_confirm"],
     ["P0002", 404, "not_found"],
     ["P2271", 403, "bytedance"],
     ["P2272", 409, "gate_changed"],

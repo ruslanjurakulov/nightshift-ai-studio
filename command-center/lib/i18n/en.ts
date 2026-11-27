@@ -1587,10 +1587,29 @@ export const en = {
     termsGate: "Vendor terms not yet satisfied ({gate}) — cannot be offered.",
     terms: {
       link: "Read vendor terms",
-      accept: "I've read the terms — allow sale",
       confirmTitle: "Accept terms for {model}?",
-      confirmMessage: "Confirm that you reviewed {gate}. Use Availability to offer the model once it has a successful probe and a price.",
-      confirm: "Accept terms",
+      requirements: {
+        review: {
+          label: "Vendor terms review",
+          accept: "I reviewed the vendor's terms",
+          confirmMessage: "Confirm that you read the vendor's terms for this use.",
+        },
+        consent: {
+          label: "Vendor written consent",
+          accept: "I hold the vendor's written consent",
+          confirmMessage: "Confirm that you hold the vendor's written consent to offer this model to users.",
+        },
+        plan: {
+          label: "{plan} plan",
+          accept: "The vendor account has the {plan} plan",
+          confirmMessage: "Confirm that the vendor account is on the {plan} plan.",
+        },
+        other: {
+          label: "{requirement}",
+          accept: "I checked this requirement: {requirement}",
+          confirmMessage: "Confirm that you checked this requirement: {requirement}.",
+        },
+      },
       previousAcceptance: "Previous terms ({gate}) were accepted on {date}",
       acceptedByYou: "Terms accepted by you on {date}",
       accepted: "Terms accepted by the platform owner on {date}",
@@ -1608,8 +1627,8 @@ export const en = {
         forbidden: "Sign in as the platform owner to change terms acceptance.",
         bytedance: "ByteDance models stay off sale by the platform owner's decision.",
         not_found: "Reload the model board and select a model that is still in the registry.",
-        gate_changed: "Reload the model board and review the current vendor terms before accepting.",
-        not_accepted: "Reload the model board to see the current terms status.",
+        gate_changed: "The vendor requirement changed. Close this dialog and review the current requirement.",
+        not_accepted: "Close this dialog to see the current terms status.",
         not_enabled: "Apply migration 0227 to manage model terms acceptance.",
         not_configured: "Configure Supabase, then reload the model board.",
         write_failed: "Couldn't save terms acceptance. Reload the model board and try again.",

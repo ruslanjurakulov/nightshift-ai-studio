@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TriangleAlert } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
-import { fmt } from "@/lib/i18n";
+import { fmt, type Dictionary } from "@/lib/i18n";
 import { relativeTime } from "@/lib/format";
 import { formatCredits } from "@/lib/credits";
 import { useChannelPath } from "@/lib/channels-client";
@@ -270,6 +270,22 @@ function ModelCard({
   );
 }
 
+function requirementCopy(gate: string, copy: Dictionary["models"]["terms"]["requirements"]) {
+  if (gate === "terms_review_required") return copy.review;
+  if (gate === "written_consent_required") return copy.consent;
+
+  const planToken = /^plan_required:(.+)$/.exec(gate)?.[1];
+  const words = (planToken ?? gate).replace(/[_:-]+/g, " ").trim();
+  const label = words.charAt(0).toUpperCase() + words.slice(1);
+  const templates = planToken ? copy.plan : copy.other;
+  const vars: Record<string, string> = planToken ? { plan: label } : { requirement: label };
+  return {
+    label: fmt(templates.label, vars),
+    accept: fmt(templates.accept, vars),
+    confirmMessage: fmt(templates.confirmMessage, vars),
+  };
+}
+
 function ModelTerms({
   model,
   acceptance,
@@ -287,21 +303,24 @@ function ModelTerms({
   const { confirm, dialog } = useConfirm();
   const c = t.models.terms;
   const gate = model.termsGate;
+  const requirement = gate ? requirementCopy(gate, c.requirements) : null;
   const blockedProvider = model.provider === "bytedance";
 
   async function change(revoke: boolean) {
-    if (disabled || !canManage || (revoke ? !acceptance : !gate || blockedProvider)) return;
+    if (disabled || !canManage || (revoke ? !acceptance : !requirement || blockedProvider)) return;
+    const action = revoke ? null : requirement;
     const revokeMessage = gate ? c.revokePreviousMessage : c.revokeMessage;
     const ok = await confirm({
       title: fmt(revoke ? c.revokeTitle : c.confirmTitle, { model: model.displayName }),
-      message: revoke ? revokeMessage : fmt(c.confirmMessage, { gate: gate ?? "" }),
-      confirmLabel: revoke ? c.revoke : c.confirm,
+      message: action?.confirmMessage ?? revokeMessage,
+      confirmLabel: action?.accept ?? c.revoke,
       tone: revoke ? "danger" : "primary",
       ...(revoke ? {} : { typeToConfirm: model.id, exactConfirmation: true }),
-      run: async () => {
-        const out = await postOperator("/api/models/terms", revoke ? { id: model.id, revoke: true } : { id: model.id, gate, confirm: model.id });
+      run: async (typed) => {
+        const out = await postOperator("/api/models/terms", revoke ? { id: model.id, revoke: true } : { id: model.id, gate, confirm: typed });
         if (out.ok) return true;
         const code = out.data.error;
+        if (code === "gate_changed" || code === "not_accepted") refresh();
         if (typeof code === "string" && Object.hasOwn(c.errors, code)) return c.errors[code as keyof typeof c.errors];
         return operatorFailureText(t, out, c.errors.write_failed);
       },
@@ -312,20 +331,20 @@ function ModelTerms({
 
   return (
     <div className="flex flex-col items-start gap-2">
-      {gate && <p className="g2-warn break-words">{fmt(t.models.termsGate, { gate })}</p>}
+      {requirement && <p className="g2-warn break-words">{fmt(t.models.termsGate, { gate: requirement.label })}</p>}
       {acceptance && (
         <p className={gate ? "g2-note" : "g2-ok"}>
           {fmt(gate ? c.previousAcceptance : acceptance.acceptedByYou ? c.acceptedByYou : c.accepted, {
-            gate: acceptance.gate,
+            gate: requirementCopy(acceptance.gate, c.requirements).label,
             date: new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "UTC" }).format(new Date(acceptance.acceptedAt)),
           })}
         </p>
       )}
       {model.termsUrl && <a href={model.termsUrl} target="_blank" rel="noopener noreferrer" className="tap-link g2-link text-sm">{c.link}</a>}
       {gate && blockedProvider && <p className="g2-note">{c.errors.bytedance}</p>}
-      {canManage && gate && !blockedProvider && (
+      {canManage && requirement && !blockedProvider && (
         <button type="button" disabled={disabled} className="btn-quiet min-h-11 px-3 text-sm" onClick={() => void change(false)}>
-          {c.accept}
+          {requirement.accept}
         </button>
       )}
       {canManage && acceptance && (
