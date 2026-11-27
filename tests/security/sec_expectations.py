@@ -868,3 +868,9 @@ sec_film_resume_0215.extend(TABLES, FUNCTIONS)
 import sec_org_spender_0226  # noqa: E402
 
 sec_org_spender_0226.extend(TABLES, FUNCTIONS)
+
+# Migration 0231 (cancel audit: a workflow step's job asks the run's rule, every cancel recorded, no browser-written cancel row):
+# tests/security/sec_cancel_audit_0231.py. No table and no function of its own.
+import sec_cancel_audit_0231  # noqa: E402
+
+sec_cancel_audit_0231.extend(TABLES, FUNCTIONS)

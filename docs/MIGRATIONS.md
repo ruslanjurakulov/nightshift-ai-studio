@@ -2869,3 +2869,30 @@ found no non-member staff activity on any of these paths in production.
 - **Requires** 0215 (`is_org_spender`) and the files above.
 - **Undo.** `docs/sql/rollback_0226_org_spender_everywhere.sql` (owner-applied): the twenty-eight earlier bodies back, verbatim, with
   their grants. It adds nothing else, so nothing else is undone.
+
+## Stopping something is recorded, and a workflow run is stopped only by its own rule (0231, provisional)
+
+0231 (`0231_cancel_audit.sql`) closes Breach 0226-R3-1 (BR-0226-31, medium, pre-existing since 0073/0198) and 0226-R3-2
+(BR-0226-32, low), both found
+attacking 0226's "the database records who stopped a run" (`docs/security/LEDGER.md`).
+
+- **`cancel_creative_job`** (0198's body, two marked hunks). A job that is a workflow run's step asks an editor of the organization,
+  the rule `cancel_workflow_run` uses: before 0231 any seat (a viewer's) cancelled it, and the run ended at its next advance. Platform
+  staff pass it, as they pass `cancel_workflow_run`'s (they may restrict a customer's run, never widen it). Any other job keeps
+  0036's rule: a viewer still cancels an ordinary job. The refusal (`forbidden`, 42501) comes before the account lock, the job's row
+  lock or anything written.
+- **The record.** Every cancel that happened writes a `creative.cancel` row in `app_audit_log`: the signed-in person (the stamp
+  trigger writes the confirmed e-mail), the job and its organization. A job that had already ended answers as before and writes
+  nothing. `cancel_workflow_run` calls it for the run's running step, so stopping a run writes both rows, by the same person. The
+  creative job route no longer writes its own row (it had no channel, so 0087's policy refused it for every customer).
+- **No browser-written cancel row.** A restrictive insert policy, `app_audit_log_no_cancel_rows`, refuses `workflow.cancel` and
+  `creative.cancel` to a browser's own insert. The two functions write as the table's owner, which row security does not ask (the
+  table does not force it), so their rows land; every other action keeps 0087's rule. The actions stay on 0087's list, because
+  `app_audit_log_stamp` checks it for the definer's insert too. No other app code writes either action.
+- **Requires** 0226 (its `cancel_workflow_run`, md5 `427ead0896b4881c0739b944997c6b50`; the guard asks for it), 0087, 0198.
+- **Replay.** The file replays onto itself. Re-running 0036 after it silently puts 0036's body back (apply 0231 again after);
+  re-running 0198 fails loudly. 0198's rollback refuses while 0231 is on (`sec_db.take_off_0226` takes 0231 off first).
+- **Undo.** `docs/sql/rollback_0231_cancel_audit.sql` (owner-applied): 0198's body back, verbatim, and the policy dropped. The rows
+  written stay: they are the record of who cancelled.
+- **Lab.** `tests/security/test_sec_cancel_audit_0231.py` (Breach's round-3 pins, the four callers, the migration's guard, replay and
+  rollback, sec_db's chain).

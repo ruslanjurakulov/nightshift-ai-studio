@@ -420,6 +420,8 @@ ON_0139 = (*(f for f in ON_0139 if f != "0219_oauth_creative_operator_models.sql
 #: 0226 (only a member spends, on every path) replaces 0192's create_creative_job and start_workflow_run and calls 0215's
 #: is_org_spender, and refuses to apply without 0215: after it, in both lists, for the same reason.
 ON_0139 = (*ON_0139, "0226_org_spender_everywhere.sql")
+#: 0231 (cancel audit) asks for 0226's cancel_workflow_run and refuses to apply without it: after it, in both lists.
+ON_0139 = (*ON_0139, "0231_cancel_audit.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
@@ -436,6 +438,8 @@ ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164
            "0215_film_archive_resume.sql",
            # 0226 sits on 0215 (is_org_spender) and 0192's bodies, and on nothing of 0208's or 0218's: out and back after 0215.
            "0226_org_spender_everywhere.sql",
+           # 0231 asks for 0226's cancel_workflow_run: out and back right after it.
+           "0231_cancel_audit.sql",
            # 0218 sits on 0208's creative_price and creative_params_problem: out and back with it, after it.
            "0218_creative_prompt_limits.sql",
            # 0219 replaces 0192's and 0191's oauth_creative_* bodies and refuses to apply without 0218: last.
@@ -1167,6 +1171,7 @@ def take_off_0226(conn_or_session) -> None:
     whose bodies it replaced, refuse while it is on, and 0215's rollback drops what it calls: take_off_0215 takes it off first
     (take_off_0198, take_off_0192, take_off_0187 and take_off_0171 reach it through it), and so do the take-offs of the other files."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0231(conn)  # 0231 asks for 0226's cancel_workflow_run: off first
     if has_0226(conn):
         # Whole first (its guard takes a mix of the earlier and its own bodies), so that its rollback, which asks for all twenty-eight, runs.
         conn.execute(MIGRATION_0226.read_text(encoding="utf-8"))
@@ -1183,6 +1188,39 @@ def put_back_0226(conn_or_session) -> None:
     session = SimpleSession(conn)
     if all(_live_md5(session, sig) in (was, now_) for sig, _role, _src, was, now_ in _0226_paths()):
         conn.execute(MIGRATION_0226.read_text(encoding="utf-8"))
+    put_back_0231(conn)
+
+
+MIGRATION_0231 = MIGRATIONS / "0231_cancel_audit.sql"
+ROLLBACK_0231 = REPO / "docs" / "sql" / "rollback_0231_cancel_audit.sql"
+#: cancel_creative_job's bodies: 0198's (what 0231 replaces, and what 0198's rollback asks for) and 0231's.
+CANCEL_CREATIVE_JOB_0198 = "2720d62c17ae26bce439a28280964575"
+CANCEL_CREATIVE_JOB_0231 = "c210f8e4684e154d40f7029b5c94b893"
+
+
+def has_0231(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return _live_md5(SimpleSession(conn), "public.cancel_creative_job(uuid)") == CANCEL_CREATIVE_JOB_0231
+
+
+def take_off_0231(conn_or_session) -> None:
+    """0231 (a workflow step's job is cancelled by the run's rule, every cancel recorded, a browser writes no cancel row) replaces
+    0198's cancel_creative_job, which 0198's rollback and guard refuse, and asks for 0226's cancel_workflow_run: take_off_0226 takes
+    it off first (take_off_0215 and take_off_0198 reach it through it)."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0231(conn):
+        text = ROLLBACK_0231.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0231(conn_or_session) -> None:
+    """0231 again, when it is not on and its guard would take it: 0226's cancel_workflow_run live and cancel_creative_job 0198's."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    session = SimpleSession(conn)
+    if (not has_0231(conn) and has_0226(conn)
+            and _live_md5(session, "public.cancel_creative_job(uuid)") == CANCEL_CREATIVE_JOB_0198
+            and _live_md5(session, "public.cancel_workflow_run(uuid)") == "427ead0896b4881c0739b944997c6b50"):
+        conn.execute(MIGRATION_0231.read_text(encoding="utf-8"))
 
 
 class SimpleSession:
