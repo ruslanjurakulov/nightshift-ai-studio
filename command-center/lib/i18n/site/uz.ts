@@ -141,6 +141,8 @@ export const siteUz: SiteDictionary = {
   },
   fx: {
     pause: "Harakatni toʻxtatish",
+    /** The title of the models strip (ModelMarquee): models that made a sample on this page; never "partners". */
+    modelsTitle: "Nightshift Studioʼdagi modellar",
   },
   bar: {
     label: "Tez boshlash",
@@ -149,6 +151,7 @@ export const siteUz: SiteDictionary = {
     dismiss: "Bu panelni yashirish",
   },
   samples: {
+    sound: "Klip ovozi",
     tag: "Namuna kadr (stok surat)",
     frameTag: "Namuna kadr (stok video)",
     clipTag: "Namuna klip (stok video)",

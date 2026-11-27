@@ -62,7 +62,7 @@ export function AuthShell({
       </a>
       <aside className="st-auth-aside" aria-label={asideTitle} data-photo={photo} {...placeBox(m)}>
         {/* A picture behind the house rules (decorative: darkened under the words, credited below); the flow card on it is the example. */}
-        <PlaceFill media={m} s={t.site} alt="" className="nx-aside-bg" eager early labels={false} sizes="(min-width: 960px) 900px, 1px" />
+        <PlaceFill media={m} s={t.site} alt="" className="nx-aside-bg" eager early labels={false} sound={false} sizes="(min-width: 960px) 900px, 1px" />
         {moving && <ClipPause label={t.site.fx.pause} />}
         <Link href="/" className="st-brand self-start" aria-label={t.brand.name}>
           <Wordmark />
@@ -121,7 +121,7 @@ export function AuthShell({
             pushed "Continue with Google" and the e-mail field below the fold of a 390x844 phone: the form comes first.
             Off the first screen now, so its picture loads lazily and does not compete with the form. */}
         <div className="nx-auth-band mt-4 lg:hidden" data-photo={photo} {...placeBox(m)}>
-          <PlaceFill media={m} s={t.site} alt="" labels={m.kind === "stock"} sizes="(max-width: 959px) 100vw, 1px" />
+          <PlaceFill media={m} s={t.site} alt="" labels={m.kind === "stock"} sound={false} sizes="(max-width: 959px) 100vw, 1px" />
           {moving && <ClipPause label={t.site.fx.pause} />}
           {m.kind === "ai" && <AiBadge g={t.site.gallery} className="nx-ai-credit nx-result-ai" />}
           <Link href="/" className="st-brand" aria-label={t.brand.name}>

@@ -155,6 +155,8 @@ export const siteEn = {
   },
   fx: {
     pause: "Pause motion",
+    /** The title of the models strip (ModelMarquee): models that made a sample on this page; never "partners". */
+    modelsTitle: "Models in Nightshift Studio",
   },
   bar: {
     label: "Quick start",
@@ -163,6 +165,11 @@ export const siteEn = {
     dismiss: "Hide this bar",
   },
   samples: {
+    /**
+     * The speaker toggle on a clip that has sound (components/site/SoundToggle.tsx): a toggle button, so one name and aria-pressed
+     * say whether it is on. Shown only where the clip's files carry an audio track.
+     */
+    sound: "Clip sound",
     tag: "Example frame (stock photo)",
     frameTag: "Example frame (stock footage)",
     clipTag: "Example clip (stock footage)",

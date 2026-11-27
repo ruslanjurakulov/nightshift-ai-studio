@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import { useI18n } from "@/lib/i18n/context";
 import { filmStudioStrings } from "@/lib/i18n/film-studio";
 import { useChannelPath } from "@/lib/channels-client";
+import { pluralText } from "@/lib/plural";
 import { refreshCredits } from "@/lib/credits-live";
 import { filmErrorFromResponse, newIdempotencyKey, type FilmError } from "@/lib/films";
 import { assembleLabel, coerceQuote, coerceStart, startOnce, type FilmQuote, type StartOutcome } from "@/lib/studio/timeline";
@@ -263,9 +264,9 @@ export function AssemblePanel({
       {phase.at === "confirm" && (
         <ConfirmDialog
           title={c.confirmTitle}
-          body={fmt(c.confirmBody, { n: String(phase.quote.total) })}
+          body={pluralText(c.confirmBody, phase.quote.total ?? 0, locale)}
           cancel={c.cancel}
-          confirm={fmt(c.confirm, { n: String(phase.quote.total) })}
+          confirm={pluralText(c.confirm, phase.quote.total ?? 0, locale)}
           onCancel={() => setPhase({ at: "quoted", quote: phase.quote })}
           onConfirm={() => void start(phase.quote)}
         />

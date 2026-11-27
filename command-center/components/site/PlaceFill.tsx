@@ -102,6 +102,7 @@ export function PlaceFill({
   compact = false,
   sizes = "100vw",
   labels = true,
+  sound = true,
 }: {
   media: PlaceMedia;
   s: PlaceCopy;
@@ -113,6 +114,8 @@ export function PlaceFill({
   compact?: boolean;
   sizes?: string;
   labels?: boolean;
+  /** False for a decorative backdrop (the sign-in and sign-up stages): its clip offers no sound toggle. */
+  sound?: boolean;
 }) {
   const description = alt ?? placeAlt(m, s);
   if (m.kind === "ai") {
@@ -134,7 +137,7 @@ export function PlaceFill({
           style={m.position ? { objectPosition: m.position } : undefined}
           {...(eager ? { fetchPriority: "high" as const } : {})}
         />
-        {m.moving && <ShowcaseClip jobId={entry.jobId} early={early} compact={compact} position={m.position} />}
+        {m.moving && <ShowcaseClip jobId={entry.jobId} early={early} compact={compact} position={m.position} soundToggle={sound} />}
         {labels && <span className="nx-result-badge" data-kind="ai"><AiMark short={s.gallery.badge} name={s.gallery.badgeName} /></span>}
       </>
     );
