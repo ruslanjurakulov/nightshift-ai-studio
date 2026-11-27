@@ -204,7 +204,17 @@ class Numbering(unittest.TestCase):
         # extended) was reviewed the same way: it replaces and alters nothing these pin.
         # 0205 (publish to platforms: replaces only publish_request_refusal, which none of these pins name; reads
         # videos.gate_verdict) was reviewed the same way.
-        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194", "0195", "0196", "0197", "0198", "0199", "0200", "0201", "0202", "0203", "0204", "0205", "0209")], [], "a later number needs its own review of this file's pins")
+        # 0215 (Film Studio archive, resume and assembly re-run: three admin calls and internal helpers; marked hunks in 0166's film_read and
+        # archive_film and 0198's start_film, film_claim_segment and claim_creative_job; columns on film_segments, film_takes,
+        # film_quotes) was reviewed the same way: it names nothing these pin.
+        # 0208 (the database's country gate and the price by picture size: one trigger on creative_jobs, two new functions, marked
+        # hunks in creative_params_problem, creative_price, creative_regions_problem and reroute_creative_job) was reviewed the same
+        # way: it names nothing these pin.
+        # 0222 (retires gemini-omni-1.1-flash: one UPDATE of model_registry.availability, no function or table) names nothing
+        # these pin.
+        # 0212 (the recorded film sweep: one closed table, two service-role functions over 0171's film_expire_segments, a pg_cron
+        # job where installed; replaces nothing) was reviewed the same way: it names nothing these pin.
+        self.assertEqual([n for n in numbers if n > "0131" and n not in ("0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194", "0195", "0196", "0197", "0198", "0199", "0200", "0201", "0202", "0203", "0204", "0205", "0208", "0209", "0222", "0212", "0215")], [], "a later number needs its own review of this file's pins")
         # 0199 (Nightshift AI: new ai_chat_* tables and their functions; replaces no body, names nothing these pin) was
         # reviewed the same way.
         # 0203 (the owner AI's turn log: one closed table and two owner-only functions; replaces nothing) was reviewed the same way.

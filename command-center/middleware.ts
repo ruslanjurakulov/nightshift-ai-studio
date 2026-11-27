@@ -31,6 +31,7 @@ import { customVoiceDecision, customVoiceEnabled } from "@/lib/custom-voice";
 import { ENROL_PATH, MFA_VERIFY_PATH, isEnrolOnlyPath, parseAdminMfaMode } from "@/lib/security/admin-mfa";
 import { mfaMiddlewareAction, type MfaMiddlewareClient } from "@/lib/security/mfa-middleware";
 import { buildCsp, cspHeaderName, cspMode, makeNonce, reportUri } from "@/lib/security/csp";
+import { stripMiddlewareOwnedHeaders } from "@/lib/security/internal-headers";
 import {
   FRAME_SRC_HEADER,
   VIEW_COOKIE,
@@ -87,9 +88,11 @@ function channelRedirect(request: NextRequest): URL | null {
  * (`default-src 'none'; sandbox`), and a second policy is not needed there.
  */
 export async function middleware(request: NextRequest) {
-  // The Mobile / Desktop view (lib/view-mode.ts). The header the layout reads to draw the phone frame is ours
-  // alone: whatever a client sent under that name is dropped before anything is decided.
-  request.headers.delete(FRAME_SRC_HEADER);
+  // The channel, path, search, phone-frame and CSP request headers are ours alone (lib/security/internal-headers.ts):
+  // whatever a client sent under those names is dropped before anything is decided, so every return below, early or
+  // not, forwards only values this function set. A spoofed `x-nightshift-channel` once reached /pricing untouched.
+  stripMiddlewareOwnedHeaders(request.headers);
+  // The Mobile / Desktop view (lib/view-mode.ts): the header the layout reads to draw the phone frame.
   const fetchDest = request.headers.get("sec-fetch-dest");
   const pathname = request.nextUrl.pathname;
   const frameSrc = frameSrcFor({
@@ -212,10 +215,11 @@ async function gate(request: NextRequest): Promise<NextResponse> {
     return NextResponse.next({ request });
   }
   // The public API authenticates its own bearer key (lib/public-paths.ts);
-  // there is no session to refresh and nothing to redirect.
-  if (isPublicApiPath(request.nextUrl.pathname)) return NextResponse.next();
+  // there is no session to refresh and nothing to redirect. `{ request }` even so: a bare next() forwards the
+  // client's ORIGINAL headers, so the strip at the top of middleware() would not reach the handler.
+  if (isPublicApiPath(request.nextUrl.pathname)) return NextResponse.next({ request });
   // A signed media link carries its own authorization (lib/server/media.ts).
-  if (isSignedMediaPath(request.nextUrl.pathname)) return NextResponse.next();
+  if (isSignedMediaPath(request.nextUrl.pathname)) return NextResponse.next({ request });
   // A review link carries its own authorization too (its token, checked by the database): no session to
   // refresh, and none to spend a round trip on for every range a phone asks for.
   if (isReviewLinkPath(request.nextUrl.pathname)) return NextResponse.next({ request });

@@ -18,6 +18,7 @@ vi.mock("next/link", () => ({
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, fmt, type Locale } from "@/lib/i18n";
 import { Landing } from "@/components/landing/Landing";
+import { Showcases } from "@/components/landing/Showcases";
 import { PricingView } from "@/components/pricing/PricingView";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import type { MoneyAnchor, PricingTeaser } from "@/lib/landing";
@@ -28,6 +29,7 @@ import { GALLERY, SAMPLE_CARD, outsideGallery, landingSamples, makerCreditProble
 import { slotMedia } from "@/components/site/samples";
 import { EXAMPLE_JOBS, EXAMPLE_THUMB_JOB } from "@/components/site/samples";
 import { stockInUse } from "@/components/site/stock-in-use";
+import { aiMarkOf } from "./helpers/ai-mark";
 
 afterEach(cleanup);
 
@@ -63,19 +65,22 @@ function catalog() {
 }
 
 describe("public landing page", () => {
-  it("has one h1 with the promise and a heading for every section (six blocks in a single column)", () => {
+  it("has one h1 with the promise and a heading for every section, each idea once", () => {
     const t = dictionaries.en;
     const s = t.site;
     renderLanding({ kind: "announced" });
     const h1s = screen.getAllByRole("heading", { level: 1 });
     expect(h1s).toHaveLength(1);
-    expect(h1s[0].textContent).toBe(`${s.hero.titleA} ${s.hero.titleB}`);
-    const showTitles = ["studio", "approvals"].map((id) => s.caps.items.find((i) => i.id === id)!.title);
-    for (const title of [s.how.simple.title, ...showTitles, s.try.title, s.pricingTeaser.title, t.landing.faq.title, s.final.title]) {
-      expect(screen.getByRole("heading", { level: 2, name: title })).toBeTruthy();
+    // The first screen the owner kept (components/landing/home/HomeHero.tsx): its one sentence is the page's h1.
+    expect(h1s[0].textContent).toBe(t.landingHome.hero.title);
+    for (const title of [s.gallery.title, s.how.simple.title, s.pricingTeaser.title, t.landing.faq.title, s.final.title]) {
+      expect(screen.getAllByRole("heading", { level: 2, name: title })).toHaveLength(1);
     }
-    // The rails, the comparison, the who-tabs and the rules block are gone: their headings must not come back.
-    for (const gone of [s.who.title, s.rules.title]) expect(screen.queryByRole("heading", { level: 2, name: gone })).toBeNull();
+    // The rails, the comparison, the who-tabs and the rules block are gone, and so (2026-11-22, one gallery, each idea once) are the
+    // two full-width showcases and the plan demo, which said again what the first screen's box and the autopilot say: their
+    // headings must not come back.
+    const showTitles = ["studio", "approvals"].map((id) => s.caps.items.find((i) => i.id === id)!.title);
+    for (const gone of [s.who.title, s.rules.title, s.try.title, ...showTitles]) expect(screen.queryByRole("heading", { level: 2, name: gone })).toBeNull();
     // How it works is three steps, and the last one is the person's own press.
     const how = screen.getByRole("list", { name: s.how.slug });
     expect(how.tagName).toBe("OL");
@@ -83,7 +88,7 @@ describe("public landing page", () => {
     expect(steps).toEqual(s.how.simple.steps.map((x) => x.title));
     expect(steps).toHaveLength(3);
     expect(s.how.simple.steps[2].id).toBe("approve");
-    // The three promises the page keeps sit in the hero.
+    // The three promises the page keeps sit just under the first screen, in the facts.
     const trust = screen.getByRole("list", { name: s.rules.slug });
     expect(within(trust).getAllByRole("listitem").map((li) => li.textContent)).toEqual(s.rules.items.map((r) => r.title));
   });
@@ -96,19 +101,18 @@ describe("public landing page", () => {
     const all = outsideGallery(container.querySelectorAll("img"));
     const tiles = all.filter((i) => i.closest("#models, #tools"));
     const imgs = all.filter((i) => !i.closest("#models, #tools"));
-    // The three slots (the first screen, the Studio showcase and the closing panel: a stock still with a data-sample, or one of
-    // our samples with a data-sample-job inside its own box), and the example topic's own clips' first frames in the three places
-    // beside that topic: the plan demo's thumbnail, the third step's phone and the drawn approval screen's thumbnail.
+    // The first screen's clip (our sample, data-sample-job inside its own box), the closing panel's slot (a stock still with a
+    // data-sample, or one of our samples), and the example topic's own clip's first frame beside that topic: the third step's phone.
     // Round 10: no clay pictures for the steps and the tools (live pieces and real outputs instead, each in its sample's box).
-    expect(imgs.length).toBe(6);
-    expect(imgs.filter((i) => EXAMPLE_JOBS.includes(i.getAttribute("data-sample-job") ?? ""))).toHaveLength(3);
+    expect(imgs.length).toBe(3);
+    expect(imgs.filter((i) => EXAMPLE_JOBS.includes(i.getAttribute("data-sample-job") ?? ""))).toHaveLength(1);
     expect(imgs.filter((i) => i.hasAttribute("data-art-id"))).toHaveLength(0);
     for (const img of imgs) {
       expect(img.getAttribute("data-sample") ?? img.getAttribute("data-art-id") ?? img.getAttribute("data-sample-job")).toBeTruthy();
       expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
       if (img.hasAttribute("data-sample-job")) expect(img.closest(SAMPLE_CARD)?.getAttribute("data-showcase-entry")).toBe(img.getAttribute("data-sample-job"));
     }
-    expect(imgs.filter((i) => i.getAttribute("data-sample") || i.getAttribute("data-sample-job"))).toHaveLength(6);
+    expect(imgs.filter((i) => i.getAttribute("data-sample") || i.getAttribute("data-sample-job"))).toHaveLength(3);
     // Every stock picture shown is one the footer credits (components/site/stock-in-use.ts).
     // (An Effects card's frame carries its sample's job id in data-sample, never a stock id: tests/effects-ui.test.tsx.)
     for (const img of outsideGallery(container.querySelectorAll("[data-sample]"))) expect(stockInUse() as string[]).toContain(img.getAttribute("data-sample"));
@@ -138,15 +142,16 @@ describe("public landing page", () => {
     // A sample's clip is the only moving picture the gallery may hold.
     for (const v of gallery?.querySelectorAll("video, audio") ?? []) expect(v.tagName).toBe("VIDEO");
     // The first screen's picture is the one eager picture (the page's LCP), at high priority; everything else waits.
-    const eager = all.filter((i) => i.getAttribute("loading") === "eager");
+    // (Not lazy and at high priority: the first screen's still, which leaves `loading` at its eager default, tests/home-page.test.tsx.)
+    const eager = all.filter((i) => i.getAttribute("loading") !== "lazy");
     expect(eager).toHaveLength(1);
-    expect(eager[0].closest(".nx-sh-media")).toBeTruthy();
+    expect(eager[0].closest(".hm-hero-media")).toBeTruthy();
     expect(eager[0].getAttribute("fetchpriority")).toBe("high");
   });
 
-  it("shows two capabilities as full-width showcases: the Studio over its slot's picture, Approvals over a drawn approval screen; one outlined button each", () => {
+  it("the two capability showcases (off the landing since 2026-11-22, kept for a page that draws them): the Studio over its slot's picture, Approvals over a drawn approval screen; one outlined button each", () => {
     const t = dictionaries.en;
-    const { container } = renderLanding({ kind: "announced" });
+    const { container } = render(<Showcases t={t} />);
     const stills = new Set<string>();
     for (const id of ["studio", "approvals"] as const) {
       const item = t.site.caps.items.find((i) => i.id === id)!;
@@ -335,8 +340,7 @@ describe("public landing page", () => {
   it("renders in Russian and Uzbek from the language switch's dictionary", () => {
     for (const locale of ["ru", "uz"] as const) {
       renderLanding({ kind: "announced" }, locale);
-      const hero = dictionaries[locale].site.hero;
-      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(`${hero.titleA} ${hero.titleB}`);
+      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(dictionaries[locale].landingHome.hero.title);
       expect(document.querySelector("figure.nx-chat")?.getAttribute("aria-label")).toBe(dictionaries[locale].site.stage.figure);
       cleanup();
     }
@@ -600,7 +604,7 @@ describe("the pricing page, product first (round 3)", () => {
     expect(pic.getAttribute("alt")).toBe(dictionaries.en.site.how.thumbAlt);
     expect(chat.querySelector(".nx-result-art")?.getAttribute("data-showcase-entry")).toBe(EXAMPLE_THUMB_JOB);
     expect(chat.querySelector("[data-sample]")).toBeNull();
-    expect(chat.querySelector(".nx-result-art .nx-result-badge[data-kind='ai']")?.textContent).toBe(dictionaries.en.site.gallery.badge);
+    expect(aiMarkOf(chat.querySelector(".nx-result-art .nx-result-badge[data-kind='ai']"))).toEqual({ seen: dictionaries.en.site.gallery.badge, said: dictionaries.en.site.gallery.badgeName });
     expect(chat.querySelector("figcaption")).toBeNull();
     expect(screen.queryByText(dictionaries.en.pricing.ratesTitle)).toBeNull();
   });

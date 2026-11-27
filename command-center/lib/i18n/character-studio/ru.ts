@@ -93,7 +93,8 @@ export const characterStudioRu: CharacterStudioDictionary = {
     charged: "Списано {credits} кредитов",
     open: "Открыть в библиотеке",
     cancel: "Отменить",
-    aiLabel: "Создано ИИ",
+    aiLabel: "AI",
+    aiLabelName: "Создано ИИ",
   },
 
   errors: {

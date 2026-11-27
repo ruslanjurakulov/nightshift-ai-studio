@@ -821,7 +821,24 @@ import sec_owner_ai_0203  # noqa: E402
 
 sec_owner_ai_0203.extend(TABLES, FUNCTIONS)
 
+# Migration 0208 (the database's country gate for Google models): geo_claim_country reads the web server's signed claim from the
+# request headers for the gate trigger. No API role may call it, service_role included: a caller who could ask it directly could
+# probe which claims the database accepts (tests/test_geo_gate_image_size_migration.py pins the revoke).
+FUNCTIONS.update({"geo_claim_country": SERVICE})
+
 # Migration 0209 (the owner's Nightshift AI conversation history): tests/security/sec_owner_ai_history_0209.py
 import sec_owner_ai_history_0209  # noqa: E402
 
 sec_owner_ai_history_0209.extend(TABLES, FUNCTIONS)
+
+# Migration 0212 (the recorded film sweep: one row per runner, film_sweep and film_sweep_status for the service role only):
+# tests/security/sec_film_sweep_0212.py
+import sec_film_sweep_0212  # noqa: E402
+
+sec_film_sweep_0212.extend(TABLES, FUNCTIONS)
+
+# Migration 0215 (Film Studio: archive a paused or cancelled film, resume a paused one; the worker's id kept out of members' reads):
+# tests/security/sec_film_resume_0215.py
+import sec_film_resume_0215  # noqa: E402
+
+sec_film_resume_0215.extend(TABLES, FUNCTIONS)

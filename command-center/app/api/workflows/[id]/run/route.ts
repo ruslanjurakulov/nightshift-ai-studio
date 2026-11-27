@@ -5,6 +5,7 @@ import { logAudit } from "@/lib/server/audit";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
 import { geoRefusalAny } from "@/lib/server/geo";
+import { geoClaimHeaders } from "@/lib/server/geo-claim";
 import { coerceWorkflow } from "@/lib/workflows";
 import { isUuid } from "@/lib/creative/operations";
 import { BLOCKED_COUNTRIES } from "@/lib/geo/blocked";
@@ -42,6 +43,7 @@ export const POST = requireSameOrigin(async function POST(request: Request, { pa
   // starts only the version the body names (0073: `workflow_changed` otherwise), so the version read here must be that one. An edit
   // after this read raises the version and the database refuses the run; one before it is what is checked. A workflow that cannot
   // be read is refused here, never passed on unchecked.
+  let claim: Record<string, string> | undefined;
   if (Object.keys(BLOCKED_COUNTRIES).length > 0 && isUuid(id)) {
     const read = await session.db.readWorkflow(id);
     if (read.error) return NextResponse.json({ error: "failed" }, { status: 502 });
@@ -50,8 +52,11 @@ export const POST = requireSameOrigin(async function POST(request: Request, { pa
     if (wf.version !== parsed.input.version) return NextResponse.json({ error: "workflow_changed" }, { status: 409 });
     const blocked = geoRefusalAny(wf.steps.map((s) => s.model), request.headers);
     if (blocked) return NextResponse.json(blocked.body, { status: blocked.status });
+    // 0208: the first step's job is created inside start_workflow_run, and the database refuses one on a model with a country list
+    // unless this server vouches for the country (sent only when a step names such a model).
+    claim = geoClaimHeaders(wf.steps.map((s) => s.model), request.headers, session.userId);
   }
-  const out = await startRun(session.db, id, parsed.input);
+  const out = await startRun(session.db, id, parsed.input, claim);
   if (out.status === 201)
     await logAudit({ action: "workflow.run", target: parsed.input.runId, detail: { workflow_id: id, max_credits: parsed.input.maxCredits } });
   return NextResponse.json(out.body, { status: out.status });

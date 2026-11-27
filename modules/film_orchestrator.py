@@ -7,6 +7,8 @@
         key frames                (they are what the clips start from, and a clip may END on the next scene's key frame)
         clips and extends         scene by scene, shot by shot: shot 1 from its first frame, shots 2-3 from the shot before's last frame
         narration                 one film-level take, last
+      once a take failed for good (or cannot begin for a failed input) nothing new begins: P4a refuses that film, so it settles
+      'takes_failed' before charging for takes no film can use (rule 6)
       film_studio_on_for(org)     the platform's switch and the organization's (0198), asked again before every take: off = stop
       film_begin_take             marked running BEFORE the billable call
       film_take_job               the take's creative job (0198): payer 'film', no hold of its own, the inputs decided by the database
@@ -156,6 +158,11 @@ def _assembly_raised(exc: BaseException, mod: Any, name: str) -> bool:
 
 class FilmUnavailable(RuntimeError):
     """The database could not be reached. Never carries a key or a body."""
+
+
+class FilmFunctionMissing(FilmUnavailable):
+    """PostgREST answered 404 for a service function: its migration is not applied here. A FilmUnavailable like any other to every
+    caller that does not ask; the sweep asks, because 0212's film_sweep missing means "call 0171's function directly", not "down"."""
 
 
 class FilmRefused(RuntimeError):
@@ -446,12 +453,18 @@ class FilmOrchestrator:
                     break
                 if seg.get("status") == "draining":
                     break
+                if not ready or self._unassemblable(takes):
+                    # A take failed for good, or this one can never begin because its input did: P4a refuses a film with any
+                    # missing take (docs/FILM_STUDIO.md, Assembly), so every take begun from here on would be charged to the
+                    # customer for a film that cannot come out (S2_GAPS G5: the narration was voiced and captured). Nothing new
+                    # begins (rule 6); what is planned is skipped at 0 by the settle. A superseded attempt 1 is not "failed": its
+                    # planned attempt 2 still runs. Takes already running were driven first (_next_take) and are unaffected.
+                    stopped = "takes_failed"
+                    break
             if not self.db.studio_on_for(org):
                 stopped = "film_studio_off"
                 break
             attempted.add(str(take["id"]))
-            if not ready:
-                continue  # its input failed for good: it never begins, and the settle skips it at 0
             try:
                 began = self.db.begin_take(str(take["id"]), self.worker_id)
             except FilmRefused as r:
@@ -486,6 +499,12 @@ class FilmOrchestrator:
                                  int(t["attempt"])))
         t = todo[0]
         return t, t["status"] == "running" or self._inputs_ready(t, takes, scenes)
+
+    @staticmethod
+    def _unassemblable(takes: Sequence[Mapping[str, Any]]) -> bool:
+        """A take of this segment ended for good without a result. 0171 marks a failure 'failed' only when no retry is left (one
+        with its retry left is 'superseded', and its attempt 2 is planned), and 'skipped' only at the settle."""
+        return any(t["status"] in ("failed", "skipped") for t in takes)
 
     @staticmethod
     def _slot(takes, kind_ok: Callable[[str], bool], scene_id: str, shot: Optional[int]) -> Optional[str]:
@@ -892,7 +911,7 @@ class FilmRest:
         except Exception as e:
             raise FilmUnavailable(f"{name}: {type(e).__name__}") from None
         if r.status_code == 404:
-            raise FilmUnavailable(f"{name}: HTTP 404 (is its migration applied?)")
+            raise FilmFunctionMissing(f"{name}: HTTP 404 (is its migration applied?)")
         if 400 <= r.status_code < 500:
             word, detail = "", ""
             try:
@@ -960,6 +979,28 @@ class FilmRest:
     def expire(self) -> int:
         out = self.rpc("film_expire_segments", {})
         return int(out) if isinstance(out, int) else 0
+
+    # 0212
+    def sweep(self, runner: str) -> int:
+        """film_expire_segments through 0212's film_sweep, which records that this runner swept (G2: "it ran" is a measurement). How
+        many segments it moved. A sweep that failed in the database is recorded there and raised here, by its SQLSTATE only."""
+        try:
+            out = self.rpc("film_sweep", {"p_runner": runner})
+        except FilmFunctionMissing:
+            raise FilmFunctionMissing("film_sweep: HTTP 404 (migration 0212_film_sweep.sql is not applied)") from None
+        if not isinstance(out, dict) or out.get("ok") is not True:
+            code = str(out.get("error") or "") if isinstance(out, dict) else ""
+            raise FilmUnavailable(f"film_sweep: the sweep failed ({code if re.match(r'^[0-9A-Z]{5}$', code) else 'no answer'})")
+        n = out.get("settled")
+        return int(n) if isinstance(n, int) and not isinstance(n, bool) else 0
+
+    def sweep_status(self) -> Optional[dict]:
+        """0212's film_sweep_status(): counts and times, read only. None when the answer is not an object."""
+        try:
+            out = self.rpc("film_sweep_status", {})
+        except FilmFunctionMissing:
+            raise FilmFunctionMissing("film_sweep_status: HTTP 404 (migration 0212_film_sweep.sql is not applied)") from None
+        return out if isinstance(out, dict) else None
 
     def takes(self, segment: str) -> list:
         return self._select("film_takes", {"segment_id": f"eq.{segment}",
