@@ -428,7 +428,8 @@ describe("round 3: stills, header and the draw-in", () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     const shell = readFileSync(join(__dirname, "..", "components/legal/PublicShell.tsx"), "utf8");
-    expect(shell).toMatch(/href="\/signup" className="st-key" data-size="sm">/);
+    // The href goes through menuHref (lib/public-menu-href.ts), where the localised paths will be added.
+    expect(shell).toMatch(/href=\{menuHref\("\/signup"\)\} className="st-key" data-size="sm">/);
     expect(shell).not.toContain('data-tone="quiet"');
   });
 

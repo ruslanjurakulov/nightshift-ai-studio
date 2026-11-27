@@ -77,7 +77,9 @@ html[data-motion="paused"] .mf-cap { transform: none; transition: opacity 200ms 
 @media (max-width: 480px) {
   .nx-gallery .mf-title { font-size: 0.9375rem; -webkit-line-clamp: 3; line-clamp: 3; hyphens: auto; }
   .nx-gallery .mf-desc { display: none; }
-  .nx-gallery .mf-cap { padding: 28px 10px 10px; }
+  /* A short padding and a foot dark from its top edge: on a 93 px card the title gets two lines' room under the mark's row,
+     not one word ("Розовый", Pixel's 360 px re-shoot). */
+  .nx-gallery .mf-cap { padding: 10px 10px 8px; background: linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.8) 50%, rgba(0, 0, 0, 0.86) 100%); }
   .mf-cap { max-height: calc(100% - 34px); justify-content: flex-end; overflow: hidden; }
   /* The mark stays legible but smaller than the caption it sits above. */
   .mf-ai { top: 6px; right: 6px; padding: 1px 6px; font-size: 12px; }
