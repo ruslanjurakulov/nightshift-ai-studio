@@ -831,6 +831,11 @@ import sec_owner_ai_history_0209  # noqa: E402
 
 sec_owner_ai_history_0209.extend(TABLES, FUNCTIONS)
 
+# Migration 0214 (does a film's voice model speak the film's language): tests/security/sec_voice_language_0214.py
+import sec_voice_language_0214  # noqa: E402
+
+sec_voice_language_0214.extend(TABLES, FUNCTIONS)
+
 # Migration 0212 (the recorded film sweep: one row per runner, film_sweep and film_sweep_status for the service role only):
 # tests/security/sec_film_sweep_0212.py
 import sec_film_sweep_0212  # noqa: E402
