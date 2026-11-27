@@ -373,6 +373,9 @@ ON_0156 = (*ON_0156, MIGRATION_0220.name)
 #: Migrations written on 0155's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0155 out
 #: leaves these out too, in this order. (0156 also sits on 0126's creative_params_problem, which every sequence that reaches 0155 has
 #: applied already.)
+#: 0219 (the operator route for connected assistants) refuses to apply before 0218 (which sits on 0208): a sequence that leaves
+#: 0208 or 0218 out leaves 0219 out too, and puts it back last.
+ON_0156 = (*(f for f in ON_0156 if f != "0219_oauth_creative_operator_models.sql"), "0219_oauth_creative_operator_models.sql")
 ON_0155 = (MIGRATION_0156.name, *ON_0156)
 #: Migrations written on 0153's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0153 out
 #: leaves these out too, in this order.
@@ -403,6 +406,8 @@ ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0208.name), MIGRATION_0208.nam
 ON_0139 = (*ON_0139, "0215_film_archive_resume.sql")
 #: 0218 sits on 0208's bodies: it moves with it, right after it.
 ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0218.name), MIGRATION_0218.name)
+#: 0219 (the operator route for connected assistants) replaces 0192's oauth_creative_models / oauth_creative_quote and 0191's
+ON_0139 = (*(f for f in ON_0139 if f != "0219_oauth_creative_operator_models.sql"), "0219_oauth_creative_operator_models.sql")
 #: and 0220 on 0218's film_price, right after it.
 ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0220.name), MIGRATION_0220.name)
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
@@ -421,6 +426,8 @@ ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164
            "0215_film_archive_resume.sql",
            # 0218 sits on 0208's creative_price and creative_params_problem: out and back with it, after it.
            "0218_creative_prompt_limits.sql",
+           # 0219 replaces 0192's and 0191's oauth_creative_* bodies and refuses to apply without 0218: after it.
+           "0219_oauth_creative_operator_models.sql",
            # 0220 sits on 0218's film_price: out and back with it, after it.
            "0220_film_voice_language.sql")
 
@@ -1056,6 +1063,7 @@ def take_off_0192(conn_or_session) -> None:
     takes 0192 off first as well. Its rollback puts the fifteen earlier bodies back and drops its functions and triggers;
     adult_attestations (the record, with its append-only triggers) stays, and put_back_0192 picks it up again."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0219(conn)  # 0219 sits on 0192's oauth_creative_quote and oauth_creative_models, and 0192's rollback refuses them
     take_off_0198(conn)  # 0198 sits on 0192's quote_film and start_film, and 0192's rollback refuses any other body
     take_off_0196(conn)  # 0196 sits on 0192's route_model, api_create_video and oauth_create_video; 0192's rollback refuses them
     if has_0192(conn):
@@ -1074,6 +1082,7 @@ def put_back_0192(conn_or_session) -> None:
         conn.execute(MIGRATION_0192.read_text(encoding="utf-8"))
     put_back_0196(conn)
     put_back_0198(conn)
+    put_back_0219(conn)
 
 
 MIGRATION_0196 = MIGRATIONS / "0196_adult_attestation_google_runs.sql"
@@ -1176,6 +1185,34 @@ def put_back_0215(conn_or_session) -> None:
     if has_0215(conn) or not has_0198(conn) or not has_0187(conn) or not has_0192(conn):
         return
     conn.execute(MIGRATION_0215.read_text(encoding="utf-8"))
+
+
+MIGRATION_0219 = MIGRATIONS / "0219_oauth_creative_operator_models.sql"
+ROLLBACK_0219 = REPO / "docs" / "sql" / "rollback_0219_oauth_creative_operator_models.sql"
+
+
+def has_0219(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.oauth_creative_org_model_state(uuid, text, text)') is not null").fetchone()[0])
+
+
+def take_off_0219(conn_or_session) -> None:
+    """0219 (the operator route for connected assistants, the ByteDance refusal, the recorded exposure) replaces oauth_creative_models()
+    and oauth_creative_quote() (0192's bodies) and oauth_creative_create() (0191's). 0192's rollback refuses any other body, and a
+    replay of 0191 would silently put 0191's create back, so take_off_0192 takes 0219 off first. Its rollback keeps the exposure
+    columns, which put_back_0219 picks up again as its own."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0219(conn):
+        text = ROLLBACK_0219.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0219(conn_or_session) -> None:
+    """0219 again, once 0192 (whose bodies it builds on) is on, and only when it is not on already."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0219(conn) or not has_0192(conn):
+        return
+    conn.execute(MIGRATION_0219.read_text(encoding="utf-8"))
 
 
 def migration_files() -> list[Path]:

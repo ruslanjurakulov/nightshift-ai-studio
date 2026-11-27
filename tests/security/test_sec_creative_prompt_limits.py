@@ -226,7 +226,7 @@ BEFORE = {"creative_params_problem": sec_db.CREATIVE_PARAMS_PROBLEM_0208, "creat
 #: A full build: 0220 (the film's voice language) sits on this file's film_price, so the live film_price is 0220's.
 FULL = {**AFTER, "film_price": sec_db.FILM_PRICE_0220}
 #: 0220 refuses to apply without 0218's film_price: a sequence that leaves 0218 out leaves 0220 out too.
-WITHOUT_0218 = (sec_db.MIGRATION_0218.name, sec_db.MIGRATION_0220.name)
+WITHOUT_0218 = (sec_db.MIGRATION_0218.name, sec_db.MIGRATION_0219.name, sec_db.MIGRATION_0220.name)
 
 
 def test_the_file_needs_0208_its_guard_refuses_a_hand_edit_and_its_rollback_restores_every_body(lab):
