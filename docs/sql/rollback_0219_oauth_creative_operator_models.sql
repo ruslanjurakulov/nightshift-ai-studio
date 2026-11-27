@@ -31,7 +31,7 @@ begin
       ('public.oauth_creative_models(text, text, text)', '3c19fec218d8b140008495a635e57317'),
       ('public.oauth_creative_quote(text, text, text, jsonb, text)', '13c960060df92c6e250c6f5e95dddab9'),
       ('public.oauth_creative_create(text, uuid, text, text)', '86e36ace55f20829fa7c4da91f9eef9f')) v(sig, want) loop
-    select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
+    select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0219: % is not 0219''s body (md5 %): if an older file was re-run over it, apply 0219 again first, then roll back; if a later file changed it, take that file out first', r.sig, h;
     end if;
@@ -371,7 +371,7 @@ begin
       ('public.oauth_creative_models(text, text, text)', 'beafb530957690f51366c995468ad36f'),
       ('public.oauth_creative_quote(text, text, text, jsonb, text)', 'e3340606260711781f202aff7abdcdee'),
       ('public.oauth_creative_create(text, uuid, text, text)', '527ce6685df6651507bb9fbd186a1c0c')) v(sig, want) loop
-    select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
+    select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0219 end state: % is not the earlier body (md5 %)', r.sig, h;
     end if;

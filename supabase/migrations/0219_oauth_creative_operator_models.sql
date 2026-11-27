@@ -59,7 +59,7 @@
 --   replaces) and 0218 (applied before it; the guard below reads its marker); replaces nothing 0208 or 0218 replaces.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only):
---   select p.oid::regprocedure, md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc p
+--   select p.oid::regprocedure, md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc p
 --    where p.oid in ('public.oauth_creative_models(text, text, text)'::regprocedure,
 --                    'public.oauth_creative_quote(text, text, text, jsonb, text)'::regprocedure,
 --                    'public.oauth_creative_create(text, uuid, text, text)'::regprocedure,
@@ -101,7 +101,7 @@ begin
       ('public.oauth_creative_create(text, uuid, text, text)', '527ce6685df6651507bb9fbd186a1c0c', '86e36ace55f20829fa7c4da91f9eef9f', '0191'),
       -- Not replaced, but the new judgement calls it and relies on what it answers: 0191's body only.
       ('public.oauth_creative_model_state(text, text)', '45811a3b219fa2414b3820c34ee247de', '45811a3b219fa2414b3820c34ee247de', '0191')) v(sig, before, after, src) loop
-    select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
+    select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is null or h <> all (array[r.before, r.after]) then
       raise exception '0219 found % with a body that is neither %''s nor 0219''s (md5 %): read the live body first', r.sig, r.src, h;
     end if;
@@ -146,7 +146,7 @@ create or replace function public.oauth_creative_bytedance(p_model text) returns
       or exists (select 1 from public.model_registry m
                   where m.id = lower(btrim(coalesce(p_model, '')))
                     and (lower(m.provider) in ('bytedance', 'byteplus')
-                         or m.adapter ~* '^(video\.seedance|image\.seedream)'
+                         or m.adapter ~* '^(video[.]seedance|image[.]seedream)'
                          or coalesce(m.spec ->> 'vendor_model', '') ~* '(seedance|seedream)'
                          or lower(coalesce(m.spec ->> 'vendor', '')) in ('bytedance', 'byteplus')))
 $$;

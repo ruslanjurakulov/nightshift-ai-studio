@@ -74,7 +74,7 @@ class TheOperatorRoute(unittest.TestCase):
         self.assertLess(first, state.index("public.oauth_creative_operator_org(p_org)"))
         b = squash(body("oauth_creative_bytedance"))
         for needle in ("'(seedance|seedream)'", "lower(m.provider) in ('bytedance', 'byteplus')",
-                       "m.adapter ~* '^(video\\.seedance|image\\.seedream)'", "m.spec ->> 'vendor_model'"):
+                       "m.adapter ~* '^(video[.]seedance|image[.]seedream)'", "m.spec ->> 'vendor_model'"):
             self.assertIn(needle, b, needle)
 
     def test_everyone_else_gets_0191s_answer_word_for_word(self):
@@ -145,6 +145,13 @@ class TheRecord(unittest.TestCase):
 
 
 class HouseStyle(unittest.TestCase):
+    def test_no_backslash_survives_the_live_apply_path(self):
+        # The Supabase MCP apply_migration path turned backslash escapes in SQL text
+        # into real characters when 0218 went live, which changed bodies and their md5s.
+        # A regex that needs one uses a bracket class instead ([.] and [[:space:]]).
+        for label, text in (("migration", SQL), ("rollback", ROLLBACK)):
+            self.assertNotIn(chr(92), text, label)
+
     def test_each_door_is_the_earlier_body_plus_marked_hunks(self):
         for name, (src, before, after) in REPLACED.items():
             self.assertEqual(pg_md5(name, src), before, name)
