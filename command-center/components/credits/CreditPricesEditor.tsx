@@ -16,7 +16,6 @@ import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { relativeTime } from "@/lib/format";
 import {
-  LEDGER_UNITS,
   SPECIAL_UNITS,
   chargePerUnit,
   formatCredits,
@@ -65,10 +64,13 @@ export function CreditPricesEditor({
   prices,
   canEdit,
   rpc,
+  ledgerUnits = [],
 }: {
   prices: CreditPrice[];
   canEdit: boolean;
   rpc?: { maxRatio: number | null };
+  /** The cost ledger's units to suggest (lib/server/ledger-units.ts), from the server: they name vendors, so no chunk holds them. */
+  ledgerUnits?: readonly string[];
 }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -298,7 +300,7 @@ export function CreditPricesEditor({
   const inputClass =
     "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-base text-[var(--color-fg)] outline-none sm:text-[13px] focus:border-[var(--color-primary)]";
   const fieldLabel = "text-xs leading-tight text-[var(--color-muted)]";
-  const suggestions = [...SPECIAL_UNITS, ...LEDGER_UNITS];
+  const suggestions = [...SPECIAL_UNITS, ...ledgerUnits];
 
   return (
     <div id="credit-prices" className="panel flex scroll-mt-7 flex-col gap-3 p-5 sm:p-6">

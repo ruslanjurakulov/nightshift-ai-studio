@@ -10,7 +10,8 @@ import { en } from "../lib/i18n/en";
 import { ru } from "../lib/i18n/ru";
 import { uz } from "../lib/i18n/uz";
 import { unitMeaning } from "../lib/creditUnits";
-import { LEDGER_UNITS, SPECIAL_UNITS, chargePerUnit, isFlatUnit } from "../lib/credits";
+import { SPECIAL_UNITS, chargePerUnit, isFlatUnit } from "../lib/credits";
+import { LEDGER_UNITS } from "../lib/server/ledger-units";
 
 const m = (unit: string, t = en) => unitMeaning(unit, t.credits.unitMeaning);
 
