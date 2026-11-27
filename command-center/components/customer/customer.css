@@ -11,7 +11,7 @@
   --cs-kind-image: #33d6ff;
   --cs-kind-audio: #3dff8a;
   --cs-kind-text: #ffd23f;
-  --cs-display: "Unbounded", var(--font-sans);
+  --cs-display: var(--font-sans);
   --cs-press: 120ms;
   --cs-panel: 200ms;
 }
