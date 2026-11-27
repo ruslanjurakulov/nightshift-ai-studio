@@ -2469,3 +2469,23 @@ list off sale, and every model priced by size carries a terms gate). Post-event:
   `provider = 'google'` row has no `blocked_countries`), the Vault key, then the web's key.
 - Lab: `tests/security/test_sec_geo_gate_0208.py`; pins: `tests/test_geo_gate_image_size_migration.py`. Rollback:
   `docs/sql/rollback_0208_geo_gate_and_image_size_price.sql`. Docs: `docs/GEO_BLOCK.md`.
+
+## Retire gemini-omni-1.1-flash (0222)
+
+0222 (`0222_retire_gemini_omni_1_1.sql`, number from Atlas, stream S10) sets `model_registry.availability = 'disabled'` for
+`gemini-omni-1.1-flash`. It writes nothing else.
+
+- **Why.** Google's deprecations page (read 2026-11-22; S10's `docs/studio/S10_GOOGLE_MODELS.md`, PR #917) says this endpoint is routed to
+  `gemini-omni-1.2-flash` from 2026-12-03 and billed at 1.2's rates. Selling "Omni 1.1" after that would be a substitute the vendor
+  makes silently (CLAUDE.md rule 4).
+- **Why not just the shutdown date.** The registry's `shutdown.on` (2026-12-03) already stops the sale that day (0125). But the
+  schema keeps it the vendor's date, never ours. `disabled` is the state nothing automatic undoes: every open migration refuses
+  to touch it, the registry sync skips it, `sellable_models` and `creative_price` never offer it, and an operator preview needs
+  `hidden`. A person can still move it: the owner's rollback, or a platform admin on the model board (audited as
+  `model.availability`). Neither can sell it while its `terms_gate` is set.
+- **Not added.** `gemini-omni-1.2-flash` waits for the owner's terms decisions and a real probe.
+- **Before the sync.** A missing row is only a NOTICE; apply the file again after the registry sync.
+- **Undo.** `docs/sql/rollback_0222_retire_gemini_omni_1_1.sql` (owner-applied) sets the row back to `hidden`. That is still not sold.
+- **Not covered.** The queue worker does not re-check availability before it submits a job (a follow-up). None can be queued on
+  this model today, because it is terms-gated and not a preview; the file names any job that is not finished.
+- **Tests.** `tests/test_retire_omni_1_1_migration.py`, `tests/security/test_sec_retire_omni_1_1.py`.
