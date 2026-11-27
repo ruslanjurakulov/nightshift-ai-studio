@@ -366,6 +366,9 @@ class ProviderPoll:
     error_code: Optional[str] = None
     error: Optional[str] = None
     usage: Optional[ProviderUsage] = None
+    #: What the adapter says every output carries (Lyria: ``synthid``), added to each library row's provenance. Never overrides
+    #: what the worker itself records (the job, the model, the rights).
+    provenance: Mapping[str, Any] = field(default_factory=dict)
 
 
 class CreativeAdapter(Protocol):
@@ -1228,7 +1231,7 @@ class CreativeWorker:
             logger.warning("job %s: no longer this worker's; its outputs are not recorded here", job_id)
             return "left"
         described = describe_files(files)
-        asset_ids = self._to_library(request, files, result.usage)
+        asset_ids = self._to_library(request, files, result.usage, getattr(result, "provenance", None))
         out = {"files": described, "storage": "library" if asset_ids else "worker"}
         if asset_ids:
             out["asset_ids"] = asset_ids
@@ -1320,15 +1323,17 @@ class CreativeWorker:
         return "completed:captions" if status in (None, "completed") else str(status)
 
     def _to_library(self, request: GenerationRequest, files: Sequence[Path],
-                    usage: Optional[ProviderUsage]) -> List[str]:
+                    usage: Optional[ProviderUsage], said: Optional[Mapping[str, Any]] = None) -> List[str]:
         """Each output as a library asset of the job's organization, attached
         to the job. [] when there is no library or it could not take them —
         the job still completes (its files stay in the worker's folder)."""
         if self.library is None:
             return []
         source = str(request.params.get("source_asset_id") or "").lower() or None
-        provenance = {"job_id": request.job_id, "capability": request.capability, "model": request.model,
-                      "rights": "generated_for_org"}
+        # The adapter's own statements first (a watermark its maker documents), so that the worker's keys below always win.
+        provenance = {str(k): v for k, v in (said or {}).items() if isinstance(v, (bool, str, int, float))}
+        provenance.update({"job_id": request.job_id, "capability": request.capability, "model": request.model,
+                           "rights": "generated_for_org"})
         if usage is not None and usage.provider:
             provenance["provider"] = usage.provider
         if source:

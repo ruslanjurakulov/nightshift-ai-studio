@@ -208,10 +208,12 @@ class RegistryEntryTests(unittest.TestCase):
         self.assertFalse({row["id"] for row in rows} & set(IDS))
         for row in rows:      # one row outside the constraint would fail the sync of every model
             self.assertLessEqual(set(row["capabilities"]), known, row["id"])
-        # The two Character Studio entries (0137) are registry-only too: tests/test_character_swap_adapters.py holds them.
+        # The two Character Studio entries (0137) are registry-only too: tests/test_character_swap_adapters.py holds them. So is
+        # Google Lyria 3.5, the other `music` provider (tests/test_google_lyria.py).
         swap = {"kling-4.0-omni-edit", "seedance-2.5-edit"}
-        self.assertEqual(len(rows), len(self.r) - 2 - len(swap))
-        self.assertEqual({e.id for e in self.r.values() if e.registry_only}, set(IDS) | swap)
+        lyria = {"google-lyria-3.5"}
+        self.assertEqual(len(rows), len(self.r) - 2 - len(swap) - len(lyria))
+        self.assertEqual({e.id for e in self.r.values() if e.registry_only}, set(IDS) | swap | lyria)
 
     def test_the_gate_is_terms_review_and_nothing_can_be_sold(self):
         for mid in IDS:

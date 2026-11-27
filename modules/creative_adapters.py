@@ -137,7 +137,9 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         voice_id=_str(p.get("voice_id")),
         # tts: the language the text is in, when the job names one. No SQL path stores one yet
         # (the creative quote does not take it); the film studio will, and is refused here then.
-        text_language=_str(p.get("language")) if request.capability == "tts" else None,
+        # music: the language a song is SUNG in. No SQL path stores one yet (0036's checks refuse language on music), so every
+        # music job reaches the adapter without one, and a Lyria job is then made instrumental (modules/capabilities/google_interactions.py).
+        text_language=_str(p.get("language")) if request.capability in ("tts", "music") else None,
         scale=_int(p.get("factor")),
         # An opaque per-organization id for the vendors that ask for one.
         end_user=hashlib.sha256(f"nightshift-org:{request.org_id}".encode()).hexdigest()[:32],
@@ -265,7 +267,17 @@ class RegistryAdapter:
         if task_id.startswith(SYNC_PREFIX):
             with self._lock:
                 self._held.pop(task_id, None)
-        return ProviderPoll(JOB_SUCCEEDED, files=list(files), usage=self.usage(request, len(files)))
+        return ProviderPoll(JOB_SUCCEEDED, files=list(files), usage=self.usage(request, len(files)),
+                            provenance=self.provenance(request))
+
+    def provenance(self, request: GenerationRequest) -> Dict[str, object]:
+        """What the adapter says every file of this job carries (Lyria: Google's SynthID watermark), for the library row. {} for an
+        adapter that says nothing: a watermark is recorded only where its maker documents one, never assumed."""
+        say = getattr(self.adapter, "output_provenance", None)
+        if not callable(say):
+            return {}
+        out = say(capability_request(request), self._vendor_model(request.capability))
+        return dict(out) if isinstance(out, dict) else {}
 
     def usage(self, request: GenerationRequest, n_files: int) -> ProviderUsage:
         """What the provider charged in its own unit (0037). USD stays None:

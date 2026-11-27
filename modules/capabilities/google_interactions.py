@@ -1,4 +1,5 @@
-"""Google's Interactions API (the maker's own API): Gemini Omni Flash 1.1 (video) and Nano Banana 2.1 (image).
+"""Google's Interactions API (the maker's own API): Gemini Omni Flash 1.1 (video), Nano Banana 2.1 (image) and Lyria 3.5
+(music; see ``GoogleLyriaAdapter`` and docs/research/lyria-3-5.md, read 2026-11-27).
 
 Sources, all on ai.google.dev and read 2026-10-25 (each page as ``.md.txt``):
 ``/gemini-api/docs/omni``, ``/models/gemini-omni-flash``, ``/image-generation``, ``/models/gemini-nano-banana-2.1``,
@@ -53,6 +54,7 @@ from modules.capabilities.base import (
     E_UNAVAILABLE,
     FAILED,
     I2V,
+    MUSIC,
     PENDING,
     SUCCEEDED,
     T2I,
@@ -67,7 +69,7 @@ from modules.capabilities.base import (
     is_url,
     json_body,
 )
-from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, sniff_image_mime, unconfirmed
+from modules.capabilities.safe_fetch import SafeResultMixin, _looks_like, after_completion, sniff_image_mime, unconfirmed
 
 #: Where a result link may live: the Gemini API's own file host (``…/v1beta/files/…:download?alt=media``). A link
 #: anywhere else is refused (fail closed), not guessed at.
@@ -174,11 +176,12 @@ class _InteractionsBase(SafeResultMixin, HttpAdapter):
             return E_POLICY
         return None
 
-    def _create(self, body: dict, *, what: str) -> dict:
+    def _create(self, body: dict, *, what: str, headers: Optional[Dict[str, str]] = None) -> dict:
         """POST /interactions. A refusal for content carries ``BILLING_UNKNOWN``; a lost answer carries
-        ``UNCONFIRMED SPEND`` (safe_fetch.submit_json)."""
+        ``UNCONFIRMED SPEND`` (safe_fetch.submit_json). ``headers``: a model whose page pins an API revision (Lyria)."""
         try:
-            data = self.submit_json(f"{self.base_url}/interactions", body, what=what)
+            extra = {"headers": headers} if headers else {}
+            data = self.submit_json(f"{self.base_url}/interactions", body, what=what, **extra)
         except AdapterError as e:
             if e.code == E_POLICY and not e.message.startswith(BILLING_UNKNOWN):
                 raise _refused(e.message, http_status=e.http_status, not_accepted=e.not_accepted) from None
@@ -479,4 +482,197 @@ class GeminiNanoBananaAdapter(_InteractionsBase):
         return PollResult(SUCCEEDED, [Output(mime, data=blob)])
 
 
-ADAPTERS = (GeminiOmniAdapter, GeminiNanoBananaAdapter)
+# ── Lyria 3.5 (music) ─────────────────────────────────────────────────────────────
+
+#: Lyria's page pins the Interactions API revision its examples were written for. Sent on every call, so a later default
+#: revision (another body shape, another answer shape) cannot change what this adapter sends or reads without a code change.
+LYRIA_API_REVISION = "2026-05-20"
+#: The remedy a person reads when Google's filter blocks a prompt. The music page: prompts that "request specific artist voices or
+#: the generation of copyrighted lyrics" are blocked. Rule 4: the block is the answer, never another model or a reworded prompt.
+LYRIA_POLICY_REMEDY = ("Google's safety filter blocked this prompt: remove any artist's name or voice and any real song's lyrics, "
+                       "then try again")
+#: The instruction Google's page gives for a song without singing: there is no field for it, it is written in the prompt.
+LYRIA_INSTRUMENTAL = "Instrumental only, no vocals."
+#: Lyric sections ("Lyrics are written with [Verse] and [Chorus] tags"): a prompt carrying them asks for singing.
+_LYRIC_TAGS = re.compile(r"\[\s*(verse|chorus|pre-chorus|hook|lyrics?)\b", re.IGNORECASE)
+#: Words of a Lyria block that the generic safety words miss: the two kinds the music page names.
+_LYRIA_BLOCK_WORDS = ("copyright", "artist", "recitation")
+#: The media types an MP3 is answered under (``audio/mp3`` is not registered, but is what several Google samples print).
+_MP3_TYPES = ("audio/mpeg", "audio/mp3")
+#: The standard base64 alphabet, padding only at the end. A lenient decode drops characters it does not know, so a string with
+#: white space, the URL-safe alphabet or stray text would decode to SOME bytes; it is refused instead (``validate=True`` as well).
+_B64 = re.compile(r"^[A-Za-z0-9+/]*={0,2}$")
+
+
+class GoogleLyriaAdapter(_InteractionsBase):
+    """``lyria-3.5``: music from words, one MP3 per call, through the Interactions API (aistudio.google.com/docs/music-generation,
+    read 2026-11-27; docs/research/lyria-3-5.md).
+
+    WHAT IS SENT. ``{"model", "input": <text>, "response_format": {"type": "audio"}, "background": false, "store": false}`` with
+    ``Api-Revision: 2026-05-20`` and the key in ``x-goog-api-key`` (``_InteractionsBase``: never the query string, no redirect
+    followed). The page's REST example sends exactly ``{"type": "audio"}``; MP3 is the documented default and nothing else is asked
+    for, and what comes back must be MP3 by its own bytes. ``store: false``: the music page shows only synchronous calls and says
+    nothing of retention; a stored interaction is kept 55 days on the paid tier (interactions page) and would hold the prompt at
+    Google for no use of ours. Sending ``store``/``background`` with Lyria is UNVERIFIED (the music page does not name them; the
+    Interactions API documents both).
+
+    NO SETTINGS. "There is no field for lyrics, duration, seed, negative prompt or language": a request that sets a duration, a
+    negative prompt, a shape, pictures or anything else is refused before the call (never dropped while the person pays for it).
+    The price is per song, so nothing the person sets changes what Google bills.
+
+    LANGUAGE. "Lyria 3.5 generates lyrics in the language of your prompt", and no list of sung languages exists for 3.5 (the only
+    official list, for Vertex Lyria 3, has neither Russian nor Uzbek). Only a language a real call has proven is sung:
+    ``SPECS[...]["vocal_languages"]``, EMPTY until a probe. So today every song is instrumental: the request may not name a
+    language, a prompt with lyric sections ([Verse], [Chorus]) is refused, and Google's own instruction for a song without singing
+    is put at the end of the prompt. Whether Lyria honours it every time is UNVERIFIED until the probe (``vocals_requested`` in the
+    provenance records what was asked, never what was heard).
+
+    THE ANSWER. Base64 audio in a ``model_output`` step's ``audio`` content (the last one, which is what ``output_audio`` names), or
+    a top-level ``output_audio`` block. Decoded strictly (the base64 alphabet only) and capped BEFORE decoding; missing, empty,
+    not base64 or not MP3 fails closed. The lyrics or structure text Google sends beside it is not kept.
+
+    SAFETY BLOCK. Any refusal for content (an HTTP 4xx naming safety, policy, copyright or an artist; a failed interaction saying
+    so; a finished answer with no audio and such words) is ``policy`` with ``LYRIA_POLICY_REMEDY``: never retried, never moved to
+    another model.
+
+    PROVENANCE. ``output_provenance``: every Lyria file carries Google's SynthID audio watermark ("All generated audio includes a
+    SynthID audio watermark", no opt-out), so the library row says ``synthid: true`` and the vendor model.
+
+    TERMS (docs/research/lyria-3-5.md): paid tier only, 18+ (registry ``requires_adult``), Google's available regions only
+    (registry ``blocked_countries``; Russia is not listed), never a bare prompt-to-song service or a public API (Google APIs Terms
+    4a: registry ``api_exposure: web_only``, no MCP flag). ``terms_gate`` keeps it unsold until the owner signs the legal text.
+    """
+
+    key = "audio.google_lyria"
+    capabilities = (MUSIC,)
+    #: One synchronous call holds the connection while the song is made; the page states no latency (UNVERIFIED).
+    timeout = 300
+    #: A few minutes of MP3 is well under 16 MB; an answer far beyond that is not a song, and is not decoded.
+    max_inline_bytes = 32 * 1024 * 1024
+    SPECS = {"lyria-3.5": {"vocal_languages": ()}}
+
+    def vendor_error_code(self, status: int, text: str) -> Optional[str]:
+        code = super().vendor_error_code(status, text)
+        if code is None and 400 <= status < 500 and status not in (401, 402, 403, 404, 429):
+            low = (text or "").lower()
+            if any(w in low for w in _LYRIA_BLOCK_WORDS):
+                return E_POLICY
+        return code
+
+    @staticmethod
+    def _blocked(text: str, *, http_status=None, not_accepted: bool = False) -> AdapterError:
+        return AdapterError(E_POLICY, f"{BILLING_UNKNOWN}. {LYRIA_POLICY_REMEDY}. Google said: {text}"[:500],
+                            http_status=http_status, not_accepted=not_accepted)
+
+    def _spec_problems(self, request: CapabilityRequest, vendor_model: str) -> List[str]:
+        spec = self.SPECS.get(vendor_model)
+        if spec is None:
+            return [f"{vendor_model!r} is not a Lyria model this adapter knows"]
+        out: List[str] = []
+        sung = spec["vocal_languages"]
+        if request.text_language is not None and request.text_language not in sung:
+            out.append(f"{vendor_model} is not offered for vocals in {request.text_language}: no real call has proven that language "
+                       f"yet ({'only instrumental music is offered' if not sung else 'proven: ' + ', '.join(sung)})")
+        if request.text_language is None and _LYRIC_TAGS.search(request.prompt or ""):
+            out.append("the prompt has lyric sections ([Verse], [Chorus]): sung music is not offered yet, only instrumental music")
+        if request.duration_s is not None:
+            out.append(f"{vendor_model} has no duration setting (the length is steered in the prompt): a duration is refused, not ignored")
+        if request.negative_prompt:
+            out.append(f"{vendor_model} has no negative prompt (say what to avoid in the prompt)")
+        if request.input_images or request.input_media:
+            out.append(f"{vendor_model} is asked by words only here")
+        for name, value in (("an aspect ratio", request.aspect_ratio), ("a resolution", request.resolution),
+                            ("an image size", request.image_size), ("a quality", request.quality), ("an audio flag", request.audio)):
+            if value is not None:
+                out.append(f"{name} does not apply to {vendor_model}")
+        return out
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        out.extend(self._spec_problems(request, entry.vendor_model_for(request.capability)))
+        return out
+
+    def _input(self, request: CapabilityRequest) -> str:
+        prompt = request.prompt.strip()
+        if request.text_language is None:
+            return f"{prompt}\n\n{LYRIA_INSTRUMENTAL}"
+        return prompt
+
+    def output_provenance(self, request: CapabilityRequest, vendor_model: str) -> Dict[str, object]:
+        """What the library row records about a Lyria file beside the job and the registry model: Google watermarks every file."""
+        return {"synthid": True, "vendor_model": vendor_model, "vocals_requested": request.text_language is not None}
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        bad = self._spec_problems(request, vendor_model)
+        if request.capability != MUSIC:
+            bad.append(f"adapter {self.key} cannot do {request.capability}")
+        if not request.prompt.strip():
+            bad.append("prompt is empty")
+        if bad:
+            # Nothing has been sent: a refusal, not a lost answer.
+            raise AdapterError(E_BAD_REQUEST, "; ".join(bad), not_accepted=True)
+        body = {"model": vendor_model, "input": self._input(request), "response_format": {"type": "audio"},
+                "background": False, "store": False}
+        try:
+            data = self._create(body, what="generate", headers={"Api-Revision": LYRIA_API_REVISION})
+        except AdapterError as e:
+            if e.code == E_POLICY:
+                # The remedy goes in front of Google's words, inside the 500 characters a message keeps.
+                said = e.message[len(BILLING_UNKNOWN) + 2:] if e.message.startswith(BILLING_UNKNOWN) else e.message
+                raise self._blocked(said, http_status=e.http_status, not_accepted=e.not_accepted) from None
+            raise
+        return ProviderTask(self.key, vendor_model, None, outputs=self._song(data).outputs)
+
+    def _song(self, data: dict) -> PollResult:
+        try:
+            return self._song_of(data)
+        except AdapterError:
+            raise
+        except Exception:     # an odd shape nobody planned for: the call went through, so it may have billed
+            raise unconfirmed("the answer has a shape this adapter cannot read") from None
+
+    def _audio_block(self, data: dict) -> Optional[dict]:
+        blocks = self._contents(data, "audio")
+        if blocks:
+            return blocks[-1]
+        top = data.get("output_audio")
+        return top if isinstance(top, dict) else None
+
+    def _song_of(self, data: dict) -> PollResult:
+        status = str(data.get("status") or "").lower()
+        if status in _TERMINAL_FAILED:
+            err = data.get("error") if isinstance(data.get("error"), dict) else {}
+            said = self.message(err.get("message") or err.get("status") or f"the interaction ended {status}")
+            if any(w in said.lower() for w in (*_POLICY_WORDS, *_LYRIA_BLOCK_WORDS)):
+                raise self._blocked(said)
+            raise self._failure(data).error
+        block = self._audio_block(data)
+        raw = block.get("data") if block else None
+        if not isinstance(raw, str) or not raw:
+            said = self.message(self._text(data))[:160]
+            if any(w in said.lower() for w in (*_POLICY_WORDS, *_LYRIA_BLOCK_WORDS)):
+                raise self._blocked(said)
+            if status != "completed":
+                raise unconfirmed(f"the answer is not a finished interaction (status {self.message(status) or 'missing'})")
+            raise after_completion(AdapterError(E_BAD_RESPONSE, "completed without audio" + (f" (the model said: {said})" if said else "")))
+        mime = str(block.get("mime_type") or "audio/mpeg").split(";", 1)[0].strip().lower()
+        if mime not in _MP3_TYPES:
+            raise after_completion(AdapterError(E_BAD_RESPONSE, f"the audio is {self.message(mime)!r}; MP3 was asked for"))
+        if len(raw) * 3 // 4 > self.max_inline_bytes:
+            # Refused before decoding: the cap is on what base64 would allocate.
+            raise after_completion(AdapterError(E_BAD_RESPONSE, f"the audio is over the {self.max_inline_bytes} byte limit; not decoded"))
+        if len(raw) % 4 or not _B64.fullmatch(raw):
+            raise after_completion(AdapterError(E_BAD_RESPONSE, "the audio is not valid base64"))
+        try:
+            song = base64.b64decode(raw, validate=True)
+        except (ValueError, TypeError):
+            raise after_completion(AdapterError(E_BAD_RESPONSE, "the audio is not valid base64")) from None
+        if not song:
+            raise after_completion(AdapterError(E_BAD_RESPONSE, "the audio is empty"))
+        if not _looks_like("audio/mpeg", song[:16]):
+            raise after_completion(AdapterError(E_BAD_RESPONSE, "the audio is not an MP3 file by its bytes"))
+        return PollResult(SUCCEEDED, [Output("audio/mpeg", data=song)])
+
+
+ADAPTERS = (GeminiOmniAdapter, GeminiNanoBananaAdapter, GoogleLyriaAdapter)

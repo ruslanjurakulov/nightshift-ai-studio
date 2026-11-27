@@ -56,7 +56,7 @@ export const GOOGLE_BLOCKED: readonly string[] = ISO_3166_ALPHA2.filter((c) => !
 export const GOOGLE_MODELS: readonly string[] = [
   "gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-3-pro-image", "gemini-2.5-flash-image-expand",
   "gemini-2.5-flash-image-relight", "gemini-2.5-flash-image-erase", "gemini-3.6-flash", "veo-3.1", "veo-3.1-fast", "veo-3.1-lite",
-  "gemini-omni-1.1-flash", "gemini-nano-banana-2.1",
+  "gemini-omni-1.1-flash", "gemini-nano-banana-2.1", "google-lyria-3.5",
 ];
 
 /**
