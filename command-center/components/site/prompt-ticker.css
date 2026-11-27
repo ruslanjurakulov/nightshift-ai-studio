@@ -40,7 +40,8 @@
 .nxt-typed { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .nxt-caret { display: inline-block; width: 2px; height: 1.05em; margin-left: 2px; vertical-align: -0.15em; background: var(--ns-amber); opacity: 0; }
 .nxt-caret[data-on="true"] { opacity: 1; }
-.nxt-meta { display: flex; flex-wrap: nowrap; align-items: center; gap: 10px; height: 32px; margin: 0; overflow: hidden; font-size: 14px; color: var(--ns-text-dim); white-space: nowrap; }
+/* min-width 0 and a wrap: badge + "Model Runway Gen-4.5" in ru/uz (334 px) pushed a 360 px page sideways from a 294 px box. */
+.nxt-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; min-height: 32px; margin: 0; overflow: hidden; font-size: 14px; color: var(--ns-text-dim); white-space: normal; }
 .nxt-model strong { color: var(--ns-text); font-weight: 600; }
 .nxt-next {
   display: inline-flex;

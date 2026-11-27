@@ -135,7 +135,7 @@ export default async function PricingPage() {
   const referral = await referralRead;
 
   return (
-    <PublicShell t={t} fresh>
+    <PublicShell t={t} current="pricing" fresh>
       <PricingView
         t={t}
         locale={locale}

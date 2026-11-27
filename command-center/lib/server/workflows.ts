@@ -23,8 +23,10 @@ import {
  */
 export function workflowDb(supabase: SupabaseClient): WorkflowDb {
   return {
-    async rpc(fn, args) {
-      const { data, error } = await supabase.rpc(fn, args);
+    async rpc(fn, args, headers) {
+      let call = supabase.rpc(fn, args);
+      for (const [k, v] of Object.entries(headers ?? {})) call = call.setHeader(k, v);
+      const { data, error } = await call;
       return { data, error };
     },
     async listWorkflows(orgId) {
@@ -82,14 +84,14 @@ export function workflowDb(supabase: SupabaseClient): WorkflowDb {
 
 /** Signed in, and a client to act as them — or the answer to send instead. */
 export async function workflowSession(): Promise<
-  { ok: true; db: WorkflowDb; defaultOrg: string | null } | { ok: false; result: CreativeResult }
+  { ok: true; db: WorkflowDb; defaultOrg: string | null; userId: string } | { ok: false; result: CreativeResult }
 > {
   const user = await getUser();
   if (!user) return { ok: false, result: { status: 401, body: { error: "unauthorized" } } };
   const supabase = await createClient();
   if (!supabase) return { ok: false, result: { status: 503, body: { error: "not_configured" } } };
   const org = await getOrgContext();
-  return { ok: true, db: workflowDb(supabase), defaultOrg: org.current?.id ?? null };
+  return { ok: true, db: workflowDb(supabase), defaultOrg: org.current?.id ?? null, userId: user.id };
 }
 
 export type WorkflowRead<T> =

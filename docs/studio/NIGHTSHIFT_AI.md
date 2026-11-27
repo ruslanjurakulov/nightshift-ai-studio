@@ -14,8 +14,8 @@ Owner: S5. Every stream builds against this file. A change to a field below is a
 ## What happens, end to end
 
 1. **Prompt.** The person writes a prompt: Home's "Start from idea" box, or the Studio start box. They may attach a reference photo, which becomes a character (see Characters below).
-2. **Panel.** The Nightshift AI panel docks on the **left** of the Studio canvas. It is titled with the prompt's first words and has "+ New" and a close button; at 390 px it is a sheet.
-3. **Questions.** The Brain asks the questions the brief still needs, as **cards**: a short thread title, a question, 3 numbered options and an "your own answer" field, then Confirm.
+2. **Panel.** The Nightshift AI panel docks on the **left** of the Studio canvas, drawn in the same chat shell as the owner's (`components/chat`): the bare N, "Salom, {first name}", the pill composer, Copy and thumbs (no Regenerate: a stored turn moves the plan on and cannot be swapped), "New chat", and the person's own conversations in a history drawer (`GET /api/brain/history`, this workspace + channel + author only, read-only: 0199 has no rename or delete).
+3. **Questions.** The Brain asks the questions the brief still needs, as **cards**: a short thread title, a question and 3 numbered options under the answer; the composer is the "your own answer" field while a card is open.
    - The first question is always **kind**: a long YouTube video or a short Studio film/ad.
 4. **Draft on the canvas.** After each answer the BRIEF below is stored, and the canvas (S6b) draws it as **draft** nodes: idea → story → chapters → characters, locations and props → scenes → visuals/clips → voice → music → assembly. Nothing is spent.
 5. **Create.** "Create — N credits" is a person's press, and N is the backend's price.
@@ -205,7 +205,9 @@ clock: each scene's words start 0.25 s into the scene, and the file's provenance
 `[{scene_id, start_s, end_s}]` and the measured `loudness_lufs` / `true_peak_db` (null when not measured).
 
 The order the worker makes them in: every key frame, then the shots scene by scene (shot 1 from its first frame, shots 2-3 from the
-previous shot's last frame), then the narration. A shot whose input failed for good never begins and is `skipped` at the settle.
+previous shot's last frame), then the narration. Once any take has failed for good (its one retry failed too), or a shot can
+never begin because its input did, the film can no longer be assembled: nothing new begins, not even the narration, and the
+segment settles `takes_failed`. What was planned is `skipped` at 0; with nothing charged and nothing made the film is back in `draft`.
 
 ### Why a take failed: `film_takes.error_code`
 
