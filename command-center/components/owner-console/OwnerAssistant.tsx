@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { TriangleAlert } from "lucide-react";
 import type { OwnerConsoleDictionary } from "@/lib/i18n/owner-console/en";
 import { ChatShell, type ChatTurn } from "@/components/chat/ChatShell";
 import { ChatHistoryFrame, type ChatHistorySource, type HistoryResult } from "@/components/chat/ChatHistory";
+import { isChatGateError } from "@/lib/brain/chat-gate";
+import type { ChatModelId } from "@/lib/server/brain/llm";
 
 export { sendsOnKey } from "@/components/chat/ChatShell";
 
@@ -37,6 +39,12 @@ export const QUESTION_MAX = 2000;
 /** The counter appears only near the limit: a number under every keystroke is noise until it matters. */
 export const COUNTER_FROM = 1800;
 const HISTORY = 6;
+const MODEL_STORAGE_KEY = "ns.owner-ai.model";
+const GEMINI_MODEL: ChatModelId = "gemini-3.6-flash";
+
+function listedModel(names: A["modelPicker"]["names"], value: string | null): value is ChatModelId {
+  return value !== null && Object.hasOwn(names, value);
+}
 
 const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
 const tashkent = (iso: string) => {
@@ -54,6 +62,7 @@ export function failureText(a: A, status: number, body: Record<string, unknown> 
     return { message: a.errors.model_unavailable[reason as keyof A["errors"]["model_unavailable"]] };
   if (err === "model_failed" && Object.hasOwn(a.errors.model_failed, reason))
     return { message: a.errors.model_failed[reason as keyof A["errors"]["model_failed"]], retry: !["vendor_auth", "vendor_quota", "not_configured", "vendor_region", "model_not_found"].includes(reason) };
+  if (isChatGateError(err)) return { message: a.errors.googleGate[err], retry: err === "age_unavailable" };
   if (err === "daily_cap") return { message: fill(a.errors.daily_cap, { limit: typeof body?.limit === "number" ? body.limit : "—" }) };
   if (err === "not_enabled") return { message: fill(a.errors.not_enabled, { n: typeof body?.needs === "string" ? body.needs : "—" }) };
   if (err === "message_too_long") return { message: fill(a.tooLong, { n: QUESTION_MAX }) };
@@ -112,6 +121,7 @@ export function OwnerAssistant({
   verifyHref,
   signInHref,
   history = false,
+  configuredModels,
 }: {
   a: A;
   greeting: string;
@@ -120,6 +130,7 @@ export function OwnerAssistant({
   /** The stored-history panel: the owner page turns it on; off, the chat keeps only the session id of this tab. */
   history?: boolean;
   locale?: string;
+  configuredModels?: Partial<Record<ChatModelId, boolean>>;
 }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [pending, setPending] = useState(false);
@@ -135,6 +146,35 @@ export function OwnerAssistant({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [opening, setOpening] = useState(false);
+
+  const names = a.modelPicker.names;
+  const modelIds = Object.keys(names) as ChatModelId[];
+  const defaultModel = configuredModels?.[GEMINI_MODEL] ? GEMINI_MODEL : modelIds.find((id) => configuredModels?.[id]);
+  const [model, setModel] = useState<ChatModelId>();
+  const [modelReady, setModelReady] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(MODEL_STORAGE_KEY);
+      if (listedModel(names, saved)) setModel(saved);
+    } catch {
+      // The picker still works for this page when browser storage is blocked.
+    }
+    setModelReady(true);
+  }, [names]);
+
+  const selectedModel = model ?? defaultModel;
+  const modelBlocked = !!configuredModels && (!modelReady || !selectedModel || !configuredModels[selectedModel]);
+
+  function chooseModel(value: string) {
+    if (!listedModel(names, value) || !configuredModels?.[value] || inFlight.current) return;
+    setModel(value);
+    try {
+      localStorage.setItem(MODEL_STORAGE_KEY, value);
+    } catch {
+      // A storage failure does not undo the choice for this page.
+    }
+  }
 
   function clearAll() {
     setTurns([]);
@@ -182,7 +222,7 @@ export function OwnerAssistant({
 
   async function ask(text: string, regen = false): Promise<boolean> {
     const q = text.trim();
-    if (!q || inFlight.current) return false;
+    if (!q || modelBlocked || inFlight.current) return false;
     if (q.length > QUESTION_MAX) {
       setAsking(null);
       setFailure({ message: fill(a.tooLong, { n: QUESTION_MAX }) });
@@ -198,7 +238,7 @@ export function OwnerAssistant({
       const res = await fetch("/api/brain/owner/turn", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: q, history: before.map((t) => ({ q: t.q, a: t.a })).slice(-HISTORY), session_id: sessionId.current }),
+        body: JSON.stringify({ question: q, history: before.map((t) => ({ q: t.q, a: t.a })).slice(-HISTORY), session_id: sessionId.current, model: selectedModel }),
       });
       const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok || typeof body?.answer !== "string") {
@@ -311,6 +351,20 @@ export function OwnerAssistant({
   const chat = (lead?: ReactNode) => (
     <ChatShell
       lead={lead}
+      disabled={modelBlocked}
+      status={configuredModels && (
+        <div className="oc-ai-model">
+          <label htmlFor="owner-ai-model">{a.modelPicker.label}</label>
+          <select id="owner-ai-model" value={selectedModel ?? ""} disabled={pending || !modelReady} onChange={(e) => chooseModel(e.currentTarget.value)}>
+            {!selectedModel && <option value="" disabled>{a.modelPicker.noneConfigured}</option>}
+            {modelIds.map((id) => (
+              <option key={id} value={id} disabled={!configuredModels[id]}>
+                {configuredModels[id] ? names[id] : `${names[id]} — ${a.modelPicker.notConfigured}`}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       labels={{
         title: a.ai,
         newChat: a.newChat,

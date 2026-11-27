@@ -46,6 +46,23 @@ describe("/owner/ai", () => {
     expect(html).not.toMatch(/\$\d/);
   });
 
+  it("passes only configuration booleans from the server to the picker", async () => {
+    vi.stubEnv("AI_CHAT_ANTHROPIC_API_KEY", "");
+    vi.stubEnv("AI_CHAT_OPENAI_API_KEY", " ");
+    vi.stubEnv("AI_CHAT_GEMINI_API_KEY", "test-only");
+    try {
+      const { default: Page } = await import("../app/owner/ai/page");
+      const page = (await Page()) as ReactElement<{ children: ReactElement<{ configuredModels: unknown }> }>;
+      expect(page.props.children.props.configuredModels).toEqual({
+        "anthropic-claude-sonnet-5-5": false,
+        "openai-gpt-6-luna": false,
+        "gemini-3.6-flash": true,
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("greets the owner by first name, and with a plain hello when there is no name (never by an address)", async () => {
     const { default: Page } = await import("../app/owner/ai/page");
     const html = renderToStaticMarkup((await Page()) as ReactElement);

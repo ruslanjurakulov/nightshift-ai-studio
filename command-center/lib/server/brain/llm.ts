@@ -27,12 +27,7 @@ export const CHAT_MODELS: Record<ChatModelId, ModelWire> = {
   "gemini-3.6-flash": { provider: "google", vendorModel: "gemini-3.6-flash" },
 };
 
-/**
- * The owner's own chat (/owner/ai) stays on the model it ran before the customer chat moved to Gemini Flash (owner, 2026-11-22). Both
- * chats used to read ai_chat_settings.model; that row is now the customer chat's alone, because 0199's reserve records it as the model
- * of every customer turn (a customer turn metered under another model's name would be a false figure). The owner's turns are recorded
- * with the model this route passes (0203 owner_ai_reserve_turn), so pinning it here keeps both meters true.
- */
+/** Legacy owner turn default for callers that omit the model. Customer turns use ai_chat_settings.model. */
 export const OWNER_CHAT_MODEL: ChatModelId = "anthropic-claude-sonnet-5-5";
 
 /** The chat's own keys (never the worker's ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY): see deploy/.env.web.example. */

@@ -6,7 +6,7 @@
  * reported without its remedy; the facts or the raw model text reaching the browser; customer text in the facts closing the data
  * block. Synthetic figures only.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OwnerFacts } from "../lib/owner-console/facts-types";
 import { factsForPrompt, ownerUserBlock, readHistory, readOwnerAnswer, OWNER_AI_SYSTEM, PROMPT_CHANNELS } from "../lib/owner-console/ai-prompt";
 
@@ -32,8 +32,9 @@ const s = vi.hoisted(() => ({
   cross: null as Response | null,
   rpc: {} as Record<string, { data?: unknown; error?: unknown }>,
   rpcCalls: [] as { name: string; args: unknown }[],
-  model: { ok: true, id: "anthropic-claude-sonnet-5-5", state: "available" } as Record<string, unknown>,
-  modelAsked: [] as unknown[],
+  registry: { availability: "ga" } as { availability: string } | null,
+  registryReads: [] as string[],
+  country: "US",
   facts: null as unknown,
   factsErr: null as unknown,
   llm: { ok: true, text: '{"answer":"Pay Lab Vendor.","draft":null}', tokensIn: 10, tokensOut: 5 } as Record<string, unknown>,
@@ -45,6 +46,16 @@ const s = vi.hoisted(() => ({
 vi.mock("@/lib/supabase/server", () => ({
   getUser: async () => s.user,
   createClient: async () => ({
+    from: (table: string) => ({
+      select: (column: string) => ({
+        eq: (key: string, id: string) => ({
+          maybeSingle: async () => {
+            s.registryReads.push(`${table}.${column}:${key}=${id}`);
+            return { data: s.registry, error: null };
+          },
+        }),
+      }),
+    }),
     rpc: async (name: string, args: unknown) => {
       s.rpcCalls.push({ name, args });
       return s.rpc[name] ?? { data: null, error: null };
@@ -68,27 +79,17 @@ vi.mock("@/lib/server/owner-brain-facts", () => {
     },
   };
 });
-vi.mock("@/lib/server/brain/llm", () => ({
-  OWNER_CHAT_MODEL: "anthropic-claude-sonnet-5-5",
+vi.mock("@/lib/server/age", () => ({ readAgeAnswer: async () => "adult" }));
+vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
+vi.mock("@/lib/server/geo", () => ({ readCountry: () => ({ country: s.country }) }));
+vi.mock("@/lib/server/brain/llm", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/server/brain/llm")>(),
   callChatModel: async (id: string, system: string, user: string, opts: Record<string, unknown>) => {
     s.llmCalls.push({ id, system, user, opts });
     if (s.llmThrow) throw new Error("socket hang up");
     return s.llm;
   },
 }));
-vi.mock("@/lib/server/brain/session", async () => {
-  const { NextResponse } = await import("next/server");
-  const brainJson = (body: unknown, status = 200) => NextResponse.json(body, { status });
-  return {
-    brainJson,
-    notFound: () => brainJson({ error: "not_found" }, 404),
-    chosenModelState: async (_db: unknown, model: unknown) => {
-      s.modelAsked.push(model);
-      return s.model;
-    },
-  };
-});
-
 const post = (body: unknown) =>
   new Request("http://localhost/api/brain/owner/turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 async function call(body: unknown = { question: "Which API must I pay?" }) {
@@ -103,12 +104,17 @@ beforeEach(() => {
   s.cross = null;
   s.rpc = {
     ai_chat_owner_settings: { data: { model: "anthropic-claude-sonnet-5-5" }, error: null },
+    model_is_available: { data: true, error: null },
     owner_ai_reserve_turn: { data: 7, error: null },
     owner_ai_turn_save: { data: SID, error: null },
   };
   s.rpcCalls = [];
-  s.model = { ok: true, id: "anthropic-claude-sonnet-5-5", state: "available" };
-  s.modelAsked = [];
+  s.registry = { availability: "ga" };
+  s.registryReads = [];
+  s.country = "US";
+  vi.stubEnv("AI_CHAT_ANTHROPIC_API_KEY", "test-only");
+  vi.stubEnv("AI_CHAT_OPENAI_API_KEY", "test-only");
+  vi.stubEnv("AI_CHAT_GEMINI_API_KEY", "test-only");
   s.facts = FACTS;
   s.factsErr = null;
   s.llm = { ok: true, text: 'Sure: {"answer":"Pay Lab Vendor.","draft":{"title":"Top-up note","body":"Pay on the vendor page."}}', tokensIn: 10, tokensOut: 5 };
@@ -116,6 +122,8 @@ beforeEach(() => {
   s.llmThrow = false;
   s.factsCalls = 0;
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("who may ask", () => {
   it.each([
@@ -159,18 +167,59 @@ describe("the question", () => {
 });
 
 describe("the model", () => {
-  it.each(["not_configured", "not_on_sale", "unknown_model"])("an unavailable chosen model (%s) is said, and no other model is tried", async (state) => {
-    s.model = { ok: true, id: null, state };
-    expect(await call()).toMatchObject({ status: 409, body: { error: "model_unavailable", reason: state } });
+  it.each([
+    [null, "unknown_model"],
+    [{ availability: "disabled" }, "not_on_sale"],
+  ])("refuses an unavailable registry row (%j)", async (registry, reason) => {
+    s.registry = registry;
+    expect(await call()).toMatchObject({ status: 409, body: { error: "model_unavailable", reason } });
     expect(s.llmCalls).toEqual([]);
     expect(s.rpcCalls.map((c) => c.name)).not.toContain("owner_ai_reserve_turn");
+  });
+
+  it("honors the operational switch even for a hidden model", async () => {
+    s.registry = { availability: "hidden" };
+    s.rpc.model_is_available = { data: false, error: null };
+    expect(await call()).toMatchObject({ status: 409, body: { error: "model_unavailable", reason: "not_on_sale" } });
+    expect(s.llmCalls).toEqual([]);
+  });
+
+  it("rejects an unknown model before reading settings or calling a vendor", async () => {
+    expect(await call({ question: "Hello", model: "another-model" })).toEqual({ status: 400, body: { error: "bad_request" } });
+    expect(s.rpcCalls).toEqual([]);
+    expect(s.llmCalls).toEqual([]);
+  });
+
+  it("refuses an unconfigured selection without reserving a turn or trying any vendor", async () => {
+    vi.stubEnv("AI_CHAT_OPENAI_API_KEY", "");
+    expect(await call({ question: "Hello", model: "openai-gpt-6-luna" })).toEqual({
+      status: 409, body: { error: "model_unavailable", reason: "not_configured" },
+    });
+    expect(s.rpcCalls.map((c) => c.name)).not.toContain("owner_ai_reserve_turn");
+    expect(s.llmCalls).toEqual([]);
+  });
+
+  it.each(["openai-gpt-6-luna", "gemini-3.6-flash"])("reserves and calls the selected model %s even when hidden from sale", async (model) => {
+    s.registry = { availability: "hidden" };
+    expect(await call({ question: "Hello", model })).toMatchObject({ status: 200, body: { model } });
+    expect(s.registryReads).toEqual([`model_registry.availability:id=${model}`]);
+    expect(s.llmCalls.map((c) => c.id)).toEqual([model]);
+    expect(s.rpcCalls.find((c) => c.name === "owner_ai_reserve_turn")?.args).toMatchObject({ p_model: model });
+    expect(s.rpcCalls.find((c) => c.name === "owner_ai_turn_save")?.args).toMatchObject({ p_model: model });
+  });
+
+  it("a Gemini country refusal happens before facts, reservation or any vendor call", async () => {
+    s.country = "RU";
+    expect(await call({ question: "Hello", model: "gemini-3.6-flash" })).toEqual({ status: 451, body: { error: "country_blocked" } });
+    expect(s.factsCalls).toBe(0);
+    expect(s.rpcCalls.map((c) => c.name)).not.toContain("owner_ai_reserve_turn");
+    expect(s.llmCalls).toEqual([]);
   });
 
   it("the owner's chat stays on its own model when the customer chat's setting moves to Gemini Flash", async () => {
     // ai_chat_settings.model is the customer chat's (owner, 2026-11-22): the owner's turn must not follow it to another vendor.
     s.rpc.ai_chat_owner_settings = { data: { model: "gemini-3.6-flash" }, error: null };
     expect((await call()).status).toBe(200);
-    expect(s.modelAsked).toEqual(["anthropic-claude-sonnet-5-5"]);
     expect(s.llmCalls.map((c) => c.id)).toEqual(["anthropic-claude-sonnet-5-5"]);
     expect(s.rpcCalls.find((c) => c.name === "owner_ai_reserve_turn")?.args).toMatchObject({ p_model: "anthropic-claude-sonnet-5-5" });
   });
