@@ -8,12 +8,16 @@ export type PluralForms = Record<"one" | "few" | "many" | "other", string>;
  * the reader is what this replaces. An unknown locale tag falls back to the general form, which reads correctly in every dictionary.
  */
 export function pluralText(forms: PluralForms, n: number, locale: string): string {
+  return fmt(pluralForm(forms, n, locale), { n });
+}
+
+/** The form for `n`, its placeholders left for the caller: for a number that is printed formatted ("1 234") or beside others. */
+export function pluralForm(forms: PluralForms, n: number, locale: string): string {
   let rule: Intl.LDMLPluralRule = "other";
   try {
     rule = new Intl.PluralRules(locale).select(n);
   } catch {
     // keep "other"
   }
-  const form = rule === "one" || rule === "few" || rule === "many" ? forms[rule] : forms.other;
-  return fmt(form, { n });
+  return rule === "one" || rule === "few" || rule === "many" ? forms[rule] : forms.other;
 }

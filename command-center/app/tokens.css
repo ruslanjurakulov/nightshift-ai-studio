@@ -225,6 +225,8 @@
     --ds-glow-select: 0 0 0 1px rgb(200 255 46 / 0.5), 0 0 18px -2px rgb(200 255 46 / 0.45);
   }
 }
+/* The Studio chat keeps a black ground even in the light app theme. */
+.ns-ai-dock,
 :root[data-theme="dark"],
 [data-theme-scope="dark"] {
   --ds-bg: #070a14;

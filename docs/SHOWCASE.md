@@ -55,7 +55,7 @@ hero: { ai: "9a52ebf1-bbe3-473c-b77c-7553bc18e0d8", id: "cloud", clip: "cloud" }
      Copy link. The id is the part after `/api/media/file/` (36 characters, up to the next `/`);
    - or the **job id**: Supabase → Table editor → `creative_jobs`, newest first, the operator's `org_id`, status `completed`
      → copy `id`.
-3. GitHub → **Actions** → **Showcase asset** → **Run workflow** → paste the id (slot and caption are optional) → Run.
+3. GitHub → **Actions** → **Showcase asset** → **Run workflow** → paste the id (slot, caption and the three card lines are optional) → Run.
 4. The run opens a **draft pull request** named "Showcase: sample from Studio job …". Its description lists the model, the
    input's provenance, the prompt and the recorded cost (or "unknown"). Watch the clip in the PR's files.
 5. Checks do not start by themselves on a PR the workflow opened: close and reopen it to run them. Then merge it. The sample is
@@ -79,13 +79,50 @@ its first picture. Then it downloads the file through the Library's own signed l
 sha256 is the stored one. It also refuses an entry the site would not show (a prompt over 4000 characters as the page counts
 them), rather than cutting it.
 
-It writes `command-center/components/site/showcase/<job id>/` (clip.mp4 / clip.webm at 1280 wide, clip-sm.* at 640,
-silent, and a poster of the first frame; a picture gets the two posters), appends the entry to
+It writes `command-center/components/site/showcase/<job id>/` (clip.mp4 / clip.webm at 1280 wide, clip-sm.* at 640, and a
+poster of the first frame; a picture gets the two posters), appends the entry to
 `command-center/lib/site/showcase.json` and regenerates `command-center/components/site/showcase-assets.ts`. The output is not
 graded or retouched.
 
 Cost: what `creative_job_costs` recorded, summed in USD with its price source, or **unknown** when there is no row or a row
 has no figure (never 0); and the vendor's own measure per row (for example Runway credits).
+
+Card line (optional): the inputs `card_line_en`, `card_line_ru` and `card_line_uz` give the sample's card a short line per
+language. All three or none; each at most 140 characters after invisible characters are stripped (a longer one is refused, not
+cut), and one line (a line break or a tab is refused). The entry carries it as `cardLine: {en, ru, uz}`, or `null` without one.
+
+### Sound
+
+Owner decision (2026-11-22): every video on the site is cinematic and has sound. The export records `audio: true` only for
+sound a visitor will hear: ffprobe finds an audio stream, and one ffmpeg pass (`astats`) measures it, a peak above -60 dB (digital
+silence, which generators pad with, reads -inf) and a length covering at least 80% of the picture (a few-millisecond blip is not
+the clip's sound). Anything else is recorded as `audio: false`; a measurement that cannot be read refuses (`audio_unknown`). The
+length limit is the VIDEO stream's, and a kept track is cut at the picture's length, so a long track never stretches clip.mp4
+into a frozen frame. When there is sound, the **1280 copies keep it**: AAC 128 kb/s stereo 48 kHz in `clip.mp4`, Opus 96 kb/s stereo 48 kHz in
+`clip.webm`. The 640 copies (`clip-sm.*`, the phone and grid files) stay silent (`-an`); a grid or phone clip whose sound a visitor turns
+on switches, inside that press, to its full file and plays on from the same moment (`components/site/LoopClip.tsx`), so the
+bytes of sound are spent only for whoever asked. The entry records what was found as
+`audio: true | false` and the generated module marks such a clip `audio: true`; an entry without the field (every sample
+exported before this) is silent. The site shows its sound toggle only on a clip marked `audio: true`. A probe that fails is a
+refusal (`audio_unknown`), never a silent copy.
+
+Size impact, per full copy (computed from the bitrate, then measured on a 5 s and a 10 s test tone encoded with the very
+settings above):
+
+| Copy | Bitrate | 5 s clip | 10 s clip |
+| :-- | :-- | :-- | :-- |
+| clip.mp4, AAC | 128 kb/s = 16 KB/s | ~80 KB (measured 80 KB) | ~160 KB (measured 159 KB) |
+| clip.webm, Opus | 96 kb/s = 12 KB/s (VBR ceiling) | ~60 KB (measured 41 KB) | ~120 KB (measured 82 KB) |
+
+Against today's 35 video samples (all silent; `components/site/showcase/*/clip.mp4`, measured 2026-11-22: median 1371 KB,
+smallest 216 KB, largest 5614 KB, median length 5.2 s, longest 10.1 s; `clip.webm` median 1289 KB), sound adds about 6% to a
+median 5 s `clip.mp4` and about 5% (at most) to its `clip.webm`, up to roughly a third of the smallest one. The phone files
+(`clip-sm.mp4` median 345 KB) do not change.
+
+Where the toggle shows today: nowhere. None of the 35 samples has sound, and the one Studio piece with a real track
+(`language-duo`, `lib/showcase/items.ts`) is in `components/landing/home/HomePage.tsx`'s reel, which no route mounts (the
+homepage is `Landing`, the owner's choice of 2026-11-22). The toggle appears by itself on the first clip exported with sound,
+and only while that clip is playing (never over its still).
 
 ## Secrets and permissions
 

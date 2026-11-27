@@ -165,9 +165,14 @@ describe("the model tiles", () => {
 });
 
 describe("the models strip", () => {
-  it("is not drawn where it cannot move: on a touch screen or with reduced motion", () => {
+  it("sits still where it cannot move (a touch screen, reduced motion): two centred rows, no copy, no animation", () => {
     const css = rules(read("components/site/site-motion.css"));
-    expect(css).toContain("@media (hover: none) { .nx-marquee { display: none; } }");
-    expect(css).toContain("@media (prefers-reduced-motion: reduce) { .nx-marquee { display: none; } }");
+    // Still is the default; motion, the second copy and the one-line rows exist only where the pointer can stop them.
+    expect(css).toMatch(/\.nx-marquee-row\[data-copy="1"\] \{ display: none; \}/);
+    expect(css).not.toMatch(/\.nx-marquee \{ display: none; \}/);
+    const moving = css.slice(css.indexOf("@media (prefers-reduced-motion: no-preference) and (hover: hover) {\n  .nx-marquee-track"));
+    expect(moving).toMatch(/\.nx-marquee-row\[data-copy="1"\] \{ display: flex; \}/);
+    expect(moving).toMatch(/\.nx-marquee-track\[data-dir="right"\] \{ animation: nx-marquee [^}]*reverse; \}/);
+    expect(moving).toMatch(/\.nx-marquee:is\(:hover, :has\(:focus-visible\)\) \.nx-marquee-track \{ animation-play-state: paused; \}/);
   });
 });

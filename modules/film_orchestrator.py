@@ -160,6 +160,11 @@ class FilmUnavailable(RuntimeError):
     """The database could not be reached. Never carries a key or a body."""
 
 
+class FilmFunctionMissing(FilmUnavailable):
+    """PostgREST answered 404 for a service function: its migration is not applied here. A FilmUnavailable like any other to every
+    caller that does not ask; the sweep asks, because 0212's film_sweep missing means "call 0171's function directly", not "down"."""
+
+
 class FilmRefused(RuntimeError):
     """A service function refused (its machine word: lease_lost, not_running, take_not_running, not_complete, ...)."""
 
@@ -692,6 +697,7 @@ class FilmOrchestrator:
         if kind == "narration":
             return self._narration(seg, take, tj, job, request, adapter, work, lease)
         request = self._inputs(request, tj, adapter, work)
+        self._still_on_sale(request)
         if not self.db.advance_job(job, self.worker_id, "submitting"):
             raise _TakeFailed("provider_error", "the take's job could not be sent (the model may be switched off)")
         try:
@@ -706,6 +712,18 @@ class FilmOrchestrator:
             raise _Stop("job_lost")
         files = self._poll(adapter, task, request, work / "out", lease)
         return self._deliver(seg, take, tj, job, request, files, task, work, None)
+
+    def _still_on_sale(self, request: cw.GenerationRequest) -> None:
+        """The take's model must still be on sale for the take's capability right before the paid call (the creative worker's rule,
+        modules/creative_worker.py "Still on sale"): a film is priced at start, and its takes run for hours after. Not on sale fails the
+        take as ``bad_request`` (the closest word the live view has copy for: the person picks another model and starts again), charged
+        0 by 0171; its one retry meets the same answer and fails for good, and the segment settles as takes_failed. Never another model.
+        An answer that cannot be read raises CreativeUnavailable: nothing is sent, and the drive is left for the next claim."""
+        gone = cw.not_on_sale(self.db, request.model, request.capability, request.org_id, previews=False)
+        if gone is not None:
+            code, _ = gone
+            raise _TakeFailed("bad_request", f"{request.model} is no longer on sale for {request.capability} ({code}); "
+                                             "nothing was sent and this take is not charged. Choose another model and start again")
 
     def _inputs(self, request: cw.GenerationRequest, tj: Mapping[str, Any], adapter, work: Path) -> cw.GenerationRequest:
         """The take's pictures, as the database named them (film_take_job), copied by id; the style kit and @characters through the
@@ -781,6 +799,7 @@ class FilmOrchestrator:
             start += float(s["planned_seconds"])
         if not plan:
             raise _TakeFailed("bad_request", "the film has no narration text")
+        self._still_on_sale(request)
         if not self.db.advance_job(job, self.worker_id, "submitting"):
             raise _TakeFailed("provider_error", "the narration's job could not be sent (the model may be switched off)")
         voiced, clips, segments, first_task = 0, [], [], None
@@ -906,7 +925,7 @@ class FilmRest:
         except Exception as e:
             raise FilmUnavailable(f"{name}: {type(e).__name__}") from None
         if r.status_code == 404:
-            raise FilmUnavailable(f"{name}: HTTP 404 (is its migration applied?)")
+            raise FilmFunctionMissing(f"{name}: HTTP 404 (is its migration applied?)")
         if 400 <= r.status_code < 500:
             word, detail = "", ""
             try:
@@ -975,6 +994,28 @@ class FilmRest:
         out = self.rpc("film_expire_segments", {})
         return int(out) if isinstance(out, int) else 0
 
+    # 0212
+    def sweep(self, runner: str) -> int:
+        """film_expire_segments through 0212's film_sweep, which records that this runner swept (G2: "it ran" is a measurement). How
+        many segments it moved. A sweep that failed in the database is recorded there and raised here, by its SQLSTATE only."""
+        try:
+            out = self.rpc("film_sweep", {"p_runner": runner})
+        except FilmFunctionMissing:
+            raise FilmFunctionMissing("film_sweep: HTTP 404 (migration 0212_film_sweep.sql is not applied)") from None
+        if not isinstance(out, dict) or out.get("ok") is not True:
+            code = str(out.get("error") or "") if isinstance(out, dict) else ""
+            raise FilmUnavailable(f"film_sweep: the sweep failed ({code if re.match(r'^[0-9A-Z]{5}$', code) else 'no answer'})")
+        n = out.get("settled")
+        return int(n) if isinstance(n, int) and not isinstance(n, bool) else 0
+
+    def sweep_status(self) -> Optional[dict]:
+        """0212's film_sweep_status(): counts and times, read only. None when the answer is not an object."""
+        try:
+            out = self.rpc("film_sweep_status", {})
+        except FilmFunctionMissing:
+            raise FilmFunctionMissing("film_sweep_status: HTTP 404 (migration 0212_film_sweep.sql is not applied)") from None
+        return out if isinstance(out, dict) else None
+
     def takes(self, segment: str) -> list:
         return self._select("film_takes", {"segment_id": f"eq.{segment}",
                                            "select": "id,kind,scene_id,shot_index,attempt,status,model,params,quantity"})
@@ -998,6 +1039,16 @@ class FilmRest:
 
     def record_cost(self, job, usage):
         return self.creative.record_cost(job, usage)
+
+    # still on sale, right before a take's paid call (cw.not_on_sale)
+    def on_sale(self, capability):
+        return self.creative.on_sale(capability)
+
+    def model_switched_on(self, model):
+        return self.creative.model_switched_on(model)
+
+    def registry_row(self, model):
+        return self.creative.registry_row(model)
 
 
 __all__ = ["AssemblyOutcome", "DriveOutcome", "FILM_ERROR_CODES", "FilmOrchestrator", "FilmRefused", "FilmRest", "FilmUnavailable",
