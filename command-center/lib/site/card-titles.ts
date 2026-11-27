@@ -14,6 +14,7 @@ import type { Locale } from "@/lib/i18n/core";
 export const CARD_TITLE_MAX = 32;
 
 export const CARD_TITLES: Readonly<Record<string, Readonly<Record<Locale, string>>>> = {
+  "495ebf91-84df-4c76-a6c4-a3ca6e4eb82d": { en: "Portrait in a sunflower field", ru: "Портрет в поле подсолнухов", uz: "Kungaboqar dalasidagi portret" },
   "a04d5d55-27ef-4cae-95a2-25488503829e": { en: "Giant sneaker on a wet crosswalk", ru: "Гигантский кед на переходе", uz: "Yomgʻirli yoʻlda ulkan krossovka" },
   "f00c9666-0906-40cc-90d2-dd69680d5077": { en: "Ancient harbour market at dawn", ru: "Древний рынок в гавани", uz: "Qadimiy bandargoh bozori" },
   "bf349995-6836-47fe-9481-a433b4fccb04": { en: "Knife slicing a ruby glass cake", ru: "Нож режет торт из стекла", uz: "Shisha tortni kesayotgan pichoq" },
