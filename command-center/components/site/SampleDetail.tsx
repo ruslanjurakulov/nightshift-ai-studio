@@ -10,6 +10,7 @@ import { ClipPause } from "@/components/site/ClipPause";
 import { holdClips } from "@/lib/site/clip-hold";
 import { useMotionPaused, useMotionTap } from "@/lib/site/motion";
 import { fmt } from "@/lib/i18n/core";
+import { AiMark } from "@/components/site/AiMark";
 
 /** Everything one sample's dialog shows, as plain data from the gallery (a Server Component). */
 export type SampleDetailData = {
@@ -41,6 +42,7 @@ export type SampleDetailCopy = {
   close: string;
   detail: string;
   badge: string;
+  badgeName: string;
   model: string;
   prompt: string;
   notInStudio: string;
@@ -220,7 +222,7 @@ function Dialog({ d, copy, onClose, returnTo }: { d: SampleDetailData; copy: Sam
                 <source src={wide ? d.clip.mp4 : d.clip.smMp4} type="video/mp4" />
               </video>
             )}
-            <span className="nx-result-badge">{copy.badge}</span>
+            <span className="nx-result-badge"><AiMark short={copy.badge} name={copy.badgeName} /></span>
             {d.clip && <ClipPause label={copy.pause} />}
           </div>
         </div>
