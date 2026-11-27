@@ -1343,6 +1343,10 @@ const REASON_GROUPS: Record<string, keyof Dictionary["gen"]["reasons"]> = {
   mode_not_supported: "service",
   submit_interrupted: "service",
   worker_lost: "service",
+  // The worker's last look before the paid call (modules/creative_worker.py, "Still on sale"): the model went off sale, or was
+  // switched off, while the job waited. Nothing was sent and the hold was released; the remedy is another model.
+  model_not_available: "service",
+  model_temporarily_off: "service",
   credits_unavailable: "credits",
   no_credit_hold: "credits",
   hold_not_open: "credits",

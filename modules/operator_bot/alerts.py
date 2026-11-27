@@ -16,6 +16,12 @@ or failed-upload video, the scheduled readiness check and stale provider balance
 ``health``. Their keys end in the UTC date (one alert per cause per channel per day) and the engine follows a
 delivered one that has cleared with a single "recovered" note (:meth:`AlertEngine._recovered`).
 
+Film Studio is one more kind, ``film`` (switch-on gates G3 and G4, docs/FILM_STUDIO.md): a settle that could not
+capture a charge (critical, once per event), a segment the claim or the sweep skipped, from film_events or 0171's
+security_events fallback (warn, once per event), a segment queued with no claim or holding a stale lease (warn, every
+STUCK_COOLDOWN), and the sweep overdue by 0212's own measure (critical). Ids cut to 8, amounts, statuses, closed call
+words and SQLSTATEs only; "never recorded" is not an alert and never reads as fine.
+
 Detection is pure over the sources (:func:`detect`). Delivery is
 :class:`AlertEngine`, which is where the restraint lives:
 
@@ -82,6 +88,11 @@ MARKETING_WINDOW = timedelta(hours=24)
 #: Dedupe-key prefix of the drafts-waiting alert and of its silent markers
 #: (``marketing:drafts:<count>[:<epoch>]``); see ``AlertEngine._gate_marketing_drafts``.
 MARKETING_DRAFTS = "marketing:drafts:"
+#: How far back a film event (a charge not captured, a skipped segment) is still news: inside the 48 hours the store
+#: remembers, so one is announced once.
+FILM_WINDOW = timedelta(hours=24)
+#: The overdue sweep is a standing condition with customers' holds open: repeated like a lost worker.
+FILM_SWEEP_COOLDOWN = WORKER_COOLDOWN
 
 #: Critical alerts are not subject to quiet hours, mutes of "all" or the normal
 #: hourly budget, but they are not unlimited: a flood of forged or merely noisy
@@ -180,14 +191,30 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None, lang: str 
     ws = ops.workers()
     if ws.ok:
         rows = analysis.classify_workers(ws.data, now)
-        # The bot's own row is kind "other", shared with the e-mail worker: it
-        # must not hide that worker's silence, nor be hidden by it.
-        fresh_kinds = {w.get("kind") for w in rows if w.get("state") in ("running", "starting")
+        # A stale row is an old container's when a fresh one of the same role runs. Kind "other" is split by id
+        # prefix (analysis.worker_role), and the bot's own row is judged on its own: neither may hide another
+        # worker's silence. A later 'stopped' excuses a stale row ONLY from the same worker (analysis.worker_self):
+        # another host stopped on purpose says nothing about a host that crashed. The film worker's id carries its
+        # pid, so for it "the same worker" is the same host (restarted with its switch off).
+        fresh_roles = {analysis.worker_role(w) for w in rows if w.get("state") in ("running", "starting")
                        and not w["stale"] and w.get("worker_id") != BOT_WORKER_ID}
+        stopped_at: dict = {}
+        for w in rows:
+            at = parse_ts(w.get("updated_at"))
+            if w.get("state") == "stopped" and at is not None and w.get("worker_id") != BOT_WORKER_ID:
+                me = analysis.worker_self(w)
+                stopped_at[me] = max(at, stopped_at.get(me, at))
+
+        def accounted(w) -> bool:
+            if w.get("worker_id") == BOT_WORKER_ID:
+                return False
+            me, at = analysis.worker_self(w), parse_ts(w.get("updated_at"))
+            return analysis.worker_role(w) in fresh_roles or (at is not None and me in stopped_at and stopped_at[me] > at)
+
         for w in rows:
             wid = safe_id(w.get("worker_id"), 60)
             age = w["age_s"]
-            if w["stale"] and (w.get("kind") not in fresh_kinds or w.get("worker_id") == BOT_WORKER_ID) \
+            if w["stale"] and not accounted(w) \
                     and age is not None and timedelta(seconds=age) <= WORKER_LOST_MAX_AGE:
                 out.append(Alert("worker", f"worker:{wid}", "critical",
                                  t(lang, "alert.worker_lost", id=wid, kind=w.get("kind"),
@@ -212,6 +239,8 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None, lang: str 
     mk = ops.marketing_summary()
     if mk.ok:
         out += _marketing_alerts(mk.data, now, lang)
+
+    out += _film_alerts(ops, now, lang)
 
     au = ops.audit(since)
     if au.ok:
@@ -284,6 +313,102 @@ def _marketing_alerts(summary, now: datetime, lang: str) -> list[Alert]:
         logger.warning("marketing alerts skipped (%s)", type(e).__name__)
         return []
     return out
+
+
+def _film_alerts(ops: OperatorSources, now: datetime, lang: str) -> list[Alert]:
+    """Film Studio's switch-on gates G3 and G4 (docs/FILM_STUDIO.md). Each source on its own: one that cannot answer
+    (0171 or 0212 not applied, a read refused) says nothing here and /health says why, and a bug in one costs the
+    others nothing. Lines carry ids (cut to 8), amounts, statuses, closed call words and SQLSTATEs: never a prompt,
+    a scene, the database's message or a customer's name."""
+    out: list[Alert] = []
+    for name, fn in (("events", _film_event_alerts), ("fallbacks", _film_fallback_alerts),
+                     ("stuck", _film_stuck_alerts), ("sweep", _film_sweep_alerts)):
+        try:
+            out += fn(ops, now, lang)
+        except Exception as e:  # noqa: BLE001 - a malformed row must not end the pass
+            logger.warning("film %s alerts skipped (%s)", name, type(e).__name__)
+    return out
+
+
+def _fid(value) -> str:
+    return safe_id(value, 8) or "?"
+
+
+def _film_event_alerts(ops: OperatorSources, now: datetime, lang: str) -> list[Alert]:
+    sec = ops.film_alert_events(now - FILM_WINDOW)
+    if not sec.ok:
+        return []
+    out = []
+    for r in sec.data or []:
+        eid = safe_id(r.get("id"), 20)
+        if not eid or (parse_ts(r.get("created_at")) or now) < now - FILM_WINDOW:
+            continue
+        if r.get("event") == "segment_settled":
+            amount = analysis.film_not_captured(r)
+            if amount is None:
+                continue
+            # CRITICAL: credits were spent on a vendor for this film and the customer's hold could no longer pay them.
+            out.append(Alert("film", f"film:not_captured:{eid}", "critical",
+                             t(lang, "alert.film_not_captured", amount=views.num(lang, amount, 2),
+                               org=_fid(r.get("org_id")), film=_fid(r.get("film_id")))))
+        elif r.get("event") == "segment_skipped":
+            out.append(Alert("film", f"film:skipped:{eid}", "warn",
+                             t(lang, "alert.film_skipped", segment=_fid(r.get("segment_id")),
+                               call=analysis.film_skip_call(r.get("call")), state=analysis.film_sqlstate(r.get("sqlstate")),
+                               org=_fid(r.get("org_id")), film=_fid(r.get("film_id")))))
+    return out
+
+
+def _film_fallback_alerts(ops: OperatorSources, now: datetime, lang: str) -> list[Alert]:
+    sec = ops.film_skip_fallbacks(now - FILM_WINDOW)
+    if not sec.ok:
+        return []
+    out = []
+    for r in sec.data or []:
+        eid = safe_id(r.get("id"), 20)
+        if not eid or (parse_ts(r.get("at")) or now) < now - FILM_WINDOW:
+            continue
+        out.append(Alert("film", f"film:skipped:sec:{eid}", "warn",
+                         t(lang, "alert.film_skipped_fallback", segment=_fid(r.get("target")),
+                           call=analysis.film_skip_call(r.get("call")), state=analysis.film_sqlstate(r.get("sqlstate")))))
+    return out
+
+
+def _film_stuck_alerts(ops: OperatorSources, now: datetime, lang: str) -> list[Alert]:
+    sec = ops.film_open_segments()
+    if not sec.ok:
+        return []
+    out = []
+    for r in analysis.film_stuck_segments(sec.data, now):
+        sid = safe_id(r.get("id"), 40)
+        if not sid:
+            continue
+        key = "alert.film_queued_stuck" if r["why"] == "queued" else "alert.film_lease_stuck"
+        out.append(Alert("film", f"film:stuck:{sid}", "warn",
+                         t(lang, key, segment=_fid(sid), status=views.status_word(lang, r.get("status")),
+                           age=age_label(r["since"], now), org=_fid(r.get("org_id"))),
+                         None, STUCK_COOLDOWN))
+    return out
+
+
+def _film_sweep_alerts(ops: OperatorSources, now: datetime, lang: str) -> list[Alert]:
+    sec = ops.film_sweep_status()
+    if not sec.ok:
+        return []
+    st = analysis.film_sweep_state(sec.data)
+    # Only an explicit true is an alert. None (never recorded, or a shape this reader does not know) is unknown: no
+    # alert, and /health and the digest say "never recorded" rather than reading it as fine (CLAUDE.md #5).
+    if st["overdue"] is not True:
+        return []
+    last = (t(lang, "film.sweep_last", age=age_label(st["last_at"], now)) if st["last_at"] is not None
+            else t(lang, "film.sweep_never_completed"))
+    # The stuck part only when 0212 says both numbers: a count with no age (or none at all) is not invented.
+    stuck = (t(lang, "film.sweep_stuck", n=st["stuck"], minutes=st["oldest_stuck_min"])
+             if st["stuck"] and st["oldest_stuck_min"] is not None else "")
+    return [Alert("film", "film:sweep_overdue", "critical",
+                  t(lang, "alert.film_sweep_overdue", minutes=st["after_min"] if st["after_min"] is not None else "?",
+                    open=st["open"] if st["open"] is not None else "?", stuck=views.Raw(stuck), last=views.Raw(last)),
+                  None, FILM_SWEEP_COOLDOWN)]
 
 
 def last_draft_count(state: AlertState) -> int:

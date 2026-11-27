@@ -85,6 +85,7 @@ import { creditLine } from "@/lib/site/media";
 import { EXAMPLE_THUMB_JOB } from "@/components/site/samples";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 import { SAMPLE_CARD, makerCreditProblems, placeLabelProblems, without } from "./helpers/showcase-scope";
+import { aiMarkOf } from "./helpers/ai-mark";
 
 afterEach(() => {
   cleanup();
@@ -113,7 +114,7 @@ function stockIsCredited(container: Element) {
 function backdropOnly(container: Element) {
   for (const name of ["Runway Gen-4.5", "FLUX.2 Pro"]) expect(container.textContent).not.toContain(name);
   expect(container.querySelector(".nx-ai-model, .nx-ai-try, .nx-ai-note")).toBeNull();
-  for (const w of [t.site.gallery.try, t.site.gallery.use, t.site.gallery.useNote]) expect(container.textContent).not.toContain(w);
+  for (const w of [t.site.gallery.use, t.site.gallery.useNote]) expect(container.textContent).not.toContain(w);
   expect(makerCreditProblems(container)).toEqual([]);
 }
 
@@ -128,11 +129,11 @@ describe("the sign-in and sign-up stages", () => {
     const aside = container.querySelector("aside.st-auth-aside") as HTMLElement;
     expect(aside.dataset.showcaseEntry).toBe(ids.clip);
     expect(aside.dataset.clip).toBe("sample");
-    expect(aside.querySelector(".nx-aside-note")?.textContent).toBe(t.site.gallery.badge);
+    expect(aiMarkOf(aside.querySelector(".nx-aside-note"))).toEqual({ seen: t.site.gallery.badge, said: t.site.gallery.badgeName });
     expect(aside.querySelector(".nx-clip-pause")?.textContent).toBe(t.site.fx.pause);
     const band = container.querySelector(".nx-auth-band") as HTMLElement;
     expect(band.dataset.showcaseEntry).toBe(ids.clip);
-    expect(band.textContent).toContain(t.site.gallery.badge);
+    expect(band.textContent).toContain(t.site.gallery.badgeName);
     expect(container.innerHTML).not.toMatch(/pexels/i);
     for (const w of [t.site.samples.tag, t.site.samples.frameTag, t.site.samples.clipTag]) expect(container.textContent).not.toContain(w);
     stockIsCredited(container);
@@ -149,7 +150,7 @@ describe("the sign-in and sign-up stages", () => {
     expect(aside.dataset.showcaseEntry).toBe(ids.still);
     expect(aside.hasAttribute("data-clip")).toBe(false);
     expect(container.querySelector(".nx-clip-pause")).toBeNull();
-    expect(aside.querySelector(".nx-aside-note")?.textContent).toBe(t.site.gallery.badge);
+    expect(aiMarkOf(aside.querySelector(".nx-aside-note"))).toEqual({ seen: t.site.gallery.badge, said: t.site.gallery.badgeName });
     expect(container.innerHTML).not.toMatch(/pexels/i);
     stockIsCredited(container);
     backdropOnly(container);
@@ -210,7 +211,7 @@ describe("/mcp", () => {
     const hills = container.querySelector("[data-scene='hills']") as HTMLElement;
     expect(sceneMedia("hills").kind).toBe("ai");
     expect(hills.dataset.showcaseEntry).toBe(ids.still);
-    expect(hills.querySelector(".ml-ex-badge[data-kind='ai']")?.textContent).toBe(t.site.gallery.badge);
+    expect(aiMarkOf(hills.querySelector(".ml-ex-badge[data-kind='ai']"))).toEqual({ seen: t.site.gallery.badge, said: t.site.gallery.badgeName });
     expect(hills.textContent).not.toContain("FLUX.2 Pro");
     backdropOnly(container);
     expect(hills.innerHTML).not.toMatch(/pexels/i);

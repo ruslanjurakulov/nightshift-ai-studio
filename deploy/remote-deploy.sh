@@ -927,12 +927,14 @@ main() {
   # The creative worker's switch is one of the worker keys (the repository
   # variable NIGHTSHIFT_CREATIVE_WORKER): exactly `on` starts it, anything
   # else (empty, off, a typo) leaves it off. No worker, no creative worker.
-  local creative=off film=off
+  local creative=off film=off filmsweep=off
   if [[ "$worker" == on ]]; then
     for line in "${worker_lines[@]}"; do
       if [[ "$line" == NIGHTSHIFT_CREATIVE_WORKER=on ]]; then creative=on; fi
       # The film worker's switch (NIGHTSHIFT_FILM_WORKER), the same rule: exactly `on`.
       if [[ "$line" == NIGHTSHIFT_FILM_WORKER=on ]]; then film=on; fi
+      # The film sweep's own switch (NIGHTSHIFT_FILM_SWEEP), independent of the film worker's: the sweep must run with it off.
+      if [[ "$line" == NIGHTSHIFT_FILM_SWEEP=on ]]; then filmsweep=on; fi
     done
   fi
   if (( ${#problems[@]} > 0 )); then
@@ -1051,6 +1053,16 @@ main() {
       compose rm --stop --force film-worker >/dev/null 2>&1 || true
       log "film-worker is off (GitHub variable NIGHTSHIFT_FILM_WORKER is not 'on')"
     fi
+    # The film sweep (migration 0212's fallback schedule): its own switch, NIGHTSHIFT_FILM_SWEEP, not the film worker's.
+    if [[ "$filmsweep" == on ]]; then
+      log "docker compose up -d --no-deps film-sweep"
+      compose up -d --no-deps film-sweep \
+        || die "the film sweep did not start; on the server: dc logs --tail 100 film-sweep"
+      services+=(film-sweep)
+    else
+      compose rm --stop --force film-sweep >/dev/null 2>&1 || true
+      log "film-sweep is off (GitHub variable NIGHTSHIFT_FILM_SWEEP is not 'on')"
+    fi
     compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' "${services[@]}" || true
     # A container that dies right after start still reads "Up" in the line
     # above. Wait a moment, then print how each worker is doing: state, last
@@ -1097,6 +1109,7 @@ main() {
     compose rm --stop --force worker >/dev/null 2>&1 || true
     compose rm --stop --force creative-worker >/dev/null 2>&1 || true
     compose rm --stop --force film-worker >/dev/null 2>&1 || true
+    compose rm --stop --force film-sweep >/dev/null 2>&1 || true
     rm -f "$WORKER_ENV_FILE" "${WORKER_ENV_FILE}.prev"
     log "worker is off (GitHub variable NIGHTSHIFT_WORKER is not 'on'); creative-worker is off with it"
   fi
@@ -1132,7 +1145,7 @@ main() {
   # a disk. Only dangling images: nothing a container still uses.
   "$DOCKER" image prune -f >/dev/null 2>&1 || true
 
-  log "deployed $sha; web is healthy; worker $worker; creative-worker $creative; film-worker $film; notify-worker $notify; email-worker $email; operator-bot $operator; marketing-worker $marketing; brand-scan-worker $brandscan"
+  log "deployed $sha; web is healthy; worker $worker; creative-worker $creative; film-worker $film; film-sweep $filmsweep; notify-worker $notify; email-worker $email; operator-bot $operator; marketing-worker $marketing; brand-scan-worker $brandscan"
 }
 
 main "$@"

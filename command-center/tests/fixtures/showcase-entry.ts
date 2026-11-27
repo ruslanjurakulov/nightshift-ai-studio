@@ -28,6 +28,7 @@ export const FIXTURE_ENTRY: ShowcaseEntry = {
   height: 720,
   slot: null,
   caption: null,
+  cardLine: null,
   exportedAt: "2026-11-13T08:00:00Z",
 };
 

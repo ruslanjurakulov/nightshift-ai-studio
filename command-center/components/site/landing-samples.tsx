@@ -5,7 +5,7 @@ import { PROMPT_TOOLS, promptHref, type PromptTool } from "@/lib/site/prompt-lin
 import { SHOWCASE_ENTRIES, modelLeftOut, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { beforeAfterPairs, carouselOrder, slideTitle, type SampleSlide } from "@/lib/site/carousel";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
-import { showcaseItems } from "@/components/site/ShowcaseGallery";
+import { showcaseItems, showcaseItemsWithSources } from "@/components/site/ShowcaseGallery";
 import { landingExcludedJobs } from "@/components/site/slots";
 import { ShowcaseCarousel } from "@/components/site/ShowcaseCarousel";
 import { BeforeAfter } from "@/components/site/BeforeAfter";
@@ -14,8 +14,11 @@ import { EFFECTS } from "@/lib/effects/catalog";
 import { bestLevelCost, gridSpan } from "@/lib/site/gallery-plan";
 
 /**
- * The landing's three moving pieces, as Server Components that build their plain props from the data file and hand them to the
- * client pieces: the carousel (ShowcaseCarousel), picture → video (BeforeAfter) and prompt → result (PromptTicker). Each renders
+ * Three moving sample pieces, as Server Components that build their plain props from the data file and hand them to the client
+ * pieces: the carousel (ShowcaseCarousel), picture → video (BeforeAfter) and prompt → result (PromptTicker). The landing drew all
+ * three around its grid until 2026-11-22, when it went to one gallery (each sample once); they stay, tested, for a page that wants
+ * one. The carousel and the ticker take only what the landing's grid leaves (landingSplit); picture → video shows every pair, so it
+ * may hold a clip the grid holds, and a page drawing both must leave one of them out. Each renders
  * nothing when the data file has nothing for it, so the page never shows an empty frame or a placeholder sample. Each root carries
  * `data-sample-section`: like the gallery, it is one of the places a sample (and so its model) is shown, inside its own box.
  *
@@ -66,9 +69,15 @@ function slide(it: Item, c: ReturnType<typeof siteCarouselCopy>["carousel"], tit
  * The samples whose files are here, less the ones the page shows elsewhere or not at all (`exclude`), and less the effects'
  * previews: the Effects section shows each of those as its effect's result, so none of these pieces shows it again.
  */
-function items(entries: readonly ShowcaseEntry[], files: Readonly<Record<string, ShowcaseFiles>>, exclude: readonly string[]): Item[] {
+function items(
+  entries: readonly ShowcaseEntry[],
+  files: Readonly<Record<string, ShowcaseFiles>>,
+  exclude: readonly string[],
+  // Picture → video shows a starting frame beside its clip, which is where it belongs; every other piece leaves it out.
+  withSources = false,
+): Item[] {
   const previews = effectPreviewJobs();
-  return showcaseItems(entries, files).filter(({ e }) => !exclude.includes(e.jobId) && !previews.includes(e.jobId));
+  return (withSources ? showcaseItemsWithSources : showcaseItems)(entries, files).filter(({ e }) => !exclude.includes(e.jobId) && !previews.includes(e.jobId));
 }
 
 /** The ticker's samples: wide (its box is 16:9) text-to-video clips with words. */
@@ -83,17 +92,21 @@ export function effectPreviewJobs(): string[] {
 }
 
 /**
- * How many samples the landing's explore grid shows besides the ones the model tiles link to: two rows on a wide screen (four
- * columns), four on a phone (two). The grid was every sample, 8,000 px at 1440 and 23,000 px (27 screens) on a phone, with the
- * same clips as the carousel above it.
+ * How many samples the landing's explore grid shows, the ones the model tiles link to included: between LANDING_GALLERY_MIN and
+ * LANDING_GALLERY_MAX, whichever count in that range ends the columns most level (the fewest of equally level ones). It is the
+ * landing's one gallery since 2026-11-22 (the owner: each piece once, in one strong grid, as the AI studios show theirs), so it holds
+ * more than the eight it held beside the carousel; not every sample, which was 8,000 px at 1440 and 23,000 px (27 screens) on a
+ * phone. A range, not one number, because a fixed count can leave no level set: twelve of the shipped samples cropped a card by a
+ * third at three columns, fourteen crop none (tests/site-gallery-plan.test.ts).
  */
-export const LANDING_GALLERY_MAX = 8;
+export const LANDING_GALLERY_MIN = 12;
+export const LANDING_GALLERY_MAX = 16;
 
 /**
  * The sample each model tile on the landing links to (`#sample-<job>`, components/landing/Landing.tsx ModelTiles): per model, the
  * first of the landing's samples (not in `exclude`) in the gallery's order that is not an effect's preview (its first preview only
  * when the model has nothing else), unless another of that model's samples lets the grid end more level. Its box must be on the
- * page, once.
+ * page, once: the grid takes every one of them (landingSplit).
  *
  * Why not simply the first: a preview is the Effects section's, so a tile that links to one shows it twice; and the tiles are the
  * grid's first cards, so their shapes decide whether it can end level at all. With the newest MiniMax H3 sample a 9:16 (liquid-
@@ -108,8 +121,6 @@ export function landingTileJobs(exclude: readonly string[], entries: readonly Sh
     if (exclude.includes(e.jobId)) continue;
     byModel.set(e.modelId, [...(byModel.get(e.modelId) ?? []), e]);
   }
-  // A pair's clip carries its anchor in picture → video, not in the grid (landingSplit): its shape does not count there.
-  const pairClips = new Set(beforeAfterPairs(items(entries, files, exclude)).map(({ clip }) => clip.e.jobId));
   const options = [...byModel.values()].map((list) => {
     const own = list.filter((e) => !previews.includes(e.jobId));
     const seen = new Set<number>();
@@ -121,8 +132,7 @@ export function landingTileJobs(exclude: readonly string[], entries: readonly Sh
       return true;
     });
   });
-  const cost = (pick: readonly number[]) =>
-    bestLevelCost(pick.flatMap((k, m) => (pairClips.has(options[m][k].jobId) ? [] : [gridSpan(options[m][k].width, options[m][k].height)])));
+  const cost = (pick: readonly number[]) => bestLevelCost(pick.map((k, m) => gridSpan(options[m][k].width, options[m][k].height)));
   // Every set, in the gallery's order (an odometer from all-first), when there are few enough; else each model's first.
   let best = options.map(() => 0);
   const sets = options.reduce((n, o) => n * o.length, 1);
@@ -145,28 +155,26 @@ export function landingTileJobs(exclude: readonly string[], entries: readonly Sh
 const TILE_SETS_MAX = 4096;
 
 /**
- * How the landing shares its samples out, so each is shown once (tests/site-landing-dedupe.test.tsx). In this order:
- * - picture → video takes every pair (its clip's box carries the `#sample-` anchor a model tile may point at);
- * - the explore grid takes the samples the model tiles link to (their anchors are its cards), except a pair's clip;
- * - the ticker takes the wide text-to-video clips with words that are left;
- * - the grid fills up to LANDING_GALLERY_MAX with what is left, picking what leaves its columns most level (gallery-plan.ts);
- * - the carousel takes the rest.
- * None takes an effect's preview (the Effects section shows it), except the grid when a model tile links to it: the Effects
- * section's frames carry no anchor, so that one sample is in both until they do.
+ * How the landing shares its samples out, so each is shown once (tests/site-landing-dedupe.test.tsx). The explore grid comes first:
+ * it is the landing's one gallery (2026-11-22), so it takes every sample a model tile links to and fills with what is left, one at
+ * a time, picking what leaves its columns most level (gallery-plan.ts), and stops at the most level count between
+ * LANDING_GALLERY_MIN and LANDING_GALLERY_MAX. The landing draws nothing else from this list.
+ * What the grid leaves is shared, in this order, by the pieces a page may still draw on its own: picture → video takes the pairs,
+ * the ticker the wide text-to-video clips with words, the carousel the rest. None takes an effect's preview (the Effects section
+ * shows it), except the grid when a model tile links to it: the Effects section's frames carry no anchor, so that one sample is
+ * in both until they do.
  */
 function landingSplit(exclude: readonly string[], entries: readonly ShowcaseEntry[], files: Readonly<Record<string, ShowcaseFiles>>) {
-  const pairs = beforeAfterPairs(items(entries, files, exclude));
-  const pairJobs = pairs.flatMap(({ clip, picture }) => [clip.e.jobId, picture.e.jobId]);
-  const pairClips = new Set(pairs.map(({ clip }) => clip.e.jobId));
-  const tiles = landingTileJobs(exclude, entries, files).filter((j) => !pairClips.has(j));
-  const ticker = tickerItems(items(entries, files, [...exclude, ...pairJobs, ...tiles])).map(({ e }) => e.jobId);
-  const sections = [...pairJobs, ...ticker];
+  const tiles = landingTileJobs(exclude, entries, files);
   // The grid's other places go, one at a time, to the free sample that leaves the columns most level (lib/site/gallery-plan.ts);
   // the first in the data file's order of equally good ones.
-  const pool = items(entries, files, [...exclude, ...sections, ...tiles]);
+  const pool = items(entries, files, [...exclude, ...tiles]);
   const spanOf = new Map(showcaseItems(entries, files).map(({ e }) => [e.jobId, gridSpan(e.width, e.height)]));
   const fill: string[] = [];
-  while (fill.length < LANDING_GALLERY_MAX - tiles.length) {
+  // The most level length seen from LANDING_GALLERY_MIN on (the tiles alone when they are that many already), and its cost.
+  let keep = 0;
+  let keepCost = tiles.length >= LANDING_GALLERY_MIN ? bestLevelCost(tiles.map((j) => spanOf.get(j) ?? 0)) : Infinity;
+  while (tiles.length + fill.length < LANDING_GALLERY_MAX) {
     const taken = [...tiles, ...fill].map((j) => spanOf.get(j) ?? 0);
     let pick: string | null = null;
     let best = Infinity;
@@ -177,12 +185,19 @@ function landingSplit(exclude: readonly string[], entries: readonly ShowcaseEntr
     }
     if (!pick) break;
     fill.push(pick);
+    if (tiles.length + fill.length >= LANDING_GALLERY_MIN && best < keepCost - 1e-9) [keep, keepCost] = [fill.length, best];
   }
-  const grid = new Set([...tiles, ...fill]);
+  // Fewer samples than the minimum: all of them.
+  if (tiles.length + fill.length < LANDING_GALLERY_MIN) keep = fill.length;
+  const grid = new Set([...tiles, ...fill.slice(0, keep)]);
   const gallery = showcaseItems(entries, files)
     .map(({ e }) => e.jobId)
     .filter((j) => grid.has(j));
-  return { pairs, ticker, sections, gallery };
+  const rest = [...exclude, ...gallery];
+  const pairs = beforeAfterPairs(items(entries, files, rest, true));
+  const pairJobs = pairs.flatMap(({ clip, picture }) => [clip.e.jobId, picture.e.jobId]);
+  const ticker = tickerItems(items(entries, files, [...rest, ...pairJobs])).map(({ e }) => e.jobId);
+  return { pairs, ticker, sections: [...pairJobs, ...ticker], gallery };
 }
 
 /**
@@ -222,12 +237,14 @@ type Props = {
 };
 
 /**
- * The coverflow of the samples, under the facts: every one not left out, and not shown by picture → video, the ticker, the
- * Effects section or the explore grid (landingGalleryJobs).
+ * The coverflow of the samples: every one not left out, and not shown by picture → video (any pair), the ticker, the Effects section
+ * or the explore grid (landingGalleryJobs).
  */
 export function SampleCarousel({ t, locale, signedIn = false, entries = SHOWCASE_ENTRIES, files = SHOWCASE_FILES, now = new Date(), exclude = landingExcludedJobs() }: Props) {
   const split = landingSplit(exclude, entries, files);
-  const elsewhere = [...exclude, ...split.sections, ...split.gallery];
+  // Every pair as well, not only the split's: picture → video shows each pair whole, one side of it in the grid or not.
+  const pairJobs = beforeAfterPairs(items(entries, files, exclude, true)).flatMap(({ clip, picture }) => [clip.e.jobId, picture.e.jobId]);
+  const elsewhere = [...exclude, ...split.sections, ...split.gallery, ...pairJobs];
   const slides = carouselOrder(items(entries, files, elsewhere).map(slideMaker(t, locale, signedIn, now)));
   if (slides.length === 0) return null;
   const c = siteCarouselCopy(locale).carousel;
@@ -244,7 +261,7 @@ export function SampleCarousel({ t, locale, signedIn = false, entries = SHOWCASE
       <ShowcaseCarousel
         slides={slides}
         copy={c}
-        g={{ badge: g.badge, model: g.model, altClip: g.altClip, altImage: g.altImage, use: g.use, notInStudio: g.notInStudio, gone: g.gone, noPrompt: g.noPrompt }}
+        g={{ badge: g.badge, badgeName: g.badgeName, model: g.model, altClip: g.altClip, altImage: g.altImage, use: g.use, notInStudio: g.notInStudio, gone: g.gone, noPrompt: g.noPrompt }}
       />
     </section>
   );
@@ -252,7 +269,7 @@ export function SampleCarousel({ t, locale, signedIn = false, entries = SHOWCASE
 
 /** Picture → video, for every clip made from another sample's picture (a pair with either side left out is not shown). */
 export function SampleCompare({ t, locale, signedIn = false, entries = SHOWCASE_ENTRIES, files = SHOWCASE_FILES, now = new Date(), exclude = landingExcludedJobs() }: Props) {
-  const pairs = beforeAfterPairs(items(entries, files, exclude));
+  const pairs = beforeAfterPairs(items(entries, files, exclude, true));
   if (pairs.length === 0) return null;
   const c = siteCarouselCopy(locale).compare;
   const g = t.site.gallery;
@@ -275,7 +292,7 @@ export function SampleCompare({ t, locale, signedIn = false, entries = SHOWCASE_
                   picture={make(picture)}
                   title={s.title}
                   copy={c}
-                  g={{ badge: g.badge, model: g.model, altClip: g.altClip, altImage: g.altImage }}
+                  g={{ badge: g.badge, badgeName: g.badgeName, model: g.model, altClip: g.altClip, altImage: g.altImage }}
                 />
               </li>
             );
@@ -287,8 +304,8 @@ export function SampleCompare({ t, locale, signedIn = false, entries = SHOWCASE_
 }
 
 /**
- * Prompt → result, right under the first screen: the wide text-to-video samples (the box is 16:9) not left out, so the clip under
- * the hero is never the hero's (its slot is in landingExcludedJobs).
+ * Prompt → result: the wide text-to-video samples (the box is 16:9) not left out, so it never repeats the first screen's clip (it is
+ * in landingExcludedJobs), nor a card of the grid.
  */
 export function SampleTicker({ t, locale, signedIn = false, entries = SHOWCASE_ENTRIES, files = SHOWCASE_FILES, now = new Date(), exclude = landingExcludedJobs() }: Props) {
   // The ticker's share (landingSplit): not a sample the explore grid holds for a model tile's link.
@@ -308,7 +325,7 @@ export function SampleTicker({ t, locale, signedIn = false, entries = SHOWCASE_E
           </h2>
           <p className="nxt-note">{c.note}</p>
         </div>
-        <PromptTicker items={list} copy={c} g={{ badge: g.badge, model: g.model, altClip: g.altClip }} />
+        <PromptTicker items={list} copy={c} g={{ badge: g.badge, badgeName: g.badgeName, model: g.model, altClip: g.altClip }} />
       </div>
     </section>
   );

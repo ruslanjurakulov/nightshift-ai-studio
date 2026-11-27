@@ -372,6 +372,9 @@ ON_0139 = (*ON_0139, "0198_film_studio_org_switch.sql")
 #: 0208 also replaces 0196's reroute_creative_job and refuses to apply without it, so it moves from its place in ON_0156 to the end:
 #: a sequence that puts these back in this order reaches 0196 before 0208.
 ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0208.name), MIGRATION_0208.name)
+#: 0215 (archive and resume) replaces 0198's start_film and film_claim_segment and refuses to apply without 0198: after it, in both
+#: lists, for the same reason.
+ON_0139 = (*ON_0139, "0215_film_archive_resume.sql")
 #: 0224 (dated credit prices) sits on 0208's creative_price and refuses any other body: right after 0208, wherever 0208 goes.
 ON_0139 = (*(f for f in ON_0139 if f != "0224_dated_credit_price.sql"), "0224_dated_credit_price.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
@@ -387,6 +390,7 @@ ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164
            "0192_adult_attestation.sql", "0196_adult_attestation_google_runs.sql", "0198_film_studio_org_switch.sql",
            # 0208 sits on 0196's reroute_creative_job (and refuses to apply without it): out and back with it, last.
            "0208_geo_gate_and_image_size_price.sql",
+           "0215_film_archive_resume.sql",
            # 0224 sits on 0208's creative_price (and refuses any other body): out and back with it, after it.
            "0224_dated_credit_price.sql")
 
@@ -811,12 +815,37 @@ def put_back_0200(conn_or_session) -> None:
         conn.execute(MIGRATION_0200.read_text(encoding="utf-8"))
 
 
+MIGRATION_0212 = MIGRATIONS / "0212_film_sweep.sql"
+ROLLBACK_0212 = REPO / "docs" / "sql" / "rollback_0212_film_sweep.sql"
+
+
+def has_0212(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.film_sweep(text)') is not null").fetchone()[0])
+
+
+def take_off_0212(conn_or_session) -> None:
+    """0212's film_sweep_status reads 0171's film_segments (and 0166's rollback refuses any film_ function left), so, like 0200, it
+    comes off before 0171 (take_off_0187 does it) and goes back with put_back_0171 / put_back_0187."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0212(conn):
+        text = ROLLBACK_0212.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0212(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0212(conn) and has_0171(conn):
+        conn.execute(MIGRATION_0212.read_text(encoding="utf-8"))
+
+
 def take_off_0187(conn_or_session) -> None:
     """0187 replaces rights_acknowledgement_missing() (0174's body), reroute_creative_job() (0088's) and start_film() (0171's). 0174's
     and 0171's drift guards and rollbacks refuse any body but their own, so a test that replays or rolls back 0174 or 0171 takes 0187
     off first (take_off_0174 and take_off_0171 do it), and put_back_0174 / put_back_0171 put it back once both are on again."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     take_off_0200(conn)  # 0200 reads 0171's film_segments: off before anything under it
+    take_off_0212(conn)  # 0212 reads 0171's film_segments too
     take_off_0192(conn)  # 0192 sits on 0187's start_film, and 0187's rollback refuses any other body
     if has_0187(conn):
         text = ROLLBACK_0187.read_text(encoding="utf-8")
@@ -829,6 +858,7 @@ def put_back_0187(conn_or_session) -> None:
         conn.execute(MIGRATION_0187.read_text(encoding="utf-8"))
     put_back_0192(conn)
     put_back_0200(conn)
+    put_back_0212(conn)
 
 
 MIGRATION_0189 = MIGRATIONS / "0189_job_video_and_list_order.sql"
@@ -977,17 +1007,47 @@ def take_off_0198(conn_or_session) -> None:
     a lab that rolls back or replays 0036, 0064 or 0171 takes 0198 off first. Its rollback keeps
     org_film_settings.film_studio_enabled, which put_back_0198 picks up again as its own."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0215(conn)  # 0215 sits on 0198's start_film, film_claim_segment and claim_creative_job; 0198's rollback refuses it
     if has_0198(conn):
         text = ROLLBACK_0198.read_text(encoding="utf-8")
         conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
 
 
 def put_back_0198(conn_or_session) -> None:
-    """0198 again, once 0192 (whose bodies it builds on) is on, and only when it is not on already."""
+    """0198 again, once 0192 (whose bodies it builds on) is on, and only when it is not on already; then 0215 on it."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
-    if has_0198(conn) or not has_0192(conn):
+    if not has_0198(conn) and has_0192(conn):
+        conn.execute(MIGRATION_0198.read_text(encoding="utf-8"))
+    put_back_0215(conn)
+
+
+MIGRATION_0215 = MIGRATIONS / "0215_film_archive_resume.sql"
+ROLLBACK_0215 = REPO / "docs" / "sql" / "rollback_0215_film_archive_resume.sql"
+
+
+def has_0215(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.start_film_resume(uuid, text, text)') is not null").fetchone()[0])
+
+
+def take_off_0215(conn_or_session) -> None:
+    """0215 (archive and resume of a paused film; the worker's id kept out of members' reads) replaces 0166's film_read and
+    archive_film and 0198's start_film, film_claim_segment and claim_creative_job, and its functions read 0171's film_segments.
+    0166's and 0198's drift guards and rollbacks, and 0171's rollback, refuse while it is on, so take_off_0198 takes it off first
+    (take_off_0192, take_off_0187 and take_off_0171 reach it through it). Its rollback keeps the columns and checks it added (the
+    record of a resume), which put_back_0215 picks up again as its own."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0215(conn):
+        text = ROLLBACK_0215.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0215(conn_or_session) -> None:
+    """0215 again, once 0198 (whose bodies it builds on) and 0187 / 0192 (whose questions it asks) are on, when it is not on already."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0215(conn) or not has_0198(conn) or not has_0187(conn) or not has_0192(conn):
         return
-    conn.execute(MIGRATION_0198.read_text(encoding="utf-8"))
+    conn.execute(MIGRATION_0215.read_text(encoding="utf-8"))
 
 
 def migration_files() -> list[Path]:
