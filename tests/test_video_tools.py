@@ -29,6 +29,7 @@ from modules import creative_worker as cw
 from modules import media_library as ml
 from modules import model_registry as reg
 from modules.capabilities import build_adapter
+from modules.capabilities.video import FrameReading
 from modules.capabilities.base import (
     E_BAD_REQUEST,
     E_BAD_RESPONSE,
@@ -50,7 +51,10 @@ from tests.security.test_upscale_frame_count import (  # noqa: F401
     IngestFrameCountTests,
     RealBytesTests,
     UpscaleFrameCountPins,
+    UpscaleCutClipPins,
+    UpscaleDecodedFramePins,
     UpscaleLegitimateClipsStayAccepted,
+    UpscaleStreamPins,
 )
 
 KEY = "key_TOPSECRET-runway-0123456789abcdef"
@@ -72,7 +76,7 @@ OUT = "https://dnznrvs05pmza.cloudfront.net/out.mp4?_jwt=x"
 def adapter(key, routes=(), downloads=None, env=ENV, fps=30.0):
     a = build_adapter(key, env=env, session=RecordingSession(routes, downloads))
     if hasattr(a, "fps_of"):
-        a.fps_of = lambda _path: fps
+        a.fps_of = lambda _path: FrameReading(rate=fps, avg=fps)
     return a
 
 
@@ -418,7 +422,7 @@ class Worker(Tmp):
         session = RecordingSession(routes, downloads)
         built = build_adapter(entry.adapter, env=ENV, session=session)
         if hasattr(built, "fps_of"):
-            built.fps_of = lambda _p: fps
+            built.fps_of = lambda _p: FrameReading(rate=fps, avg=fps)
         ra = ca.RegistryAdapter(entry, built, sync_store={})
         library = cw.Library(store=store, media_root=self.media) if store is not None else None
         w = cw.CreativeWorker(q, lambda m: ra if m == entry.id else None, worker_id="w1", out_dir=self.out,

@@ -483,7 +483,8 @@ class UpscaleFpsProbeTests(unittest.TestCase):
 
         def fake_run(argv, **kw):
             seen.append((argv, kw))
-            out = b'{"streams":[{"avg_frame_rate":"30/1","nb_read_packets":"60","duration":"2.0"}],' \
+            out = b'{"streams":[{"index":0,"codec_type":"video","codec_name":"h264","avg_frame_rate":"30/1",' \
+                  b'"nb_read_packets":"60","duration":"2.0"}],' \
                   b'"format":{"duration":"2.0"}}'
             return subprocess.CompletedProcess(argv, 0, out, b"")
 

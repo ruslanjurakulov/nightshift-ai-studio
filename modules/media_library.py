@@ -593,23 +593,39 @@ def interpret_probe(sniffed: str, data: Mapping) -> Probe:
         # a video's cap is lower than a still's (BR-L-010).
         w, h = _check_frame(v, width, height, VIDEO_MAX_PIXELS)
         _check_every_picture(streams, VIDEO_MAX_PIXELS)
-        frames = frame_count(v)
-        if frames == 0:
+        if frame_count(v) == 0:
             raise IngestReject("not_media", "the video stream holds no pictures")
-        # The header's rate, raised to the frames the file really holds per
-        # second of its length (BR-L-211): an average read off a padded sample
-        # table or a shortened header cannot shrink the budget. With no count
-        # (a stand-in probe) the header's rate stays advisory, as before.
-        fps = max(frame_rate(v), measured_rate(v, fmt) or 0.0)
-        work = decode_work(w, h, fps, duration)
+        # Every picture stream is budgeted, summed (BR-L-211): the proxy maps
+        # v:0 and the thumbnail the largest picture, so the stream a step
+        # decodes need not be the one recorded, and a sum bounds whichever it
+        # is (and any step that maps more). One stream, the usual file, sums to
+        # what it always was. Cover art is one picture, not a video.
+        work, fps = 0.0, 0.0
+        for s in video:
+            sw, sh = _check_frame(s, int(_num(s.get("width")) or 0), int(_num(s.get("height")) or 0),
+                                  VIDEO_MAX_PIXELS)
+            # The header's rate, raised to the frames the stream really holds
+            # per second of its length: an average read off a padded sample
+            # table or a shortened header cannot shrink the budget. With no
+            # count (a stand-in probe) the header's rate stays, as before.
+            s_fps = max(frame_rate(s), measured_rate(s, fmt) or 0.0)
+            work += decode_work(sw, sh, s_fps, duration)
+            if s is v:
+                fps = s_fps
         if work > DECODE_BUDGET_PX:
-            raise IngestReject("too_long", f"{w}x{h} at {fps:g} fps for {duration:.0f} s is more than "
+            what = f"{w}x{h} at {fps:g} fps" if len(video) == 1 else f"{len(video)} video streams"
+            raise IngestReject("too_long", f"{what} for {duration:.0f} s is more than "
                                            f"the decode budget ({work:.3g} > {DECODE_BUDGET_PX:.0e} pixels)")
         return Probe("video", mime, width, height, round(duration, 3), work)
 
     if not audio:
         raise IngestReject("no_audio_stream", "no sound in the audio file")
     return Probe("audio", mime, None, None, round(duration, 3))
+
+
+def parse_rate(v) -> Optional[float]:
+    """``_rate`` for callers outside this module (the upscale's ceiling)."""
+    return _rate(v)
 
 
 def _rate(v) -> Optional[float]:
@@ -634,7 +650,7 @@ def frame_count(stream: Mapping) -> Optional[int]:
     return int(frames) if frames is not None and frames > 0 else None
 
 
-def _shortest_length(stream: Mapping, fmt: Mapping) -> Optional[float]:
+def shortest_length(stream: Mapping, fmt: Mapping) -> Optional[float]:
     """The smaller positive of the file's and the stream's length: the one a
     frame count over it can only overstate. A file whose sound outlasts its
     picture keeps the picture's length."""
@@ -646,10 +662,13 @@ def measured_rate(stream: Mapping, fmt: Mapping, *, slack_frames: int = 0) -> Op
     """Frames per second of the length a price or a budget is computed from:
     ``frame_count`` over the shorter of the two lengths, ``slack_frames``
     forgiven. None when either is unknown, never a guess (CLAUDE.md #5)."""
-    frames, seconds = frame_count(stream), _shortest_length(stream, fmt)
+    frames, seconds = frame_count(stream), shortest_length(stream, fmt)
     if not frames or seconds is None:
         return None
-    return max(0, frames - slack_frames) / seconds
+    # Nothing left after the slack is not "0 fps", it is no measurement: cover
+    # art (one packet) read 0.0 here, and 0.0 is under every ceiling.
+    rate = (frames - slack_frames) / seconds
+    return rate if rate > 0 else None
 
 
 def counted_rate(stream: Mapping, fmt: Mapping, *, slack_frames: int = 0) -> Optional[float]:
