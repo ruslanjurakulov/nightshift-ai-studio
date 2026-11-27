@@ -10,6 +10,7 @@ import { AppProviders } from "@/components/AppProviders";
 import { getDictionary, getLocale } from "@/lib/i18n/server";
 import { AdminMfaBanner } from "@/components/security/AdminMfaBanner";
 import { OwnerShell } from "@/components/owner-console/OwnerShell";
+import { AppSkin } from "@/components/shell/AppSkin";
 import { OWNER_CONSOLE, OWNER_MODE_COOKIE } from "@/lib/owner-mode";
 import { PATH_HEADER, SEARCH_HEADER } from "@/lib/channels";
 
@@ -73,6 +74,7 @@ export default async function OwnerLayout({ children }: { children: React.ReactN
 
   return (
     <AppProviders locale={locale}>
+      <AppSkin />
       {/* The switcher shows the device's saved choice, not an assumed "Owner": opened from a bookmark in the User account,
           pressing Owner saves the choice, so the console's tool links open in the Owner frame too. */}
       <OwnerShell email={user.email ?? null} account={(await cookies()).get(OWNER_MODE_COOKIE)?.value === "off" ? "user" : "owner"}>

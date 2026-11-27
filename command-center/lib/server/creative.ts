@@ -19,8 +19,10 @@ import { hideBlockedModelsHere } from "@/lib/server/geo";
  */
 export function creativeDb(supabase: SupabaseClient): CreativeDb {
   return {
-    async rpc(fn, args) {
-      const { data, error } = await supabase.rpc(fn, args);
+    async rpc(fn, args, headers) {
+      let call = supabase.rpc(fn, args);
+      for (const [k, v] of Object.entries(headers ?? {})) call = call.setHeader(k, v);
+      const { data, error } = await call;
       return { data, error };
     },
     async readJob(id) {
@@ -67,14 +69,14 @@ export function creativeDb(supabase: SupabaseClient): CreativeDb {
 
 /** Signed in, and a client to act as them — or the answer to send instead. */
 export async function creativeSession(): Promise<
-  { ok: true; db: CreativeDb; defaultOrg: string | null } | { ok: false; result: CreativeResult }
+  { ok: true; db: CreativeDb; defaultOrg: string | null; userId: string } | { ok: false; result: CreativeResult }
 > {
   const user = await getUser();
   if (!user) return { ok: false, result: { status: 401, body: { error: "unauthorized" } } };
   const supabase = await createClient();
   if (!supabase) return { ok: false, result: { status: 503, body: { error: "not_configured" } } };
   const org = await getOrgContext();
-  return { ok: true, db: creativeDb(supabase), defaultOrg: org.current?.id ?? null };
+  return { ok: true, db: creativeDb(supabase), defaultOrg: org.current?.id ?? null, userId: user.id };
 }
 
 /**

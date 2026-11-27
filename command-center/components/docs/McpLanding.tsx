@@ -12,6 +12,7 @@ import { SAMPLES, SampleImg } from "@/components/site/samples";
 import { PlaceFill, placeBox } from "@/components/site/PlaceFill";
 import { creditLine } from "@/lib/site/media";
 import type { Dictionary } from "@/lib/i18n";
+import { AiMark } from "@/components/site/AiMark";
 
 /**
  * The middle of /mcp, between the connect card and the tool list: six things to
@@ -78,7 +79,7 @@ export function McpLanding({ dev, site, oauthLive }: { dev: DevDictionary; site?
                     <>
                       <PlaceFill media={pic} s={site!} className="ml-scene" labels={false} compact sizes="288px" />
                       <span className="ml-ex-badge" data-kind="ai">
-                        {site!.gallery.badge}
+                        <AiMark short={site!.gallery.badge} name={site!.gallery.badgeName} />
                       </span>
                     </>
                   ) : (
