@@ -8,7 +8,8 @@ import { filmGateFor } from "@/lib/server/films";
 import { filmStudioStrings } from "@/lib/i18n/film-studio";
 import { aiChatEnv, aiChatMode, aiChatOpenFor } from "@/lib/brain/flag";
 import { brainJson, notFound } from "@/lib/server/brain/session";
-import { filmRefusal, findFilmConversation, leaseView, planFilm, planPrecheck, readPlanFilm, type PlanFilm } from "@/lib/server/brain/film-plan";
+import { filmLeaseView, filmRefusal, planFilm, planPrecheck, readPlanFilm, type PlanFilm } from "@/lib/server/brain/film-plan";
+import { plain } from "@/lib/brain/logic";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -22,7 +23,8 @@ export const maxDuration = 300;
  *   GET  ?film=<id>   what the button says before a press: whether the plan can run for this project now and, if not, why (the
  *                     same refusals the press gives, in the same order); how many of today's messages it uses; which models it
  *                     would set; and a plan already running (a refresh, another tab), which the panel follows. Takes nothing.
- *   POST {film}       the press: writes the storyboard into the EMPTY project, at the version read first (lib/server/brain/film-plan).
+ *   POST {film, session?}  the press: writes the storyboard into the EMPTY project, at the version read first
+ *                     (lib/server/brain/film-plan). `session`: the `retry_session` of an earlier 503, when its marker write failed.
  * Off is off: with NIGHTSHIFT_AI_CHAT off, or this workspace not in it, both answer 404 before anything is read about the project.
  * Nothing here holds credits, quotes, starts or publishes (CLAUDE.md rule 3).
  */
@@ -57,12 +59,10 @@ export async function GET(request: Request) {
   const { supabase, film, userId } = ctx.c;
   const refused = filmRefusal(film);
   if (refused) return refused;
-  const conv = await findFilmConversation(supabase, film, userId);
-  if (conv.state === "failed") return brainJson({ error: "unavailable" }, 503);
-  const lease = await leaseView(supabase, conv.state === "ok" ? conv.id : null);
+  const lease = await filmLeaseView(supabase, film, userId);
   if (!lease.ok) return lease.res;
-  // A plan of this project is being written (another tab, or this one before a refresh): the panel waits for it. Asked before the
-  // cap, which the running plan is using up as it goes.
+  // A plan of this project is being written (another tab, or this one before a refresh; in any of the person's conversations marked
+  // with it, the rule a press yields by): the panel waits for it. Asked before the cap, which the running plan is using up.
   if (lease.lease?.state === "running") return brainJson({ ready: false, plan: lease.lease });
   const pre = await planPrecheck(supabase, film);
   if (!pre.ok) return pre.res;
@@ -78,7 +78,12 @@ export async function GET(request: Request) {
   });
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(request: Request) {
+  // The request's own clock, first (Lens L1): the plan's 300 s budget counts the precheck too, or a slow precheck leaves a window
+  // started that cannot finish before the proxy cuts the request.
+  const t0 = Date.now();
   if (aiChatMode(aiChatEnv()) === "off") return notFound();
   const cross = rejectCrossOrigin(request);
   if (cross) return cross;
@@ -88,13 +93,16 @@ export async function POST(request: Request) {
   const ctx = await context(b.film);
   if (!ctx.ok) return ctx.res;
   const { supabase, film, userId } = ctx.c;
+  // What the press is stored as in the conversation: the project's title as plain() reads it (a title of only U+3164 or zero-width
+  // characters is no title, Lens L2), or the panel's own words when it has none.
+  const locale = await getLocale().catch(() => "en");
+  const said = plain(film.title, 100) || filmStudioStrings(locale).canvas.ai.pressed;
   // Before any turn: a project with scenes is never planned over, and its own words are read through the safety floor.
   const refused = filmRefusal(film);
   if (refused) return refused;
   const pre = await planPrecheck(supabase, film);
   if (!pre.ok) return pre.res;
-  const locale = await getLocale().catch(() => "en");
-  // What the press is stored as in the conversation: the project's title, or the panel's own words when it has none.
-  const said = film.title.trim() || filmStudioStrings(locale).canvas.ai.pressed;
-  return planFilm({ supabase, film, ready: pre.ready, userId, said });
+  // The conversation an earlier press made and could not mark (its 503 `retry_session`), handed back by the panel.
+  const retrySession = typeof b.session === "string" && UUID.test(b.session) ? b.session : null;
+  return planFilm({ supabase, film, ready: pre.ready, userId, said, startedAt: t0, retrySession });
 }

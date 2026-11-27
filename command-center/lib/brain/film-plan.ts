@@ -8,11 +8,18 @@
  * saw, so its plan's cost is known before the press. A project has no outline yet. If the model chose the chapter lengths, the number
  * of plan calls (and so the messages it takes) would be known only after the first call had been paid for, and a plan could stop
  * halfway for the daily cap. With the lengths fixed up front, every window is known before any turn (planWindows on the skeleton),
- * the cap check is the chat's own (`plan_over_cap`, never refused halfway), and the storyboard adds up to the project's
- * target_seconds by construction (G1). The model writes only the words: titles, beats, characters, places.
+ * the cap check is the chat's own (`plan_over_cap`), and the storyboard adds up to the project's target_seconds by construction
+ * (G1). The model writes only the words: titles, beats, characters, places.
+ *
+ * What that check does NOT promise: it reads today's messages left, it reserves none. A plan does not stop halfway for the cap
+ * unless other chats or plans use today's messages meanwhile (Breach BR-FILM-03). And one plan at a time is per PERSON here (the
+ * route checks all of the person's conversations for the project), not per project: two editors pressing on the same empty project
+ * within ~5 min: one plan is superseded, its turns are spent, the project is never double-written (BR-FILM-02; closed by migration
+ * 0232 later). The project's reference pictures and refs are not used by the writer yet: it reads the title, the source text
+ * (whole, up to SOURCE_MAX code points), the language, the aspect and the length.
  */
 
-import { CAP, FILM, extractJson, arr, filmLength, obj, readScenario, unsafeText, type BrainSlots, type Scenario } from "@/lib/brain/logic";
+import { CAP, FILM, extractJson, arr, filmLength, obj, plain, readScenario, unsafeText, type BrainSlots, type Scenario } from "@/lib/brain/logic";
 import { HOME_LANGUAGES } from "@/lib/home";
 import { outlineText, planNamesVendor, planWindows, type PlanLimits } from "@/lib/brain/plan";
 
@@ -21,6 +28,12 @@ import { outlineText, planNamesVendor, planWindows, type PlanLimits } from "@/li
  * same conversation is found again, and how the chat's own reads (/api/brain, the history list) leave it out.
  */
 export const FILM_PLAN_KEY = "film_plan";
+
+/**
+ * The longest source text the writer reads, in code points: sent whole or refused before any turn (`source_too_long`), never cut
+ * (Lens H1: a 4,000-character cut planned a script's first pages as if they were all of it).
+ */
+export const SOURCE_MAX = 40_000;
 
 /** About a minute per chapter: the chat's outlines are written the same way (three 60 s chapters for a 3-minute film). */
 export const FILM_CHAPTER_SECONDS = 60;
@@ -93,7 +106,8 @@ export type FilmOutlineRead = { ok: true; outline: Scenario } | { ok: false; why
  * out or left untitled, a missing idea, or a vendor the project's own words do not name (or any claim that a vendor made it) is not
  * an outline: the plan fails by name, and nothing is planned from it.
  */
-export function readFilmOutline(text: string, f: FilmPlanSource, chapters: { id: string; seconds: number }[], slots: BrainSlots): FilmOutlineRead {
+export function readFilmOutline(text: string, f: FilmPlanSource, chapters: { id: string; seconds: number }[], slots: BrainSlots,
+                                extraClaimNames: readonly string[] = []): FilmOutlineRead {
   const json = extractJson(text);
   if (!json) return { ok: false, why: "invalid" };
   if (json.refused === true || (typeof json.refused === "string" && json.refused.trim() !== "")) return { ok: false, why: "refused" };
@@ -104,10 +118,11 @@ export function readFilmOutline(text: string, f: FilmPlanSource, chapters: { id:
     if (!entry) return { ok: false, why: "invalid" };
     merged.push({ id: c.id, title: entry.title, seconds: c.seconds, beats: entry.beats });
   }
-  // The project's own title is the person's: kept as it is, the model's only when the project has none.
-  const title = f.title.trim() ? f.title : json.title;
+  // The project's own title is the person's: kept as it is, the model's only when the project has none. "None" as plain() reads it:
+  // a title of only U+3164 or zero-width characters is empty, not a title (trim() keeps those).
+  const title = plain(f.title, 100) ? f.title : json.title;
   const outline = readScenario({ ...json, title, chapters: merged }, slots, { outline: true });
   if (!outline || outline.chapters.length !== chapters.length || outline.target_seconds !== slots.target_seconds) return { ok: false, why: "invalid" };
-  if (planNamesVendor(outlineText(outline), filmText(f))) return { ok: false, why: "invalid" };
+  if (planNamesVendor(outlineText(outline), filmText(f), extraClaimNames)) return { ok: false, why: "invalid" };
   return { ok: true, outline };
 }

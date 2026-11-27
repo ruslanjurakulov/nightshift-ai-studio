@@ -397,7 +397,13 @@ the Projects strings: it is read from the app's `nav.hub` key. Code, tables and 
 "Write the storyboard with AI" is Nightshift AI's plan step for this project (`/api/brain/film`, docs/studio/NIGHTSHIFT_AI.md
 "Writing a project's storyboard"). It runs only where Nightshift AI is on for the workspace, only into an EMPTY, saved project,
 and says beforehand how many of today's Nightshift AI messages it uses; otherwise the button is off with the reason. It spends
-messages, never credits, and prices, starts or publishes nothing.
+messages, never credits, and prices, starts or publishes nothing. It reads the project's title, its whole source text (up to 40,000
+characters, else `source_too_long` before any message), language, aspect and length; the project's reference pictures and refs are
+not used by the writer yet. The canvas is read-only while it writes, and it never reloads the project over unsaved changes. A plan
+does not stop halfway for the cap unless other chats or plans use today's messages meanwhile. One plan at a time is per person:
+two editors pressing on the same empty project within ~5 min: one plan is superseded, its turns are spent, the project is never
+double-written (closed by migration 0232 later). New refusals: `source_too_long`, `title_claims_vendor`, `film_channel_missing`,
+and `film_conversation` on the chat's own route.
 
 What is not available yet, and says so on the screen: Start with a price (P2). Start is
 drawn disabled with "Pricing for projects is not live yet"; no number, price or quote is shown. Sound, shooting, assembly and the

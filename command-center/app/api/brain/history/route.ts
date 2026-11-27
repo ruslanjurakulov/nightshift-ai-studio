@@ -105,8 +105,9 @@ export async function GET(request: Request) {
   let q = supabase.from("ai_chat_sessions")
     .select("id,org_id,channel_id,created_by,step,updated_at,plan_title:brief->>title,ai_chat_messages!inner(content)")
     .eq("org_id", s.orgId).eq("created_by", s.userId)
-    // A project's own conversation (the film editor's storyboard writer) is the project's record, not a chat to resume here.
-    .is(`brief->${FILM_PLAN_KEY}`, null);
+    // A project's own conversation (the film editor's storyboard writer) is the project's record, not a chat to resume here. Keyed
+    // as the film route finds it (brief->film_plan->>film_id), so exactly the conversations it plans in are left out.
+    .is(`brief->${FILM_PLAN_KEY}->>film_id`, null);
   q = s.channelId ? q.eq("channel_id", s.channelId) : q.is("channel_id", null);
   if (before) q = q.or(beforeId ? `updated_at.lt."${before}",and(updated_at.eq."${before}",id.lt.${beforeId})` : `updated_at.lt."${before}"`);
   const { data, error } = await q

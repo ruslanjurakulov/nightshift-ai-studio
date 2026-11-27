@@ -22,7 +22,7 @@ export const FILM_MODEL_PREFERENCE = {
 export type FilmModelRole = keyof typeof FILM_MODEL_PREFERENCE;
 
 /** `maxPromptChars`: the registry row's limits.max_prompt_chars (S9, 0218 counts it in UTF-16 units); absent or null = not known. */
-export interface OnSaleModel { id: string; name: string; durations: number[]; maxPromptChars?: number | null }
+export interface OnSaleModel { id: string; name: string; durations: number[]; maxPromptChars?: number | null; provider?: string | null }
 export interface PickedModel { id: string; name: string; durations: number[] | null }
 
 /** The first model of the role's order that is on sale now; null when none is (nothing else is tried). */

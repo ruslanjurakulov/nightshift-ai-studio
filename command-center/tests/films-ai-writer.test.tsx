@@ -40,6 +40,8 @@ beforeEach(() => {
     const method = init?.method ?? "GET";
     calls.push({ method, url, body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined });
     const a = await answer(url, method);
+    // A string body is a page that is not JSON (a proxy's own 502/504).
+    if (typeof a.body === "string") return new Response(a.body, { status: a.status, headers: { "content-type": "text/html" } });
     return new Response(JSON.stringify(a.body), { status: a.status });
   }));
   window.matchMedia = ((q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
@@ -159,13 +161,17 @@ describe("the press", () => {
     expect(button().disabled).toBe(true);
   });
 
-  it("plan_superseded reads the project again (the person's edits are what they see)", async () => {
+  it("plan_superseded is said with a Reload offer, and the project is read again only when the person presses it", async () => {
     answer = (url, method) => (method === "POST" ? { status: 409, body: { error: "plan_superseded", film_id: FILM } } : { status: 200, body: READY });
     const onWritten = writer();
     await waitFor(() => expect(button().disabled).toBe(false));
     fireEvent.click(button());
     await waitFor(() => expect(screen.getByTestId("fs-ai-notice").textContent).toBe(w.superseded));
+    // Never by itself: the person's edits are on screen.
+    expect(onWritten).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("fs-ai-reload"));
     expect(onWritten).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("fs-ai-reload")).toBeNull();
   });
 
   it("success reloads the project: the scenes are on the board and the notice says how many and how long", async () => {
@@ -222,6 +228,9 @@ describe("every refusal has words in all three languages", () => {
     [503, { error: "plan_unavailable" }], [409, { error: "plan_superseded" }], [502, { error: "plan_length_mismatch" }],
     [422, { error: "prompt_too_long", limit: 1500 }], [409, { error: "film_refused" }], [502, { error: "plan_failed", reason: "vendor_auth" }],
     [502, { error: "plan_failed", reason: "timeout" }], [503, { error: "unavailable" }],
+    [422, { error: "source_too_long", limit: 40000 }], [422, { error: "title_claims_vendor" }], [409, { error: "film_conversation" }],
+    [409, { error: "film_channel_missing" }], [409, { error: "session_closed" }], [409, { error: "nothing_to_retry" }],
+    [400, { error: "message_too_long" }], [400, { error: "invalid_params" }], [429, { error: "plan_over_cap", needed: 3 }],
   ];
   it.each([["en", t], ["ru", filmStudioRu], ["uz", filmStudioUz]] as const)("%s", (_l, d) => {
     for (const [status, body] of codes) {
@@ -232,5 +241,162 @@ describe("every refusal has words in all three languages", () => {
     // A key the vendor refused is the owner's fix: no retry; a timeout is a retry's.
     expect(refusalText(d.canvas.ai, 502, { error: "plan_failed", reason: "vendor_auth" }).retry).toBe(false);
     expect(refusalText(d.canvas.ai, 502, { error: "plan_failed", reason: "timeout" }).retry).toBe(true);
+  });
+});
+
+describe("fix round: the canvas while it writes, a lost answer, unsaved changes", () => {
+  it("the canvas is read-only while the press is pending: no Add scene, settings disabled; editable again when it ends", async () => {
+    let finish: (v: { status: number; body: unknown }) => void = () => {};
+    answer = (url, method) => {
+      if (url.startsWith("/api/brain/film")) return method === "POST" ? new Promise((r) => { finish = r; }) : { status: 200, body: READY };
+      return { status: 200, body: { film: filmJson() } };
+    };
+    render(<FilmCanvas initial={coerceFilmView(filmJson({}, []))!} canEdit pictures={[]} characters={[]} listHref="/alpha/create/projects" />);
+    // Every copy of the settings panel (the wide inspector and the narrow sheet).
+    const titles = () => screen.getAllByLabelText(t.create.titleLabel) as HTMLInputElement[];
+    const title = () => ({ disabled: titles().every((x) => x.disabled), enabled: titles().every((x) => !x.disabled) });
+    await waitFor(() => expect(button().disabled).toBe(false));
+    expect(title().enabled).toBe(true);
+    expect(screen.queryByTestId("fs-add")).toBeTruthy();
+    fireEvent.click(button());
+    await waitFor(() => expect(title().disabled).toBe(true));
+    expect(screen.queryByTestId("fs-add")).toBeNull();
+    expect(screen.queryByTestId("fs-save")).toBeNull();
+    await act(async () => finish({ status: 502, body: { error: "plan_failed", reason: "vendor_error" } }));
+    await waitFor(() => expect(title().enabled).toBe(true));
+    expect(screen.queryByTestId("fs-add")).toBeTruthy();
+  });
+
+  it("with unsaved changes on screen, a plan that finished is never reloaded over them: written, your changes are kept", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let running = true;
+    answer = () => (running ? { status: 200, body: { ready: false, plan: { state: "running", expires_at: null } } } : { status: 200, body: { ready: true, turns: { about: 2, at_most: 3 }, left: 20, plan: { state: "done" } } });
+    const onWritten = vi.fn(async () => {});
+    const props = { t, filmId: FILM, version: 3, canEdit: true, readOnly: false, hasScenes: false, reasonId: "why", onWritten };
+    const { rerender } = render(<AiWriter {...props} dirty={false} />);
+    await waitFor(() => expect(reason()).toBe(w.writingElsewhere));
+    rerender(<AiWriter {...props} dirty />);
+    running = false;
+    await act(async () => { await vi.advanceTimersByTimeAsync(AI_WAIT_POLL_MS + 10); });
+    await waitFor(() => expect(screen.getByTestId("fs-ai-notice").textContent).toBe(w.writtenKept));
+    expect(onWritten).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the POST is lost (a network error)", () => Promise.reject(new TypeError("network"))],
+    ["the proxy answers 504 with its own HTML page", () => ({ status: 504, body: "<html><body>504 Gateway Time-out</body></html>" })],
+  ])("%s: confirmed through GET (running, then the project has scenes), never sent again, read once", async (_n, lost) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let gets = 0;
+    answer = (url, method) => {
+      if (method === "POST") return lost() as Answer;
+      gets += 1;
+      if (gets === 1) return { status: 200, body: READY };
+      return gets === 2 ? { status: 200, body: { ready: false, plan: { state: "running", expires_at: null } } } : { status: 409, body: { error: "film_has_scenes", scenes: 9 } };
+    };
+    const onWritten = writer();
+    await waitFor(() => expect(button().disabled).toBe(false));
+    fireEvent.click(button());
+    await waitFor(() => expect(reason()).toBe(w.confirming));
+    expect(button().disabled).toBe(true);
+    expect(screen.getByTestId("fs-ai-progress")).toBeTruthy();
+    await act(async () => { await vi.advanceTimersByTimeAsync(AI_WAIT_POLL_MS + 10); });
+    expect(onWritten).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(AI_WAIT_POLL_MS + 10); });
+    await waitFor(() => expect(onWritten).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("fs-ai-notice").textContent).toBe(w.doneConfirmed);
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(3 * AI_WAIT_POLL_MS); });
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+    expect(onWritten).toHaveBeenCalledTimes(1);
+  });
+
+  it("a lost POST whose plan failed is said as a failure with Retry by hand; nothing is sent again by itself", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let gets = 0;
+    answer = (url, method) => {
+      if (method === "POST") return Promise.reject(new TypeError("network"));
+      gets += 1;
+      return gets === 1 ? { status: 200, body: READY } : { status: 200, body: { ...READY, plan: { state: "failed", reason: "vendor_error", expires_at: null } } };
+    };
+    const onWritten = writer();
+    await waitFor(() => expect(button().disabled).toBe(false));
+    fireEvent.click(button());
+    await waitFor(() => expect(reason()).toBe(w.confirming));
+    await act(async () => { await vi.advanceTimersByTimeAsync(AI_WAIT_POLL_MS + 10); });
+    await waitFor(() => expect(screen.getByTestId("fs-ai-notice").textContent).toBe(w.planFailed));
+    await waitFor(() => expect(button().disabled).toBe(false));
+    expect(button().textContent).toBe(w.retry);
+    await act(async () => { await vi.advanceTimersByTimeAsync(3 * AI_WAIT_POLL_MS); });
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+    expect(onWritten).not.toHaveBeenCalled();
+  });
+
+  it("a 503 with retry_session: the next press sends that conversation back as `session`", async () => {
+    let posts = 0;
+    answer = (url, method) => {
+      if (method !== "POST") return { status: 200, body: READY };
+      posts += 1;
+      return posts === 1 ? { status: 503, body: { error: "unavailable", retry_session: "aaaaaaaa-0000-4000-8000-000000000009" } }
+        : { status: 200, body: { film: { id: FILM, version: 4 }, scenes: 3, seconds: 180 } };
+    };
+    writer();
+    await waitFor(() => expect(button().disabled).toBe(false));
+    fireEvent.click(button());
+    await waitFor(() => expect(screen.getByTestId("fs-ai-notice").textContent).toBe(w.unavailable));
+    await waitFor(() => expect(button().disabled).toBe(false));
+    fireEvent.click(button());
+    await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(2));
+    expect(calls.filter((c) => c.method === "POST").map((c) => c.body)).toEqual([{ film: FILM }, { film: FILM, session: "aaaaaaaa-0000-4000-8000-000000000009" }]);
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it("an answer without the length says how many scenes, never 0:00", async () => {
+    answer = (url, method) => (method === "POST" ? { status: 200, body: { film: { id: FILM, version: 4 }, scenes: 4 } } : { status: 200, body: READY });
+    writer();
+    await waitFor(() => expect(button().disabled).toBe(false));
+    fireEvent.click(button());
+    await waitFor(() => expect(screen.getByTestId("fs-ai-notice").textContent).toBe(fmt(w.doneNoLength, { n: 4 })));
+    expect(screen.getByTestId("fs-ai-notice").textContent).not.toContain("0:00");
+  });
+
+  it("only the latest GET sets what the button says: an older answer arriving late is dropped", async () => {
+    let releaseFirst: (v: { status: number; body: unknown }) => void = () => {};
+    let n = 0;
+    answer = () => {
+      n += 1;
+      return n === 1 ? new Promise((r) => { releaseFirst = r; }) : { status: 200, body: READY };
+    };
+    const onWritten = vi.fn(async () => {});
+    const props = { t, filmId: FILM, canEdit: true, readOnly: false, hasScenes: false, dirty: false, reasonId: "why", onWritten };
+    const { rerender } = render(<AiWriter {...props} version={3} />);
+    rerender(<AiWriter {...props} version={4} />);
+    await waitFor(() => expect(button().disabled).toBe(false));
+    await act(async () => releaseFirst({ status: 404, body: { error: "not_found" } }));
+    expect(reason()).not.toBe(w.off);
+    expect(button().disabled).toBe(false);
+  });
+});
+
+describe("refusal coverage (Lens L3): every code the routes send, its words and whether a retry can change it", () => {
+  it.each([
+    ["source_too_long", 422, { error: "source_too_long", limit: 40000 }, fmt(w.sourceTooLong, { limit: 40000 }), false],
+    ["title_claims_vendor", 422, { error: "title_claims_vendor" }, w.titleClaimsVendor, false],
+    ["film_conversation", 409, { error: "film_conversation" }, w.filmConversation, false],
+    ["film_channel_missing", 409, { error: "film_channel_missing" }, w.filmChannelMissing, false],
+    ["session_closed", 409, { error: "session_closed" }, w.planFailed, true],
+    ["nothing_to_retry", 409, { error: "nothing_to_retry" }, w.planFailed, true],
+    ["message_too_long", 400, { error: "message_too_long" }, w.supportError, false],
+    ["invalid_params", 400, { error: "invalid_params" }, w.supportError, false],
+    ["plan_over_cap without left", 429, { error: "plan_over_cap", needed: 7 }, fmt(w.overCapNoLeft, { most: 7 }), false],
+    ["the person's plan_over_cap without left", 429, { error: "plan_over_cap", needed: 7, scope: "person" }, fmt(w.overCapPersonNoLeft, { most: 7 }), false],
+    ["plan_over_cap with left 0", 429, { error: "plan_over_cap", needed: 7, left: 0 }, fmt(w.overCap, { most: 7, left: 0 }), false],
+  ])("%s", (_n, status, body, text, retry) => {
+    expect(refusalText(w, status, body)).toEqual({ text, retry });
+  });
+
+  it("a plan_over_cap without `left` is never drawn as 0", () => {
+    expect(refusalText(w, 429, { error: "plan_over_cap", needed: 7 }).text).not.toMatch(/\b0\b/);
   });
 });

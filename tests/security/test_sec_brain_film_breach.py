@@ -53,7 +53,7 @@ def _marked_conversation(conn, who, org: str, film: str) -> str:
     return sid
 
 
-@pytest.mark.xfail(strict=True, reason="BR-FILM-01: one person's two marked conversations of one film both hold a plan lease")
+@pytest.mark.xfail(strict=True, reason="BR-FILM-01: route-closed in this PR; DB-closed by 0232")
 def test_one_person_cannot_run_two_plans_of_one_film_at_once(conn, sc):
     with as_superuser(conn, commit=False) as su:
         _cap(su, sc.alice.org, 1000)

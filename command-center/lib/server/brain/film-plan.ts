@@ -2,15 +2,15 @@ import "server-only";
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { FILM, buildBrief, filmFromBrief, plain, promptOverLimit, unsafeBrief, type BrainSlots, type Scenario } from "@/lib/brain/logic";
-import { planLimits, type PlanLimits } from "@/lib/brain/plan";
+import { claimsAuthorship, planLimits, type PlanLimits } from "@/lib/brain/plan";
 import { MODEL_ID, pickFilmModel, type OnSaleModel, type PickedModel } from "@/lib/brain/film-models";
-import { FILM_PLAN_KEY, filmChapters, filmPlanTurns, filmSlots, readFilmOutline, unsafeFilm, type FilmPlanSource, type FilmPlanTurns } from "@/lib/brain/film-plan";
+import { FILM_PLAN_KEY, SOURCE_MAX, filmChapters, filmPlanTurns, filmSlots, readFilmOutline, unsafeFilm, type FilmPlanSource, type FilmPlanTurns } from "@/lib/brain/film-plan";
 import { FILM_OUTLINE_SYSTEM_PROMPT, filmOutlineDataBlock } from "@/lib/brain/prompt";
 import { callChatModel, type ChatModelId } from "@/lib/server/brain/llm";
 import { chatModelGate } from "@/lib/server/brain/google-gate";
-import { clipShapeOf, filmCatalogue, promptLimitOf, type FilmCatalogue } from "@/lib/server/brain/clip";
+import { catalogueClaimNames, clipShapeOf, filmCatalogue, promptLimitOf, type FilmCatalogue } from "@/lib/server/brain/clip";
 import { writeStoryboard } from "@/lib/server/brain/plan";
-import { brainJson, chosenModelState, dbRefusal, modelFromRef, vendorUser } from "@/lib/server/brain/session";
+import { brainJson, chosenModelState, dbRefusal, machineReason, modelFromRef, vendorUser } from "@/lib/server/brain/session";
 
 /**
  * The film editor's "Write the storyboard with AI" for ONE existing project (docs/studio/NIGHTSHIFT_AI.md, "Writing a project's
@@ -19,8 +19,13 @@ import { brainJson, chosenModelState, dbRefusal, modelFromRef, vendorUser } from
  *   - the owner's model and its gate (chosenModelState, chatModelGate), refused before any turn, never another model;
  *   - every model call a 0199 turn (ai_chat_reserve_turn before the vendor, ai_chat_finish_turn after), the chat's plan calls
  *     themselves (writeStoryboard) for the scenes;
- *   - 0211's lease, so one plan runs at a time per conversation; it is asked again before every write;
- *   - the up-front cap check: begun only when today's turns cover the worst case, so it never stops halfway for the cap;
+ *   - 0211's lease, so one plan runs at a time per conversation; it is asked again before every write. A person has one
+ *     conversation per project, but two first presses racing can make two (Breach BR-FILM-01): so once its lease is granted, a press
+ *     also asks every other conversation of the person's marked with this project, and yields (`plan_running`, no turn) while any
+ *     of them is running or cannot be read. This is per person: two EDITORS pressing on the same empty project within ~5 min: one
+ *     plan is superseded, its turns are spent, the project is never double-written (BR-FILM-02, closed by migration 0232 later);
+ *   - the up-front cap check: begun only when today's turns cover the worst case, so it does not stop halfway for the cap unless
+ *     other chats or plans use today's messages meanwhile (it reads what is left, it reserves nothing: BR-FILM-03);
  *   - G1 (the length is the project's target_seconds exactly), G3 (clip_params.audio for a scene with lines), G4 (shot counts from
  *     the clip model), the prompt limits of the models it is made with (UTF-16, never cut), no negative_prompt, no seed.
  * What is the film editor's own: the project must be EMPTY (a person's scenes are never replaced: refused before any turn, and
@@ -129,11 +134,19 @@ export interface PlanReady {
   catalogue: Extract<FilmCatalogue, { ok: true }>;
 }
 
-/** The project itself: editable, empty, its own words not something that is never made here. Before anything else is read. */
+/**
+ * The project itself: editable, empty, its source text short enough to be read whole, its own words not something that is never
+ * made here, and its title not a claim that an AI vendor made the film. Before anything else is read, on GET and POST alike.
+ */
 export function filmRefusal(film: PlanFilm): Response | null {
   if (!film.editable) return brainJson({ error: "film_not_editable", status: film.status }, 409);
   if (film.scenes > 0) return brainJson({ error: "film_has_scenes", scenes: film.scenes }, 409);
+  // Sent whole or not at all (Lens H1): a script cut to its first pages would be planned as if that were all of it.
+  if (Array.from(film.sourceText).length > SOURCE_MAX) return brainJson({ error: "source_too_long", limit: SOURCE_MAX }, 422);
   if (unsafeFilm(film)) return brainJson({ error: "content_refused" }, 422);
+  // The title is kept as the storyboard's own (readFilmOutline): "Written by ChatGPT" would be on screen as the film's title, and
+  // the plan's floor would refuse it only after the outline was paid for (Lens L2). The source text may say anything: it is read.
+  if (claimsAuthorship(film.title)) return brainJson({ error: "title_claims_vendor" }, 422);
   return null;
 }
 
@@ -181,20 +194,72 @@ export async function planPrecheck(supabase: SupabaseClient, film: PlanFilm): Pr
 
 const digest = (s: string) => createHash("sha256").update(s).digest("hex");
 
+/** How many of the person's conversations marked with one project are asked about: normally one, two after a race (BR-FILM-01). */
+const MARKED_MAX = 5;
+
 /**
- * The person's conversation for this project, if there is one: theirs (RLS: the author; pinned again here), in the project's
- * workspace, marked with this project, not handed off. The oldest wins, so two first presses that each made one agree on the same.
+ * The person's conversations marked with this project, oldest first: theirs (RLS: the author; pinned again here), in the project's
+ * workspace, marked with this project (`brief->film_plan->>film_id`, the predicate /api/brain and the history list exclude by), not
+ * handed off. A row that is not what was asked for fails the whole read: nothing is planned on a guess.
+ */
+async function markedConversations(supabase: SupabaseClient, film: PlanFilm, userId: string): Promise<{ ok: true; ids: string[] } | { ok: false }> {
+  const r = await supabase.from("ai_chat_sessions").select("id,org_id,created_by,step,created_at")
+    .eq("org_id", film.orgId).eq("created_by", userId).eq(`brief->${FILM_PLAN_KEY}->>film_id`, film.id).neq("step", "created")
+    .order("created_at", { ascending: true }).order("id", { ascending: true }).limit(MARKED_MAX);
+  if (r.error) return { ok: false };
+  const rows = (r.data ?? []) as { id?: unknown; org_id?: unknown; created_by?: unknown }[];
+  if (rows.some((row) => typeof row.id !== "string" || row.org_id !== film.orgId || row.created_by !== userId)) return { ok: false };
+  return { ok: true, ids: rows.map((row) => row.id as string) };
+}
+
+/**
+ * The person's conversation for this project, if there is one. The oldest wins, so two first presses that each made one agree on
+ * the same one when both markers are written by then; when they are not, the lease check after ai_chat_plan_begin (planFilm) is what
+ * keeps the second from planning too.
  */
 export async function findFilmConversation(supabase: SupabaseClient, film: PlanFilm, userId: string):
   Promise<{ state: "ok"; id: string } | { state: "none" } | { state: "failed" }> {
-  const r = await supabase.from("ai_chat_sessions").select("id,org_id,created_by,step,created_at")
-    .eq("org_id", film.orgId).eq("created_by", userId).eq(`brief->${FILM_PLAN_KEY}->>film_id`, film.id).neq("step", "created")
-    .order("created_at", { ascending: true }).order("id", { ascending: true }).limit(1);
-  if (r.error) return { state: "failed" };
-  const row = ((r.data ?? []) as { id?: unknown; org_id?: unknown; created_by?: unknown }[])[0];
-  if (!row) return { state: "none" };
-  if (typeof row.id !== "string" || row.org_id !== film.orgId || row.created_by !== userId) return { state: "failed" };
-  return { state: "ok", id: row.id };
+  const marked = await markedConversations(supabase, film, userId);
+  if (!marked.ok) return { state: "failed" };
+  return marked.ids.length ? { state: "ok", id: marked.ids[0] } : { state: "none" };
+}
+
+/**
+ * Whether any of these conversations holds a running 0211 lease. Fail closed: one whose state cannot be read counts as running, so
+ * a press never plans beside a plan it could not see.
+ */
+async function runningAmong(supabase: SupabaseClient, ids: string[]):
+  Promise<{ state: "running"; expires_at: string | null } | { state: "none" } | { state: "unreadable" }> {
+  for (const id of ids) {
+    const st = (await supabase.rpc("ai_chat_plan_state", { p_session: id })) as Rpc;
+    if (st.error) return { state: "unreadable" };
+    const d = (st.data ?? null) as { state?: unknown; expires_at?: unknown } | null;
+    if (d && typeof d === "object" && d.state === "running") return { state: "running", expires_at: typeof d.expires_at === "string" ? d.expires_at : null };
+  }
+  return { state: "none" };
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whether a conversation id the panel hands back (`retry_session`, after a marker write that failed: BR-FILM-06) may become this
+ * project's: only the empty conversation this route made and could not mark. The person's own, in the project's workspace and
+ * channel, not handed off, with nothing in it (no BRIEF, no message) and made within the last day. Anything else is never marked:
+ * a new conversation is started instead, so a chat with words in it can never be taken over by a crafted id.
+ */
+async function adoptable(supabase: SupabaseClient, film: PlanFilm, userId: string, id: string): Promise<boolean> {
+  if (!UUID.test(id)) return false;
+  const r = await supabase.from("ai_chat_sessions").select("id,org_id,channel_id,created_by,step,brief,created_at").eq("id", id).eq("created_by", userId).limit(1);
+  if (r.error) return false;
+  const row = ((r.data ?? []) as Record<string, unknown>[])[0];
+  if (!row || row.id !== id || row.created_by !== userId || row.org_id !== film.orgId || (row.channel_id ?? null) !== film.channelId) return false;
+  if (row.step === "created") return false;
+  const brief = row.brief;
+  if (!brief || typeof brief !== "object" || Array.isArray(brief) || Object.keys(brief).length > 0) return false;
+  const born = typeof row.created_at === "string" ? Date.parse(row.created_at) : Number.NaN;
+  if (!Number.isFinite(born) || Date.now() - born >= DAY_MS) return false;
+  const m = await supabase.from("ai_chat_messages").select("id").eq("session_id", id).limit(1);
+  return !m.error && ((m.data ?? []) as unknown[]).length === 0;
 }
 
 /** A BRIEF that names the project: the chat's own shape, plus the marker. */
@@ -207,20 +272,51 @@ function markedBrief(sessionId: string, slots: BrainSlots, chosen: Scenario | nu
  * and marked with the project through ai_chat_save_brief. The chat panel never opens it by itself: /api/brain and the history list
  * leave marked conversations out, so the chat keeps the person's own conversations as before.
  */
-export async function openFilmConversation(supabase: SupabaseClient, film: PlanFilm, userId: string, slots: BrainSlots):
-  Promise<{ ok: true; id: string } | { ok: false; res: Response }> {
+export async function openFilmConversation(supabase: SupabaseClient, film: PlanFilm, userId: string, slots: BrainSlots,
+                                           retrySession: string | null = null): Promise<{ ok: true; id: string } | { ok: false; res: Response }> {
   const found = await findFilmConversation(supabase, film, userId);
   if (found.state === "ok") return { ok: true, id: found.id };
   if (found.state === "failed") return { ok: false, res: brainJson({ error: "unavailable" }, 503) };
-  const started = (await supabase.rpc("ai_chat_start", { p_org: film.orgId, p_channel: film.channelId })) as Rpc;
-  if (started.error) return { ok: false, res: dbRefusal(started.error) ?? brainJson({ error: "unavailable" }, 503) };
-  const sid = String(started.data);
-  const marked = (await supabase.rpc("ai_chat_save_brief", { p_session: sid, p_brief: markedBrief(sid, slots, null, film.id), p_step: "ready" })) as Rpc;
-  if (marked.error) return { ok: false, res: dbRefusal(marked.error) ?? brainJson({ error: "unavailable" }, 503) };
+  // The empty conversation an earlier press made and could not mark (BR-FILM-06), when the panel hands its id back: used, rather
+  // than one more conversation counted against 0199's sessions_per_user_daily on every press.
+  let sid: string | null = retrySession && (await adoptable(supabase, film, userId, retrySession)) ? retrySession : null;
+  if (!sid) {
+    const started = (await supabase.rpc("ai_chat_start", { p_org: film.orgId, p_channel: film.channelId })) as Rpc;
+    if (started.error) {
+      // The project's channel left the workspace (or was deleted): the project's setting to fix, not "Nightshift AI is off" (L3).
+      if (started.error.message === "channel_not_found") return { ok: false, res: brainJson({ error: "film_channel_missing" }, 409) };
+      return { ok: false, res: dbRefusal(started.error) ?? brainJson({ error: "unavailable" }, 503) };
+    }
+    sid = String(started.data);
+  }
+  // Asked twice inside the request: a timeout on the marker leaves an unmarked conversation that the chat would resume as its own.
+  let marked: Rpc | null = null;
+  for (let i = 0; i < 2 && (!marked || marked.error); i++) {
+    marked = (await Promise.resolve(supabase.rpc("ai_chat_save_brief", { p_session: sid, p_brief: markedBrief(sid, slots, null, film.id), p_step: "ready" }))
+      .catch(() => ({ data: null, error: { message: "unavailable" } }))) as Rpc;
+  }
+  // Still not marked: its id goes back to the panel, which sends it with the next press (component state only), and only an empty
+  // conversation of the person's own is ever taken back (adoptable).
+  if (!marked || marked.error) return { ok: false, res: brainJson({ error: "unavailable", retry_session: sid }, 503) };
   // Read again rather than trusting our own: a second tab's first press may have made one too, and both must plan in the same one.
   const again = await findFilmConversation(supabase, film, userId);
   if (again.state !== "ok") return { ok: false, res: brainJson({ error: "unavailable" }, 503) };
   return { ok: true, id: again.id };
+}
+
+/**
+ * What GET says about a plan of this project: running when ANY of the person's conversations marked with it holds a running lease
+ * (the same rule a press yields by), else the oldest one's own lease (its last attempt failed, or it is done), or none yet.
+ */
+export async function filmLeaseView(supabase: SupabaseClient, film: PlanFilm, userId: string): Promise<{ ok: true; lease: LeaseView } | { ok: false; res: Response }> {
+  const mine = await markedConversations(supabase, film, userId);
+  if (!mine.ok) return { ok: false, res: brainJson({ error: "unavailable" }, 503) };
+  const own = await leaseView(supabase, mine.ids[0] ?? null);
+  if (!own.ok || own.lease?.state === "running") return own;
+  const other = await runningAmong(supabase, mine.ids.slice(1));
+  if (other.state === "unreadable") return { ok: false, res: brainJson({ error: "unavailable" }, 503) };
+  if (other.state === "running") return { ok: true, lease: { state: "running", reason: null, expires_at: other.expires_at } };
+  return own;
 }
 
 /** 0211's lease as the panel follows it (a refresh, a second tab): running until `expires_at`, failed with its reason, or done. */
@@ -258,10 +354,16 @@ const UNCHARGED = new Set(["not_sent", "not_configured", "vendor_refused", "refu
  * anything was spent. `film` and `ready` are the route's, read and checked this request; `said` is what the person's press is stored
  * as (the project's title, or the panel's own words when it has none).
  */
-export async function planFilm(args: { supabase: SupabaseClient; film: PlanFilm; ready: PlanReady; userId: string; said: string }): Promise<Response> {
+export async function planFilm(args: {
+  supabase: SupabaseClient; film: PlanFilm; ready: PlanReady; userId: string; said: string;
+  /** When the request began (the route's first line, Lens L1): the plan's 300 s include the precheck and the outline call. */
+  startedAt: number;
+  /** A conversation id from an earlier 503 `retry_session` (openFilmConversation). */
+  retrySession?: string | null;
+}): Promise<Response> {
   const { supabase, film, ready, userId } = args;
-  const started = Date.now();
-  const conv = await openFilmConversation(supabase, film, userId, ready.slots);
+  const started = args.startedAt;
+  const conv = await openFilmConversation(supabase, film, userId, ready.slots, args.retrySession ?? null);
   if (!conv.ok) return conv.res;
   const sid = conv.id;
   // Within 0199's smallest message limit (max_input_chars is at least 100).
@@ -299,11 +401,26 @@ export async function planFilm(args: { supabase: SupabaseClient; film: PlanFilm;
   if (typeof b.attempt !== "number" || !Number.isInteger(b.attempt)) return brainJson({ error: "plan_unavailable" }, 503);
   lease = { attempt: b.attempt };
   try {
+    // One plan of this project per person (BR-FILM-01): two first presses that raced can each hold a lease of their own
+    // conversation. With ours granted, every other one marked with this project is asked; while any runs, or cannot be read, this
+    // press yields before its first turn (ours is ended as failed, `plan_running`). Whichever asks second sees the other's lease.
+    const mine = await markedConversations(supabase, film, userId);
+    if (!mine.ok) return fail("unavailable", { error: "unavailable" }, 503);
+    const other = await runningAmong(supabase, mine.ids.filter((id) => id !== sid));
+    if (other.state !== "none") return fail("plan_running", { error: "plan_running", expires_at: other.state === "running" ? other.expires_at : null }, 409);
+    // And the project again, now that no other plan of ours is running: one that finished meanwhile wrote its scenes (or an edit
+    // moved the version). Said before any turn, never planned over.
+    const fresh = await readPlanFilm(supabase, film.id);
+    if (!fresh.ok) return fresh.res;
+    if (fresh.film.scenes > 0) return fail("film_has_scenes", { error: "film_has_scenes", scenes: fresh.film.scenes }, 409);
+    if (fresh.film.version !== film.version) return superseded();
     // The person's own turns across every workspace (0199 per_user_daily), returned by the lease: the same up-front rule.
     if (typeof b.user_left === "number" && b.user_left < ready.turns.at_most) {
       return fail("plan_over_cap", { error: "plan_over_cap", needed: ready.turns.at_most, about: ready.turns.about, left: b.user_left, scope: "person" }, 429);
     }
     const endUser = await vendorUser(film.orgId);
+    // Every model and provider the catalogue sells: a plan answer never claims one of them made the film (BR-FILM-04a).
+    const claimNames = catalogueClaimNames(ready.catalogue);
     const chapters = filmChapters(ready.slots.target_seconds as number);
     if (!chapters) return fail("not_plannable", { error: "plan_failed", reason: "not_plannable", step: null }, 409);
 
@@ -336,7 +453,7 @@ export async function planFilm(args: { supabase: SupabaseClient; film: PlanFilm;
     let outline: Scenario;
     try {
       const llm = await callChatModel(ready.model, FILM_OUTLINE_SYSTEM_PROMPT, filmOutlineDataBlock({
-        title: film.title, sourceKind: film.sourceKind, sourceText: plain(film.sourceText, 4000, true), language: ready.slots.language ?? null,
+        title: film.title, sourceKind: film.sourceKind, sourceText: plain(film.sourceText, SOURCE_MAX, true), language: ready.slots.language ?? null,
         aspect: ready.slots.aspect ?? null, targetSeconds: ready.slots.target_seconds as number, chapters,
       }), { endUser, size: "plan" });
       if (!llm.ok) {
@@ -348,7 +465,7 @@ export async function planFilm(args: { supabase: SupabaseClient; film: PlanFilm;
         await finish(outcome, outcome === "not_configured" ? null : llm.tokensIn, outcome === "not_configured" ? null : llm.tokensOut);
         return fail(llm.error, { error: "plan_failed", reason: llm.error, step: null }, 502);
       }
-      const read = readFilmOutline(llm.text, film, chapters, ready.slots);
+      const read = readFilmOutline(llm.text, film, chapters, ready.slots, claimNames);
       if (!read.ok) {
         await finish(read.why === "refused" ? "refused" : "invalid_output", llm.tokensIn, llm.tokensOut);
         return read.why === "refused" ? fail("content_refused", { error: "content_refused" }, 422)
@@ -370,7 +487,7 @@ export async function planFilm(args: { supabase: SupabaseClient; film: PlanFilm;
     const run = await writeStoryboard({
       supabase, sessionId: sid, model: ready.model, endUser,
       requestBase: `pl${digest(`film-plan:${sid}:${film.id}:${lease.attempt}`).slice(0, 40)}`,
-      choiceStored: true, choiceText: said, outline, slots: ready.slots, limits: ready.limits, startedAt: started,
+      choiceStored: true, choiceText: said, outline, slots: ready.slots, limits: ready.limits, startedAt: started, claimNames,
     });
     if (!run.ok) {
       ending = { state: "failed", reason: run.reason };
@@ -401,7 +518,7 @@ export async function planFilm(args: { supabase: SupabaseClient; film: PlanFilm;
     const saved = (await supabase.rpc("save_film", { p_film: film.id, p_version: film.version, p_patch: patch })) as Rpc;
     if (saved.error) {
       if (saved.error.message === "film_changed") return superseded();
-      return fail("film_refused", { error: "film_refused", reason: plain(saved.error.message, 64), film_id: film.id }, 409);
+      return fail("film_refused", { error: "film_refused", reason: machineReason(saved.error.message), film_id: film.id }, 409);
     }
     const version = (saved.data as { film?: { version?: unknown } } | null)?.film?.version;
     ending = { state: "done", reason: "" };

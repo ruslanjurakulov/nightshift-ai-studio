@@ -36,11 +36,12 @@ import { createHash } from "node:crypto";
 import { chatModelGate } from "@/lib/server/brain/google-gate";
 import { readChannelFacts } from "@/lib/server/brain/facts";
 import { chatPricing } from "@/lib/server/brain/quote";
-import { clipShapeOf, filmCatalogue, promptLimitOf } from "@/lib/server/brain/clip";
+import { catalogueClaimNames, clipShapeOf, filmCatalogue, promptLimitOf } from "@/lib/server/brain/clip";
 import { FILM_MODEL_PREFERENCE, MODEL_ID, pickFilmModel, type OnSaleModel, type PickedModel } from "@/lib/brain/film-models";
 import { writeStoryboard } from "@/lib/server/brain/plan";
-import { planLimits, planTurns, withPlanTurns } from "@/lib/brain/plan";
-import { brainJson, channelOrg, chosenModelState, dbRefusal, modelFromRef, notFound, vendorUser } from "@/lib/server/brain/session";
+import { claimsAuthorship, outlineText, planLimits, planTurns, withPlanTurns } from "@/lib/brain/plan";
+import { brainJson, channelOrg, chosenModelState, dbRefusal, machineReason, modelFromRef, notFound, vendorUser } from "@/lib/server/brain/session";
+import { FILM_PLAN_KEY } from "@/lib/brain/film-plan";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -78,6 +79,13 @@ async function loadSession(supabase: SupabaseClient, id: unknown): Promise<{ ok:
   const { data, error } = await supabase.from("ai_chat_sessions").select(SESSION_COLS).eq("id", id).maybeSingle();
   if (error) return { ok: false, res: dbRefusal(error) ?? brainJson({ error: "unavailable" }, 503) };
   if (!data || !aiChatOpenFor(data.org_id, aiChatEnv())) return { ok: false, res: notFound() };
+  // A project's own conversation (the film editor's storyboard writer, lib/server/brain/film-plan) is never a chat's: a turn, an
+  // answer, a choice or a hand-off in it would write the chat's BRIEF over the project's marker, or spend the project's turns.
+  // Refused here, before any reserve or save, by the same predicate the chat's reads exclude it by (brief->film_plan->>film_id).
+  const marker = (data.brief as Record<string, unknown> | null)?.[FILM_PLAN_KEY];
+  if (marker && typeof marker === "object" && typeof (marker as { film_id?: unknown }).film_id === "string") {
+    return { ok: false, res: brainJson({ error: "film_conversation" }, 409) };
+  }
   return { ok: true, s: data as Session };
 }
 
@@ -243,6 +251,9 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
   // 1. The floor under the prompt's and the vendors' safety rules (lib/brain/logic unsafeBrief, the style and audience included,
   // Breach BR-S1-01): nothing of it is planned, priced or drafted.
   if (unsafeBrief(buildBrief(s.id, slots, chosen, "ready"))) return brainJson({ error: "content_refused" }, 422);
+  // And no claim that a vendor made it (lib/brain/plan claimsAuthorship, Breach BR-FILM-04): a proposal titled "Made by Claude" is
+  // refused before anything is planned, priced or drafted, rather than every plan answer failing on the outline's own words.
+  if (claimsAuthorship(outlineText(chosen))) return brainJson({ error: "content_refused" }, 422);
   // One draft per proposal and scenario: a re-proposal is a new key, so choosing "the first one" again is not a conflict with the
   // draft of an earlier, different first one (Lens on 0199). The plan step writes no assistant message, so the key survives it.
   const proposalId = Number((msgs?.[0] as { id?: number } | undefined)?.id ?? 0);
@@ -265,6 +276,9 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
   const catalogue = await filmCatalogue(supabase);
   if (!catalogue.ok) return brainJson({ error: "unavailable" }, 503);
   const keyframeAll = [...catalogue.keyframe, ...catalogue.keyframeEdit];
+  // The catalogue's own model names and providers, never claimed to have made the film: the outline now, every plan answer below.
+  const claimNames = catalogueClaimNames(catalogue);
+  if (claimsAuthorship(outlineText(chosen), claimNames)) return brainJson({ error: "content_refused" }, 422);
   const nameOf = (list: { id: string; name: string }[], id: string | null) => (id ? { id, name: list.find((m) => m.id === id)?.name ?? id } : null);
 
   // The storyboard: one stored before the plan step that already adds up; the one this session's plan already wrote for this same
@@ -400,7 +414,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     });
     if (created.error) {
       ending = { state: "failed", reason: "film_refused" };
-      return brainJson({ error: "film_refused", reason: plain(created.error.message, 64) }, 409);
+      return brainJson({ error: "film_refused", reason: machineReason(created.error.message) }, 409);
     }
     const cd = (created.data ?? null) as {
       film?: { id?: string; version?: number; clip_model?: unknown; keyframe_model?: unknown };
@@ -442,7 +456,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
         requestBase: `pl${digest(`${s.id}:${proposalId}:${index}:${(lease as { attempt: number }).attempt}`).slice(0, 40)}`,
         // A Retry of this same choice after a failed plan: the person's choice is already their last, unanswered message.
         choiceStored: last?.role === "user" && last.content === chosen.title,
-        choiceText: chosen.title, outline: chosen, slots, limits,
+        choiceText: chosen.title, outline: chosen, slots, limits, claimNames,
       });
       if (!run.ok) {
         ending = { state: "failed", reason: run.reason };
@@ -484,7 +498,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     if (saved.error) {
       if (saved.error.message === "film_changed") return superseded(f.id);
       ending = { state: "failed", reason: "film_refused" };
-      return brainJson({ error: "film_refused", reason: plain(saved.error.message, 64), film_id: f.id, ...(quota !== undefined ? { quota } : {}) }, 409);
+      return brainJson({ error: "film_refused", reason: machineReason(saved.error.message), film_id: f.id, ...(quota !== undefined ? { quota } : {}) }, 409);
     }
     const version = (saved.data as { film?: { version?: number } } | null)?.film?.version ?? v0 + 1;
     // 7. The price.

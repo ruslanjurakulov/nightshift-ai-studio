@@ -148,7 +148,8 @@ describe("the list", () => {
   it("leaves out a project's own conversation (the film editor's storyboard writer): it is not a chat to resume here", async () => {
     s.sessions = [row({})];
     await get("?channel=c1");
-    expect(has(sessionsQuery(), "is", "brief->film_plan", null)).toBe(true);
+    // The film route's own predicate (findFilmConversation): only a conversation marked with a project's id is left out.
+    expect(has(sessionsQuery(), "is", "brief->film_plan->>film_id", null)).toBe(true);
   });
 
   it("titles a conversation by its plan once there is one, then by the person's first message, cut to 60 characters", async () => {

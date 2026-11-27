@@ -50,8 +50,12 @@ export function refusalText(w: AiWords, status: number, body: Record<string, unk
     case "chat_plan_required": return { text: w.planRequired, retry: false };
     case "chat_daily_cap": return { text: w.dailyCap, retry: false };
     case "plan_over_cap": {
-      const vars = { most: num(body.needed) ?? "?", left: num(body.left) ?? 0 };
-      return { text: fmt(body.scope === "person" ? w.overCapPerson : w.overCap, vars), retry: false };
+      const most = num(body.needed) ?? "?";
+      const left = num(body.left);
+      const person = body.scope === "person";
+      // A count the server did not give is never drawn as 0 (rule 5): said without the number.
+      if (left === null) return { text: fmt(person ? w.overCapPersonNoLeft : w.overCapNoLeft, { most }), retry: false };
+      return { text: fmt(person ? w.overCapPerson : w.overCap, { most, left }), retry: false };
     }
     case "plan_unavailable":
     case "not_enabled": return { text: w.planUnavailable, retry: false };
@@ -59,6 +63,16 @@ export function refusalText(w: AiWords, status: number, body: Record<string, unk
     case "plan_length_mismatch": return { text: w.lengthMismatch, retry: true };
     case "prompt_too_long": return { text: fmt(w.promptTooLong, { limit: num(body.limit) ?? "?" }), retry: true };
     case "film_refused": return { text: w.filmRefused, retry: true };
+    case "source_too_long": return { text: fmt(w.sourceTooLong, { limit: num(body.limit) ?? "?" }), retry: false };
+    case "title_claims_vendor": return { text: w.titleClaimsVendor, retry: false };
+    case "film_conversation": return { text: w.filmConversation, retry: false };
+    case "film_channel_missing": return { text: w.filmChannelMissing, retry: false };
+    // The conversation was handed off meanwhile, or the press it would retry is not its last message: a new press starts clean.
+    case "session_closed":
+    case "nothing_to_retry": return { text: w.planFailed, retry: true };
+    // A request this panel never sends wrong: not the person's to fix, and pressing again sends the same one.
+    case "message_too_long":
+    case "invalid_params": return { text: w.supportError, retry: false };
     case "plan_failed":
       if (reason === "not_plannable") return { text: w.notPlannable, retry: false };
       // A key the vendor refused, or a model this server has no key for: the owner's fix, never a retry's (NIGHTSHIFT_AI.md).

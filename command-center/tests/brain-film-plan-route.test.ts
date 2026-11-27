@@ -59,6 +59,10 @@ const state = {
   outline: outlineOk(),
   /** The owner's chat model on sale (sellable_models, describe). */
   chatOnSale: true,
+  /** What ai_chat_start refuses with, when it does. */
+  startError: null as null | { code?: string; message: string },
+  /** Runs inside ai_chat_quota (the precheck): the clock moving on while it waits. */
+  onQuota: null as null | (() => void),
 };
 const rpc = vi.fn();
 const llm = vi.fn();
@@ -91,8 +95,11 @@ const client = {
       if (cap === "describe") return { data: state.chatOnSale ? [{ id: "anthropic-claude-sonnet-5-5" }] : [], error: null };
       return { data: state.catalogue[cap], error: null };
     }
-    if (fn === "ai_chat_quota") return { data: { ...state.quota, model_ref: ref("anthropic-claude-sonnet-5-5") }, error: null };
-    if (fn === "ai_chat_start") return { data: SESSION, error: null };
+    if (fn === "ai_chat_quota") {
+      state.onQuota?.();
+      return { data: { ...state.quota, model_ref: ref("anthropic-claude-sonnet-5-5") }, error: null };
+    }
+    if (fn === "ai_chat_start") return state.startError ? { data: null, error: state.startError } : { data: SESSION, error: null };
     if (fn === "ai_chat_save_brief") {
       const marker = (args.p_brief as { film_plan?: { film_id?: string } }).film_plan;
       if (marker && !state.sessions.length) state.sessions = [{ id: args.p_session, org_id: ORG, created_by: "user-1", step: "ready" }];
@@ -168,6 +175,8 @@ beforeEach(() => {
   state.plan = exact;
   state.outline = outlineOk();
   state.chatOnSale = true;
+  state.startError = null;
+  state.onQuota = null;
   gate.refusal = null;
   reserved = 0;
 });
@@ -393,5 +402,82 @@ describe("GET /api/brain/film: what the button says before a press", () => {
     state.quota = { used: 3, limit: 30 };
     lease.state.missing = true;
     expect((await (await read()).json()).error).toBe("plan_unavailable");
+  });
+});
+
+describe("fix round (Lens H1, L1, L2, L3)", () => {
+  /** A source of exactly n code points that plain() leaves as it is (single spaces, none at the edges), ending on `tail`. */
+  const sourceOf = (n: number, tail: string) => "The caravan crosses the dunes at night. ".repeat(Math.ceil(n / 40)).slice(0, n - tail.length) + tail;
+
+  it("H1: a 39,999-character source reaches the outline's DATA whole, its last sentence included, with no cut", async () => {
+    const MARK = "THE LAST LINE: the guard opens the gate.";
+    const text = sourceOf(39_999, MARK);
+    expect(Array.from(text)).toHaveLength(39_999);
+    state.film = { source_text: text };
+    expect((await press()).status).toBe(200);
+    const data = JSON.parse(String(llm.mock.calls[0][2]).split("\n").slice(1).join("\n"));
+    expect(data.film.source_text).toBe(text);
+    expect(data.film.source_text.endsWith(MARK)).toBe(true);
+    expect(data.film.source_text).not.toContain("…");
+  });
+
+  it("H1: a 40,001-character source is refused source_too_long on GET and POST, with nothing spent", async () => {
+    state.film = { source_text: sourceOf(40_001, "end.") };
+    for (const res of [await read(), await press()]) {
+      expect(res.status).toBe(422);
+      expect(await res.json()).toEqual({ error: "source_too_long", limit: 40_000 });
+    }
+    nothingSpent();
+    expect(called("ai_chat_plan_begin")).toHaveLength(0);
+  });
+
+  it("L2: a title that claims a vendor made the film is refused title_claims_vendor on GET and POST, with nothing spent", async () => {
+    state.film = { title: "Written by ChatGPT" };
+    for (const res of [await read(), await press()]) {
+      expect(res.status).toBe(422);
+      expect(await res.json()).toEqual({ error: "title_claims_vendor" });
+    }
+    nothingSpent();
+  });
+
+  it("L2: a title that only names a vendor is a story: \"The rise of OpenAI\" plans, the title kept", async () => {
+    state.film = { title: "The rise of OpenAI" };
+    expect((await press()).status).toBe(200);
+    expect(called("ai_chat_reserve_turn")[0]).toMatchObject({ p_text: "The rise of OpenAI" });
+  });
+
+  it("L2: a title of only U+3164 is no title: it plans, and the panel's own words are stored as the press", async () => {
+    state.film = { title: "ㅤ" };
+    expect((await press()).status).toBe(200);
+    expect(called("ai_chat_reserve_turn")[0]).toMatchObject({ p_text: "Write the storyboard for this project", p_retry: false });
+  });
+
+  it("L3: a project whose channel left the workspace is film_channel_missing (its fix), not the 404 that reads as off", async () => {
+    state.startError = { code: "NS404", message: "channel_not_found" };
+    const res = await press();
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "film_channel_missing" });
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+    expect(llm).not.toHaveBeenCalled();
+  });
+
+  it("L1: the plan's 300 s count from the request's first line: a precheck that took 270 s leaves no window started, and says so", async () => {
+    const base = Date.now();
+    let offset = 0;
+    const spy = vi.spyOn(Date, "now").mockImplementation(() => base + offset);
+    state.onQuota = () => { offset += 270_000; };
+    try {
+      const res = await press();
+      expect(res.status).toBe(502);
+      expect(await res.json()).toMatchObject({ error: "plan_failed", reason: "timeout" });
+      // The outline's one turn only: no window was reserved that could not finish inside the request.
+      const reserves = called("ai_chat_reserve_turn");
+      expect(reserves).toHaveLength(1);
+      expect(String(reserves[0].p_request_id)).toMatch(/^fo/);
+      expect(called("save_film")).toHaveLength(0);
+      expect(called("ai_chat_plan_end").at(-1)).toMatchObject({ p_state: "failed", p_reason: "timeout" });
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

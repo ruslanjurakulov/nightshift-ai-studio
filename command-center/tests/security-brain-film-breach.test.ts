@@ -61,7 +61,8 @@ const withFirstScene = (scene: Record<string, unknown>): Plan => (parts, data) =
 
 type Film = { id: string; org_id: string; title: string; source_text: string; target_seconds: number; status: string; version: number;
               scenes: unknown[]; clip_model: string | null; keyframe_model: string | null };
-type Sess = { id: string; org_id: string; created_by: string; step: string; seq: number; brief: Record<string, unknown> };
+type Sess = { id: string; org_id: string; created_by: string; step: string; seq: number; brief: Record<string, unknown>;
+              channel_id?: string | null; created_at?: string };
 
 const who = new AsyncLocalStorage<string>();
 const me = () => who.getStore() ?? "user-1";
@@ -84,6 +85,8 @@ const db = {
   saveError: null as null | { code?: string; message: string },
   /** Runs inside ai_chat_plan_begin before the lease is taken. */
   onBegin: null as null | ((sid: string) => void),
+  /** Runs first in every rpc, before the fake answers it (the race tests' hold points). */
+  onRpc: null as null | ((fn: string, args: Record<string, unknown>) => void),
   plan: exact as Plan,
   outline: outlineOk() as (data: Record<string, unknown>) => Record<string, unknown>,
 };
@@ -96,9 +99,11 @@ function sessions() {
   const neqs: [string, unknown][] = [];
   const b: Record<string, unknown> = {};
   b.select = () => b;
+  let limit = Infinity;
   b.eq = (c: string, v: unknown) => { eqs.push([c, v]); return b; };
   b.neq = (c: string, v: unknown) => { neqs.push([c, v]); return b; };
-  for (const m of ["is", "order", "limit"]) b[m] = () => b;
+  b.limit = (n: number) => { limit = n; return b; };
+  for (const m of ["is", "order"]) b[m] = () => b;
   const value = (s: Sess, c: string): unknown => {
     if (c === "brief->film_plan->>film_id") return (s.brief.film_plan as { film_id?: unknown } | undefined)?.film_id;
     return (s as unknown as Record<string, unknown>)[c];
@@ -107,8 +112,9 @@ function sessions() {
     // RLS: the author's own rows only (0199 ai_chat_sessions_own).
     const rows = db.sessions.filter((s) => s.created_by === me())
       .filter((s) => eqs.every(([c, v]) => String(value(s, c)) === String(v)) && neqs.every(([c, v]) => value(s, c) !== v))
-      .sort((x, y) => x.seq - y.seq).slice(0, 1)
-      .map((s) => ({ id: s.id, org_id: s.org_id, created_by: s.created_by, step: s.step, created_at: new Date(1_700_000_000_000 + s.seq).toISOString() }));
+      .sort((x, y) => x.seq - y.seq).slice(0, limit)
+      .map((s) => ({ id: s.id, org_id: s.org_id, channel_id: s.channel_id ?? null, created_by: s.created_by, step: s.step, brief: s.brief,
+                     created_at: s.created_at ?? new Date(1_700_000_000_000 + s.seq).toISOString() }));
     return resolve({ data: rows, error: null });
   };
   return b;
@@ -130,6 +136,7 @@ const client = {
   from: (t: string) => (t === "ai_chat_sessions" ? sessions() : messages()),
   rpc: async (fn: string, args: Record<string, unknown>) => {
     rpc(fn, { ...args, _user: me() });
+    db.onRpc?.(fn, args);
     if (fn === "ai_chat_plan_begin") db.onBegin?.(String(args.p_session));
     const leased = lease.rpc(fn, args);
     if (leased) return leased;
@@ -149,7 +156,8 @@ const client = {
     if (fn === "ai_chat_quota") return { data: { used: db.used, limit: db.limit, model_ref: ref("anthropic-claude-sonnet-5-5") }, error: null };
     if (fn === "ai_chat_start") {
       const id = randomUUID();
-      db.sessions.push({ id, org_id: String(args.p_org), created_by: me(), step: "asking", seq: ++db.seq, brief: {} });
+      db.sessions.push({ id, org_id: String(args.p_org), channel_id: (args.p_channel as string | null) ?? null, created_by: me(), step: "asking",
+                         seq: ++db.seq, brief: {}, created_at: new Date().toISOString() });
       return { data: id, error: null };
     }
     if (fn === "ai_chat_save_brief") {
@@ -199,6 +207,7 @@ vi.mock("@/lib/server/age", () => ({ readAgeState: async () => "adult" }));
 vi.mock("@/lib/i18n/server", () => ({ getLocale: async () => "en" }));
 vi.mock("@/lib/server/films", () => ({ filmGateFor: async () => ({ ok: true, supabase: client, userId: me() }) }));
 vi.mock("@/lib/server/brain/google-gate", () => ({ chatModelGate: async () => null }));
+vi.mock("@/lib/orgs-server", () => ({ getOrgContext: async () => ({ supported: true, current: { id: ORG, role: "editor" } }) }));
 vi.mock("@/lib/server/brain/llm", async () => {
   const real = await vi.importActual<typeof import("@/lib/server/brain/llm")>("@/lib/server/brain/llm");
   const { FILM_OUTLINE_SYSTEM_PROMPT } = await vi.importActual<typeof import("@/lib/brain/prompt")>("@/lib/brain/prompt");
@@ -216,8 +225,10 @@ vi.mock("@/lib/server/brain/llm", async () => {
 });
 
 const { GET, POST } = await import("@/app/api/brain/film/route");
-const press = (user = "user-1", id: unknown = FILM) => who.run(user, () =>
-  POST(new Request("https://x/api/brain/film", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ film: id }) })));
+const turnRoute = await import("@/app/api/brain/turn/route");
+const press = (user = "user-1", id: unknown = FILM, session?: unknown) => who.run(user, () =>
+  POST(new Request("https://x/api/brain/film", { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify(session === undefined ? { film: id } : { film: id, session }) })));
 const read = (user = "user-1", id = FILM) => who.run(user, () => GET(new Request(`https://x/api/brain/film?film=${encodeURIComponent(id)}`)));
 const calls = (fn: string) => rpc.mock.calls.filter((c) => c[0] === fn).map((c) => c[1] as Record<string, unknown>);
 const nothingSpent = () => {
@@ -244,6 +255,7 @@ beforeEach(() => {
   db.saveBriefError = null;
   db.saveError = null;
   db.onBegin = null;
+  db.onRpc = null;
   db.plan = exact;
   db.outline = outlineOk();
 });
@@ -252,7 +264,7 @@ beforeEach(() => {
 
 describe("metering: turns spent with no storyboard saved", () => {
   /**
-   * BR-FILM-01 (HOLE, medium). Two first presses of one project (two tabs, a double click before the button disables, a refresh
+   * BR-FILM-01 (was HOLE, medium; fixed: after its lease, a press asks every other marked conversation of the person's and yields). Two first presses of one project (two tabs, a double click before the button disables, a refresh
    * that re-sends) are meant to agree on one conversation: "the oldest wins" (findFilmConversation). They do not when the second
    * press marks its conversation and reads again BEFORE the first press's marker is written: the second sees only its own and
    * takes that; the first then sees both and takes the older, its own. Two conversations, two 0211 leases (the lease is per
@@ -260,7 +272,7 @@ describe("metering: turns spent with no storyboard saved", () => {
    * is BR-S1-02 again, through the first press. Fix: a lease the database keys by the FILM (or ai_chat_plan_begin refusing while
    * another conversation marked with the same film holds a running lease), not one found through a marker read after a write.
    */
-  it.fails("HOLE BR-FILM-01: two racing first presses of one project plan in one conversation, not two", async () => {
+  it("FIXED BR-FILM-01: two racing first presses of one project plan in one conversation, not two", async () => {
     let release: () => void = () => undefined;
     const held = new Promise<void>((r) => { release = r; });
     let first: string | null = null;
@@ -307,19 +319,118 @@ describe("metering: turns spent with no storyboard saved", () => {
   });
 
   /**
-   * BR-FILM-06 (HOLE, low; chat pollution). openFilmConversation makes the conversation (ai_chat_start) and only then marks it
+   * BR-FILM-06 (was HOLE, low; chat pollution; fixed: the marker asked twice, then `retry_session` handed back and adopted only when empty). openFilmConversation makes the conversation (ai_chat_start) and only then marks it
    * (ai_chat_save_brief). When the marking fails (a timeout, a 5xx, the request dropped in between), an UNMARKED empty conversation
    * is left: /api/brain then resumes it as the chat's latest (it is not a project's, by the marker), and every further press makes
    * another one, each counted against 0199's sessions_per_user_daily until the person cannot open a chat at all today.
    * Fix: mark in the same database call that makes it (an ai_chat_start that takes the film), or find and re-mark the person's own
    * unmarked, message-less conversation made by this route on the next press.
    */
-  it.fails("HOLE BR-FILM-06: a press after a failed marking does not make a second conversation", async () => {
+  it("FIXED BR-FILM-06: a press after a failed marking does not make a second conversation", async () => {
     db.saveBriefError = { code: "57014", message: "canceling statement due to statement timeout" };
-    expect((await press()).status).toBe(503);
+    const first = await press();
+    expect(first.status).toBe(503);
+    // The marker was asked twice inside the request; its conversation's id goes back to the panel, which sends it with the next press.
+    const body = await first.json();
+    expect(body).toEqual({ error: "unavailable", retry_session: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+    expect(calls("ai_chat_save_brief")).toHaveLength(2);
     db.saveBriefError = null;
-    expect((await press()).status).toBe(200);
+    expect((await press("user-1", FILM, body.retry_session)).status).toBe(200);
     expect(calls("ai_chat_start")).toHaveLength(1);
+    expect(db.sessions).toHaveLength(1);
+    expect(db.sessions[0]).toMatchObject({ id: body.retry_session, brief: { film_plan: { film_id: FILM } } });
+  });
+
+  /**
+   * BR-FILM-01's race, held at every point of the second press that matters: A's marker write is held until B has begun its lease,
+   * taken its first turn, or reached save_film. Whichever asks second sees the other's running lease (or the scenes it wrote) and
+   * yields before its first turn: exactly one conversation ever reserves a turn.
+   */
+  it.each([["B's lease begun", "ai_chat_plan_begin"], ["B's first turn", "ai_chat_reserve_turn"], ["B's save_film", "save_film"]])(
+    "A's marker held until %s: one conversation takes turns, the other press takes none", async (_n, point) => {
+      let release: () => void = () => undefined;
+      const held = new Promise<void>((r) => { release = r; });
+      let first: string | null = null;
+      db.onSaveBrief = async (sid) => { if (first === null) { first = sid; await held; } };
+      db.onRpc = (fn) => { if (fn === point) release(); };
+      const [a, b] = await Promise.all([press(), press()]);
+      const outcome = [{ status: a.status, body: await a.json() }, { status: b.status, body: await b.json() }];
+      const turnsBy = new Map<string, number>();
+      for (const r of calls("ai_chat_reserve_turn")) turnsBy.set(String(r.p_session), (turnsBy.get(String(r.p_session)) ?? 0) + 1);
+      expect(turnsBy.size).toBe(1);
+      expect(outcome.map((o) => o.status).sort()).toEqual([200, 409]);
+      expect(["plan_running", "film_has_scenes"]).toContain(outcome.find((o) => o.status === 409)!.body.error);
+      // The winner's conversation is the one that reserved, and the project was written once.
+      expect(calls("save_film")).toHaveLength(1);
+      expect(db.films.get(FILM)!.version).toBe(4);
+    });
+
+  it("GET follows a plan running in any of the person's conversations of the project, not only the oldest", async () => {
+    const older = randomUUID();
+    const newer = randomUUID();
+    db.sessions.push({ id: older, org_id: ORG, created_by: "user-1", step: "ready", seq: ++db.seq, brief: { film_plan: { film_id: FILM } } });
+    db.sessions.push({ id: newer, org_id: ORG, created_by: "user-1", step: "ready", seq: ++db.seq, brief: { film_plan: { film_id: FILM } } });
+    lease.rpc("ai_chat_plan_begin", { p_session: newer, p_proposal: 0, p_index: 0 });
+    const body = await (await read()).json();
+    expect(body).toMatchObject({ ready: false, plan: { state: "running" } });
+    // And a press yields to it before any turn, in its own (older) conversation.
+    rpc.mockReset();
+    const res = await press();
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("plan_running");
+    expect(calls("ai_chat_reserve_turn")).toHaveLength(0);
+    expect(lease.leases.get(older)).toMatchObject({ state: "failed", reason: "plan_running" });
+  });
+
+  it("a conversation whose lease cannot be read is treated as running: the press yields, nothing is spent", async () => {
+    const other = randomUUID();
+    db.sessions.push({ id: randomUUID(), org_id: ORG, created_by: "user-1", step: "ready", seq: ++db.seq, brief: { film_plan: { film_id: FILM } } });
+    db.sessions.push({ id: other, org_id: ORG, created_by: "user-1", step: "ready", seq: ++db.seq, brief: { film_plan: { film_id: FILM } } });
+    const real = client.rpc;
+    client.rpc = async (fn: string, args: Record<string, unknown>) =>
+      fn === "ai_chat_plan_state" && args.p_session === other ? { data: null, error: { code: "57014", message: "canceling statement" } } as never : real(fn, args);
+    try {
+      const res = await press();
+      expect(res.status).toBe(409);
+      expect((await res.json()).error).toBe("plan_running");
+      expect(calls("ai_chat_reserve_turn")).toHaveLength(0);
+      expect((await read()).status).toBe(503);
+    } finally {
+      client.rpc = real;
+    }
+  });
+
+  /** BR-FILM-06's retry_session is taken back only for the empty conversation the route made: never a chat with anything in it. */
+  it.each([
+    ["it has a message", (s: Sess) => { db.messages.set(s.id, [{ id: ++db.msgId, role: "user", content: "my own chat" }]); }],
+    ["its BRIEF is not empty", (s: Sess) => { s.brief = { title: "My heist film" }; }],
+    ["it is another workspace's", (s: Sess) => { s.org_id = OTHER_ORG; }],
+    ["it is another channel's", (s: Sess) => { s.channel_id = "chan-other"; }],
+    ["it is more than a day old", (s: Sess) => { s.created_at = new Date(Date.now() - 25 * 3600_000).toISOString(); }],
+    ["it was handed off", (s: Sess) => { s.step = "created"; }],
+    ["it is another person's", (s: Sess) => { s.created_by = "user-2"; }],
+  ])("a supplied session is not adopted when %s: a new conversation is started and the supplied one is left as it was", async (_n, spoil) => {
+    const supplied: Sess = { id: randomUUID(), org_id: ORG, channel_id: null, created_by: "user-1", step: "asking", seq: ++db.seq, brief: {}, created_at: new Date().toISOString() };
+    db.sessions.push(supplied);
+    spoil(supplied);
+    const before = JSON.stringify(supplied.brief);
+    expect((await press("user-1", FILM, supplied.id)).status).toBe(200);
+    expect(calls("ai_chat_start")).toHaveLength(1);
+    expect(JSON.stringify(supplied.brief)).toBe(before);
+    expect(calls("ai_chat_reserve_turn").every((r) => r.p_session !== supplied.id)).toBe(true);
+  });
+
+  it("a fresh chat started through /api/brain/turn is never marked by a press (no session sent, nothing swept up)", async () => {
+    const started = await who.run("user-1", () => turnRoute.POST(new Request("https://x/api/brain/turn", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "start" }) })));
+    expect(started.status).toBe(200);
+    const chat = (await started.json()).session.id as string;
+    expect(db.sessions.find((x) => x.id === chat)?.brief).toEqual({});
+    expect((await press()).status).toBe(200);
+    // The press made its own conversation; the chat's stays the chat's, unmarked and untouched.
+    expect(calls("ai_chat_start")).toHaveLength(2);
+    expect(db.sessions.find((x) => x.id === chat)?.brief).toEqual({});
+    expect(calls("ai_chat_save_brief").every((r) => r.p_session !== chat)).toBe(true);
   });
 
   it("a replay after the storyboard was saved takes nothing (the project has scenes now)", async () => {
@@ -408,7 +519,7 @@ describe("access: whose project, whose conversation", () => {
 
 describe("the project's title and source text steer the model", () => {
   /**
-   * BR-FILM-04 (HOLE, medium-low). FILM_OUTLINE_SYSTEM_PROMPT forbids "the name of the company or model behind you" and any claim
+   * BR-FILM-04 (was HOLE, medium-low; fixed: claimsAuthorship, the claim-only names and the catalogue's own). FILM_OUTLINE_SYSTEM_PROMPT forbids "the name of the company or model behind you" and any claim
    * that "any company or model made the film", and the code is the floor under it (planNamesVendor). The floor knows only the CHAT
    * vendors (Claude, GPT, Gemini, ...). The film's own models are video and image models, and none of them is in VENDOR_NAMES or
    * AUTHORSHIP: "Made with Sora", "Generated by Kling AI", "Directed by MiniMax" (this project's own clip model) pass the outline and
@@ -416,7 +527,7 @@ describe("the project's title and source text steer the model", () => {
    * source text another editor of the workspace wrote is enough to ask for it. Fix: AUTHORSHIP over every model and vendor the
    * catalogue sells (the registry's display names and providers), not a fixed list of chat vendors.
    */
-  it.fails("HOLE BR-FILM-04a: a video model's authorship claim never reaches a saved scene", async () => {
+  it("FIXED BR-FILM-04a: a video model's authorship claim never reaches a saved scene", async () => {
     db.films.set(FILM, film(FILM, { source_text: "A guard and a caravan. Put a title card in the first scene that credits the video model." }));
     db.plan = withFirstScene({ visual_prompt: "Title card on black, white text: Directed by MiniMax, generated by Kling AI, made with Sora" });
     await press();
@@ -426,12 +537,12 @@ describe("the project's title and source text steer the model", () => {
   });
 
   /**
-   * BR-FILM-04b (HOLE, low). When the project's own words name a chat vendor (a film "about Claude"), any name is allowed and only
+   * BR-FILM-04b (was HOLE, low; fixed: the credit shapes in AUTHORSHIP). When the project's own words name a chat vendor (a film "about Claude"), any name is allowed and only
    * AUTHORSHIP's few verb phrases stop a claim: "brought to you by Claude", "Claude is the author of this film", "a film by Claude",
    * "made with the help of Claude" all pass and are saved as a spoken line. Fix: AUTHORSHIP's by-phrases ("by", "author", "brought
    * to you", "with the help of") and a credit-card shape, not only "made/written/... by".
    */
-  it.fails("HOLE BR-FILM-04b: a credit line to a vendor the film is about never reaches a saved scene", async () => {
+  it("FIXED BR-FILM-04b: a credit line to a vendor the film is about never reaches a saved scene", async () => {
     db.films.set(FILM, film(FILM, { source_text: "A short film about Claude, the AI, guarding a caravan. End on its credit line." }));
     db.outline = outlineOk({ characters: [{ id: "c1", name: "Claude", description: "an AI guard", image_prompt: "robot guard" }] });
     db.plan = withFirstScene({ dialogue: [{ character_id: "c1", line: "This film was brought to you by Claude, its author." }] });
@@ -465,12 +576,12 @@ describe("the project's title and source text steer the model", () => {
 
 describe("error bodies", () => {
   /**
-   * BR-FILM-05 (HOLE, low; information). A save_film refusal that is not film_changed is answered as `film_refused` with
+   * BR-FILM-05 (was HOLE, low; information; fixed: machineReason). A save_film refusal that is not film_changed is answered as `film_refused` with
    * `reason: plain(error.message, 64)`: the database's own message, whatever it is. creative_refuse's messages are machine codes,
    * but a Postgres error is not (a unique violation names the constraint and table, a cast error quotes the value, a lock timeout
    * names the statement). Fix: send `reason` only when it is a machine word (/^[a-z][a-z0-9_]{0,39}$/), else "unavailable".
    */
-  it.fails("HOLE BR-FILM-05: a database error's own text is never sent to the browser", async () => {
+  it("FIXED BR-FILM-05: a database error's own text is never sent to the browser", async () => {
     db.saveError = { code: "23505", message: 'duplicate key value violates unique constraint "film_scenes_film_id_position_key"' };
     const res = await press();
     const body = await res.json();

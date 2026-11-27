@@ -76,7 +76,11 @@ export function CanvasView({
   canEdit: boolean;
 }) {
   const ids = useId();
-  const { view, draft, limits, readOnly, problems, dirty, saving, saveState, conflict, failure } = p;
+  const { view, draft, limits, readOnly: projectReadOnly, problems, dirty, saving, saveState, conflict, failure } = p;
+  // While Nightshift AI writes this project's storyboard (or another tab's plan of it is followed, or a lost press is confirmed),
+  // the canvas is read-only: an edit made meanwhile would be superseded by the plan's save, or would supersede the plan (Lens M3).
+  const [aiBusy, setAiBusy] = useState(false);
+  const readOnly = projectReadOnly || aiBusy;
   const [selected, setSelected] = useState<string | null>(draft.scenes[0]?.key ?? null);
   const [sheet, setSheet] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -185,9 +189,15 @@ export function CanvasView({
     const r = await p.save();
     if (r === "fix") setShowProblems(true);
   }, [p]);
-  // Stable across renders: the AI writer's wait for another tab's plan is a timer keyed on it.
+  // Stable across renders: the AI writer's wait for another tab's plan is a timer keyed on it. Never a reload over unsaved changes:
+  // they stay on screen, and the next save meets the project's newer version through the save's own conflict path.
   const { reload } = p;
+  const dirtyNow = useRef(dirty);
+  useEffect(() => {
+    dirtyNow.current = dirty;
+  }, [dirty]);
   const onAiWritten = useCallback(async () => {
+    if (dirtyNow.current) return;
     await reload();
   }, [reload]);
 
@@ -244,7 +254,7 @@ export function CanvasView({
 
   // Unsaved work is never lost without a question.
   useEffect(() => {
-    if (!dirty || readOnly) return;
+    if (!dirty || projectReadOnly) return;
     const warn = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = t.canvas.leaveWarning;
@@ -252,7 +262,7 @@ export function CanvasView({
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty, readOnly, t]);
+  }, [dirty, projectReadOnly, t]);
 
   // ── the palette's commands: every action in one or two keystrokes, each disabled with its reason ─────
 
@@ -291,7 +301,7 @@ export function CanvasView({
   // ── what the screen says ───────────────────────────────────────────────────
 
   const lamp = saveState === "saved" ? "ready" : saveState === "saving" ? "work" : saveState === "elsewhere" ? "failed" : saveState === "fix" || saveState === "unsaved" ? "warn" : undefined;
-  const stateText = readOnly ? t.canvas.readOnlyState : t.canvas.saveState[saveState];
+  const stateText = projectReadOnly ? t.canvas.readOnlyState : t.canvas.saveState[saveState];
   const sceneProblems = (i: number) => problems.filter((x) => x.scene === i);
   const filmProblems = problems.filter((x) => x.scene === undefined);
   const facts = fmt(t.canvas.facts, {
@@ -498,11 +508,12 @@ export function CanvasView({
               filmId={view.film.id}
               version={view.film.version}
               canEdit={canEdit}
-              readOnly={readOnly}
+              readOnly={projectReadOnly}
               hasScenes={view.scenes.length > 0 || draft.scenes.length > 0}
               dirty={dirty}
               reasonId={`${ids}-ai`}
               onWritten={onAiWritten}
+              onBusy={setAiBusy}
             />
 
             {draft.scenes.length === 0 ? (
@@ -659,6 +670,13 @@ function Notices({
 const FILM_PLAN_URL = "/api/brain/film";
 /** How often a plan another tab is writing (or this one before a refresh) is asked about: its lease ends within 320 s anyway. */
 export const AI_WAIT_POLL_MS = 5_000;
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A response body as an object, or undefined when it is not JSON (a proxy's 502/504 HTML page, a cut connection). */
+async function jsonOf(res: Response): Promise<Record<string, unknown> | undefined> {
+  const v: unknown = await res.json().catch(() => undefined);
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+}
 
 /**
  * "Write the storyboard with AI" (Nightshift AI's plan step for this project, app/api/brain/film). The button is on only when the
@@ -668,6 +686,11 @@ export const AI_WAIT_POLL_MS = 5_000;
  * Off without asking the server: a viewer, a project that can no longer be edited, a project that has scenes (saved or not: a
  * person's scenes are never replaced), and unsaved changes (the plan is written for the project as saved). A plan running in
  * another tab, or before a refresh, is followed through its lease until it ends, and the project is read again when it wrote.
+ *
+ * While it writes, follows another tab's plan, or confirms a press whose answer was lost, `onBusy(true)`: the canvas is read-only
+ * then (an edit made meanwhile would be superseded, or would supersede the plan). The project is never reloaded over unsaved
+ * changes: "written, your changes are kept", and the save's own conflict path takes it from there. A press whose answer was lost
+ * (a network error, a proxy's 502/504) is never sent again by itself: the plan's own state is asked until it says what happened.
  */
 export function AiWriter({
   t,
@@ -679,6 +702,7 @@ export function AiWriter({
   dirty,
   reasonId,
   onWritten,
+  onBusy,
 }: {
   t: FilmStudioDictionary;
   filmId: string;
@@ -689,6 +713,7 @@ export function AiWriter({
   dirty: boolean;
   reasonId: string;
   onWritten: () => Promise<void>;
+  onBusy?: (busy: boolean) => void;
 }) {
   const w = t.canvas.ai;
   const [check, setCheck] = useState<PlanCheck | { kind: "checking" }>({ kind: "checking" });
@@ -697,8 +722,22 @@ export function AiWriter({
   const [notice, setNotice] = useState<{ tone: "ok" | "fail"; text: string } | null>(null);
   // A refusal no new press can change (the project's text, a cap, a region): kept until the project itself changes.
   const [final, setFinal] = useState<{ text: string; version: number } | null>(null);
+  // A press whose answer never arrived: the round of asking GET what became of it (0 = not confirming).
+  const [confirming, setConfirming] = useState(0);
+  // The project changed while the plan wrote: the person reloads it when they choose, never by itself.
+  const [offerReload, setOfferReload] = useState(false);
+  // The empty conversation a press made but could not mark (the 503's retry_session): sent with the next press, kept nowhere else.
+  const [retrySession, setRetrySession] = useState<string | null>(null);
   const mounted = useRef(true);
   const busy = useRef(false);
+  // Only the latest GET sets what the button says: an older answer that arrives late is dropped.
+  const seq = useRef(0);
+  const dirtyRef = useRef(dirty);
+  const hasScenesRef = useRef(hasScenes);
+  useEffect(() => {
+    dirtyRef.current = dirty;
+    hasScenesRef.current = hasScenes;
+  }, [dirty, hasScenes]);
 
   useEffect(() => {
     mounted.current = true;
@@ -709,17 +748,31 @@ export function AiWriter({
 
   const local = !canEdit ? w.viewer : readOnly ? w.readOnly : hasScenes ? w.hasScenes : dirty ? w.dirty : null;
 
+  /** The storyboard is in the project: read it again, unless there are unsaved changes on screen, which are never reloaded over. */
+  const written = useCallback(
+    async (text: string) => {
+      if (dirtyRef.current) {
+        setNotice({ tone: "ok", text: w.writtenKept });
+        return;
+      }
+      setNotice({ tone: "ok", text });
+      await onWritten();
+    },
+    [onWritten, w],
+  );
+
   /** GET: what the press would do now. `quiet` keeps what is on screen while it asks (the wait for another tab's plan). */
   const runCheck = useCallback(
     async (quiet = false): Promise<Record<string, unknown> | null> => {
+      const n = ++seq.current;
       if (!quiet) setCheck({ kind: "checking" });
       try {
         const res = await fetch(`${FILM_PLAN_URL}?film=${encodeURIComponent(filmId)}`, { cache: "no-store" });
-        const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-        if (mounted.current) setCheck(readCheck(w, res.status, body));
+        const body = (await jsonOf(res)) ?? {};
+        if (mounted.current && n === seq.current) setCheck(readCheck(w, res.status, body));
         return body;
       } catch {
-        if (mounted.current) setCheck({ kind: "blocked", text: w.network, retry: true });
+        if (mounted.current && n === seq.current) setCheck({ kind: "blocked", text: w.network, retry: true });
         return null;
       }
     },
@@ -728,20 +781,55 @@ export function AiWriter({
 
   // Asked whenever a press could be possible: on open, after a press ends, and when the project is empty, saved and editable again.
   useEffect(() => {
-    if (local || writingSince !== null) return;
+    if (local || writingSince !== null || confirming) return;
     void runCheck();
-  }, [local, version, writingSince, runCheck]);
+  }, [local, version, writingSince, confirming, runCheck]);
 
   // Another tab's plan (or this one's before a refresh): asked again until its lease ends; the project is read again when it wrote.
   useEffect(() => {
-    if (check.kind !== "running" || writingSince !== null) return;
+    if (check.kind !== "running" || writingSince !== null || confirming) return;
     const id = window.setTimeout(async () => {
       const body = await runCheck(true);
       const plan = body?.plan as { state?: unknown } | undefined;
-      if (mounted.current && (body?.error === "film_has_scenes" || plan?.state === "done")) await onWritten();
+      if (mounted.current && (body?.error === "film_has_scenes" || plan?.state === "done")) await written(w.doneConfirmed);
     }, AI_WAIT_POLL_MS);
     return () => window.clearTimeout(id);
-  }, [check, writingSince, runCheck, onWritten]);
+  }, [check, writingSince, confirming, runCheck, written, w]);
+
+  // A press whose answer was lost: the plan's state, asked every AI_WAIT_POLL_MS, says what happened. Running: ask again. Written
+  // (the project has scenes now, or the lease is done): read the project. Anything else: the press did not write, said with Retry.
+  useEffect(() => {
+    if (!confirming) return;
+    const id = window.setTimeout(async () => {
+      let res: Response | null = null;
+      let body: Record<string, unknown> | undefined;
+      try {
+        res = await fetch(`${FILM_PLAN_URL}?film=${encodeURIComponent(filmId)}`, { cache: "no-store" });
+        body = await jsonOf(res);
+      } catch {
+        res = null;
+      }
+      if (!mounted.current) return;
+      const plan = body?.plan as { state?: unknown } | undefined;
+      // Still no answer that says anything (offline, the proxy again), or the plan is still running: asked again.
+      if (!res || !body || (res.status >= 500 && typeof body.error !== "string") || (res.status === 200 && plan?.state === "running")) {
+        setConfirming((n) => n + 1);
+        return;
+      }
+      setConfirming(0);
+      seq.current += 1;
+      setCheck(readCheck(w, res.status, body));
+      if (body.error === "film_has_scenes" || plan?.state === "done") {
+        if (!hasScenesRef.current) await written(w.doneConfirmed);
+        return;
+      }
+      // Failed, or ready again (the press never began, or ended without writing): a failure, and Retry is the person's.
+      const r = res.status === 200 ? { text: w.planFailed, retry: true } : refusalText(w, res.status, body);
+      setNotice({ tone: "fail", text: r.text });
+      if (!r.retry) setFinal({ text: r.text, version });
+    }, AI_WAIT_POLL_MS);
+    return () => window.clearTimeout(id);
+  }, [confirming, filmId, version, w, written]);
 
   useEffect(() => {
     if (writingSince === null) return;
@@ -753,26 +841,45 @@ export function AiWriter({
     if (busy.current) return;
     busy.current = true;
     setNotice(null);
+    setOfferReload(false);
     setElapsed(0);
     setWritingSince(Date.now());
     try {
-      const res = await fetch(FILM_PLAN_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ film: filmId }) });
-      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      let res: Response | null = null;
+      try {
+        res = await fetch(FILM_PLAN_URL, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(retrySession ? { film: filmId, session: retrySession } : { film: filmId }),
+        });
+      } catch {
+        res = null;
+      }
+      const body = res ? await jsonOf(res) : undefined;
       if (!mounted.current) return;
+      // The answer was lost (the connection, or a proxy's own error page): the plan may be running or done. Asked, never re-sent.
+      if (!res || !body || (res.status >= 500 && typeof body.error !== "string")) {
+        setNotice({ tone: "ok", text: w.confirming });
+        setConfirming(1);
+        return;
+      }
+      if (typeof body.retry_session === "string" && SESSION_ID.test(body.retry_session)) setRetrySession(body.retry_session);
+      else if (res.ok) setRetrySession(null);
       if (res.ok && typeof body.scenes === "number") {
-        setNotice({ tone: "ok", text: fmt(w.done, { n: body.scenes, length: clock(typeof body.seconds === "number" ? body.seconds : 0) }) });
-        await onWritten();
+        // A length the server did not send is not drawn as 0:00 (rule 5).
+        const text = typeof body.seconds === "number" ? fmt(w.done, { n: body.scenes, length: clock(body.seconds) }) : fmt(w.doneNoLength, { n: body.scenes });
+        await written(text);
       } else if (body.error === "plan_running" || body.error === "duplicate_request") {
         setCheck({ kind: "running", expiresAt: typeof body.expires_at === "string" ? body.expires_at : null });
       } else {
         const r = refusalText(w, res.status, body);
         setNotice({ tone: "fail", text: r.text });
         if (!r.retry) setFinal({ text: r.text, version });
-        // The project changed while the plan wrote: read it again, so the person sees their own edits (nothing was saved over them).
-        if (body.error === "plan_superseded") await onWritten();
+        // The project changed while the plan wrote: nothing was saved over it. Reloading is the person's choice (their edits).
+        if (body.error === "plan_superseded") setOfferReload(true);
+        // Another plan of this project finished first: its scenes are read, unless unsaved changes are on screen.
+        if (body.error === "film_has_scenes" && !hasScenesRef.current && !dirtyRef.current) await onWritten();
       }
-    } catch {
-      if (mounted.current) setNotice({ tone: "fail", text: w.network });
     } finally {
       busy.current = false;
       if (mounted.current) setWritingSince(null);
@@ -781,10 +888,16 @@ export function AiWriter({
 
   const writing = writingSince !== null;
   const waiting = check.kind === "running";
+  const isConfirming = confirming > 0;
+  useEffect(() => {
+    onBusy?.(writing || waiting || isConfirming);
+  }, [onBusy, writing, waiting, isConfirming]);
+  useEffect(() => () => onBusy?.(false), [onBusy]);
+
   const finalText = final && final.version === version ? final.text : null;
   const blocked = local ?? finalText ?? (check.kind === "blocked" ? check.text : check.kind === "checking" ? w.checking : null);
   const ready = check.kind === "ready" ? check.ready : null;
-  const enabled = !writing && !waiting && !blocked && !!ready;
+  const enabled = !writing && !waiting && !isConfirming && !blocked && !!ready;
   const extras = ready
     ? [
         costText(w, ready),
@@ -793,6 +906,7 @@ export function AiWriter({
         ready.lastFailed && !notice ? w.lastFailed : "",
       ].filter(Boolean).join(" ")
     : "";
+  const progress = writing || waiting || isConfirming;
 
   return (
     <div className="fs-key-reason" style={{ marginBottom: 14, maxWidth: "none" }} data-testid="fs-ai-panel">
@@ -801,17 +915,17 @@ export function AiWriter({
         className="btn-quiet min-h-11 self-start px-4 text-sm"
         disabled={!enabled}
         aria-describedby={reasonId}
-        aria-busy={writing || waiting || undefined}
+        aria-busy={progress || undefined}
         onClick={() => void press()}
         data-testid="fs-ai"
       >
         {notice?.tone === "fail" && enabled ? w.retry : t.canvas.aiWrite}
       </button>
       <span id={reasonId} className="fs-small" data-testid="fs-ai-reason">
-        {writing ? `${w.writing} ${fmt(w.writingFor, { time: clock(elapsed) })}` : waiting ? w.writingElsewhere : (blocked ?? extras)}
+        {writing ? `${w.writing} ${fmt(w.writingFor, { time: clock(elapsed) })}` : isConfirming ? w.confirming : waiting ? w.writingElsewhere : (blocked ?? extras)}
       </span>
-      {(writing || waiting) && <progress className="w-full max-w-xs" aria-label={writing ? w.writing : w.writingElsewhere} data-testid="fs-ai-progress" />}
-      {!writing && !waiting && !local && !finalText && check.kind === "blocked" && check.retry && (
+      {progress && <progress className="w-full max-w-xs" aria-label={writing ? w.writing : isConfirming ? w.confirming : w.writingElsewhere} data-testid="fs-ai-progress" />}
+      {!progress && !local && !finalText && check.kind === "blocked" && check.retry && (
         <button type="button" className="btn-quiet min-h-11 self-start px-4 text-sm" onClick={() => void runCheck()} data-testid="fs-ai-check">
           {w.checkAgain}
         </button>
@@ -819,6 +933,19 @@ export function AiWriter({
       <p className="fs-small" role={notice?.tone === "fail" ? "alert" : "status"} data-testid="fs-ai-notice">
         {notice?.text ?? ""}
       </p>
+      {offerReload && !dirty && !progress && (
+        <button
+          type="button"
+          className="btn-quiet min-h-11 self-start px-4 text-sm"
+          onClick={() => {
+            setOfferReload(false);
+            void onWritten();
+          }}
+          data-testid="fs-ai-reload"
+        >
+          {w.reload}
+        </button>
+      )}
     </div>
   );
 }

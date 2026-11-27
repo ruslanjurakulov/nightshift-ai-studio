@@ -38,6 +38,15 @@ export function dbRefusal(error: { code?: string; message?: string; details?: st
   return brainJson({ error: "unavailable" }, 503);
 }
 
+/**
+ * A database refusal's message as a `reason` the browser may see: only a machine word (creative_refuse's codes are), else
+ * "unavailable". A Postgres error's own text is not one (Breach BR-FILM-05: a unique violation names the constraint and the table, a
+ * cast error quotes the value), and the panel has no words for it anyway.
+ */
+export function machineReason(message: unknown): string {
+  return typeof message === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(message) ? message : "unavailable";
+}
+
 export type ModelState = "available" | "not_on_sale" | "not_configured" | "unknown_model";
 
 /**
