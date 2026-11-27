@@ -303,7 +303,7 @@ describe("the shipped table and the registry's lists", () => {
     }
   });
 
-  it("every Google row's available_countries is GOOGLE_AVAILABLE_REGIONS, and with blocked_countries covers ISO (BR-S6-03-DB, 0230)", () => {
+  it("every Google row's available_countries is GOOGLE_AVAILABLE_REGIONS, and with blocked_countries covers ISO (BR-S6-04, 0230)", () => {
     // Migration 0230's trigger asks the registry's available_countries, not this file: if the two drifted, the web would offer a
     // country the database refuses (or the reverse). Google's list is the source; blocked_countries stays its complement in ISO.
     const reg = JSON.parse(readFileSync(join(ROOT, "schemas", "model_registry.json"), "utf8")) as {

@@ -1,14 +1,16 @@
 -- rollback_0230_geo_gate_allow_list.sql — takes migration 0230 (the allow-list read in the country gate) out again.
 -- OWNER-APPLY: paste into the Supabase SQL editor, as one transaction. Nothing in the app runs it. Idempotent.
 --
--- WHAT COMES BACK: 0208's creative_jobs_geo_gate, verbatim (md5 71468a6f60d2659cd44199a3c834dc69, white space folded). A claim code
---   on neither of Google's lists (EU, ZZ) is then a job on a Google model again (BR-S6-03-DB is open again); every model with a
---   country list stays off sale through 0142's CHECK, which neither file touches.
+-- WHAT COMES BACK: 0208's creative_jobs_geo_gate, verbatim (md5 1715dc38085e3a98cc21ceba95f85d5f with comments cut and white space
+--   folded, 0230's fingerprint; 71468a6f60d2659cd44199a3c834dc69 folded only, as 0208 pins it). A claim code on neither of Google's
+--   lists (EU, ZZ) is then a job on a Google model again (BR-S6-04 is open again), and so is any claim on a row with an allow-list
+--   and no deny-list (BR-S6-05); every model with a deny-list stays off sale through 0142's CHECK, which neither file touches.
 -- WHAT IS KEPT: the trigger (it names the function, which is replaced in place), geo_claim_country, the grants (none for an API role),
 --   and available_countries in the registry rows (data the registry sync owns; 0208's body never reads it).
 -- WHAT IT DOES: 0. REFUSES (changes nothing) if the gate is neither 0230's body nor 0208's (a later file changed it: take that out
 --   first). 1. Puts 0208's body back. 2. Asserts the end state.
--- No backslash anywhere in this file (0219's header): the md5 fold is [[:space:]]+.
+-- No backslash anywhere in this file (0219's header): comments are cut with chr(10) / chr(13), white space folded with [[:space:]]+.
+-- The fingerprint is 0230's (a comment that swallowed the line under it changes it; folding alone does not, BR-S6-05).
 
 begin;
 set local lock_timeout = '5s';
@@ -17,9 +19,9 @@ do $$
 declare
   h text;
 begin
-  select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p
+  select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p
    where p.oid = to_regprocedure('public.creative_jobs_geo_gate()');
-  if h is null or h <> all (array['3f2e4d767f9d53de505aacb29e7141f9', '71468a6f60d2659cd44199a3c834dc69']) then
+  if h is null or h <> all (array['6a7b6f2b075c4775ee83808932f88bd0', '1715dc38085e3a98cc21ceba95f85d5f']) then
     raise exception 'rollback 0230: creative_jobs_geo_gate() is neither 0230''s body nor 0208''s (md5 %): read it first', h;
   end if;
 end $$;
@@ -60,8 +62,8 @@ revoke all on function public.creative_jobs_geo_gate() from public, anon, authen
 
 do $$
 begin
-  if (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
-       where oid = 'public.creative_jobs_geo_gate()'::regprocedure) is distinct from '71468a6f60d2659cd44199a3c834dc69' then
+  if (select md5(regexp_replace(regexp_replace(prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) from pg_proc
+       where oid = 'public.creative_jobs_geo_gate()'::regprocedure) is distinct from '1715dc38085e3a98cc21ceba95f85d5f' then
     raise exception 'rollback 0230 end state: creative_jobs_geo_gate() is not 0208''s body';
   end if;
   if not exists (select 1 from pg_trigger t

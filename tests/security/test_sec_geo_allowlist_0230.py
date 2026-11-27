@@ -1,4 +1,4 @@
-"""BR-S6-03-DB, attacked in a real database: an allow-list vendor's models gated by a deny-list (0208), and 0230's fix.
+"""BR-S6-04, attacked in a real database: an allow-list vendor's models gated by a deny-list (0208), and 0230's fix.
 
 Google's terms are an allow-list ("You may only access the Services ... within an available region", 0208's header). The registry
 writes that list as its complement, blocked_countries = every ISO 3166-1 code Google does not list, and 0208's trigger refuses only a
@@ -7,13 +7,14 @@ all) was let through: the gate read "not known to be blocked" as "allowed". The 
 this is the database half, in defence in depth: a code our own web server signed, but that is not on Google's list, is unknown.
 
 What would break, and which test says so:
-  a code on neither list (EU, AP, QQ, ZZ) starts a job on a Google model            test_br_s6_03_db_a_code_on_neither_list_is_refused
+  a code on neither list (EU, AP, QQ, ZZ) starts a job on a Google model            test_br_s6_04_a_code_on_neither_list_is_refused
   a country Google lists (UZ, and XK, which has no ISO code) is refused one         test_a_country_on_googles_list_is_still_served
   RU or BY is refused with another word than country_blocked                        test_a_country_off_googles_list_is_still_blocked
   a non-Google model with a deny-list changes behaviour                             test_a_deny_list_model_is_unchanged
   a Google row synced before 0230 (no allow-list yet) falls back to the deny-list    test_a_google_row_without_its_allow_list_is_refused
   an allow-list of another shape reads as "allowed"                                 test_an_allow_list_of_another_shape_fails_closed
   0230 lands on a gate body nobody read, or its rollback / replay drifts            test_drift_guard_*, test_rollback_and_replay
+  a comment that swallowed the code under it reads as 0208's body (BR-S6-05)         test_drift_guard_refuses_a_gate_whose_*
 
 0142's CHECK keeps a model with a country list off sale, so this scratch database drops it once (as test_sec_geo_gate_0208.py does).
 The Google ids and both lists are read from schemas/model_registry.json, so the lab checks the lists that ship. Its own scratch
@@ -191,7 +192,7 @@ def test_the_shipped_lists_name_these_codes_on_neither_side():
             assert code not in m.get("available_countries", []), (gid, code)
 
 
-def test_br_s6_03_db_a_code_on_neither_list_is_refused(db):
+def test_br_s6_04_a_code_on_neither_list_is_refused(db):
     # Before 0230 every one of these was a job: 0208 asked only "is it on blocked_countries?".
     for gid in GOOGLE:
         for code in NEITHER:
@@ -268,6 +269,24 @@ def test_drift_guard_refuses_a_gate_body_nobody_read(db):
         c.execute(_rollback())
         c.execute("create or replace function public.creative_jobs_geo_gate() returns trigger language plpgsql security definer "
                   "set search_path = public, pg_temp as $$ begin return new; end $$")
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(_migration())
+        assert "0230 found a creative_jobs_geo_gate()" in str(e.value)
+        c.rollback()
+
+
+def test_drift_guard_refuses_a_gate_whose_comment_swallowed_a_refusal(db):
+    # BR-S6-05: 0208's body with the claim refusal folded onto the comment line above it hashes to 0208's folded md5, and has no
+    # claim check. 0230's fingerprint cuts comments before folding, so it is "a body nobody read".
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute(_rollback())
+        src = c.execute("select prosrc from pg_proc where oid = %s::regprocedure", [GATE_SIG]).fetchone()[0]
+        start = src.index("  -- A model with a country list")
+        end = src.index("  -- A list of any other shape")
+        planted = src[:start] + " ".join(src[start:end].split()) + "\n" + src[end:]
+        c.execute("create or replace function public.creative_jobs_geo_gate() returns trigger language plpgsql security definer "
+                  "set search_path = public, pg_temp as $body$" + planted + "$body$")
+        assert _gate_md5(c) == GATE_0208                        # the fold alone cannot tell
         with pytest.raises(psycopg.Error) as e:
             c.execute(_migration())
         assert "0230 found a creative_jobs_geo_gate()" in str(e.value)

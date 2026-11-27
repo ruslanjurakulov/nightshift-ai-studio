@@ -1,4 +1,4 @@
-"""supabase/migrations/0230_geo_gate_allow_list.sql — the country gate reads an allow-list vendor's own list (BR-S6-03-DB).
+"""supabase/migrations/0230_geo_gate_allow_list.sql — the country gate reads an allow-list vendor's own list (BR-S6-04).
 
 SQL runs in tests/security/test_sec_geo_allowlist_0230.py (a real Postgres). These pin what must not drift by accident: the gate is
 0208's body plus exactly one marked hunk (undo it and the rest is 0208's text byte for byte), so RU is still country_blocked and no
@@ -29,17 +29,38 @@ BLOCKED_TS = (ROOT / "command-center" / "lib" / "geo" / "blocked.ts").read_text(
 REGISTRY = json.loads((ROOT / "schemas" / "model_registry.json").read_text(encoding="utf-8"))["models"]
 CODE = "\n".join(line.split("--", 1)[0] for line in NEW_TEXT.splitlines())
 
-GATE_0208 = "71468a6f60d2659cd44199a3c834dc69"
-GATE_0230 = "3f2e4d767f9d53de505aacb29e7141f9"
+#: 0230's fingerprint (comments cut, then white space folded): what its guards, end state, Verify block and rollback compare.
+GATE_0208 = "1715dc38085e3a98cc21ceba95f85d5f"
+GATE_0230 = "6a7b6f2b075c4775ee83808932f88bd0"
+CLAIM_0208 = "6cb8abcd7ab3dff8fb2a4ce33afa58d6"
+#: White space folded only: how 0208 pins these bodies, and how the lab tells which gate body is live.
+FOLD_GATE_0208 = "71468a6f60d2659cd44199a3c834dc69"
+FOLD_GATE_0230 = "6d28388da6b6b927b0da500524fe0325"
+FOLD_CLAIM_0208 = "add85b6752c03be6882a59a0ff8017ba"
+#: The SQL of 0230's fingerprint, as every guard in both files writes it (chr(), never a backslash escape).
+FP_SQL = "md5(regexp_replace(regexp_replace({}, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g'))"
+
+
+def fn_of(text, name):
+    return re.search(rf"(?ms)^create or replace function public\.{name}\(\).*?^\$\$;\n", text).group(0)
 
 
 def gate(text):
-    return re.search(r"(?ms)^create or replace function public\.creative_jobs_geo_gate\(\).*?^\$\$;\n", text).group(0)
+    return fn_of(text, "creative_jobs_geo_gate")
+
+
+def _body(fn):
+    return fn[fn.index("$$") + 2: fn.rindex("$$")]
+
+
+def fold_md5(fn):
+    return hashlib.md5(re.sub(r"[ \t\n\r\f\v]+", " ", _body(fn)).encode()).hexdigest()
 
 
 def md5_of(fn):
-    b = fn[fn.index("$$") + 2: fn.rindex("$$")]
-    return hashlib.md5(re.sub(r"[ \t\n\r\f\v]+", " ", b).encode()).hexdigest()
+    # Postgres ends a `--` comment at a newline or a carriage return; so does this cut.
+    cut = re.sub(r"--[^\n\r]*", "", _body(fn))
+    return hashlib.md5(re.sub(r"[ \t\n\r\f\v]+", " ", cut).encode()).hexdigest()
 
 
 def ts_list(name):
@@ -47,12 +68,19 @@ def ts_list(name):
     return sorted(re.findall(r'"([A-Z]{2})"', block[:block.index("];")]))
 
 
-#: The one hunk, as 0230 writes it on 0208's body (declarations, the select, the allow-list read).
+#: 0230's lines on 0208's body, besides the allow-list read: declarations, the select, the early return that also asks for no
+#: allow-list (BR-S6-05), and the deny-list refusal asked only of a row with a deny-list.
 HUNKS = [
-    ("  c   text;\nbegin\n", "  c   text;\n  -- 0230\n  al   jsonb;\n  prov text;\nbegin\n"),
-    ("  select r.spec -> 'blocked_countries' into lst from public.model_registry r where r.id = m;\n",
+    ("  c   text;\nbegin\n", "  c   text;\n  -- 0230\n  al   jsonb;\n  prov text;\n  deny boolean;\nbegin\n"),
+    ("  select r.spec -> 'blocked_countries' into lst from public.model_registry r where r.id = m;\n"
+     "  if lst is null or lst = 'null'::jsonb or lst = '[]'::jsonb then\n",
      "  select r.spec -> 'blocked_countries', r.spec -> 'available_countries', r.provider into lst, al, prov\n"
-     "    from public.model_registry r where r.id = m;\n"),
+     "    from public.model_registry r where r.id = m;\n"
+     "  -- 0230: a row with the key available_countries (any value, JSON null included) is asked even with no deny-list. Returning on\n"
+     "  -- the deny-list alone let a row carrying only an allow-list take any claim and no claim at all (BR-S6-05).\n"
+     "  deny := not (lst is null or lst = 'null'::jsonb or lst = '[]'::jsonb);\n"
+     "  if not deny and al is null then\n"),
+    ("  if jsonb_typeof(lst) <> 'array' or lst ? c then\n", "  if deny and (jsonb_typeof(lst) <> 'array' or lst ? c) then\n"),
 ]
 
 
@@ -61,15 +89,45 @@ class Body(unittest.TestCase):
         self.assertEqual(md5_of(gate(T208)), GATE_0208)
         self.assertEqual(md5_of(gate(NEW_TEXT)), GATE_0230)
         self.assertEqual(md5_of(gate(ROLLBACK)), GATE_0208)
+        self.assertEqual(md5_of(fn_of(T208, "geo_claim_country")), CLAIM_0208)
+        self.assertEqual(fold_md5(gate(T208)), FOLD_GATE_0208)
+        self.assertEqual(fold_md5(gate(NEW_TEXT)), FOLD_GATE_0230)
+        self.assertEqual(fold_md5(fn_of(T208, "geo_claim_country")), FOLD_CLAIM_0208)
+        # 0208 pins its bodies folded; 0230 must check the same bodies 0208 shipped.
+        self.assertIn(FOLD_GATE_0208, T208)
+        self.assertIn(FOLD_CLAIM_0208, T208)
         for text in (NEW_TEXT, ROLLBACK):
             self.assertIn(GATE_0208, text)
             self.assertIn(GATE_0230, text)
-        self.assertIn(f'GEO_GATE_0208 = "{GATE_0208}"', LAB)
-        self.assertIn(f'GEO_GATE_0230 = "{GATE_0230}"', LAB)
+        self.assertIn(CLAIM_0208, NEW_TEXT)
+        self.assertIn(f'GEO_GATE_0208 = "{FOLD_GATE_0208}"', LAB)
+        self.assertIn(f'GEO_GATE_0230 = "{FOLD_GATE_0230}"', LAB)
+
+    def test_every_guard_compares_the_comment_cut_fingerprint_not_a_fold(self):
+        # A fold alone reads `-- comment<newline>  code;` and `-- comment code;` as one body: the second has no code (BR-S6-05).
+        code = "\n".join(ln for ln in NEW_TEXT.splitlines() if not ln.startswith("-- "))
+        self.assertEqual(code.count(FP_SQL.format("p.prosrc")), 1)
+        self.assertEqual(code.count(FP_SQL.format("prosrc")), 2)
+        self.assertEqual(NEW_TEXT.count(FP_SQL.format("prosrc")), 3)   # and the Verify block
+        rb = "\n".join(ln for ln in ROLLBACK.splitlines() if not ln.startswith("--"))
+        self.assertEqual(rb.count(FP_SQL.format("p.prosrc")) + rb.count(FP_SQL.format("prosrc")), 2)
+        for text in (code, rb):
+            # No `--` outside a comment: a client that strips comments without reading quotes cannot cut a guard in half.
+            self.assertNotIn("--", "\n".join(ln.split(" -- ", 1)[0] for ln in text.splitlines() if not ln.lstrip().startswith("--")))
+            self.assertNotIn("md5(regexp_replace(prosrc, '[[:space:]]+'", text)
+            self.assertNotIn("md5(regexp_replace(p.prosrc, '[[:space:]]+'", text)
+
+    def test_the_fingerprint_sees_a_comment_that_swallowed_the_line_under_it(self):
+        claim = fn_of(T208, "geo_claim_country")
+        start = claim.index("  -- The key lives in Vault")
+        end = claim.index("  return parts[2];")
+        planted = claim[:start] + " ".join(claim[start:end].split()) + "\n" + claim[end:]
+        self.assertEqual(fold_md5(planted), fold_md5(claim))
+        self.assertNotEqual(md5_of(planted), md5_of(claim))
 
     def test_the_gate_is_0208s_body_plus_one_marked_hunk(self):
         new = gate(NEW_TEXT)
-        start = new.index("  -- 0230 (BR-S6-03)")
+        start = new.index("  -- 0230 (BR-S6-04)")
         end = new.index("  return new;\nend\n$$;")
         hunk = new[start:end]
         undone = new[:start] + new[end:]
@@ -164,7 +222,7 @@ class Wiring(unittest.TestCase):
         self.assertIn("put_back_0230(conn)", LAB[LAB.index("def put_back_0208("):LAB.index("def put_back_0230(")])
         self.assertIn("import sec_geo_allowlist_0230", EXPECT)
         self.assertTrue((ROOT / "tests" / "security" / "test_sec_geo_allowlist_0230.py").is_file())
-        self.assertIn("| BR-S6-03-DB |", LEDGER)
+        self.assertIn("| BR-S6-04 |", LEDGER)
         self.assertIn("(0230)", DOCS)
         self.assertIn("rollback_0230_geo_gate_allow_list.sql", DOCS)
 

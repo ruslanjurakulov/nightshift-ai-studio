@@ -1,4 +1,4 @@
-"""Security-lab contract for migration 0230 (the country gate reads an allow-list vendor's own list; BR-S6-03-DB).
+"""Security-lab contract for migration 0230 (the country gate reads an allow-list vendor's own list; BR-S6-04).
 
 Wired in at the bottom of sec_expectations.py. 0230 adds no table and no callable function: it replaces 0208's creative_jobs_geo_gate
 (a trigger function, which no API role may call, service_role included) in place. geo_claim_country keeps 0208's contract (SERVICE in

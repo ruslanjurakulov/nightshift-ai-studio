@@ -649,9 +649,9 @@ def put_back_0208(conn_or_session) -> None:
 
 MIGRATION_0230 = MIGRATIONS / "0230_geo_gate_allow_list.sql"
 ROLLBACK_0230 = REPO / "docs" / "sql" / "rollback_0230_geo_gate_allow_list.sql"
-#: md5 (white space folded) of creative_jobs_geo_gate: 0208's body, and 0230's allow-list read on it (BR-S6-03-DB).
+#: md5 (white space folded) of creative_jobs_geo_gate: 0208's body, and 0230's allow-list read on it (BR-S6-04).
 GEO_GATE_0208 = "71468a6f60d2659cd44199a3c834dc69"
-GEO_GATE_0230 = "3f2e4d767f9d53de505aacb29e7141f9"
+GEO_GATE_0230 = "6d28388da6b6b927b0da500524fe0325"
 
 
 def put_back_0230(conn_or_session) -> None:
