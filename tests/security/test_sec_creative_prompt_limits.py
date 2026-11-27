@@ -113,7 +113,7 @@ def test_create_creative_job_refuses_a_prompt_over_the_models_limit_with_no_job_
     o = db.new_org(image=False)
     before = _ground(db, o)
     assert _create(db, o, "t2i", "ideogram-3", {"prompt": "a" * 2001}) == (
-        "NS400", "prompt_too_long", "1 characters over this model's limit of 2000; shorten the prompt")
+        "NS400", "prompt_too_long", "1 character over this model's limit of 2000; shorten the prompt")
     assert _quote(db, o, "t2i", "ideogram-3", {"prompt": "\U0001F600" * 1001})[1] == "prompt_too_long"  # 1001 code points, 2002 units
     assert _ground(db, o) == before, "no job, no hold, no charge"
     assert _quote(db, o, "t2i", "ideogram-3", {"prompt": "a" * 2000}) is None, "the boundary is quoted"
@@ -155,7 +155,7 @@ def test_krea_s_own_negative_prompt_limit_is_the_quotes(db):
     assert rows["krea-3"]["spec"]["limits"]["max_negative_prompt_chars"] == 1024
     o = db.new_org(image=False)
     got = _quote(db, o, "t2i", "krea-3", {"prompt": "x", "image_size": "1K", "negative_prompt": "n" * 1025})
-    assert got == ("NS400", "prompt_too_long", "1 characters over this model's limit of 1024 for a negative prompt; shorten it"), got
+    assert got == ("NS400", "prompt_too_long", "1 character over this model's limit of 1024 for a negative prompt; shorten it"), got
     got = _quote(db, o, "t2i", "krea-3", {"prompt": "x", "image_size": "1K", "negative_prompt": "n" * 1024})
     assert got is None or got[1] != "prompt_too_long", got
 
@@ -299,6 +299,14 @@ def test_the_labs_take_off_helpers_take_0218_off_first_and_put_it_back(lab):
         sec_db.drop_database(admin, name)
 
 
+def NEW_PLAIN_CP():
+    """0218's own creative_price statement, as the file has it (the plain body, without 0224's line)."""
+    import re
+
+    text = sec_db.MIGRATION_0218.read_text(encoding="utf-8")
+    return re.search(r"(?m)^create or replace function public\.creative_price\(.*?^\$\$;\n", text, re.S).group(0)
+
+
 def test_on_0224s_base_the_file_keeps_0224s_line_its_rollback_puts_it_back_and_the_quote_still_refuses(lab):
     """Stream S10's 0224 (not on main) adds one line to 0208's creative_price. Simulated: a stub credits_per_unit_now(text) and 0208's
     body plus that line; 0218 must then create its own body plus the line (never drop 0224's price), and its rollback 0208's plus it."""
@@ -332,6 +340,20 @@ def test_on_0224s_base_the_file_keeps_0224s_line_its_rollback_puts_it_back_and_t
         assert d.su(f"select has_function_privilege('authenticated', '{SIGS['creative_price']}', 'EXECUTE')") == [(False,)]
         d.su(sec_db.ROLLBACK_0218.read_text(encoding="utf-8"))
         assert _md5s(d) == {**BEFORE, "creative_price": sec_db.CREATIVE_PRICE_0208_0224}, "0224's line survives the rollback"
+        # Statement by statement (psql without one transaction, every statement its own commit): the base is read from durable facts,
+        # so it ends at 0218's body plus 0224's line, never at 0218's plain body.
+        import subprocess
+
+        for f, want in ((sec_db.MIGRATION_0218, sec_db.CREATIVE_PRICE_0218_0224), (sec_db.ROLLBACK_0218, sec_db.CREATIVE_PRICE_0208_0224),
+                        (sec_db.MIGRATION_0218, sec_db.CREATIVE_PRICE_0218_0224)):
+            out = subprocess.run(["psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", base, "-f", str(f)], capture_output=True, text=True)
+            assert out.returncode == 0, out.stderr[-500:]
+            assert _md5s(d)["creative_price"] == want, f.name
+        # an interrupted run (its plain body in, its 0224 step not yet) is completed by running the file again
+        d.su(NEW_PLAIN_CP())
+        assert _md5s(d)["creative_price"] == sec_db.CREATIVE_PRICE_0218
+        d.su(m)
+        assert _md5s(d)["creative_price"] == sec_db.CREATIVE_PRICE_0218_0224
         d.su(m)
         assert _md5s(d)["creative_price"] == sec_db.CREATIVE_PRICE_0218_0224
         # any other body is refused
@@ -339,6 +361,48 @@ def test_on_0224s_base_the_file_keeps_0224s_line_its_rollback_puts_it_back_and_t
         d.su(live.replace("begin\n", "begin\n  -- edited by hand\n", 1))
         with pytest.raises(Exception) as cm:
             d.su(m)
-        assert "0218 found a creative_price() that is neither 0208's body (with or without 0224's line) nor 0218's" in str(cm.value)
+        assert "0218 found credits_per_unit_now() (0224) but a creative_price() that is not 0208's plus 0224's line" in str(cm.value)
+    finally:
+        sec_db.drop_database(admin, name)
+
+
+# ── fix batch: the seed before routing, blank white space, the sync order ──────────────────────────────────────────
+
+def test_a_routed_quote_with_a_seed_says_seed_not_supported_not_no_model_available(db):
+    _sell_real_rows(db, ["ideogram-3"])
+    o = db.new_org(image=False)
+    for mode in ("auto", "cheap", "fast", "quality"):
+        got = _err(lambda: db.one("authenticated", o.owner, "select public.quote_creative_route(%s::uuid, 't2i', %s, %s::jsonb)",
+                                  [o.org, mode, json.dumps({"prompt": "a lighthouse", "seed": 3})]))
+        assert got == ("NS400", "seed_not_supported", "Seeds are not supported yet; remove seed"), (mode, got)
+
+
+@pytest.mark.parametrize("blank", ["   ", "\t\n", "\u3000", "\u00a0\u2028 \u0085"])
+def test_a_negative_prompt_of_only_white_space_is_no_negative_prompt_as_in_the_worker(db, blank):
+    assert blank.strip() == ""
+    _sell_real_rows(db, ["ideogram-3"])
+    o = db.new_org(image=False)
+    assert _quote(db, o, "t2i", "ideogram-3", {"prompt": "x", "negative_prompt": blank}) is None
+    assert _quote(db, o, "t2i", "ideogram-3", {"prompt": "x", "negative_prompt": blank + "blur"})[1] == "negative_prompt_not_supported"
+
+
+def test_the_file_refuses_a_registry_synced_from_a_ref_without_0218(lab):
+    from test_sec_api_creative import Db
+
+    admin = sec_db.admin_dsn()
+    name = f"ns_prompt_limits_sync_{uuid.uuid4().hex[:8]}"
+    base = sec_db.create_database(admin, name)
+    try:
+        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name != sec_db.MIGRATION_0218.name])
+        d = Db(base)
+        d.su("insert into public.model_registry (id, display_name, provider, adapter, capabilities, spec, credit_unit) values "
+             "('lab-old', 'old', 'lab', 'image.lab', array['t2i'], '{\"output\": \"image\"}'::jsonb, 'model_lab_old_image')")
+        with pytest.raises(Exception) as cm:
+            d.su(sec_db.MIGRATION_0218.read_text(encoding="utf-8"))
+        assert "0218: run Probe models --sync from a ref that contains 0218 (merge first, then sync from main), then apply" in str(cm.value)
+        assert _md5s(d) == BEFORE, "nothing applied"
+        d.su("update public.model_registry set spec = spec || '{\"takes_negative_prompt\": false}'::jsonb")
+        d.su(sec_db.MIGRATION_0218.read_text(encoding="utf-8"))
+        assert _md5s(d) == AFTER
     finally:
         sec_db.drop_database(admin, name)

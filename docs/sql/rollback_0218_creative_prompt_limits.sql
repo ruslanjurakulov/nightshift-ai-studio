@@ -21,15 +21,19 @@ declare
   h text;
 begin
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.creative_params_problem(text, jsonb)'::regprocedure;
-  if h is null or h <> all (array['0f4b7b7ba92bb20432841a4a5d5f8917', '7ccde072309a637d9b07e59f1be45d20']) then
+  if h is null or h <> all (array['cb7ad6cd459f31259445bedd1a4a0c88', '7ccde072309a637d9b07e59f1be45d20']) then
     raise exception 'rollback 0218 found a creative_params_problem() that is neither 0218''s body nor 0208''s (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure;
-  if h is null or h <> all (array['34ae574dc0261251139c48b6ca1e1983', 'f61aaddd5686045961addd6f14a02c32', 'd3e0c73cd80217eb2d21bff08efea512', 'd5bc7c5ef1c3d823ece05b9d00274042']) then
-    raise exception 'rollback 0218 found a creative_price() that is neither 0218''s body nor 0208''s (each with or without 0224''s line) (md5 %): read the live body first', h;
+  -- The base from durable facts (as the forward file): 0224 on = its credits_per_unit_now(text) exists, and its line stays; 0208's plain
+  -- body is accepted with it only as what an interrupted statement-by-statement run of this rollback leaves (completed below).
+  if to_regprocedure('public.credits_per_unit_now(text)') is not null then
+    if h is null or h <> all (array['ea2b58e88fe34ae18b261e5a0fbef435', 'd5bc7c5ef1c3d823ece05b9d00274042', 'f61aaddd5686045961addd6f14a02c32']) then
+      raise exception 'rollback 0218 found credits_per_unit_now() (0224) but a creative_price() that is not 0218''s or 0208''s with 0224''s line (md5 %): read the live body first', h;
+    end if;
+  elsif h is null or h <> all (array['59c5c289009a874af043c534b29934ee', 'f61aaddd5686045961addd6f14a02c32']) then
+    raise exception 'rollback 0218 found a creative_price() that is neither 0218''s body nor 0208''s (md5 %): read the live body first', h;
   end if;
-  -- 0224's line stays where it was: 0208's body plus that line goes back when the live body carries it.
-  perform set_config('nightshift.r0218_on_0224', case when h in ('d5bc7c5ef1c3d823ece05b9d00274042', 'd3e0c73cd80217eb2d21bff08efea512') then 'on' else 'off' end, true);
   select md5(regexp_replace(x.prosrc, '\s+', ' ', 'g')) into h from pg_proc x where x.oid = 'public.film_price(public.films)'::regprocedure;
   if h is null or h <> all (array['3c22f87be736c073d17d93e040e914e1', '5de6c9bb2a74079e2078cad2d91b3c34']) then
     raise exception 'rollback 0218 found a film_price() that is neither 0218''s body nor 0171''s (md5 %): read the live body first', h;
@@ -752,11 +756,11 @@ $$;
 
 revoke all on function public.creative_price(uuid, text, text, jsonb) from public, anon, authenticated, service_role;
 
--- Where 0224 was applied first (the guard above set nightshift.r0218_on_0224): 0208's body plus 0224's dated-price line. Created by EXECUTE so that this file
--- still applies where credits_per_unit_now() does not exist yet (plpgsql resolves the name only when the function runs).
+-- Where 0224 is on (its credits_per_unit_now(text) exists, a durable fact, so this holds statement by statement): 0208's body plus 0224's dated-price line.
+-- Created by EXECUTE so that this file still applies where credits_per_unit_now() does not exist.
 do $do0224$
 begin
-  if current_setting('nightshift.r0218_on_0224', true) = 'on' then
+  if to_regprocedure('public.credits_per_unit_now(text)') is not null then
     execute $v0224$ create or replace function public.creative_price(
   p_org uuid, p_capability text, p_model text, p_params jsonb
 ) returns jsonb
@@ -1390,6 +1394,45 @@ end
 $$;
 
 revoke all on function public.film_price(public.films) from public, anon, authenticated, service_role;
+
+-- The end state, asserted inside the transaction: the bodies for the base restored, no API role, the pinned search_path, the volatility.
+do $$
+declare
+  pp  oid := 'public.creative_params_problem(text, jsonb)'::regprocedure;
+  cp  oid := 'public.creative_price(uuid, text, text, jsonb)'::regprocedure;
+  fp  oid := 'public.film_price(public.films)'::regprocedure;
+  got text;
+begin
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into got from pg_proc p where p.oid = pp;
+  if got <> '7ccde072309a637d9b07e59f1be45d20' then
+    raise exception 'rollback 0218 end state: creative_params_problem is not 0208''s body (md5 %)', got;
+  end if;
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into got from pg_proc p where p.oid = cp;
+  if got <> (case when to_regprocedure('public.credits_per_unit_now(text)') is not null then 'd5bc7c5ef1c3d823ece05b9d00274042' else 'f61aaddd5686045961addd6f14a02c32' end) then
+    raise exception 'rollback 0218 end state: creative_price is not 0208''s body for its base (md5 %)', got;
+  end if;
+  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into got from pg_proc p where p.oid = fp;
+  if got <> '5de6c9bb2a74079e2078cad2d91b3c34' then
+    raise exception 'rollback 0218 end state: film_price is not 0171''s body (md5 %)', got;
+  end if;
+  if exists (select 1 from pg_proc p
+              where p.oid in (pp, cp, fp)
+                and (p.proacl is null
+                     or exists (select 1 from aclexplode(p.proacl) a
+                                 where a.grantee = 0
+                                    or a.grantee in (select o.oid from pg_roles o
+                                                      where o.rolname in ('anon', 'authenticated', 'service_role'))))) then
+    raise exception 'rollback 0218 end state: a restored function is executable by a role that must not call it';
+  end if;
+  if (select count(*) from pg_proc p where p.oid in (pp, cp, fp) and p.proconfig @> array['search_path=public, pg_temp']) <> 3 then
+    raise exception 'rollback 0218 end state: a restored function has no pinned search_path';
+  end if;
+  if (select provolatile from pg_proc where oid = pp) <> 'i' or (select provolatile from pg_proc where oid = cp) <> 's'
+     or (select provolatile from pg_proc where oid = fp) <> 's'
+     or not (select prosecdef from pg_proc where oid = cp) or not (select prosecdef from pg_proc where oid = fp) then
+    raise exception 'rollback 0218 end state: a function changed its volatility or security';
+  end if;
+end $$;
 
 notify pgrst, 'reload schema';
 

@@ -20,10 +20,10 @@ describe("0218's refusals", () => {
   });
 
   it.each(WORDS)("%s is answered 400 with its own code and the database's detail", (w) => {
-    const r = mapCreativeError({ code: "NS400", message: w, details: "1 characters over this model's limit of 300; shorten the prompt" });
+    const r = mapCreativeError({ code: "NS400", message: w, details: "1 character over this model's limit of 300; shorten the prompt" });
     expect(r.status).toBe(400);
     expect(r.body.error).toBe(w);
-    expect(r.body.detail).toBe("1 characters over this model's limit of 300; shorten the prompt");
+    expect(r.body.detail).toBe("1 character over this model's limit of 300; shorten the prompt");
     expect(CREATIVE_ERRORS).toContain(w);
   });
 

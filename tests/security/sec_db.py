@@ -633,11 +633,11 @@ def put_back_0159(session) -> None:
 
 
 #: md5 of 0218's three bodies (white space folded), the way its drift guards read them.
-CREATIVE_PARAMS_PROBLEM_0218 = "0f4b7b7ba92bb20432841a4a5d5f8917"
-CREATIVE_PRICE_0218 = "34ae574dc0261251139c48b6ca1e1983"
+CREATIVE_PARAMS_PROBLEM_0218 = "cb7ad6cd459f31259445bedd1a4a0c88"
+CREATIVE_PRICE_0218 = "59c5c289009a874af043c534b29934ee"
 #: 0224 (stream S10, not on main) adds one line to 0208's creative_price; 0218 applied on that base keeps it. Both bases, both results.
 CREATIVE_PRICE_0208_0224 = "d5bc7c5ef1c3d823ece05b9d00274042"
-CREATIVE_PRICE_0218_0224 = "d3e0c73cd80217eb2d21bff08efea512"
+CREATIVE_PRICE_0218_0224 = "ea2b58e88fe34ae18b261e5a0fbef435"
 FILM_PRICE_0218 = "3c22f87be736c073d17d93e040e914e1"
 #: The bodies 0218 is written on: 0208's creative_params_problem and creative_price, 0171's film_price.
 _BEFORE_0218 = {"public.creative_params_problem(text, jsonb)": CREATIVE_PARAMS_PROBLEM_0208,
@@ -688,7 +688,13 @@ def put_back_0218(conn_or_session) -> None:
     live["public.creative_price(uuid, text, text, jsonb)"] = {CREATIVE_PRICE_0208_0224: CREATIVE_PRICE_0208}.get(
         live["public.creative_price(uuid, text, text, jsonb)"], live["public.creative_price(uuid, text, text, jsonb)"])
     if not has_0218(conn) and live == _BEFORE_0218:
-        conn.execute(MIGRATION_0218.read_text(encoding="utf-8"))
+        conn.execute(migration_0218_lab())
+
+
+def migration_0218_lab() -> str:
+    """0218's text for a lab database that already holds synthetic registry rows (synced by the tests, without takes_negative_prompt):
+    the file's sync-order check is skipped for that one transaction, the way the file's header says the lab does."""
+    return "select set_config('nightshift.m0218_lab_registry', 'on', true);\n" + MIGRATION_0218.read_text(encoding="utf-8")
 
 
 MIGRATION_0167 = MIGRATIONS / "0167_refund_hold_recovery.sql"
