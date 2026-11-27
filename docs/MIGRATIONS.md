@@ -2507,7 +2507,10 @@ exactly) and `film_price` (0171's body plus four hunks). Apply order: 0208, then
   until then every negative prompt is refused (never dropped).
 - **Drift guard and end state.** Live bodies must be 0208's (`creative_params_problem` `7ccde072309a637d9b07e59f1be45d20`,
   `creative_price` `f61aaddd5686045961addd6f14a02c32`) and 0171's (`film_price` `5de6c9bb2a74079e2078cad2d91b3c34`), or this file's
-  (`0f4b7b7ba92bb20432841a4a5d5f8917`, `34ae574dc0261251139c48b6ca1e1983`, `3c22f87be736c073d17d93e040e914e1`); 0208 must be applied. The last block asserts
+  (`0f4b7b7ba92bb20432841a4a5d5f8917`, `34ae574dc0261251139c48b6ca1e1983`, `3c22f87be736c073d17d93e040e914e1`); 0208 must be applied.
+  Where stream S10's 0224 was applied first (0208's `creative_price` plus its one dated-price line, `d5bc7c5ef1c3d823ece05b9d00274042`),
+  the file creates its own body plus that line (`d3e0c73cd80217eb2d21bff08efea512`, by EXECUTE), and its rollback puts 0208's body plus
+  the line back. Any other body is refused. The last block asserts
   the three bodies, no API role grant, the pinned search_path, the volatility, every guard of `creative_price`, and that an unknown key
   never comes back in the refusal. Apply as ONE transaction.
 - **Order.** 0208's and 0171's replays and rollbacks refuse 0218's bodies: run `docs/sql/rollback_0218_creative_prompt_limits.sql`
