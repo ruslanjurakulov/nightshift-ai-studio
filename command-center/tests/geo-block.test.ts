@@ -19,7 +19,9 @@ vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 
 import { isPublicIp, lookupCountry, parseGeoTable, parseIp } from "@/lib/geo/table";
 import { CLIENT_IP_HEADER, clientAddressKey, trustedClientIp } from "@/lib/geo/client-ip";
-import { BLOCKED_COUNTRIES, blockedCountriesOf, isBlockedIn, withoutBlocked } from "@/lib/geo/blocked";
+import {
+  BLOCKED_COUNTRIES, GOOGLE_AVAILABLE_REGIONS, GOOGLE_MODELS, ISO_3166_ALPHA2, blockedCountriesOf, isBlockedIn, withoutBlocked,
+} from "@/lib/geo/blocked";
 import {
   GEO_STRICT, GEO_TABLE_PATH, blockedModelsHere, checkGeoTableAtStartup, geoRefusal, geoRefusalAny, hideBlockedModels, loadGeoTable,
   readCountry, unknownRefuses,
@@ -299,5 +301,24 @@ describe("the shipped table and the registry's lists", () => {
       expect(list.every((c) => /^[A-Z]{2}$/.test(c))).toBe(true);
       expect(blockedCountriesOf(id)).toBe(list);
     }
+  });
+
+  it("every Google row's available_countries is GOOGLE_AVAILABLE_REGIONS, and with blocked_countries covers ISO (BR-S6-03-DB, 0230)", () => {
+    // Migration 0230's trigger asks the registry's available_countries, not this file: if the two drifted, the web would offer a
+    // country the database refuses (or the reverse). Google's list is the source; blocked_countries stays its complement in ISO.
+    const reg = JSON.parse(readFileSync(join(ROOT, "schemas", "model_registry.json"), "utf8")) as {
+      models: Array<{ id: string; provider: string; blocked_countries?: string[]; available_countries?: string[] }>;
+    };
+    const google = reg.models.filter((m) => m.provider === "google");
+    expect(google.map((m) => m.id).sort()).toEqual([...GOOGLE_MODELS].sort());
+    const avail = [...GOOGLE_AVAILABLE_REGIONS].sort();
+    for (const m of google) {
+      expect([...(m.available_countries ?? [])].sort()).toEqual(avail);
+      const blocked = new Set(m.blocked_countries ?? []);
+      expect(avail.filter((c) => blocked.has(c))).toEqual([]);
+      expect(new Set([...avail, ...blocked])).toEqual(new Set([...ISO_3166_ALPHA2, "XK"]));
+    }
+    // Only an allow-list vendor's row carries one.
+    expect(reg.models.filter((m) => m.available_countries && m.provider !== "google").map((m) => m.id)).toEqual([]);
   });
 });

@@ -57,6 +57,13 @@ address DB-IP has no country for (`not_in_table`, below) it sends none, so the d
 with `country_unverified`, including a model the web allows such a visitor to see and quote (`grounded-image-1.0`, which is not
 an allow-list model). For Google's models web and database agree (both refuse an unknown country).
 
+**An allow-list vendor is gated by its allow-list (0230, BR-S6-03-DB).** Google's `blocked_countries` is only the complement of
+its list in ISO 3166-1, so under 0208 a signed code on neither list (EU or AP from the country table, ZZ, any two capital
+letters) passed the database. Since 0230 every Google row also carries `available_countries` (Google's own list, synced like
+`blocked_countries`), and the trigger refuses a code not on it as `country_unverified`; a listed blocked country is still
+`country_blocked`. A Google row synced before 0230 has no allow-list and is refused every job until the sync runs again (step 1
+above; 0230 raises a NOTICE). A deny-list-only model (`grounded-image-1.0`) keeps 0208's rule.
+
 ## How a request's country is known
 
 1. **Visitor -> Caddy.** Nothing is in front of the server: the domain's nameservers are Porkbun's, its one `A` record points

@@ -2800,3 +2800,36 @@ The audit allow-list adds `model.terms_accept` and `model.terms_revoke`.
 
 Apply as one transaction after 0018 (platform role), 0035 (registry), 0107 (operator MFA) and 0145 (audit allow-list).
 The owner-applied rollback is `docs/sql/rollback_0227_owner_model_terms_acceptance.sql`.
+
+## The country gate reads an allow-list vendor's own list (0230)
+
+0230 (`0230_geo_gate_allow_list.sql`, BR-S6-03-DB in `docs/security/LEDGER.md`) changes no answer for a model on sale today (0142
+keeps every model with a country list off sale). It closes the database half of BR-S6-03; the web half is PR #951.
+
+- **The finding.** Google's terms are an allow-list, but the registry carried only its complement (`blocked_countries` = every ISO
+  code Google does not list), and 0208's `creative_jobs_geo_gate` refused a signed claim only when its code was on that list. A code
+  on neither list (EU, AP, ZZ, any two capital letters) started a job on a Google model.
+- **Registry.** Every `provider = 'google'` row in `schemas/model_registry.json` carries `available_countries`, Google's own list
+  (ISO codes plus XK), equal to `GOOGLE_AVAILABLE_REGIONS` in `command-center/lib/geo/blocked.ts` (`tests/geo-block.test.ts`). The
+  schema adds the optional key; `modules/model_registry.py` refuses it without `blocked_countries`, a code on both lists, and a
+  Google row with `blocked_countries` but no `available_countries`. The registry sync copies it into `spec` unchanged (no change to
+  `sync_rows` or `sync_model_registry`).
+- **The gate.** 0208's body plus one marked hunk after its two refusals (unchanged, so no claim is still `country_unverified` and a
+  listed country is still `country_blocked`): a row whose spec carries `available_countries`, or any `provider = 'google'` row with
+  a country list, refuses a code not on `available_countries` (or a list that is missing or not an array) as NS400
+  `country_unverified`, the chat gate's word. A deny-list-only model (grounded-image-1.0) and a model with no list are unchanged.
+  No model id is written in the SQL.
+- **Replaces** `creative_jobs_geo_gate()` (0208's `71468a6f60d2659cd44199a3c834dc69` -> `3f2e4d767f9d53de505aacb29e7141f9`, white
+  space folded with `[[:space:]]+`); refuses any other body, and refuses without 0208. No backslash in the file. Grants unchanged (no
+  API role); the trigger is not recreated.
+- **Before it is useful:** the registry sync from a ref that contains 0230 (`python tools/probe_models.py --sync`). Until then a
+  Google row has no allow-list and every job on it is refused `country_unverified` (fails closed); the file says so in a NOTICE, and
+  its Verify block has a `google_rows_synced` column.
+- **Replay.** `create or replace` on a guarded body: a replay changes nothing. Replaying 0208 over it puts 0208's body back (0208
+  does not guard the gate); apply 0230 again after it (the lab's `put_back_0208` does).
+- **Number.** 0230, assigned by the S6 lead. Needs 0208 and 0036. Independent of 0218, 0219, 0224, 0227 and 0228.
+- **Undo.** `docs/sql/rollback_0230_geo_gate_allow_list.sql` (owner-applied): refuses a gate that is neither 0230's nor 0208's,
+  puts 0208's body back verbatim and asserts it; keeps `available_countries` in the registry rows (0208's body never reads it).
+  BR-S6-03-DB is then open again.
+- **Tests.** `tests/test_geo_gate_allow_list_migration.py`, `tests/security/test_sec_geo_allowlist_0230.py` (a real PostgreSQL;
+  contract `tests/security/sec_geo_allowlist_0230.py`), `command-center/tests/geo-block.test.ts`.
