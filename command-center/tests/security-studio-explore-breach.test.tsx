@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Breach, PR #947 (the Studio's explore grid). Hostile inputs against lib/creative/explore.ts, lib/site/showcase-link.ts
+ * Breach, PR #947 (the Studio's explore grid). Hostile inputs against lib/creative/explore.ts (+ explore-server.ts), lib/site/showcase-link.ts
  * studioCreateSection, lib/templates/trends.ts templateCreateHref and components/studio/StudioExplore.tsx. What would break without
  * these: a card href that leaves this origin (`//evil`, `/\evil`, `javascript:`) or smuggles a second `model=` / `next=` into the
  * Studio form; a forged /api/templates body (model_status "available", a prototype key as model id, a kind the route never sends)
@@ -26,7 +26,8 @@ vi.mock("next/link", () => ({
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { StudioExplore } from "@/components/studio/StudioExplore";
-import { exploreSamples, exploreTemplates, isOnSale, onSaleCatalog, type OnSale } from "@/lib/creative/explore";
+import { exploreTemplates, isOnSale, type OnSale } from "@/lib/creative/explore";
+import { exploreSamples, onSaleCatalog } from "@/lib/creative/explore-server";
 import { SHOWCASE_ENTRIES, type ShowcaseEntry } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { studioCreateSection } from "@/lib/site/showcase-link";

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The Studio home's explore grid (components/studio/StudioExplore.tsx, lib/creative/explore.ts). What would break without these:
+ * The Studio home's explore grid (components/studio/StudioExplore.tsx, lib/creative/explore.ts and explore-server.ts). What would break without these:
  * a card that names its model (in its words, its alt, its aria or a data attribute) although the owner wants the model known only
  * in the Studio; a card for a model this workspace cannot buy (an operator preview, a locked model, one not on sale for that tool,
  * a template whose availability is "unknown"), shown as if it were; an animation's starting frame shown as its own sample; an i2v
@@ -29,7 +29,8 @@ vi.mock("next/link", () => ({
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";
 import { StudioExplore } from "@/components/studio/StudioExplore";
-import { EXPLORE_SAMPLE_LIMIT, buildExploreData, exploreCatalog, exploreSamples, exploreTemplates, isOnSale, onSaleCatalog, templateRow, templatesUnread, type OnSale } from "@/lib/creative/explore";
+import { exploreTemplates, isOnSale, templateRow, templatesUnread, type OnSale } from "@/lib/creative/explore";
+import { EXPLORE_SAMPLE_LIMIT, buildExploreData, exploreCatalog, exploreSamples, onSaleCatalog } from "@/lib/creative/explore-server";
 import { SHOWCASE_ENTRIES, sourceOnlyJobs, type ShowcaseEntry } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { linksSample } from "@/lib/site/showcase-link";
@@ -507,6 +508,17 @@ describe("the templates read", () => {
     expect(screen.queryByRole("heading", { name: x.topics })).toBeNull();
     expect(screen.queryByRole("heading", { name: x.brand })).toBeNull();
     expect(cards()).toHaveLength(1);
+  });
+});
+
+describe("the client bundle", () => {
+  it("the browser's half of the grid never imports the showcase manifest (vendor and model names stay on the server)", () => {
+    const client = ["lib/creative/explore.ts", "components/studio/StudioExplore.tsx"].map((f) => readFileSync(join(ROOT, f), "utf8"));
+    for (const src of client) {
+      expect(src).not.toMatch(/from "@\/lib\/site\/showcase(?:-link)?"/);
+      expect(src).not.toMatch(/from "@\/lib\/creative\/explore-server"/);
+    }
+    expect(readFileSync(join(ROOT, "lib/creative/explore-server.ts"), "utf8").startsWith('import "server-only";')).toBe(true);
   });
 });
 

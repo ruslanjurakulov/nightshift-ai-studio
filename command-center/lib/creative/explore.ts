@@ -1,52 +1,17 @@
 /**
- * The Studio's explore grid (components/studio/StudioExplore.tsx, below the fold of the Studio home): the shipped model samples
- * (lib/site/showcase.json) and the trend templates (0183, /api/templates), media first, each card one link into this channel's
- * Studio form. Pure and client-safe; the create page calls the sample half on the server.
- *
- * Owner decision 22 Nov: no model name on a card. A card carries only what it draws (its media, its title, one line, its link); the
- * model travels in the link's `model=` alone, so the sample DTO below is built on the server and never holds the export's
- * modelName or provider (the client payload of the page would otherwise carry them under every card).
+ * The Studio's explore grid, the part a browser may hold (components/studio/StudioExplore.tsx, below the fold of the customer's
+ * Create screen): the shapes the page hands it, and the rules it applies to the one thing it reads itself, /api/templates. Nothing
+ * here may import lib/site/showcase* (the samples' manifest names vendors and models and stays on the server): the samples are built
+ * in ./explore-server.ts and arrive as ExploreSample, which holds no model id, name or maker.
  *
  * What is shown as available (CLAUDE.md "Definition of Done": nothing is shown as available that is not): a card appears only when
- * its model is on sale to THIS workspace for the card's tool, as the server's own catalogue says (loadStudioModels: the registry,
- * sellable_models(), the owner's switch, a vendor's shutdown, the country, and this organization's locks). An operator preview is
- * not on sale, even to the operator; a locked model (the database would refuse this organization) is not on sale here either.
+ * its model is on sale to THIS workspace for the card's tool, as the server's own catalogue says (`OnSale`, built in
+ * ./explore-server.ts). An operator preview is not on sale, even to the operator; a locked or unpriced model is not either.
  */
-import type { Locale } from "@/lib/i18n/core";
-import type { StudioModel } from "@/lib/creative/studio";
-import { modelLeftOut, sourceOnlyJobs, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
-import { studioCreateSection, type ShippedSamples } from "@/lib/site/showcase-link";
-import { cardTitle } from "@/lib/site/card-titles";
-import { cardWords } from "@/lib/site/card-words";
-import { posterSrcSet } from "@/lib/site/renditions";
 import { capabilityFor, type TemplateDto } from "@/lib/templates/trends";
-import { onlyOpenToSome, onlyPriced } from "@/lib/tool-availability";
 
 /** The model ids on sale to this workspace, per tool. Built on the server from the page's catalogue; the browser only reads it. */
 export type OnSale = Readonly<Record<string, readonly string[]>>;
-
-/** Only what the explore grid needs to know, per tool: models this organization can actually buy for it today. */
-export function onSaleCatalog(models: readonly StudioModel[], capabilities: readonly string[]): OnSale {
-  const out: Record<string, string[]> = {};
-  for (const cap of capabilities) {
-    out[cap] = models.filter((m) => !m.preview && !m.lock && m.capabilities.includes(cap)).map((m) => m.id);
-  }
-  return out;
-}
-
-/**
- * The explore grid's catalogue from the page's models, by the same filtering the Studio's availability marks use
- * (lib/server/tool-availability.ts readToolAvailability): less any model the price list has no rate for (`catalog`, the Models page's
- * read; null = prices unread, nothing taken out on a guess) and any model no organization can buy (a plan-tier entitlement). A
- * sellable model with no price is not on sale: its card would open a form whose quote is refused.
- */
-export function exploreCatalog(
-  models: readonly StudioModel[],
-  catalog: readonly { id: string; state: string }[] | null,
-  capabilities: readonly string[],
-): OnSale {
-  return onSaleCatalog(onlyOpenToSome(onlyPriced(models, catalog)), capabilities);
-}
 
 /** Own keys only: a capability of `__proto__` or `constructor` (a forged body) is simply not on sale, never a TypeError. */
 export function isOnSale(onSale: OnSale, capability: string, modelId: unknown): boolean {
@@ -67,9 +32,6 @@ export function nothingOnSale(samples: readonly unknown[], onSale: OnSale): bool
  */
 export type ExploreData = { state: "ok"; samples: ExploreSample[]; onSale: OnSale } | { state: "unread" };
 
-/** At most this many samples below the fold: the page is the composer's, and every clip in view plays (six at most at once). */
-export const EXPLORE_SAMPLE_LIMIT = 12;
-
 /** One sample card, as the browser gets it: no model id, no model name, no maker. */
 export interface ExploreSample {
   /** The creative job that made it (its clip's key, and the card's own id). */
@@ -87,66 +49,6 @@ export interface ExploreSample {
   line: { text: string; lang: string };
   /** This channel's Studio form for it, as a section for useChannelPath (`/create?tool=…&model=…&prompt=…[&sample=…]`). */
   href: string;
-}
-
-/**
- * The sample cards for this workspace, newest first: an entry whose files ship, that is not only an animation's starting frame
- * (sourceOnlyJobs, as the landing's grid rules), whose model is on sale here for its tool (`onSale`), and which the shipped data
- * does not itself mark as left out of its link (an operator preview or past its shutdown day: the link would not name the model,
- * so the Studio would open on another one). Anything else gets no card; there is never a placeholder.
- */
-export function exploreSamples(
-  entries: readonly ShowcaseEntry[],
-  files: Readonly<Record<string, ShowcaseFiles>>,
-  onSale: OnSale,
-  locale: Locale,
-  now: Date = new Date(),
-  limit: number = EXPLORE_SAMPLE_LIMIT,
-): ExploreSample[] {
-  const frames = sourceOnlyJobs(entries);
-  const shipped: ShippedSamples = { entries, files };
-  const out: ExploreSample[] = [];
-  for (const e of entries) {
-    if (out.length >= limit) break;
-    const f = files[e.jobId];
-    if (!f || frames.has(e.jobId)) continue;
-    if (modelLeftOut(e, now) !== null || !isOnSale(onSale, e.capability, e.modelId)) continue;
-    const href = studioCreateSection(e, now, shipped);
-    if (!href) continue;
-    const words = cardWords(e, locale);
-    out.push({
-      id: e.jobId,
-      kind: e.kind,
-      width: e.width,
-      height: e.height,
-      poster: f.poster,
-      srcSet: posterSrcSet(f),
-      clip: e.kind === "video" && f.clip !== null,
-      title: cardTitle(e.jobId, locale),
-      line: { text: words.text, lang: words.lang },
-      href,
-    });
-  }
-  return out;
-}
-
-/**
- * The page's answer for the grid, decided on the server: "unread" when the registry (`registryRead` false: readStudioModels() said
- * null) or the price list (`catalog` null: readCatalogStates could not read it) could not be read, since a guess either way would be
- * a card for something unbuyable or a "nothing yet" that is not known (rule 5); else the samples and catalogue on sale here.
- */
-export function buildExploreData(p: {
-  registryRead: boolean;
-  models: readonly StudioModel[];
-  catalog: readonly { id: string; state: string }[] | null;
-  entries: readonly ShowcaseEntry[];
-  files: Readonly<Record<string, ShowcaseFiles>>;
-  locale: Locale;
-  now?: Date;
-}): ExploreData {
-  if (!p.registryRead || p.catalog === null) return { state: "unread" };
-  const onSale = exploreCatalog(p.models, p.catalog, ["t2v", "t2i", "i2v"]);
-  return { state: "ok", samples: exploreSamples(p.entries, p.files, onSale, p.locale, p.now), onSale: { t2v: onSale.t2v, t2i: onSale.t2i } };
 }
 
 /** The template rows: what is trending, videos by topic, and the business pictures as brand-style variants. */

@@ -48,7 +48,8 @@ import { startAvailability } from "@/lib/start-box";
 import { SAMPLE_PARAM, resolveSampleSource } from "@/lib/site/sample-source";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
-import { buildExploreData, type ExploreData } from "@/lib/creative/explore";
+import type { ExploreData } from "@/lib/creative/explore";
+import { buildExploreData } from "@/lib/creative/explore-server";
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -227,7 +228,7 @@ export default async function CreatePage({
         })()
       : null;
 
-  // The explore grid under the customer's Create screen (lib/creative/explore.ts). Its catalogue is the composer's models filtered the
+  // The explore grid under the customer's Create screen (lib/creative/explore-server.ts). Its catalogue is the composer's models filtered the
   // way the Studio's availability marks filter them (lib/server/tool-availability.ts): priced, open to some organization, no operator
   // preview, no lock. A registry or a price list that could not be read is "unread", never "nothing on sale yet" (rule 5): loadStudioModels answers []
   // for both, so the cached readStudioModels() is asked which it was (the same request's read, no second query). Nothing is written.
