@@ -912,9 +912,9 @@ html:is([lang="ru"], [lang="uz"]) .nx-show-h { font-size: clamp(28px, 7.2vw, 52p
   .nx-clip { display: none; }
 }
 /* The speaker toggle on a clip that has sound (components/site/SoundToggle.tsx; owner decision 2026-11-22): bottom right of the
-   clip's box, a 44 px round hit area, dark and translucent so it reads on any frame. Above a card's stretched open button
-   (.nx-gallery-open, z-index 1; a card's stretched link overlay, ~1) and its hover panel (.nx-gallery-over, 3), so a press is
-   the toggle's, never the card's. Gone with the clip under reduced motion, where the still is all there is. */
+   clip's box, a 44 px round hit area, dark and translucent so it reads on any frame. Above a media card's stretched link
+   (.mf-card-link, z-index 1), its caption (2), its AI mark (3) and its focus ring (4) (components/site/media-card.css), and
+   marked data-tap-ignore so TapReveal leaves it alone: a press is the toggle's, never the card's. Gone with the clip under reduced motion, where the still is all there is. */
 .nx-clip-sound { position: absolute; z-index: 5; right: 10px; bottom: 10px; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; margin: 0; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.28); background: rgba(8, 8, 10, 0.62); color: #fff; cursor: pointer; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .nx-clip-sound:hover { background: rgba(8, 8, 10, 0.82); }
 .nx-clip-sound:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
@@ -1463,38 +1463,8 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
   @media (min-width: 1240px) { .nx-gallery-card { grid-column: var(--c4, auto); grid-row: var(--r4, auto) / span var(--s4, var(--span, 60)); } }
 }
 .nx-gallery-pic .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; }
-/* The badge is never lost: in the top right corner (a camera's timestamp or a title burned into a picture sits top left), on a
-   dark, edged chip that reads on a black frame too, small on a phone's narrow card, and it wraps rather than being cut. */
-.nx-gallery-pic .nx-result-badge { z-index: 2; top: 8px; left: auto; right: 8px; max-width: calc(100% - 16px); padding: 3px 8px; border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(10, 10, 14, 0.86); font-size: 13px; line-height: 1.3; pointer-events: none; }
-@media (min-width: 760px) { .nx-gallery-pic .nx-result-badge { top: 10px; right: 10px; max-width: calc(100% - 20px); padding: 4px 10px; font-size: 13px; } }
 /* The grid's one pause key (a keyboard's; hidden until focused, site-next.css .nx-clip-pause) shows at the grid's top right. */
 .nx-gallery-box > .nx-clip-pause { top: 10px; right: 10px; bottom: auto; z-index: 5; }
-/* The card's button: the whole card, over the picture (the badge, the words and the link sit above it). */
-.nx-gallery-open { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
-.nx-gallery-open:focus-visible { outline: 3px solid var(--nx-stage-amber, #ffa940); outline-offset: -3px; }
-/* The words and the link over the bottom of the picture: hidden at rest, shown under a fine pointer's hover or keyboard focus.
-   Hidden, it takes no tap: a touch opens the card (and its dialog has the words and the link). */
-.nx-gallery-over { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 44px 12px 12px; background: linear-gradient(180deg, rgba(6, 6, 10, 0) 0%, rgba(6, 6, 10, 0.78) 42%, rgba(6, 6, 10, 0.92) 100%); color: #fff; opacity: 0; pointer-events: none; }
-.nx-gallery-card:has(:focus-visible) .nx-gallery-over { opacity: 1; }
-.nx-gallery-card:has(:focus-visible) .nx-gallery-try { pointer-events: auto; }
-@media (hover: hover) and (pointer: fine) {
-  .nx-gallery-card:hover .nx-gallery-over { opacity: 1; }
-  .nx-gallery-card:hover .nx-gallery-try { pointer-events: auto; }
-}
-.nx-gallery-over-format { margin: 0; font-family: var(--font-display); font-size: 15px; font-weight: 600; line-height: 1.25; }
-/* A prompt runs to hundreds of words: the card shows its first two lines on hover (all of it is in the page and in the dialog). */
-.nx-gallery-prompt { margin: 0; font-size: 14px; line-height: 1.45; color: #fff; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
-.nx-gallery-try { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border-radius: 999px; background: #fff; color: #0b0b10; font-size: 14px; font-weight: 600; white-space: nowrap; }
-.nx-gallery-try svg { width: 16px; height: 16px; }
-.nx-gallery-try:focus-visible { outline: 3px solid var(--nx-stage-amber, #ffa940); outline-offset: 2px; }
-/* The dialog's lines (components/site/SampleDetail.tsx), read on its dark panel. */
-.nx-gallery-format-t { margin: 0; font-family: var(--font-display); font-size: 20px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; color: var(--ns-text); }
-.nx-gallery-format-b { margin: 4px 0 0; font-size: 15px; line-height: 1.45; color: var(--ns-text-dim); }
-.nx-gallery-format { margin-bottom: 4px; }
-.nx-gallery-model { margin: 0; font-size: 17px; color: var(--ns-text); overflow-wrap: anywhere; }
-.nx-gallery-key { margin: 0; font-size: 14px; font-weight: 500; color: var(--ns-text-dim); }
-.nx-gallery-model .nx-gallery-key { font-size: inherit; }
-.nx-gallery-date { margin: 0; font-size: 14px; color: var(--ns-text-dim); }
 .nx-gallery-unavailable { margin: 0; font-size: 14px; color: var(--ns-text-dim); }
 
 /* ── Round 10: the AI-studio landing (components/landing/Landing.tsx) ─────────────────────────
@@ -1531,7 +1501,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 .nx-facts-more .nx-trust li { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; font-size: 15px; color: var(--ns-text); }
 .nx-facts-more .nx-trust svg { width: 16px; height: 16px; color: var(--ns-go); }
 .nx-ai-note { flex-basis: 100%; font-size: 13px; line-height: 1.4; }
-.nx-gallery-use { margin: 0; font-size: 14px; line-height: 1.45; color: var(--ns-text-dim); }
 .nx-sh-foot { position: relative; z-index: 1; margin-top: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 28px; color: #fff; }
 .nx-sh-credit { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; max-width: min(100%, 520px); margin: 0; padding: 4px 8px; border-radius: 22px; background: rgba(0, 0, 0, 0.62); font-size: 14px; }
 .nx-sh-credit .nx-result-badge, .nx-sh-credit .nx-result-credit { position: static; max-width: none; padding: 3px 4px; background: none; }
@@ -1728,8 +1697,6 @@ html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(var(--n
   .nx-model { transition: transform var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease), box-shadow var(--ns-dur-2) var(--ns-ease); }
   .nx-model:hover { transform: translateY(-4px); border-color: var(--ns-rule-strong); box-shadow: 0 24px 48px -28px rgba(0, 0, 0, 0.55); }
   html[data-motion="paused"] .nx-model { transition: none; transform: none; }
-  /* The words over a card fade in rather than snap. */
-  .nx-gallery-over { transition: opacity 180ms var(--ns-ease); }
 }
 
 /* The explore grid is a screen, like the stage: dark in both themes, so the clips carry the section. The tokens are re-bound
@@ -1741,10 +1708,6 @@ html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(var(--n
 .nx-sh-foot { --ns-text: #fff; --ns-text-dim: rgba(255, 255, 255, 0.88); --ns-rule-strong: rgba(255, 255, 255, 0.4); --ns-console: rgba(8, 8, 8, 0.66); }
 .nx-show-pic .nx-result-badge[data-kind="ai"] { top: 16px; left: 16px; }
 
-/* A clip animated from one of the samples' pictures: that picture beside its model, small enough not to compete with the clip. */
-.nx-gallery-source { display: flex; align-items: center; gap: 12px; margin: 0; min-width: 0; }
-.nx-gallery-source img { flex: none; width: 96px; height: auto; border-radius: 10px; border: 1px solid var(--ns-rule); }
-.nx-gallery-source figcaption { min-width: 0; font-size: 15px; color: var(--ns-text); overflow-wrap: anywhere; }
 
 /* In a credit drawn over a picture, the "Use this prompt" note is the button's description for assistive tech and is not printed
    on the picture (it would cover it); where the credit has room (the first screen, the gallery, under a showcase or the desk) it is. */

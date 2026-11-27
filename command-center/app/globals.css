@@ -494,13 +494,19 @@ body {
 
 /* Headings are the same face at 600 and a tight 1.2 line: no condensed
    display face, no capitals. `.font-display` is kept as an alias of the face. */
-h1, h2, h3, h4, .font-display {
+/* A heading that takes a --ds type role (.ds-t-*, app/tokens.css) is left to it: this rule is unlayered and would beat the
+   layered role on weight, line-height and tracking. :not(:where(…)) keeps this rule's specificity exactly (0,0,1). */
+h1:not(:where([class*="ds-t-"])),
+h2:not(:where([class*="ds-t-"])),
+h3:not(:where([class*="ds-t-"])),
+h4:not(:where([class*="ds-t-"])),
+.font-display {
   font-family: var(--font-sans);
   font-weight: 600;
   line-height: var(--ns-lh-head);
   letter-spacing: -0.011em;
 }
-h1 { letter-spacing: -0.02em; }
+h1:not(:where([class*="ds-t-"])) { letter-spacing: -0.02em; }
 
 /* Numbers that line up: prices, credits, durations, counts. Tabular figures
    from the same face; never a different, "technical" typeface. */

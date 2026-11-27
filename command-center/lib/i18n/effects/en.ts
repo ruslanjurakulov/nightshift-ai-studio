@@ -109,6 +109,8 @@ export const effectsEn = {
     listLabel: "Effects",
     use: "Use this effect",
     useAria: "Use this effect: {name}",
+    /** The card's corner mark on an effect whose frame is still a drawing (not a result, so never "AI-generated"). */
+    drawing: "Drawing",
   },
 };
 

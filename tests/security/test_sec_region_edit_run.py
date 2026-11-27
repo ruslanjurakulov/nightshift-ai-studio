@@ -215,9 +215,12 @@ def test_every_other_parameter_next_to_regions_is_refused(db, extra):
 
 
 def test_unknown_parameter_keys_are_still_refused_without_regions(db):
-    assert problem(db, "edit", {"prompt": "x", "source_asset_id": db.src, "foo": 1}) == "unknown parameter foo"
-    assert problem(db, "t2i", {"prompt": "x", "bar": 1}) == "unknown parameter bar"
-    assert problem(db, "edit", P(db, 1, foo=1)) == "unknown parameter foo"
+    # 0218: refused by how many and which keys are known, never by the caller's key (it is the caller's text, not ours to repeat).
+    for cap, params in (("edit", {"prompt": "x", "source_asset_id": db.src, "foo": 1}), ("t2i", {"prompt": "x", "bar": 1}),
+                        ("edit", P(db, 1, foo=1))):
+        msg = problem(db, cap, params)
+        assert msg.startswith("unknown parameter (1); allowed: ") and "regions, region_feather" in msg, msg
+        assert "foo" not in msg and "bar" not in msg, msg
 
 
 @pytest.mark.parametrize("feather", [1, 9, 0, -1, 4.5, "4", None, True, [4], 100])
