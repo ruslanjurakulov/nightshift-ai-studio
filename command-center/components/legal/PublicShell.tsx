@@ -5,6 +5,7 @@ import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { PublicMenu } from "@/components/legal/PublicMenu";
+import { MegaMenu, MegaNav, MegaPanels } from "@/components/legal/PublicMegaMenu";
 import { SessionSwap } from "@/components/legal/SessionSwap";
 import { APP_HOME } from "@/lib/session-hint";
 import { Wordmark } from "@/components/site/Wordmark";
@@ -13,29 +14,13 @@ import { SiteEffects } from "@/components/site/SiteEffects";
 import { PageViewBeacon } from "@/components/site/PageViewBeacon";
 import { SiteMotion } from "@/components/site/motion/SiteMotion";
 import { DEFAULT_LOCALE, LOCALES, dictionaries } from "@/lib/i18n";
-import { devFor } from "@/lib/i18n/dev";
+import { devPagesEnabled } from "@/lib/dev-pages";
+import { menuHref, publicNav, type PublicSection } from "@/lib/public-nav";
 import "@/components/site/site.css";
 import "@/components/site/site-next.css";
 import "@/components/site/site-motion.css";
 
-/** Which top-level page the visitor is on, for the nav's lit item. */
-export type PublicSection = "home" | "studio" | "solutions" | "pricing" | "docs" | "legal" | null;
-
-/** The public pages' navigation. Hash targets are absolute ("/#how") so they
- *  work from Pricing or Privacy as well as from the homepage itself. One
- *  "Developers" entry stands for the API, MCP, CLI and Skills pages: they are
- *  one click apart on every one of them (components/docs/doc-parts.tsx DevNav)
- *  and in the footer, and a fifth link here would crowd a phone's bar. */
-export function publicNavLinks(t: Dictionary): { href: string; label: string; section: PublicSection }[] {
-  const n = t.site.nav;
-  return [
-    { href: "/#how", label: n.how, section: null },
-    { href: "/studio", label: n.studio, section: "studio" },
-    { href: "/solutions", label: n.solutions, section: "solutions" },
-    { href: "/pricing", label: n.pricing, section: "pricing" },
-    { href: "/docs/api", label: devFor(t).nav.label, section: "docs" },
-  ];
-}
+export type { PublicSection };
 
 /**
  * The frame shared by the pages a signed-out visitor can open — landing,
@@ -49,6 +34,10 @@ export function publicNavLinks(t: Dictionary): { href: string; label: string; se
  * all visible. Below 768px those rows took about 209px of a 390px phone, so
  * there the bar is one 64px row (wordmark, Start free, a menu button) and the
  * rest opens in a sheet (components/legal/PublicMenu.tsx).
+ *
+ * The bar's Studio, Solutions, Developers and Resources are panel triggers (components/legal/PublicMegaMenu.tsx); Pricing
+ * stays a plain link. The panels and the sheet's sections are drawn from one list (lib/public-nav.ts), so the phone and the
+ * desktop can never offer different pages.
  */
 export function PublicShell({
   t,
@@ -62,7 +51,9 @@ export function PublicShell({
   fresh?: boolean;
   children: React.ReactNode;
 }) {
-  const links = publicNavLinks(t);
+  // One navigation source for the bar's panels and the phone's sheet (lib/public-nav.ts). CLI and Skills follow their
+  // flag, read per request like the footer's.
+  const entries = publicNav(t, { devPages: devPagesEnabled() });
   // The page's language is the dictionary it was handed (server-side lookup, no request read).
   preloadSiteFonts(LOCALES.find((l) => dictionaries[l.code] === t)?.code ?? DEFAULT_LOCALE);
   return (
@@ -70,75 +61,76 @@ export function PublicShell({
       <a href="#main" className="st-skip">
         {t.landing.nav.skip}
       </a>
-      <header className="st-header">
-        <div className="st-wrap st-header-row relative">
-          <Link href="/" className="st-brand" aria-label={t.brand.name}>
-            <Wordmark />
-          </Link>
+      <MegaMenu entries={entries} current={current}>
+        <header className="st-header">
+          <div className="st-wrap st-header-row relative">
+            <Link href={menuHref("/")} className="st-brand" aria-label={t.brand.name}>
+              <Wordmark />
+            </Link>
 
-          {/* The links, language, theme and Sign in: on the bar's row from 1024px, a row of their own under the wordmark and
+            {/* The links, language, theme and Sign in: on the bar's row from 1024px, a row of their own under the wordmark and
               Start free from 768px, and in the menu's sheet below that. */}
-          <div className="st-header-sub">
-            <nav aria-label={t.landing.nav.label} className="st-nav">
-              {links.map((l) => (
-                <Link key={l.href} href={l.href} aria-current={l.section && l.section === current ? "page" : undefined}>
-                  {l.label}
-                </Link>
-              ))}
-            </nav>
+            <div className="st-header-sub">
+              <MegaNav label={t.landing.nav.label} />
 
-            <div className="st-header-desk">
-              <LanguageSelector />
-              <ThemeToggle />
-              {/* The bar is full in every language (the page column stops growing at 1280px), so the view switch is the icon
+              <div className="st-header-desk">
+                <LanguageSelector />
+                <ThemeToggle />
+                {/* The bar is full in every language (the page column stops growing at 1280px), so the view switch is the icon
                   only, and only from 1280px, where it measurably fits; the word is on the footer link. */}
-              <span className="hidden min-[1280px]:contents">
-                <ViewModeToggle />
-              </span>
-              {/* Signed in: no Sign in here; the one key beside the menu opens the app instead (SessionSwap). */}
+                <span className="hidden min-[1280px]:contents">
+                  <ViewModeToggle />
+                </span>
+                {/* Signed in: no Sign in here; the one key beside the menu opens the app instead (SessionSwap). */}
+                <SessionSwap
+                  signedOut={
+                    <Link href={menuHref("/login")} className="st-signin">
+                      {t.site.nav.signIn}
+                    </Link>
+                  }
+                  signedIn={null}
+                />
+              </div>
+            </div>
+
+            <div className="st-header-tools">
               <SessionSwap
                 signedOut={
-                  <Link href="/login" className="st-signin">
-                    {t.site.nav.signIn}
+                  <Link href={menuHref("/signup")} className="st-key" data-size="sm">
+                    {t.site.nav.start}
                   </Link>
                 }
-                signedIn={null}
+                // A plain link, not next/link: no prefetch of an app route from a public page, and the app opens as a full load.
+                signedIn={
+                  <a href={APP_HOME} className="st-key" data-size="sm" data-testid="public-open-app">
+                    {t.site.nav.openApp}
+                  </a>
+                }
               />
+              <PublicMenu
+                entries={entries}
+                current={current}
+                label={t.site.nav.menu}
+                closeLabel={t.site.nav.menuClose}
+                signIn={t.site.nav.signIn}
+                start={t.site.nav.start}
+                openApp={t.site.nav.openApp}
+              >
+                <LanguageSelector />
+                <ThemeToggle />
+              </PublicMenu>
             </div>
-          </div>
-
-          <div className="st-header-tools">
-            <SessionSwap
-              signedOut={
-                <Link href="/signup" className="st-key" data-size="sm">
-                  {t.site.nav.start}
-                </Link>
-              }
-              // A plain link, not next/link: no prefetch of an app route from a public page, and the app opens as a full load.
-              signedIn={
-                <a href={APP_HOME} className="st-key" data-size="sm" data-testid="public-open-app">
-                  {t.site.nav.openApp}
-                </a>
-              }
-            />
-            <PublicMenu
-              links={links.map((l) => ({ href: l.href, label: l.label, current: Boolean(l.section && l.section === current) }))}
-              label={t.site.nav.menu}
-              closeLabel={t.site.nav.menuClose}
-              signIn={t.site.nav.signIn}
-            >
-              <LanguageSelector />
-              <ThemeToggle />
-            </PublicMenu>
-          </div>
-          {/* Without JavaScript the menu button cannot open its sheet: the wrapped rows come back instead. The row must wrap
+            {/* Without JavaScript the menu button cannot open its sheet: the wrapped rows come back instead. The row must wrap
               again too: the phone bar is nowrap, and a .st-header-sub of flex 1 0 100% on the same line squeezed the
               wordmark to 0 and pushed the row past a 390px screen. */}
-          <noscript>
-            <style>{`@media (max-width:767px){.st-header-row{flex-wrap:wrap!important}.st-header-sub{display:flex!important}.st-menu-btn{display:none!important}}`}</style>
-          </noscript>
-        </div>
-      </header>
+            <noscript>
+              <style>{`@media (max-width:767px){.st-header-row{flex-wrap:wrap!important}.st-header-sub{display:flex!important}.st-menu-btn{display:none!important}}.st-mm-trigger{display:none!important}.st-mm-nojs{display:inline-flex!important}`}</style>
+            </noscript>
+          </div>
+          {/* The panels' frame: under the whole bar, over the page (it moves nothing), in the header so it shares its stacking. */}
+          <MegaPanels />
+        </header>
+      </MegaMenu>
       {/* The one main landmark of every public page; the pages render sections inside it. */}
       <main id="main" tabIndex={-1} className="relative flex-1 focus:outline-none">
         {children}

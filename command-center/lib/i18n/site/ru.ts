@@ -2,6 +2,7 @@ import type { SiteDictionary } from "./en";
 import { studioPageRu } from "../studio-page/ru";
 import { roadmapRu } from "../roadmap/ru";
 import { trustRu } from "../trust/ru";
+import { megaMenuRu } from "../megamenu/ru";
 import { siteAutopilotRu } from "../site-autopilot/ru";
 import { publicStatsRu } from "../public-stats/ru";
 
@@ -546,6 +547,7 @@ export const siteRu: SiteDictionary = {
   roadmap: roadmapRu,
   /** The public /trust page (lib/i18n/trust; English is the source). */
   trust: trustRu,
+  megaMenu: megaMenuRu,
   /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
   autopilot: siteAutopilotRu,
   liveStats: publicStatsRu,
