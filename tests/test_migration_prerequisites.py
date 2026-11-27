@@ -129,8 +129,17 @@ def find_problems(migrations, base, first_form):
 def git_first_form(name):
     rel = f"supabase/migrations/{name}"
     try:
-        shas = subprocess.run(["git", "log", "--diff-filter=A", "--format=%H", "--", rel], cwd=ROOT, capture_output=True,
-                              text=True, timeout=60, check=True).stdout.split()
+        # "First merged" is the commit that added the file to main: on a branch built on another one's draft (and later merged with
+        # main), the oldest add in HEAD's history is that draft, not what reached main and the owner's database. main's own
+        # first-parent line answers when the clone has it (CI fetches every branch); HEAD's history otherwise, as before.
+        shas = []
+        if subprocess.run(["git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"], cwd=ROOT, capture_output=True,
+                          timeout=60).returncode == 0:
+            shas = subprocess.run(["git", "log", "--first-parent", "--diff-filter=A", "--format=%H", "refs/remotes/origin/main", "--",
+                                   rel], cwd=ROOT, capture_output=True, text=True, timeout=60, check=True).stdout.split()
+        if not shas:
+            shas = subprocess.run(["git", "log", "--diff-filter=A", "--format=%H", "--", rel], cwd=ROOT, capture_output=True,
+                                  text=True, timeout=60, check=True).stdout.split()
         if not shas:
             return None
         return subprocess.run(["git", "show", f"{shas[-1]}:{rel}"], cwd=ROOT, capture_output=True, text=True,

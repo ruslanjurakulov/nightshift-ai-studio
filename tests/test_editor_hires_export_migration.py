@@ -386,7 +386,8 @@ class TheFile(unittest.TestCase):
         # functions, the quote, the terms and the trail with 0132's bodies plus marked lines (tests/test_editor_export_paid_1080p_migration.py
         # strips them and compares), and leaves the list and the settling trigger as they are.
         for p in sorted(MIG.glob("*.sql")):
-            if p.name[:4] > "0132" and not p.name.startswith("0136_"):
+            # 0226 (only a member spends) replaces only 0136's four-argument body, with one marked hunk (its own lab pins it).
+            if p.name[:4] > "0132" and not p.name.startswith(("0136_", "0226_")):
                 text = p.read_text(encoding="utf-8")
                 for name in ("request_editor_export(", "editor_export_frame(", "quote_editor_export(", "editor_export_settle("):
                     self.assertNotIn(f"function public.{name}", text, p.name)

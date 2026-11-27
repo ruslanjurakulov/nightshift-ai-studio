@@ -258,7 +258,8 @@ class TheFile(unittest.TestCase):
         for n in ("0134", "0135"):
             self.assertNotIn(f"{n}_editor", " ".join(p.name for p in MIG.glob("*.sql")))   # reserved by other work, not this file's
         for p in sorted(MIG.glob("*.sql")):
-            if p.name[:4] > "0136":
+            # 0226 (only a member spends) is the four-argument body plus one marked hunk (tests/security/test_sec_org_spender_0226.py).
+            if p.name[:4] > "0136" and not p.name.startswith("0226_"):
                 self.assertNotIn("function public.request_editor_export(", p.read_text(encoding="utf-8"), p.name)
 
     def test_the_new_word_has_a_sentence_in_three_languages(self):
