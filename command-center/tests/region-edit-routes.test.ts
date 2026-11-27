@@ -37,7 +37,10 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/server/same-origin", () => ({ requireSameOrigin: (fn: unknown) => fn }));
 vi.mock("@/lib/server/audit", () => ({ logAudit: h.audit }));
 
-const post = (body: unknown) => new Request("http://x/api/region-edit/quote", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } });
+// The edit model here is Google's, sold only where the visitor's country is known and listed (lib/geo/blocked.ts): these requests come
+// from an address the shipped table places in Uzbekistan. tests/geo-google.test.ts covers the refusals.
+const UZ_VISITOR = { "x-nightshift-client-ip": "84.54.64.1" };
+const post = (body: unknown) => new Request("http://x/api/region-edit/quote", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json", ...UZ_VISITOR } });
 const goodBody = { org_id: ORG, source_asset_id: SRC, model: "gemini-3.1-flash-image", regions: [{ name: "A", prompt: "dusk", x: 10, y: 10, w: 100, h: 80 }] };
 const gemini = { id: "gemini-3.1-flash-image", displayName: "Gemini", capabilities: ["edit"], beta: false };
 
@@ -136,7 +139,7 @@ describe("GET /api/region-edit/versions", () => {
   });
 });
 
-const run = (body: unknown) => new Request("http://x/api/region-edit/run", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } });
+const run = (body: unknown) => new Request("http://x/api/region-edit/run", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json", ...UZ_VISITOR } });
 const runBody = { ...goodBody, max_credits: 3, idempotency_key: "re-key-1" };
 const JOB_ID = "55555555-5555-4555-8555-555555555555";
 
