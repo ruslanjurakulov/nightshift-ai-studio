@@ -15,6 +15,8 @@ import { useSyncExternalStore } from "react";
 const videos = new Map<string, HTMLVideoElement>();
 /** What a clip does, inside the click, before its sound can be heard (LoopClip: switch from a silent small file to the full one). */
 const prepares = new Map<HTMLVideoElement, () => void>();
+/** The registered clips that are playing right now (LoopClip's `data-live`): a toggle shows only over a moving clip. */
+const live = new Set<HTMLVideoElement>();
 let audible: HTMLVideoElement | null = null;
 const listeners = new Set<() => void>();
 
@@ -26,12 +28,21 @@ const notify = () => listeners.forEach((l) => l());
  */
 export function registerSound(key: string, v: HTMLVideoElement, prepare?: () => void): () => void {
   v.muted = true;
+  // A second clip under the same key replaces the first in the map; the first must not keep talking outside "one voice at a
+  // time", where no toggle could reach it any more (Breach B4).
+  const replaced = videos.get(key);
+  if (replaced && replaced !== v) {
+    replaced.muted = true;
+    live.delete(replaced);
+    if (audible === replaced) audible = null;
+  }
   videos.set(key, v);
   if (prepare) prepares.set(v, prepare);
   notify();
   return () => {
     if (videos.get(key) === v) videos.delete(key);
     prepares.delete(v);
+    live.delete(v);
     if (audible === v) audible = null;
     notify();
   };
@@ -51,16 +62,30 @@ export function setSoundOn(v: HTMLVideoElement, on: boolean): void {
   if (on) prepares.get(v)?.();
 }
 
+/** Whether `v` is playing (it shows moving pictures, not its still): only then is its toggle drawn. */
+export function setSoundLive(v: HTMLVideoElement, on: boolean): void {
+  if (live.has(v) === on) return;
+  if (on) live.add(v);
+  else live.delete(v);
+  notify();
+}
+
 function subscribe(l: () => void) {
   listeners.add(l);
   return () => void listeners.delete(l);
 }
 
-/** The video registered under `key`, or null (no such clip, no sound, or its video is not in the page). */
+/**
+ * The video registered under `key` while it is playing, or null: no such clip, no sound, its video not in the page, or it shows
+ * its still (waiting for a turn, stalled), where "sound on" would sit over a picture that makes none.
+ */
 export function useSoundVideo(key: string): HTMLVideoElement | null {
   return useSyncExternalStore(
     subscribe,
-    () => videos.get(key) ?? null,
+    () => {
+      const v = videos.get(key);
+      return v && live.has(v) ? v : null;
+    },
     () => null,
   );
 }
@@ -78,6 +103,7 @@ export function useSoundOn(v: HTMLVideoElement | null): boolean {
 export function resetSoundForTests(): void {
   videos.clear();
   prepares.clear();
+  live.clear();
   audible = null;
   notify();
 }

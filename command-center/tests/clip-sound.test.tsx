@@ -60,16 +60,22 @@ afterEach(() => {
 });
 
 const toggle = (root: ParentNode) => root.querySelector<HTMLButtonElement>("button.nx-clip-sound");
+/** Renders, then lets every clip play: the toggle is drawn only over a clip that is moving (its "playing" event). */
+const renderLive = (ui: ReactNode) => {
+  const r = render(ui as React.ReactElement);
+  act(() => r.container.querySelectorAll("video").forEach((v) => void v.dispatchEvent(new Event("playing"))));
+  return r;
+};
 
 describe("the speaker toggle", () => {
   it("is absent on a clip without a track: silence is never offered as sound", () => {
-    const { container } = render(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" /></div>));
+    const { container } = renderLive(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" /></div>));
     expect(container.querySelector("video")).not.toBeNull();
     expect(toggle(container)).toBeNull();
   });
 
   it("is present on a clip with a track, named in the visitor's language, off, and the clip still starts muted", () => {
-    const { container } = render(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>));
+    const { container } = renderLive(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>));
     const b = toggle(container)!;
     expect(b).not.toBeNull();
     expect(b.getAttribute("type")).toBe("button");
@@ -79,7 +85,7 @@ describe("the speaker toggle", () => {
   });
 
   it("aria-pressed follows the sound, and a second press turns it off again", () => {
-    const { container } = render(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>));
+    const { container } = renderLive(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>));
     const v = container.querySelector("video")!;
     fireEvent.click(toggle(container)!);
     expect(toggle(container)!.getAttribute("aria-pressed")).toBe("true");
@@ -90,7 +96,7 @@ describe("the speaker toggle", () => {
   });
 
   it("turning one clip's sound on mutes the other: one voice at a time", () => {
-    const { container } = render(
+    const { container } = renderLive(
       withDict(
         <div>
           <div data-clip="a" id="a"><LoopClip sources={FILES} poster="/a.webp" audio soundKey="a" /></div>
@@ -115,7 +121,7 @@ describe("the speaker toggle", () => {
     const onDoc = vi.fn();
     document.addEventListener("click", onDoc);
     try {
-      const { container } = render(
+      const { container } = renderLive(
         withDict(
           <a href="/somewhere" onClick={onLink}>
             <div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>
@@ -136,7 +142,7 @@ describe("the speaker toggle", () => {
 
   it("its pointerdown does not bubble to the card either, and it is marked for the page's tap handlers to skip", () => {
     const onDown = vi.fn();
-    const { container } = render(
+    const { container } = renderLive(
       withDict(
         <a href="/somewhere" onPointerDown={onDown}>
           <div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>
@@ -150,7 +156,7 @@ describe("the speaker toggle", () => {
   });
 
   it("is a positioned sibling over the clip, above a stretched link overlay", () => {
-    const { container } = render(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>));
+    const { container } = renderLive(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>));
     const b = toggle(container)!;
     expect(b.parentElement).toBe(container.querySelector("video")!.parentElement);
     const css = readFileSync(join(__dirname, "..", "components/site/site-next.css"), "utf8");
@@ -162,26 +168,26 @@ describe("the speaker toggle", () => {
 
   it("is not drawn under reduced motion, where the still is all there is", () => {
     vi.stubGlobal("matchMedia", media(true));
-    const { container } = render(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>));
+    const { container } = renderLive(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>));
     expect(container.querySelector("video")).toBeNull();
     expect(toggle(container)).toBeNull();
   });
 
   it("is not drawn on Save-Data either (no video, no sound)", () => {
     vi.stubGlobal("navigator", { ...navigator, connection: { saveData: true } });
-    const { container } = render(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>));
+    const { container } = renderLive(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>));
     expect(container.querySelector("video")).toBeNull();
     expect(toggle(container)).toBeNull();
   });
 
   it("draws no unnamed button without a dictionary", () => {
-    const { container } = render(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>);
+    const { container } = renderLive(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>);
     expect(container.querySelector("video")).not.toBeNull();
     expect(toggle(container)).toBeNull();
   });
 
   it("a grid clip (the silent 640 file) switches to its full file, inside the press, when its sound is turned on", () => {
-    const { container } = render(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio together /></div>));
+    const { container } = renderLive(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio together /></div>));
     const v = container.querySelector("video")!;
     const mp4 = () => v.querySelector('source[type="video/mp4"]')!.getAttribute("src");
     expect(mp4()).toBe("/sm.mp4");
@@ -193,7 +199,7 @@ describe("the speaker toggle", () => {
   });
 
   it("a place whose clip sits under other content renders the toggle elsewhere, by the clip's key", () => {
-    const { container } = render(
+    const { container } = renderLive(
       withDict(
         <div>
           <div data-clip="x" id="box"><LoopClip sources={FILES} poster="/p.webp" audio soundKey="job-1" soundToggle={false} /></div>
@@ -209,7 +215,7 @@ describe("the speaker toggle", () => {
   });
 
   it("goes away with its clip, so nothing can turn a removed clip's sound on", () => {
-    const { container, rerender } = render(withDict(<div><LoopClip sources={FILES} poster="/p.webp" audio soundKey="k" soundToggle={false} /><SoundToggle clip="k" /></div>));
+    const { container, rerender } = renderLive(withDict(<div><LoopClip sources={FILES} poster="/p.webp" audio soundKey="k" soundToggle={false} /><SoundToggle clip="k" /></div>));
     expect(toggle(container)).not.toBeNull();
     rerender(withDict(<div><SoundToggle clip="k" /></div>));
     expect(toggle(container)).toBeNull();
@@ -225,10 +231,10 @@ describe("where sound comes from", () => {
       for (let at = bytes.indexOf("hdlr"); at >= 0; at = bytes.indexOf("hdlr", at + 4)) if (bytes.toString("latin1", at + 12, at + 16) === "soun") sound = true;
       expect(item.audio === true, item.slug).toBe(sound);
     }
-    const duo = render(withDict(<div data-clip="x"><StudioClip slug="language-duo" captionsLabel="English" /></div>));
+    const duo = renderLive(withDict(<div data-clip="x"><StudioClip slug="language-duo" captionsLabel="English" /></div>));
     expect(toggle(duo.container)).not.toBeNull();
     cleanup();
-    const coffee = render(withDict(<div data-clip="x"><StudioClip slug="coffee-pour" captionsLabel="English" /></div>));
+    const coffee = renderLive(withDict(<div data-clip="x"><StudioClip slug="coffee-pour" captionsLabel="English" /></div>));
     expect(toggle(coffee.container)).toBeNull();
   });
 
@@ -309,7 +315,7 @@ describe("a refused audible play", () => {
       tries.push(this.muted);
       return this.muted ? Promise.resolve() : Promise.reject(new DOMException("no gesture", "NotAllowedError"));
     };
-    const { container } = render(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>));
+    const { container } = renderLive(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>));
     const v = container.querySelector("video")!;
     fireEvent.click(toggle(container)!);
     expect(v.muted).toBe(false);
@@ -320,9 +326,94 @@ describe("a refused audible play", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+    // It moves again (muted): the toggle is back over it, off.
+    act(() => void v.dispatchEvent(new Event("playing")));
     expect(tries).toContain(false);
     expect(v.muted).toBe(true);
     expect(toggle(container)!.getAttribute("aria-pressed")).toBe("false");
     expect(tries[tries.length - 1]).toBe(true);
+  });
+});
+
+describe("only a real refusal turns the sound off, and the toggle only sits over a moving clip", () => {
+  // What would break (Lens 1): an AbortError (a load() or pause() interrupting play(), which says nothing about sound) switched
+  // the visitor's sound off.
+  it("a play() interrupted with AbortError keeps the sound on", async () => {
+    vi.stubGlobal("IntersectionObserver", undefined);
+    HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
+      return this.muted ? Promise.resolve() : Promise.reject(new DOMException("interrupted", "AbortError"));
+    };
+    const { container } = renderLive(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>));
+    const v = container.querySelector("video")!;
+    fireEvent.click(toggle(container)!);
+    act(() => setMotionPaused(true));
+    act(() => setMotionPaused(false));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => void v.dispatchEvent(new Event("playing")));
+    expect(v.muted).toBe(false);
+    expect(toggle(container)!.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  // Lens 2: "sound on" never sits over a still.
+  it("is drawn only once the clip plays, and goes when it stops for a turn", () => {
+    vi.stubGlobal("IntersectionObserver", undefined);
+    const { container } = render(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio /></div>));
+    const v = container.querySelector("video")!;
+    expect(toggle(container)).toBeNull();
+    act(() => void v.dispatchEvent(new Event("playing")));
+    expect(toggle(container)).not.toBeNull();
+  });
+
+  // Lens 3: no load() while the page holds the clip (it would drop the frame the visitor stopped on and fetch the file unseen).
+  it("pressed while the page is paused, a grid clip fetches its full file only when it plays again", () => {
+    vi.stubGlobal("IntersectionObserver", undefined);
+    const { container } = renderLive(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio together /></div>));
+    const v = container.querySelector("video")!;
+    const mp4 = () => v.querySelector('source[type="video/mp4"]')!.getAttribute("src");
+    act(() => setMotionPaused(true));
+    fireEvent.click(toggle(container)!);
+    expect(v.muted).toBe(false);
+    expect(loads).not.toHaveBeenCalled();
+    expect(mp4()).toBe("/sm.mp4");
+    act(() => setMotionPaused(false));
+    expect(mp4()).toBe("/full.mp4");
+    expect(loads).toHaveBeenCalledTimes(1);
+  });
+
+  it("a full file that fails to load falls back to the small one with the sound off", () => {
+    const { container } = renderLive(withDict(<div data-clip="x"><LoopClip sources={FILES} poster="/p.webp" audio together /></div>));
+    const v = container.querySelector("video")!;
+    const mp4 = () => v.querySelector('source[type="video/mp4"]')!.getAttribute("src");
+    fireEvent.click(toggle(container)!);
+    expect(mp4()).toBe("/full.mp4");
+    act(() => void v.querySelector("source")!.dispatchEvent(new Event("error")));
+    expect(mp4()).toBe("/sm.mp4");
+    expect(v.muted).toBe(true);
+    expect(toggle(container)!.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  // Lens 4: a larger file says whether it carries the track; without that, no sound is offered while it plays.
+  it("offers no sound while a larger file without a track plays", () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("min-width: 860px"), media: q, addEventListener() {}, removeEventListener() {} }));
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ width: 2400 } as DOMRect);
+    const lg = { ...FILES, lg: { mp4: "/lg.mp4", webm: "/lg.webm" } };
+    const silent = renderLive(withDict(<div data-clip="x"><LoopClip sources={lg} poster="/p.webp" audio /></div>));
+    expect(silent.container.querySelector('source[type="video/mp4"]')!.getAttribute("src")).toBe("/lg.mp4");
+    expect(toggle(silent.container)).toBeNull();
+    cleanup();
+    const loud = renderLive(withDict(<div data-clip="x"><LoopClip sources={{ ...lg, lg: { ...lg.lg, audio: true } }} poster="/p.webp" audio /></div>));
+    expect(toggle(loud.container)).not.toBeNull();
+    vi.restoreAllMocks();
+  });
+
+  // Lens 6: a decorative backdrop behind the sign-in form never offers sound.
+  it("the sign-in and sign-up stages pass sound={false} on every backdrop", () => {
+    const src = readFileSync(join(__dirname, "..", "components/auth/AuthShell.tsx"), "utf8");
+    const fills = [...src.matchAll(/<PlaceFill [^>]*\/>/g)].map((m) => m[0]);
+    expect(fills.length).toBeGreaterThan(0);
+    for (const f of fills) expect(f).toContain("sound={false}");
   });
 });

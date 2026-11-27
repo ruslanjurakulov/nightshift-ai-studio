@@ -210,5 +210,6 @@ export interface ShowcaseFiles {
    * real width, and its clip for a video. No entry has one today (the site's clips are 720p to 768p); the pages already offer
    * it to a wide screen when it is there (lib/site/renditions.ts) and fall back to the 1280 files when it is not.
    */
-  lg?: { poster: string; width: number; clip: { mp4: string; webm: string } | null };
+  /** `audio: true` only when that larger file carries the track too; without it a clip playing the larger file offers no sound. */
+  lg?: { poster: string; width: number; clip: { mp4: string; webm: string; audio?: true } | null };
 }

@@ -40,7 +40,8 @@ on a clip that has a track (CLAUDE.md #5: never imply sound that is not there). 
 silent copy (CLAUDE.md #4).
 
 The card line (`cardLine`) is an optional short line per language (en, ru, uz) from the workflow's inputs: all three or none,
-each at most 140 characters after invisible characters are stripped. Over the limit is refused, never cut.
+each at most 140 characters after invisible characters are stripped, one line (a line break or a tab is refused). Over the limit
+is refused, never cut.
 
 The cost is what creative_job_costs recorded (migration 0037): the dollar estimate summed over the job's rows, or null (unknown)
 when there is no row or any row has no figure, never 0 for unknown; and the vendor's own measure (unit and quantity) per row.
@@ -178,6 +179,11 @@ def parse_card_line(raw: Mapping[str, Any]) -> Optional[Dict[str, str]]:
     """The card line in all three languages, or None when none was given. One or two languages only is refused: a card would
     then speak one language on a page in another, or fall back unseen to English. A line over the limit is refused, never cut
     (a cut line reads as a finished one)."""
+    for lang in CARD_LINE_LANGS:
+        # One line is one line: a break would start a forged line in the PR summary, and a card has no room for a second.
+        value = raw.get(lang)
+        if isinstance(value, str) and re.search(r"[\r\n\t]", value):
+            raise Refusal("card_line_invalid", f"the {lang} card line holds a line break or a tab; give it as one line")
     lines = {lang: clean_text(raw.get(lang), 1 << 30) for lang in CARD_LINE_LANGS}
     given = [lang for lang, v in lines.items() if v]
     if not given:
@@ -559,7 +565,7 @@ AAC_AUDIO = ["-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "48000"]
 OPUS_AUDIO = ["-c:a", "libopus", "-b:a", "96k", "-ac", "2", "-ar", "48000"]
 
 
-def video_commands(ffmpeg: str, src: Path, mime: str, out: Path, audio: bool = False) -> List[List[str]]:
+def video_commands(ffmpeg: str, src: Path, mime: str, out: Path, audio: bool = False, seconds: Optional[float] = None) -> List[List[str]]:
     """The four renditions (the site's clip conventions, scripts/make-site-media.py) and the first frame, from one forced demuxer.
     With `audio`, the 1280 copies keep the first audio stream (AAC in the MP4, Opus in the WebM); the 640 ones never do."""
     # -t: a backstop only (the length was measured first, clip_seconds); never more than a sample may run.
@@ -569,8 +575,13 @@ def video_commands(ffmpeg: str, src: Path, mime: str, out: Path, audio: bool = F
         scale = f"scale={w}:-2:flags=lanczos,format=yuv420p"
         # Explicit maps: one video and exactly one audio stream, never a second track or a data stream a source might carry.
         keep = audio and suffix == ""
-        mp4_audio = ["-map", "0:v:0", "-map", "0:a:0"] + AAC_AUDIO if keep else ["-an"]
-        webm_audio = ["-map", "0:v:0", "-map", "0:a:0"] + OPUS_AUDIO if keep else ["-an"]
+        # The copy ends with its picture. A track longer than the picture would otherwise stretch clip.mp4 to the audio's length, a
+        # frozen last frame for most of the loop, while clip-sm.mp4 kept the picture's length. -shortest alone does not hold
+        # through a filter graph (measured: a 2 s picture with 25 s of audio came out 15 s), so the output is also cut at the
+        # picture's measured length.
+        cut = ["-shortest"] + (["-t", f"{seconds:.3f}"] if seconds and seconds > 0 else [])
+        mp4_audio = ["-map", "0:v:0", "-map", "0:a:0"] + cut + AAC_AUDIO if keep else ["-an"]
+        webm_audio = ["-map", "0:v:0", "-map", "0:a:0"] + cut + OPUS_AUDIO if keep else ["-an"]
         cmds.append(base + mp4_audio + ["-vf", scale, "-c:v", "libx264", "-preset", "slow", "-crf", "26" if suffix == "" else "28", "-profile:v", "main", "-movflags", "+faststart", str(out / f"clip{suffix}.mp4")])
         cmds.append(base + webm_audio + ["-vf", scale, "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "36" if suffix == "" else "38", "-deadline", "good", "-cpu-used", "2", "-row-mt", "1", str(out / f"clip{suffix}.webm")])
     cmds.append(base + ["-frames:v", "1", "-vf", "scale=1280:-2:flags=lanczos", str(out / "frame0.png")])
@@ -594,7 +605,25 @@ def write_posters(still: Path, out: Path) -> Tuple[int, int]:
 
 
 def probe_command(ffprobe: str, src: Path, mime: str) -> List[str]:
-    return [ffprobe, "-v", "error", "-protocol_whitelist", "file", "-f", VIDEO_DEMUXER[mime], "-show_entries", "format=duration", "-of", "csv=p=0", str(src)]
+    # The VIDEO stream's length, not the container's: a file whose audio runs past its picture reports the audio's length as the
+    # format's, and the picture is what the limit and the loop are about. MP4 gives `duration`; Matroska / WebM only a tag.
+    return [ffprobe, "-v", "error", "-protocol_whitelist", "file", "-f", VIDEO_DEMUXER[mime], "-select_streams", "v:0",
+            "-show_entries", "stream=duration:stream_tags=DURATION", "-of", "csv=p=0", str(src)]
+
+
+def _parse_seconds(text: str) -> float:
+    """The first line's first readable length: a number of seconds, or an `HH:MM:SS.fff` tag. NaN when neither."""
+    lines = text.strip().splitlines()
+    for field in (lines[0].split(",") if lines else []):
+        field = field.strip()
+        try:
+            return float(field)
+        except ValueError:
+            pass
+        m = re.fullmatch(r"(\d+):([0-5]\d):([0-5]\d(?:\.\d+)?)", field)
+        if m:
+            return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+    return float("nan")
 
 
 def audio_probe_command(ffprobe: str, src: Path, mime: str) -> List[str]:
@@ -616,12 +645,51 @@ def has_audio(ffprobe: str, src: Path, mime: str, run: Callable[..., "subprocess
     return any(line.strip() == "audio" for line in proc.stdout.decode("ascii", "replace").splitlines())
 
 
+#: Below this peak a track is silence (digital silence reads -inf; a generator's padding a little above it), not sound.
+SILENT_PEAK_DB = -60.0
+#: A track that covers less of the picture than this is a blip, not the clip's sound.
+MIN_AUDIO_COVER = 0.8
+#: The measuring pass resamples to this rate, so the sample count it reports is a length in seconds.
+MEASURE_RATE = 48000
+
+
+def sound_measure_command(ffmpeg: str, src: Path, mime: str) -> List[str]:
+    """Decode the first audio stream once and report its peak and its sample count (astats), from the same forced demuxer and
+    file-only protocol as every other read of the download, never past a sample's longest length."""
+    return [ffmpeg, "-hide_banner", "-nostats", "-loglevel", "info", "-protocol_whitelist", "file", "-f", VIDEO_DEMUXER[mime],
+            "-t", str(int(MAX_CLIP_SECONDS)), "-i", str(src), "-map", "0:a:0", "-vn",
+            "-af", f"aresample={MEASURE_RATE},astats=measure_perchannel=none", "-f", "null", "-"]
+
+
+def audio_is_sound(ffmpeg: str, ffprobe: str, src: Path, mime: str, video_seconds: float,
+                   run: Callable[..., "subprocess.CompletedProcess"] = subprocess.run) -> bool:
+    """Whether the clip has sound a visitor will hear: an audio stream (has_audio) whose peak is above SILENT_PEAK_DB and which
+    covers at least MIN_AUDIO_COVER of the picture. A stream of digital silence (generators pad with one) or a blip a few
+    milliseconds long is recorded as no sound, because `audio: true` puts a speaker toggle on the public site (CLAUDE.md #5). A
+    measurement that cannot be read refuses (audio_unknown), never guesses either way."""
+    if not has_audio(ffprobe, src, mime, run=run):
+        return False
+    try:
+        proc = run(sound_measure_command(ffmpeg, src, mime), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120)
+        text = proc.stderr.decode("utf-8", "replace") if proc.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        text = ""
+    # astats prints the Overall section last; its values are the ones read (the last match of each).
+    peaks = re.findall(r"Peak level dB:\s*(-?inf|-?\d+(?:\.\d+)?)", text)
+    samples = re.findall(r"Number of samples:\s*(\d+)", text)
+    if not peaks or not samples or not (video_seconds == video_seconds and video_seconds > 0):
+        raise Refusal("audio_unknown", "the clip's sound could not be measured (ffmpeg astats); install ffmpeg (FFMPEG) and run again")
+    peak = float("-inf") if peaks[-1].endswith("inf") else float(peaks[-1])
+    audio_seconds = int(samples[-1]) / MEASURE_RATE
+    return peak > SILENT_PEAK_DB and audio_seconds >= MIN_AUDIO_COVER * video_seconds
+
+
 def clip_seconds(ffprobe: str, src: Path, mime: str, run: Callable[..., "subprocess.CompletedProcess"] = subprocess.run) -> float:
     """The downloaded clip's own length, measured, never the row's claim (duration_s may be null). A length that cannot be read is
     a refusal: the site would otherwise show a clip cut short at the 30 s backstop without saying so."""
     try:
         proc = run(probe_command(ffprobe, src, mime), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=60)
-        seconds = float(proc.stdout.decode("ascii", "replace").strip().splitlines()[0]) if proc.returncode == 0 else float("nan")
+        seconds = _parse_seconds(proc.stdout.decode("ascii", "replace")) if proc.returncode == 0 else float("nan")
     except (OSError, ValueError, IndexError, subprocess.SubprocessError):
         seconds = float("nan")
     if not (seconds == seconds and 0 < seconds < float("inf")):
@@ -633,16 +701,16 @@ def clip_seconds(ffprobe: str, src: Path, mime: str, run: Callable[..., "subproc
 
 def make_derivatives(src: Path, kind: str, mime: str, out: Path, ffmpeg: str = "ffmpeg", run: Callable[[Sequence[str]], None] = _run,
                      ffprobe: str = "ffprobe", measure: Callable[[str, Path, str], float] = clip_seconds,
-                     sound: Callable[[str, Path, str], bool] = has_audio) -> Tuple[int, int, bool]:
+                     sound: Callable[[str, str, Path, str, float], bool] = audio_is_sound) -> Tuple[int, int, bool]:
     """The web copies; returns the 1280 copy's (width, height) and whether the full copies carry sound (False for a picture)."""
     audio = False
     if kind == "video":
         # Measured before anything is written; `-t` in the commands is only a backstop.
-        measure(ffprobe, src, mime)
-        audio = sound(ffprobe, src, mime)
+        seconds = measure(ffprobe, src, mime)
+        audio = sound(ffmpeg, ffprobe, src, mime, seconds)
     out.mkdir(parents=True, exist_ok=True)
     if kind == "video":
-        for cmd in video_commands(ffmpeg, src, mime, out, audio=audio):
+        for cmd in video_commands(ffmpeg, src, mime, out, audio=audio, seconds=seconds):
             run(cmd)
         frame = out / "frame0.png"
         try:
@@ -709,6 +777,13 @@ def entry_from_plan(plan: Mapping[str, Any], size: Tuple[int, int], slot: Option
     return entry
 
 
+def _code(text: str) -> str:
+    """`text` as one inline code span, fenced longer than any backtick run in it, so a value can neither end the span nor
+    `@mention` anyone in the PR body (GitHub notifies a bare @name, never one inside code)."""
+    fence = "`" * (max((len(r) for r in re.findall(r"`+", text)), default=0) + 1)
+    return f"{fence} {text} {fence}"
+
+
 def summary_markdown(entry: Mapping[str, Any]) -> str:
     cost = entry["cost"]
     usd = "unknown" if cost["usdEstimate"] is None else f"${cost['usdEstimate']:.4f} ({cost['priceSource']})"
@@ -733,7 +808,7 @@ def summary_markdown(entry: Mapping[str, Any]) -> str:
         f"- Output asset `{entry['assetId']}`, sha256 `{entry['sha256']}` (the download matched it)",
         f"- Prompt: {json.dumps(entry['prompt'], ensure_ascii=False)}",
         "- Sound: " + ("a picture" if entry["kind"] != "video" else "yes: the 1280 copies keep the clip's audio (AAC / Opus); the 640 copies are silent" if entry.get("audio") else "none (the clip has no audio track)"),
-        "- Card line: " + ("; ".join(f"{lang}: {json.dumps(card[lang], ensure_ascii=False)}" for lang in CARD_LINE_LANGS) if card else "none"),
+        "- Card line: " + ("; ".join(f"{lang}: {_code(json.dumps(card[lang], ensure_ascii=False))}" for lang in CARD_LINE_LANGS) if card else "none"),
     ]
     return "\n".join(lines) + "\n"
 
@@ -807,7 +882,7 @@ def export(
     slot_raw: Any = None,
     caption_raw: Any = None,
     card_line_raw: Optional[Mapping[str, Any]] = None,
-    derive: Callable[..., Tuple[int, int]] = make_derivatives,
+    derive: Callable[..., Tuple[int, int, bool]] = make_derivatives,
     data_file: Path = DATA_FILE,
     assets_module: Path = ASSETS_MODULE,
     out_root: Path = OUT_ROOT,

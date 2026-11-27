@@ -7,7 +7,7 @@ import { useClipsHeld } from "@/lib/site/clip-hold";
 import { CLIPS, type ClipId } from "@/components/site/clip-assets";
 import { clipRendition } from "@/lib/site/renditions";
 import { useClipNear, useClipTurn, usePageVisible } from "@/components/site/clip-turns";
-import { registerSound, setSoundOn } from "@/lib/site/sound";
+import { registerSound, setSoundLive, setSoundOn } from "@/lib/site/sound";
 import { SoundToggle } from "@/components/site/SoundToggle";
 
 type NetworkInformation = { saveData?: boolean; effectiveType?: string };
@@ -17,7 +17,15 @@ type NetworkInformation = { saveData?: boolean; effectiveType?: string };
  * upscale). WebM is optional: a Studio piece on the landing (components/site/StudioClip.tsx) is one MP4, and a `<source>` naming a
  * file that is not there would cost a failed request before the browser tried the MP4.
  */
-export type ClipSources = { mp4: string; webm?: string; smMp4: string; smWebm?: string; lg?: { mp4: string; webm: string } };
+export type ClipSources = { mp4: string; webm?: string; smMp4: string; smWebm?: string; lg?: { mp4: string; webm: string; audio?: true } };
+
+/**
+ * Only a browser's autoplay refusal of an audible play() means "this clip may not make sound now". Anything else (an AbortError
+ * from a load() or pause() that interrupted it, a decode error) says nothing about sound, and must not switch it off.
+ */
+function refusedSound(e: unknown, v: HTMLVideoElement): boolean {
+  return (e as DOMException | undefined)?.name === "NotAllowedError" && !v.muted;
+}
 
 /** Whether a clip may be fetched and played at all: never under reduced motion, never on Save-Data or a slow link. */
 export function clipsAllowed(): boolean {
@@ -123,38 +131,82 @@ export function LoopClip({
 
   const sizeNow = useRef(size);
   sizeNow.current = size;
+  const holdNow = useRef(hold);
+  holdNow.current = hold;
+  const mayPlay = useRef(false);
+  mayPlay.current = sized && wanted && turn && !hold;
+  // Sound turned on while the page held the clip: the full file is fetched only when it plays again (never a load() under a
+  // hold, which would also drop the frame the visitor stopped on). The moment to resume from, or null.
+  const swapLater = useRef<number | null>(null);
+  const resumeAt = useRef<number | null>(null);
+  // Sound only where the file that would play carries it: the 1280 copies do when `audio`, a larger file only when it says so.
+  const canSound = audio && (size !== "lg" || sources.lg?.audio === true);
 
   // A clip with sound joins the one-at-a-time registry only while its video is in the page, so a toggle exists only then.
-  // The 640 copies are silent (tools/export_showcase.py: they are the phone and grid files, and sound would add about a quarter to
-  // a median one), so a clip playing one switches to its full file when the visitor turns the sound on: the bytes of sound are spent only for the
-  // one who asked. Inside the click, so the audible play() is the gesture's (a browser refuses one that is not); it carries on
-  // from the same moment. Should the browser still refuse it, the toggle goes back to off and the clip plays on muted: the
-  // toggle never says "on" over a silent clip.
+  // The 640 copies are silent (tools/export_showcase.py: they are the phone and grid files, and sound would add about a quarter
+  // to a median one), so a clip playing one switches to its full file when the visitor turns the sound on: the bytes of sound
+  // are spent only for the one who asked. Inside the click, so the audible play() is the gesture's (a browser refuses one that
+  // is not); it carries on from the same moment. Should the browser refuse it, or the full file fail to load, the toggle goes
+  // back to off and the clip plays on muted (from its small file after a failure): the toggle never says "on" over silence.
   useEffect(() => {
     const v = ref.current;
-    if (!allowed || !audio || !v) return;
+    if (!allowed || !canSound || !v) return;
     const prepare = () => {
       if (sizeNow.current !== "sm" || sources.mp4 === sources.smMp4) return;
+      if (holdNow.current) {
+        swapLater.current = v.currentTime;
+        return;
+      }
       const at = v.currentTime;
       const wasPlaying = !v.paused;
       flushSync(() => setSize("md"));
-      v.load();
-      const seek = () => {
-        try {
-          v.currentTime = at;
-        } catch {
-          // A file that cannot seek yet starts from its beginning; the sound is still the one asked for.
-        }
-      };
-      v.addEventListener("loadedmetadata", seek, { once: true });
-      if (wasPlaying)
-        void Promise.resolve(v.play()).catch(() => {
-          setSoundOn(v, false);
-          void Promise.resolve(v.play()).catch(() => undefined);
-        });
+      reload(v, at, wasPlaying);
     };
     return registerSound(key, v, prepare);
-  }, [allowed, audio, key, sources.mp4, sources.smMp4]);
+  }, [allowed, canSound, key, sources.mp4, sources.smMp4]);
+
+  /** Loads the file now chosen and carries on from `at`; on an error, back to the small silent file with the sound off. */
+  function reload(v: HTMLVideoElement, at: number, play: boolean) {
+    const seek = () => {
+      try {
+        v.currentTime = at;
+      } catch {
+        // A file that cannot seek yet starts from its beginning; the sound is still the one asked for.
+      }
+    };
+    // A <source> that fails fires `error` on itself, not on the video: caught on the way down.
+    const failed = () => {
+      done();
+      flushSync(() => setSize("sm"));
+      setSoundOn(v, false);
+      v.load();
+      v.addEventListener("loadedmetadata", seek, { once: true });
+      if (mayPlay.current) void Promise.resolve(v.play()).catch(() => undefined);
+    };
+    const done = () => {
+      v.removeEventListener("error", failed, true);
+      v.removeEventListener("canplay", done);
+    };
+    v.addEventListener("error", failed, true);
+    v.addEventListener("canplay", done);
+    v.load();
+    v.addEventListener("loadedmetadata", seek, { once: true });
+    if (play)
+      void Promise.resolve(v.play()).catch((e) => {
+        if (!refusedSound(e, v)) return;
+        setSoundOn(v, false);
+        void Promise.resolve(v.play()).catch(() => undefined);
+      });
+  }
+
+  // The postponed swap, once the new file is chosen (the play effect below asked for it).
+  useEffect(() => {
+    const v = ref.current;
+    if (!v || size !== "md" || resumeAt.current === null) return;
+    const at = resumeAt.current;
+    resumeAt.current = null;
+    reload(v, at, mayPlay.current);
+  }, [size]);
 
   useEffect(() => {
     if (!clipsAllowed()) return;
@@ -216,14 +268,20 @@ export function LoopClip({
       });
     }
     const box = v.parentElement;
-    const mark = () => box?.setAttribute("data-live", "true");
+    const mark = () => {
+      box?.setAttribute("data-live", "true");
+      setSoundLive(v, true);
+    };
     // A stall mid-loop (a slow link) goes back to the still rather than holding a half-loaded frame; a blip shorter than this
     // (the loop's own seek back to 0) does not flash the still.
     let stall = 0;
     const waiting = () => {
       window.clearTimeout(stall);
       stall = window.setTimeout(() => {
-        if (!v.paused && v.readyState < 3) box?.removeAttribute("data-live");
+        if (!v.paused && v.readyState < 3) {
+          box?.removeAttribute("data-live");
+          setSoundLive(v, false);
+        }
       }, 400);
     };
     v.addEventListener("playing", mark);
@@ -232,6 +290,7 @@ export function LoopClip({
       v.removeEventListener("playing", mark);
       v.removeEventListener("waiting", waiting);
       window.clearTimeout(stall);
+      setSoundLive(v, false);
     });
     return () => stops.forEach((s) => s());
   }, [allowed, early]);
@@ -243,15 +302,28 @@ export function LoopClip({
     if (!allowed || !v) return;
     // A browser may refuse an audible play() outside a press (a clip whose sound was turned on while it was held or off screen):
     // the sound goes back to off and the clip plays on muted, rather than standing still under a toggle that says "on".
-    if (sized && wanted && turn && !hold)
-      void Promise.resolve(v.play()).catch(() => {
-        if (v.muted) return;
+    if (sized && wanted && turn && !hold) {
+      // Sound was turned on during a hold: fetch the full file now, and play it once chosen (the effect on `size` above).
+      if (swapLater.current !== null) {
+        const at = swapLater.current;
+        swapLater.current = null;
+        if (!v.muted && sizeNow.current === "sm") {
+          resumeAt.current = at;
+          setSize("md");
+          return;
+        }
+      }
+      void Promise.resolve(v.play()).catch((e) => {
+        if (!refusedSound(e, v)) return;
         setSoundOn(v, false);
         void Promise.resolve(v.play()).catch(() => undefined);
       });
-    else {
+    } else {
       v.pause();
-      if (!hold) v.parentElement?.removeAttribute("data-live");
+      if (!hold) {
+        v.parentElement?.removeAttribute("data-live");
+        setSoundLive(v, false);
+      }
     }
   }, [allowed, sized, wanted, turn, hold]);
 
@@ -271,7 +343,7 @@ export function LoopClip({
         {/* After every source: the HTML content model puts tracks last. */}
         {captions && <track kind="captions" src={captions.src} srcLang={captions.srcLang} label={captions.label} default />}
       </video>
-      {audio && soundToggle && <SoundToggle clip={key} />}
+      {canSound && soundToggle && <SoundToggle clip={key} />}
     </>
   );
 }

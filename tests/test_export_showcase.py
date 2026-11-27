@@ -464,7 +464,7 @@ class ExportTest(unittest.TestCase):
         self.assertEqual(data["entries"][0]["cardLine"], line)
         self.assertIn("audio: true", self.module.read_text(encoding="utf-8"))
         self.assertIn("Sound: yes", x.summary_markdown(entry))
-        self.assertIn('Card line: en: "Lanterns rise"', x.summary_markdown(entry))
+        self.assertIn('Card line: en: `` "Lanterns rise" ``'.replace("``", "`"), x.summary_markdown(entry))
 
     def test_a_prompt_with_hidden_tag_bytes_is_exported_as_its_visible_words(self):
         # BR-1: "a boat" followed by text spelled in tag characters past U+E007F (invisible on the page, read by a model).
@@ -763,6 +763,55 @@ class SoundTest(unittest.TestCase):
         finally:
             x.write_posters = orig
 
+    def sound_run(self, peak, samples, code=0):
+        """ffprobe says there is a stream; ffmpeg's astats reports `peak` and `samples` (or nothing, with code != 0)."""
+        def run(cmd, **kw):
+            if Path(cmd[0]).name == "ffprobe":
+                return self.Done(0, b"audio\n")
+            text = "" if code else f"[Parsed_astats_1] Overall\n[Parsed_astats_1] Peak level dB: {peak}\n[Parsed_astats_1] Number of samples: {samples}\n"
+            d = self.Done(code, b"")
+            d.stderr = text.encode()
+            return d
+        return run
+
+    def test_only_a_track_that_is_heard_and_covers_the_picture_is_sound(self):
+        hear = lambda peak, samples: x.audio_is_sound("ffmpeg", "ffprobe", Path("c"), "video/mp4", 2.0, run=self.sound_run(peak, samples))  # noqa: E731
+        self.assertTrue(hear("-12.5", 96000))
+        # Digital silence, and a generator's near-silent padding.
+        self.assertFalse(hear("-inf", 96000))
+        self.assertFalse(hear("-75.0", 96000))
+        # A blip: 1024 samples at 48 kHz on a 2 s picture; and just under 80% of it.
+        self.assertFalse(hear("-18.0", 1024))
+        self.assertFalse(hear("-18.0", int(0.79 * 2 * 48000)))
+        self.assertTrue(hear("-18.0", int(0.8 * 2 * 48000)))
+
+    def test_a_sound_measurement_that_cannot_be_read_refuses(self):
+        with self.assertRaises(x.Refusal) as cm:
+            x.audio_is_sound("ffmpeg", "ffprobe", Path("c"), "video/mp4", 2.0, run=self.sound_run("-1", 1, code=1))
+        self.assertEqual(cm.exception.code, "audio_unknown")
+
+    def test_the_sound_measure_reads_only_the_file_through_its_forced_demuxer(self):
+        cmd = x.sound_measure_command("ffmpeg", Path("/w/src"), "video/webm")
+        self.assertEqual(cmd[cmd.index("-f") + 1], "matroska")
+        self.assertEqual(cmd[cmd.index("-protocol_whitelist") + 1], "file")
+        self.assertLess(cmd.index("-t"), cmd.index("-i"))
+
+    def test_the_kept_track_is_cut_at_the_pictures_length(self):
+        cmds = self.by_output(x.video_commands("ffmpeg", Path("src"), "video/mp4", Path("out"), audio=True, seconds=2.0))
+        for name in ("clip.mp4", "clip.webm"):
+            c = cmds[name]
+            self.assertIn("-shortest", c)
+            # The second -t (after -i) is the output's own cut.
+            after = c[c.index("-i"):]
+            self.assertEqual(after[after.index("-t") + 1], "2.000")
+
+    def test_the_length_is_the_video_streams_and_a_webm_tag_reads(self):
+        cmd = x.probe_command("ffprobe", Path("c"), "video/webm")
+        self.assertEqual(cmd[cmd.index("-select_streams") + 1], "v:0")
+        self.assertEqual(x._parse_seconds("N/A,00:00:02.500000000\n"), 2.5)
+        self.assertEqual(x._parse_seconds("5.041667\n"), 5.041667)
+        self.assertNotEqual(x._parse_seconds("N/A\n"), x._parse_seconds("N/A\n"))
+
     def test_the_module_marks_only_a_clip_with_sound_and_an_old_entry_generates_what_it_did(self):
         silent = {"jobId": JOB, "kind": "video"}
         old = x.render_assets_module([silent])
@@ -792,6 +841,19 @@ class CardLineTest(unittest.TestCase):
         self.assertEqual(got, {"en": "boat", "ru": "лодка", "uz": "qayiq"})
         # A line that was only invisible characters is no line.
         self.assertIsNone(x.parse_card_line({"en": chr(0xE0080), "ru": chr(0x3164), "uz": chr(0xFFA0)}))
+
+    def test_a_line_break_or_a_tab_is_refused(self):
+        for bad in ("one\ntwo", "one\rtwo", "one\ttwo"):
+            with self.subTest(bad=bad), self.assertRaises(x.Refusal) as cm:
+                x.parse_card_line({"en": "a", "ru": bad, "uz": "c"})
+            self.assertEqual(cm.exception.code, "card_line_invalid")
+
+    def test_the_summary_shows_a_card_line_as_code_so_it_pings_nobody(self):
+        card = x.parse_card_line({"en": "thanks @octocat", "ru": "a ``b`` c", "uz": "d"})
+        self.assertEqual(x._code('"thanks @octocat"'), '` "thanks @octocat" `')
+        # A value with backticks cannot close its own span.
+        self.assertEqual(x._code('"a ``b`` c"'), '``` "a ``b`` c" ```')
+        self.assertIsNotNone(card)
 
     def test_a_line_over_the_limit_is_refused_never_cut(self):
         self.assertEqual(x.parse_card_line({"en": "a" * 140, "ru": "b", "uz": "c"})["en"], "a" * 140)

@@ -89,12 +89,16 @@ has no figure (never 0); and the vendor's own measure per row (for example Runwa
 
 Card line (optional): the inputs `card_line_en`, `card_line_ru` and `card_line_uz` give the sample's card a short line per
 language. All three or none; each at most 140 characters after invisible characters are stripped (a longer one is refused, not
-cut). The entry carries it as `cardLine: {en, ru, uz}`, or `null` without one.
+cut), and one line (a line break or a tab is refused). The entry carries it as `cardLine: {en, ru, uz}`, or `null` without one.
 
 ### Sound
 
-Owner decision (2026-11-22): every video on the site is cinematic and has sound. ffprobe reads the downloaded clip for an audio
-stream. When there is one, the **1280 copies keep it**: AAC 128 kb/s stereo 48 kHz in `clip.mp4`, Opus 96 kb/s stereo 48 kHz in
+Owner decision (2026-11-22): every video on the site is cinematic and has sound. The export records `audio: true` only for
+sound a visitor will hear: ffprobe finds an audio stream, and one ffmpeg pass (`astats`) measures it, a peak above -60 dB (digital
+silence, which generators pad with, reads -inf) and a length covering at least 80% of the picture (a few-millisecond blip is not
+the clip's sound). Anything else is recorded as `audio: false`; a measurement that cannot be read refuses (`audio_unknown`). The
+length limit is the VIDEO stream's, and a kept track is cut at the picture's length, so a long track never stretches clip.mp4
+into a frozen frame. When there is sound, the **1280 copies keep it**: AAC 128 kb/s stereo 48 kHz in `clip.mp4`, Opus 96 kb/s stereo 48 kHz in
 `clip.webm`. The 640 copies (`clip-sm.*`, the phone and grid files) stay silent (`-an`); a grid or phone clip whose sound a visitor turns
 on switches, inside that press, to its full file and plays on from the same moment (`components/site/LoopClip.tsx`), so the
 bytes of sound are spent only for whoever asked. The entry records what was found as
@@ -114,6 +118,11 @@ Against today's 35 video samples (all silent; `components/site/showcase/*/clip.m
 smallest 216 KB, largest 5614 KB, median length 5.2 s, longest 10.1 s; `clip.webm` median 1289 KB), sound adds about 6% to a
 median 5 s `clip.mp4` and about 5% (at most) to its `clip.webm`, up to roughly a third of the smallest one. The phone files
 (`clip-sm.mp4` median 345 KB) do not change.
+
+Where the toggle shows today: nowhere. None of the 35 samples has sound, and the one Studio piece with a real track
+(`language-duo`, `lib/showcase/items.ts`) is in `components/landing/home/HomePage.tsx`'s reel, which no route mounts (the
+homepage is `Landing`, the owner's choice of 2026-11-22). The toggle appears by itself on the first clip exported with sound,
+and only while that clip is playing (never over its still).
 
 ## Secrets and permissions
 
