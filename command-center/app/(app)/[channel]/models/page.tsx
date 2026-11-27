@@ -19,7 +19,7 @@ import { readCreditPriceList } from "@/lib/server/credits";
 import { chargedPrices } from "@/lib/credits";
 import { budgetModelsFrom } from "@/lib/owner/budget";
 import { readCustomerModels, readOperatorModels } from "@/lib/server/model-discovery";
-import { coerceAdminModels, latestProbes } from "@/lib/models-admin";
+import { coerceAdminModels, coerceModelTermsAcceptances, latestProbes } from "@/lib/models-admin";
 import { filtersFromQuery } from "@/lib/models-discovery";
 import { getChannelContext } from "@/lib/channels-server";
 import { channelPath } from "@/lib/channels";
@@ -189,8 +189,7 @@ export default async function ModelsPage({
   }
 
   if (manage) {
-    // The availability board, unchanged: the operator's switches (0035).
-    const [registry, probes, prices] = await Promise.all([
+    const [registry, probes, prices, terms] = await Promise.all([
       supabase.rpc("model_registry_admin"),
       supabase
         .from("model_probe_runs")
@@ -199,6 +198,7 @@ export default async function ModelsPage({
         .limit(2000),
       // The operator's own list (base rates); 0084 shows it to no one else.
       readCreditPriceList(supabase),
+      supabase.rpc("model_terms_acceptance_admin"),
     ]);
     if (registry.error) {
       if (isMissingFunction(registry.error)) return note(t.models.notEnabled);
@@ -210,12 +210,23 @@ export default async function ModelsPage({
       prices.supported && !prices.failed
         ? Object.fromEntries(Object.values(prices.prices).map((p) => [p.unit, p.creditsPerUnit]))
         : null;
+    const termsState = isMissingFunction(terms.error)
+      ? "not_enabled"
+      : terms.error || !Array.isArray(terms.data)
+        ? "failed"
+        : coerceModelTermsAcceptances(terms.data);
     if (adminModels.length === 0) return note(t.models.empty);
     return (
       <div className="rhythm ns-open">
         {header}
         {views}
-        <ModelAvailabilityBoard models={adminModels} probes={probes.error ? null : latestProbes(probes.data)} prices={priceList} />
+        <ModelAvailabilityBoard
+          models={adminModels}
+          probes={probes.error ? null : latestProbes(probes.data)}
+          prices={priceList}
+          terms={termsState}
+          platformOwner={platformOwner}
+        />
       </div>
     );
   }
