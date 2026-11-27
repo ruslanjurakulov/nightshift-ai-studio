@@ -160,6 +160,11 @@ class FilmUnavailable(RuntimeError):
     """The database could not be reached. Never carries a key or a body."""
 
 
+class FilmFunctionMissing(FilmUnavailable):
+    """PostgREST answered 404 for a service function: its migration is not applied here. A FilmUnavailable like any other to every
+    caller that does not ask; the sweep asks, because 0212's film_sweep missing means "call 0171's function directly", not "down"."""
+
+
 class FilmRefused(RuntimeError):
     """A service function refused (its machine word: lease_lost, not_running, take_not_running, not_complete, ...)."""
 
@@ -920,7 +925,7 @@ class FilmRest:
         except Exception as e:
             raise FilmUnavailable(f"{name}: {type(e).__name__}") from None
         if r.status_code == 404:
-            raise FilmUnavailable(f"{name}: HTTP 404 (is its migration applied?)")
+            raise FilmFunctionMissing(f"{name}: HTTP 404 (is its migration applied?)")
         if 400 <= r.status_code < 500:
             word, detail = "", ""
             try:
@@ -988,6 +993,28 @@ class FilmRest:
     def expire(self) -> int:
         out = self.rpc("film_expire_segments", {})
         return int(out) if isinstance(out, int) else 0
+
+    # 0212
+    def sweep(self, runner: str) -> int:
+        """film_expire_segments through 0212's film_sweep, which records that this runner swept (G2: "it ran" is a measurement). How
+        many segments it moved. A sweep that failed in the database is recorded there and raised here, by its SQLSTATE only."""
+        try:
+            out = self.rpc("film_sweep", {"p_runner": runner})
+        except FilmFunctionMissing:
+            raise FilmFunctionMissing("film_sweep: HTTP 404 (migration 0212_film_sweep.sql is not applied)") from None
+        if not isinstance(out, dict) or out.get("ok") is not True:
+            code = str(out.get("error") or "") if isinstance(out, dict) else ""
+            raise FilmUnavailable(f"film_sweep: the sweep failed ({code if re.match(r'^[0-9A-Z]{5}$', code) else 'no answer'})")
+        n = out.get("settled")
+        return int(n) if isinstance(n, int) and not isinstance(n, bool) else 0
+
+    def sweep_status(self) -> Optional[dict]:
+        """0212's film_sweep_status(): counts and times, read only. None when the answer is not an object."""
+        try:
+            out = self.rpc("film_sweep_status", {})
+        except FilmFunctionMissing:
+            raise FilmFunctionMissing("film_sweep_status: HTTP 404 (migration 0212_film_sweep.sql is not applied)") from None
+        return out if isinstance(out, dict) else None
 
     def takes(self, segment: str) -> list:
         return self._select("film_takes", {"segment_id": f"eq.{segment}",

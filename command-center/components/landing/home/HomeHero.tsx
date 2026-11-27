@@ -3,6 +3,7 @@ import type { Dictionary } from "@/lib/i18n";
 import { posterSrcSet } from "@/lib/site/renditions";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { MotionToggle } from "@/components/site/MotionToggle";
+import { SoundToggle } from "@/components/site/SoundToggle";
 import { HERO_JOB, reelItem } from "@/components/landing/home/home-reel";
 import { IdeaBox } from "@/components/landing/home/IdeaBox";
 import { AiMark } from "@/components/site/AiMark";
@@ -46,7 +47,7 @@ export function HomeHero({ t }: { t: Dictionary }) {
             className="hm-hero-still"
             fetchPriority="high"
           />
-          <ShowcaseClip jobId={item.e.jobId} compact={false} early />
+          <ShowcaseClip jobId={item.e.jobId} compact={false} early soundToggle={false} />
         </div>
       )}
       <div className="hm-hero-veil" aria-hidden="true" />
@@ -65,6 +66,8 @@ export function HomeHero({ t }: { t: Dictionary }) {
           </span>
         </p>
       )}
+      {/* Outside the aria-hidden picture, so a screen reader and a pointer reach it; nothing until the hero's clip has sound and plays. */}
+      {item && <SoundToggle clip={item.e.jobId} className="hm-hero-sound" />}
       <MotionToggle pause={t.site.fx.pause} />
     </section>
   );
