@@ -93,5 +93,6 @@ export const effectsRu: EffectsDictionary = {
     listLabel: "Эффекты",
     use: "Использовать эффект",
     useAria: "Использовать эффект: {name}",
+    drawing: "Рисунок",
   },
 };
