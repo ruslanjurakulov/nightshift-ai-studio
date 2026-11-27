@@ -2,18 +2,18 @@
 -- start, before anything is counted, priced or held. docs/MIGRATIONS.md "0220", docs/studio/S6_GAPS.md (G1).
 --
 -- EVIDENCE (read from the migrations, not assumed)
---   * quote_film (0198's body, unchanged here) and start_film (0198's body, unchanged here) price a film through film_price (0171's
---     body), and start_film asks film_precheck (0171's body) before its rate step. No later migration replaced either helper
---     (grep 'function public.film_price(' / 'function public.film_precheck(' across supabase/migrations: 0171 only), and no open
---     S2 branch does.
+--   * quote_film (0198's body, unchanged here) and start_film (0215's body, unchanged here) price a film through film_price (0218's
+--     body: 0171's with the scene's prompt and negative prompt priced on the key-frame and clip lines), and start_film asks
+--     film_precheck (0171's body) before its rate step. grep 'function public.film_price(' across supabase/migrations: 0171 and
+--     0218 (live in production, md5 3c22f87be736c073d17d93e040e914e1 measured there); 'function public.film_precheck(': 0171 only.
 --   * film_price's narration line asks the voice model's role (film_model_problem) and its price (film_try_price), never
 --     films.language (0166: en, ru, uz). An Uzbek film read by Eleven Multilingual v2 is quoted, started and held, and fails only at
 --     the narration take in the TTS adapter (modules/tts_languages.refusal), after its clips were paid for (rule 6).
 --   * 0214 added public.voice_language_problem(model, language) for exactly this, and proposed the line below; it changed no money
 --     function, so until this file nothing behaved differently.
 --
--- CHANGE (two 0171 bodies replaced, each with one marked 0220 hunk and nothing else changed)
---   film_price (0171's body)     the narration branch, the `else` after the channel-voice refusal, becomes
+-- CHANGE (two bodies replaced, each with one marked 0220 hunk; film_price also with one regex written without a backslash)
+--   film_price (0218's body)     the narration branch, the `else` after the channel-voice refusal, becomes
 --                                    q := coalesce(public.film_model_problem(f.voice ->> 'model', array['tts'], 'voice.model'),
 --                                                  public.voice_language_problem(f.voice ->> 'model', f.language),
 --                                                  public.film_try_price(...unchanged...));
@@ -21,6 +21,10 @@
 --                                language reason whose detail would describe a registry row; the language second, so a refused one is
 --                                never priced. The refusal is the line's own (priced: false, reason, detail), so the film's total is
 --                                NULL, no quote_id is made and quote_film stores nothing start_film could accept.
+--                                0218's key-frame and clip lines (the prompt and negative prompt each take sends) are kept exactly.
+--                                Its clip-length filter `x ~ '^[0-9]{1,3}(<backslash>.[0-9]+)?$'` is written `([.][0-9]+)`: the same
+--                                regex (a bracketed dot is a literal dot), so that this file holds no backslash an apply tool could
+--                                rewrite. That changes the body's md5, not what it matches.
 --   film_precheck (0171's body)  after every model's role check, the same question for a creative_tts voice with narration. start_film
 --                                raises it with its own word (NS400 voice_language_unsupported / voice_language_unknown) before the
 --                                rate step: a film that became unsupported since its quote (the registry's list changed and the model
@@ -29,8 +33,9 @@
 --   "choose Eleven v3, a voice model that lists Uzbek" (v3 only, like modules/tts_languages.UZBEK_FIX). No model list is written here.
 --   A supported pair is priced exactly as before: the same lines, the same total and the same quote_id.
 --
--- NOT CHANGED: quote_film, start_film, every price, hold, capture, release and settle rule; the worker's functions; voice_language_problem
---   itself; every grant (create or replace keeps 0171's: no API role may execute either helper).
+-- NOT CHANGED: 0218's prompt and negative-prompt lines; quote_film, start_film, every price, hold, capture, release and settle rule;
+--   the worker's functions; voice_language_problem itself; every grant (create or replace keeps 0171's: no API role may execute
+--   either helper).
 --
 -- APPLY ORDER (the reason this is its own file, after 0214, and not applied with it)
 --   1. 0214, and its Verify block.
@@ -45,16 +50,18 @@
 --   (rule 5: a model nobody listed languages for is never "speaks"), but no narration film can be quoted or started until the sync.
 --   The guard below raises a NOTICE naming how many tts rows have no list, and refuses nothing for it.
 --
--- REPLACES (md5 drift guard: the earlier body, or this file's own on a replay; whitespace runs read as one space)
---   film_price      5de6c9bb2a74079e2078cad2d91b3c34 (0171) -> 25e85c92d74e740ed66fec577652fdc5
+-- REPLACES (md5 drift guard: the earlier body, or this file's own on a replay; whitespace runs read as one space, folded with
+-- '[[:space:]]+', which gives the same md5 as the other files' class-escape form)
+--   film_price      3c22f87be736c073d17d93e040e914e1 (0218) -> b8ae113d06a5b873d95c19fc1016c5fb
 --   film_precheck   ff4fa7e8a6386420f32ab6a3a85a778c (0171) -> 0a89da5f19fa2c6c0f6d802c02e18925
+--   0171's film_price (5de6c9bb2a74079e2078cad2d91b3c34) is refused: production has 0218, and a database without it applies 0218 first.
 -- REQUIRES voice_language_problem(text, text) with 0214's body (6d5025fd76e3b8b4d731e2d98f65db6e).
--- REPLAY. This file replays onto itself. Re-running 0171 after it FAILS LOUDLY (0171's guard refuses this file's film_price and
---   film_precheck). rollback_0171 refuses while this file's bodies are live, and rollback_0214 refuses while film_price or
---   film_precheck calls voice_language_problem: take this file out first with its own rollback.
+-- REPLAY. This file replays onto itself. Re-running 0171 or 0218 after it FAILS LOUDLY (their guards refuse this file's film_price;
+--   0171's its film_precheck too). rollback_0218 and rollback_0171 refuse while this file's bodies are live, and rollback_0214 refuses
+--   while film_price or film_precheck calls voice_language_problem: take this file out first with its own rollback.
 --
--- NUMBER. Provisionally 0220; the coordinator confirms it at merge. Needs 0171 and 0214.
--- Undo: docs/sql/rollback_0220_film_voice_language.sql (owner-applied): 0171's two bodies back, nothing else.
+-- NUMBER. Provisionally 0220; the coordinator confirms it at merge. Needs 0171, 0214 and 0218.
+-- Undo: docs/sql/rollback_0220_film_voice_language.sql (owner-applied): 0218's film_price and 0171's film_precheck back, nothing else.
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
 
 set local lock_timeout = '5s';
@@ -69,7 +76,12 @@ begin
      or to_regprocedure('public.film_model_problem(text, text[], text)') is null then
     raise exception '0220 needs the Film Studio''s money: apply 0171_films_money.sql first';
   end if;
-  select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p
+  select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p
+   where p.oid = to_regprocedure('public.film_price(public.films)');
+  if h = '5de6c9bb2a74079e2078cad2d91b3c34' then
+    raise exception '0220 found 0171''s film_price: apply 0218_creative_prompt_limits.sql first (0220 is written on 0218''s body)';
+  end if;
+  select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p
    where p.oid = to_regprocedure('public.voice_language_problem(text, text)');
   if h is null then
     raise exception '0220 needs public.voice_language_problem(text, text): apply 0214_voice_language_check.sql first';
@@ -77,13 +89,13 @@ begin
   if h <> '6d5025fd76e3b8b4d731e2d98f65db6e' then
     raise exception '0220 found voice_language_problem(text, text) with a body that is not 0214''s (md5 %): read the live body first', h;
   end if;
-  -- The two bodies this file replaces: 0171's, or this file's own (a replay).
+  -- The two bodies this file replaces: 0218's film_price and 0171's film_precheck, or this file's own (a replay).
   for r in select * from (values
-      ('public.film_price(public.films)', '5de6c9bb2a74079e2078cad2d91b3c34', '25e85c92d74e740ed66fec577652fdc5'),
-      ('public.film_precheck(public.films)', 'ff4fa7e8a6386420f32ab6a3a85a778c', '0a89da5f19fa2c6c0f6d802c02e18925')) v(sig, was, now_) loop
-    select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
+      ('public.film_price(public.films)', '3c22f87be736c073d17d93e040e914e1', 'b8ae113d06a5b873d95c19fc1016c5fb', '0218'),
+      ('public.film_precheck(public.films)', 'ff4fa7e8a6386420f32ab6a3a85a778c', '0a89da5f19fa2c6c0f6d802c02e18925', '0171')) v(sig, was, now_, by_) loop
+    select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is null or h <> all (array[r.was, r.now_]) then
-      raise exception '0220 found % with a body that is neither 0171''s nor 0220''s (md5 %): read the live body first', r.sig, h;
+      raise exception '0220 found % with a body that is neither %''s nor 0220''s (md5 %): read the live body first', r.sig, r.by_, h;
     end if;
   end loop;
   -- Applied before the sync (APPLY ORDER), every narration film on such a model reads voice_language_unknown. Said, not refused.
@@ -154,12 +166,13 @@ end
 $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 2. film_price: 0171's body, one marked 0220 hunk
+-- 2. film_price: 0218's body, one marked 0220 hunk (and the clip-length regex without a backslash)
 -- ───────────────────────────────────────────────────────────────────────────
 
 -- The price of the film as it stands, line by line. Every line is priced from the backend's own rates (see 0171's header); a line that
 -- cannot be priced carries its reason and makes the total NULL. Each priced line's params are exactly what was priced (the variant
--- creative_price settled on included), so the take carries them. Reads only; holds nothing.
+-- creative_price settled on included), so the take carries them; the words a take sends are priced and left out of them (0218).
+-- Reads only; holds nothing.
 create or replace function public.film_price(p_film public.films) returns jsonb
   language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
@@ -231,6 +244,9 @@ begin
                         then (spec -> 'inputs' ->> 'image_refs_max')::numeric::integer else 0 end;
         params := jsonb_build_object('prompt', sc.visual_prompt, 'aspect_ratio', f.aspect)
                   || case when f.style_kit_id is null then '{}'::jsonb else jsonb_build_object('style_kit_id', f.style_kit_id) end
+                  -- 0218: the negative prompt the take carries (0198), so the quote asks whether this model takes one.
+                  || case when btrim(sc.negative_prompt) <> '' then jsonb_build_object('negative_prompt', sc.negative_prompt)
+                          else '{}'::jsonb end
                   || case when cap = 'edit' and stand is not null then jsonb_build_object('source_asset_id', stand) else '{}'::jsonb end;
         if refs_n > ref_max then
           q := jsonb_build_object('priced', false, 'reason', 'refs_not_supported',
@@ -243,7 +259,7 @@ begin
           q := public.film_try_price(f.org_id, cap, kmodel, params);
         end if;
         ln := ln || jsonb_build_object('capability', cap,
-                                       'params', (params - 'prompt' - 'source_asset_id')
+                                       'params', (params - 'prompt' - 'negative_prompt' - 'source_asset_id')
                                                  || jsonb_strip_nulls(jsonb_build_object('quality', q -> 'quality')))
               || q;
       end if;
@@ -268,7 +284,7 @@ begin
     select min(x::numeric) filter (where x::numeric >= target), max(x::numeric) into dur, longest
       from jsonb_array_elements_text(case when jsonb_typeof(spec -> 'durations_s') = 'array' then spec -> 'durations_s'
                                           else '[]'::jsonb end) x
-     where x ~ '^[0-9]{1,3}(\.[0-9]+)?$';
+     where x ~ '^[0-9]{1,3}([.][0-9]+)?$';
     for i in 1 .. sc.shot_count loop
       ln := jsonb_build_object('line', case when i = 1 then 'clip' else 'extend' end, 'scene_id', sc.id, 'position', sc.position,
                                'shot_index', i, 'model', cmodel, 'capability', 'i2v');
@@ -291,11 +307,16 @@ begin
                   || case when res is null then '{}'::jsonb else jsonb_build_object('resolution', res) end
                   || case when sc.clip_params ? 'audio' then jsonb_build_object('audio', sc.clip_params -> 'audio') else '{}'::jsonb end
                   || case when i = sc.shot_count and sc.last_frame <> 'none' then jsonb_build_object('end_asset_id', stand)
+                          else '{}'::jsonb end
+                  -- 0218: the words the take sends (0198: the scene's visual prompt, and its negative prompt when it has one), so the
+                  -- clip model's own prompt limit and whether it takes a negative prompt are asked here, not by the worker after the hold.
+                  || case when btrim(sc.visual_prompt) <> '' then jsonb_build_object('prompt', sc.visual_prompt) else '{}'::jsonb end
+                  || case when btrim(sc.negative_prompt) <> '' then jsonb_build_object('negative_prompt', sc.negative_prompt)
                           else '{}'::jsonb end;
         q := public.film_try_price(f.org_id, 'i2v', cmodel, params);
         -- The variant creative_price settled on (the model's pinned resolution, silent or with sound) is part of what was priced.
         ln := ln || jsonb_build_object('duration_s', dur,
-                                       'params', (params - 'source_asset_id' - 'end_asset_id')
+                                       'params', (params - 'source_asset_id' - 'end_asset_id' - 'prompt' - 'negative_prompt')
                                                  || case when params ? 'end_asset_id' then '{"end_frame": true}'::jsonb else '{}'::jsonb end
                                                  || jsonb_strip_nulls(jsonb_build_object('resolution', q -> 'resolution',
                                                                                          'audio', q -> 'audio')));
@@ -399,7 +420,7 @@ begin
 end
 $$;
 
--- 0171's grants, said again (create or replace keeps them): no API role executes either helper.
+-- 0171's grants (0218 said them again for film_price), said again (create or replace keeps them): no API role executes either helper.
 revoke all on function public.film_precheck(public.films) from public, anon, authenticated, service_role;
 revoke all on function public.film_price(public.films) from public, anon, authenticated, service_role;
 
@@ -412,10 +433,10 @@ declare
   h text;
 begin
   for r in select * from (values
-      ('public.film_price(public.films)', '25e85c92d74e740ed66fec577652fdc5'),
+      ('public.film_price(public.films)', 'b8ae113d06a5b873d95c19fc1016c5fb'),
       ('public.film_precheck(public.films)', '0a89da5f19fa2c6c0f6d802c02e18925'),
       ('public.voice_language_problem(text, text)', '6d5025fd76e3b8b4d731e2d98f65db6e')) v(sig, want) loop
-    select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
+    select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception '0220 end state: % does not hold the expected body (md5 %)', r.sig, h;
     end if;
@@ -429,9 +450,9 @@ begin
 end $$;
 
 -- Verify (read-only, run after applying):
---   select md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc
+--   select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
 --    where oid in ('public.film_price(public.films)'::regprocedure, 'public.film_precheck(public.films)'::regprocedure);
---     -- 25e85c92d74e740ed66fec577652fdc5 and 0a89da5f19fa2c6c0f6d802c02e18925 (either order)
+--     -- b8ae113d06a5b873d95c19fc1016c5fb and 0a89da5f19fa2c6c0f6d802c02e18925 (either order)
 --   select id, availability, verified_at, spec -> 'languages' from public.model_registry where 'tts' = any(capabilities) order by id;
 --     -- every row lists its languages, and the models the owner sells are verified and on sale again (APPLY ORDER 2-4)
 --   select prosrc like '%voice_language_problem(f.voice ->> ''model'', f.language)%' from pg_proc

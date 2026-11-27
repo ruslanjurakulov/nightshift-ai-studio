@@ -2781,8 +2781,11 @@ reads `model_registry.spec -> 'languages'`, which `schemas/model_registry.json` 
 ## Film voice language at the quote and the start (0220)
 
 0220 (`0220_film_voice_language.sql`, provisional number) wires 0214's `voice_language_problem` into the two places a film's money is
-decided. It replaces two 0171 bodies, each with one marked 0220 hunk; `quote_film` and `start_film` (0198's bodies) are unchanged,
-because they price through `film_price` and precheck through `film_precheck`.
+decided. It builds on 0218 (live in production): it replaces 0218's `film_price` (0171's with the scene's prompt and negative prompt
+priced on the key-frame and clip lines, kept exactly) and 0171's `film_precheck`, each with one marked 0220 hunk; `quote_film` and
+`start_film` are unchanged, because they price through `film_price` and precheck through `film_precheck`. Neither file holds a
+backslash (an apply tool may rewrite one): the md5 folds read `'[[:space:]]+'`, and 0218's clip-length regex is written `([.][0-9]+)`
+in 0220's body (the same match; a different md5), while the rollback puts 0218's escaped form back with `chr(92)`.
 
 - **Why.** Without it, an Uzbek film whose voice is Eleven Multilingual v2 is quoted, started and held, and fails only at the
   narration take after its clips were paid for (rule 6; docs/studio/S6_GAPS.md, G1).
@@ -2806,9 +2809,11 @@ because they price through `film_price` and precheck through `film_precheck`.
   honest, but no narration film can be quoted or started until the sync. The opening block raises a NOTICE with the count of tts
   rows that list no languages.
 - **Guards.** Refuses unless `voice_language_problem(text, text)` holds 0214's body (md5 `6d5025fd76e3b8b4d731e2d98f65db6e`) and
-  each replaced body is 0171's or 0220's own. End-state block inside the transaction. Re-running 0171 after it fails loudly;
-  `rollback_0171` and `rollback_0214` refuse while 0220 is on.
-- **Requires** 0171, 0214. **Undo.** `docs/sql/rollback_0220_film_voice_language.sql` (0171's two bodies back; refuses any body
-  that is not 0220's).
-- Lab: `tests/security/test_sec_film_voice_language_0220.py` (sec_db `take_off_0220` / `put_back_0220`, through `take_off_0187` /
-  `put_back_0187`). Static: `tests/test_film_voice_language_migration.py`.
+  `film_price` is 0218's (md5 `3c22f87be736c073d17d93e040e914e1`) or 0220's own (`b8ae113d06a5b873d95c19fc1016c5fb`) and
+  `film_precheck` 0171's (`ff4fa7e8a6386420f32ab6a3a85a778c`) or 0220's own (`0a89da5f19fa2c6c0f6d802c02e18925`); 0171's
+  `film_price` is refused with "apply 0218 first". End-state block inside the transaction. Re-running 0171 or 0218 after it fails
+  loudly; `rollback_0218`, `rollback_0171` and `rollback_0214` refuse while 0220 is on.
+- **Requires** 0171, 0214, 0218. **Undo.** `docs/sql/rollback_0220_film_voice_language.sql` (0218's `film_price` byte for byte and
+  0171's `film_precheck` back; refuses any body that is not 0220's).
+- Lab: `tests/security/test_sec_film_voice_language_0220.py` (sec_db `take_off_0220` / `put_back_0220`, through `take_off_0218` /
+  `put_back_0218` and `take_off_0187` / `put_back_0187`; 0220 follows 0218 in the `ON_` lists). Static: `tests/test_film_voice_language_migration.py`.

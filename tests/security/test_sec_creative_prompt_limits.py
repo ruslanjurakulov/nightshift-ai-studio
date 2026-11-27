@@ -223,6 +223,10 @@ AFTER = {"creative_params_problem": sec_db.CREATIVE_PARAMS_PROBLEM_0218, "creati
          "film_price": sec_db.FILM_PRICE_0218}
 BEFORE = {"creative_params_problem": sec_db.CREATIVE_PARAMS_PROBLEM_0208, "creative_price": sec_db.CREATIVE_PRICE_0208,
           "film_price": "5de6c9bb2a74079e2078cad2d91b3c34"}
+#: A full build: 0220 (the film's voice language) sits on this file's film_price, so the live film_price is 0220's.
+FULL = {**AFTER, "film_price": sec_db.FILM_PRICE_0220}
+#: 0220 refuses to apply without 0218's film_price: a sequence that leaves 0218 out leaves 0220 out too.
+WITHOUT_0218 = (sec_db.MIGRATION_0218.name, sec_db.MIGRATION_0220.name)
 
 
 def test_the_file_needs_0208_its_guard_refuses_a_hand_edit_and_its_rollback_restores_every_body(lab):
@@ -280,21 +284,22 @@ def test_the_labs_take_off_helpers_take_0218_off_first_and_put_it_back(lab):
     try:
         sec_db.apply_files(base, sec_db.build_sequence())
         d = Db(base)
-        assert _md5s(d) == AFTER
+        assert _md5s(d) == FULL
         with psycopg.connect(base, autocommit=False) as c:
             sec_db.take_off_0171(c)
             assert c.execute("select to_regprocedure('public.film_price(public.films)')").fetchone()[0] is None
+            assert not sec_db.has_0220(c)
             sec_db.put_back_0171(c)
             c.commit()
-        assert _md5s(d) == AFTER
+        assert _md5s(d) == FULL
         with psycopg.connect(base, autocommit=False) as c:
             class S:
                 conn = c
             sec_db.take_off_0159(S)
-            assert sec_db.has_0156(c) and not sec_db.has_0218(c)
+            assert sec_db.has_0156(c) and not sec_db.has_0218(c) and not sec_db.has_0220(c)
             sec_db.put_back_0159(S)
             c.commit()
-        assert _md5s(d) == AFTER
+        assert _md5s(d) == FULL
     finally:
         sec_db.drop_database(admin, name)
 
@@ -318,7 +323,7 @@ def test_on_0224s_base_the_file_keeps_0224s_line_its_rollback_puts_it_back_and_t
     name = f"ns_prompt_limits_0224_{uuid.uuid4().hex[:8]}"
     base = sec_db.create_database(admin, name)
     try:
-        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name != sec_db.MIGRATION_0218.name])
+        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name not in WITHOUT_0218])
         d = Db(base)
         assert _md5s(d) == BEFORE
         d.su("create function public.credits_per_unit_now(p_unit text) returns numeric language sql stable "
@@ -393,7 +398,7 @@ def test_the_file_refuses_a_registry_synced_from_a_ref_without_0218(lab):
     name = f"ns_prompt_limits_sync_{uuid.uuid4().hex[:8]}"
     base = sec_db.create_database(admin, name)
     try:
-        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name != sec_db.MIGRATION_0218.name])
+        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name not in WITHOUT_0218])
         d = Db(base)
         d.su("insert into public.model_registry (id, display_name, provider, adapter, capabilities, spec, credit_unit) values "
              "('lab-old', 'old', 'lab', 'image.lab', array['t2i'], '{\"output\": \"image\"}'::jsonb, 'model_lab_old_image')")

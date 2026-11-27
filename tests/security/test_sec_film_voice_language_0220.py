@@ -1,5 +1,5 @@
 """Migration 0220: a film whose voice model does not speak the film's language is refused at the quote and at the start, before
-anything is counted, priced or held (0214's voice_language_problem, wired into 0171's film_price and film_precheck).
+anything is counted, priced or held (0214's voice_language_problem, wired into 0218's film_price and 0171's film_precheck).
 
 What would break without each guard (each test names the one it pins):
 
@@ -11,8 +11,10 @@ What would break without each guard (each test names the one it pins):
   * nothing else moves: a supported pair is priced exactly as without 0220 (the same lines, total and quote_id);
   * the start: a film whose voice stopped listing its language after a valid quote is refused with its own word before the rate
     step, so nothing is counted, held or created;
-  * the migration: a replay changes nothing, the drift guard refuses a foreign body (of either helper, or of 0214's), and the
-    rollback puts 0171's bodies back, after which 0220 applies again.
+  * the migration: a replay changes nothing, the drift guard refuses a foreign body (of either helper, or of 0214's) and 0171's
+    film_price (production has 0218's: 0220 is written on it), the rollback puts 0218's film_price and 0171's film_precheck back
+    byte for byte, after which 0220 applies again (and 0218's own rollback may run);
+  * the white-space fold: '[[:space:]]+' (0220 holds no backslash) reads the same md5 as the other files' class-escape fold.
 
 Runs in its own scratch database (it commits), on the registry and models of test_sec_films_money.py, plus two ElevenLabs rows
 seeded with the display names and spec.languages of schemas/model_registry.json, as 0214's tests seed them.
@@ -288,20 +290,40 @@ def test_reapplying_the_migration_changes_nothing(db, a):
         c.rollback()
 
 
-@pytest.mark.parametrize("sig, body", [
-    ("film_price", "create or replace function public.film_price(p_film public.films) returns jsonb language sql stable "
+@pytest.mark.parametrize("sig, by, body", [
+    ("film_price", "0218", "create or replace function public.film_price(p_film public.films) returns jsonb language sql stable "
                    "security definer set search_path = public, pg_temp as $$ select '{\"priced\": true}'::jsonb $$"),
-    ("film_precheck", "create or replace function public.film_precheck(p_film public.films) returns jsonb language sql stable "
+    ("film_precheck", "0171", "create or replace function public.film_precheck(p_film public.films) returns jsonb language sql stable "
                       "security definer set search_path = public, pg_temp as $$ select null::jsonb $$"),
 ])
-def test_the_drift_guard_refuses_a_body_that_is_neither_0171s_nor_its_own(db, sig, body):
+def test_the_drift_guard_refuses_a_body_that_is_neither_its_base_nor_its_own(db, sig, by, body):
     with psycopg.connect(db.dsn, autocommit=False) as c:
         c.execute(body)
         with pytest.raises(psycopg.Error) as e:
             c.execute(MIGRATION.read_text(encoding="utf-8"))
-        assert f"{sig}(films) with a body that is neither 0171's nor 0220's" in str(e.value) \
-            or f"{sig}(public.films) with a body that is neither 0171's nor 0220's" in str(e.value)
+        assert f"{sig}(films) with a body that is neither {by}'s nor 0220's" in str(e.value) \
+            or f"{sig}(public.films) with a body that is neither {by}'s nor 0220's" in str(e.value)
         c.rollback()
+
+
+def test_it_refuses_0171s_film_price_and_names_0218(db):
+    """Production has 0218's film_price; a database still on 0171's must apply 0218 first, never get 0220 written over 0171's body
+    (which would silently drop 0218's prompt and negative-prompt lines)."""
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0218(c)  # 0220 first, then 0218: 0171's film_price is live
+        assert c.execute(BODIES).fetchone()[0]["price"] == "5de6c9bb2a74079e2078cad2d91b3c34"
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(MIGRATION.read_text(encoding="utf-8"))
+        assert "apply 0218_creative_prompt_limits.sql first" in str(e.value)
+        c.rollback()
+
+
+def test_the_posix_white_space_fold_reads_the_same_md5_as_the_escape_fold(db):
+    got = db.su("select p.proname, md5(regexp_replace(p.prosrc, '\\s+', ' ', 'g')) = md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g'))"
+                " from pg_proc p where p.oid in ('public.film_price(public.films)'::regprocedure, "
+                "'public.film_precheck(public.films)'::regprocedure, 'public.voice_language_problem(text, text)'::regprocedure, "
+                "'public.creative_price(uuid, text, text, jsonb)'::regprocedure)")
+    assert len(got) == 4 and all(same for _, same in got), got
 
 
 def test_it_refuses_without_0214_or_with_a_helper_that_is_not_0214s(db):
@@ -328,13 +350,20 @@ def test_rollback_0214_refuses_while_0220_is_on(db):
         c.rollback()
 
 
-def test_the_rollback_puts_0171s_bodies_back_and_0220_applies_again(db, a):
+def test_the_rollback_puts_0218s_film_price_and_0171s_precheck_back_and_0220_applies_again(db, a):
     fid = film_in(db, a, "uz", "elevenlabs-multilingual-v2")
     with psycopg.connect(db.dsn, autocommit=False) as c:
         c.execute(ROLLBACK.read_text(encoding="utf-8").replace("begin;", "").replace("commit;", ""))
         got = c.execute(BODIES).fetchone()[0]
-        assert (got["price"], got["pre"]) == ("5de6c9bb2a74079e2078cad2d91b3c34", "ff4fa7e8a6386420f32ab6a3a85a778c")
+        assert (got["price"], got["pre"]) == (sec_db.FILM_PRICE_0218, sec_db.FILM_PRECHECK_0171)
         assert not sec_db.has_0220(c)
+        # The escaped dot is back exactly (the rollback writes it with chr(92)): 0218's own guard reads its body again.
+        assert c.execute("select strpos(prosrc, '(' || chr(92) || '.[0-9]+)?$') > 0 from pg_proc "
+                         "where oid = 'public.film_price(public.films)'::regprocedure").fetchone()[0]
+        c.execute("savepoint r18")
+        c.execute(sec_db.rollback_0218_body())
+        assert c.execute(BODIES).fetchone()[0]["price"] == "5de6c9bb2a74079e2078cad2d91b3c34"
+        c.execute("rollback to savepoint r18")
         # Nothing calls 0214's helper any more, so its own rollback may run now.
         c.execute("savepoint s")
         c.execute(ROLLBACK_0214.read_text(encoding="utf-8"))
@@ -347,7 +376,7 @@ def test_the_rollback_puts_0171s_bodies_back_and_0220_applies_again(db, a):
 
 def test_the_rollback_refuses_a_body_that_is_not_0220s(db):
     with psycopg.connect(db.dsn, autocommit=False) as c:
-        sec_db.take_off_0220(c)  # 0171's bodies are live: the rollback must not "restore" over them
+        sec_db.take_off_0220(c)  # 0218's film_price and 0171's film_precheck are live: the rollback must not "restore" over them
         with pytest.raises(psycopg.Error) as e:
             c.execute(ROLLBACK.read_text(encoding="utf-8").replace("begin;", "").replace("commit;", ""))
         assert "is missing or is not 0220's body" in str(e.value)

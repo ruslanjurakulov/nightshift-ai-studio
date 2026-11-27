@@ -1,7 +1,9 @@
--- rollback_0220_film_voice_language.sql — takes migration 0220 out again: film_price and film_precheck get 0171's bodies back, so
--- the quote and the start no longer ask whether the voice model speaks the film's language (0214's helper stays; nothing calls it).
+-- rollback_0220_film_voice_language.sql — takes migration 0220 out again: film_price gets 0218's body back and film_precheck 0171's,
+-- so the quote and the start no longer ask whether the voice model speaks the film's language (0214's helper stays; nothing calls it).
 -- Refuses unless both live bodies are 0220's: a later change to either would otherwise be undone silently. Owner-applied, SQL editor.
--- After it, rollback_0214 and rollback_0171 may run (each refuses while 0220's bodies are live).
+-- After it, rollback_0218, rollback_0214 and rollback_0171 may run (each refuses while 0220's bodies are live).
+-- This file holds no backslash (an apply tool may rewrite one): md5 folds use '[[:space:]]+', and 0218's one backslash is put back
+-- with chr(92) (see film_price below).
 begin;
 set local lock_timeout = '5s';
 
@@ -11,9 +13,9 @@ declare
   h text;
 begin
   for r in select * from (values
-      ('public.film_price(public.films)', '25e85c92d74e740ed66fec577652fdc5'),
+      ('public.film_price(public.films)', 'b8ae113d06a5b873d95c19fc1016c5fb'),
       ('public.film_precheck(public.films)', '0a89da5f19fa2c6c0f6d802c02e18925')) v(sig, want) loop
-    select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
+    select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0220: % is missing or is not 0220''s body (md5 %): a later change would be undone; read the live body first', r.sig, h;
     end if;
@@ -60,8 +62,12 @@ begin
 end
 $$;
 
--- 0171's film_price, word for word.
-create or replace function public.film_price(p_film public.films) returns jsonb
+-- 0218's film_price, byte for byte. Its clip-length filter holds the file's one backslash (a regex escaped dot), which this file does
+-- not carry: the statement is run through EXECUTE with chr(92) put back where the one marker <<chr92>> stands, so the body created is
+-- 0218's exactly (md5 3c22f87be736c073d17d93e040e914e1, which 0218's own guard and rollback read).
+do $do0220$
+begin
+  execute replace($fp0218$create or replace function public.film_price(p_film public.films) returns jsonb
   language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
   f        public.films := p_film;
@@ -132,6 +138,9 @@ begin
                         then (spec -> 'inputs' ->> 'image_refs_max')::numeric::integer else 0 end;
         params := jsonb_build_object('prompt', sc.visual_prompt, 'aspect_ratio', f.aspect)
                   || case when f.style_kit_id is null then '{}'::jsonb else jsonb_build_object('style_kit_id', f.style_kit_id) end
+                  -- 0218: the negative prompt the take carries (0198), so the quote asks whether this model takes one.
+                  || case when btrim(sc.negative_prompt) <> '' then jsonb_build_object('negative_prompt', sc.negative_prompt)
+                          else '{}'::jsonb end
                   || case when cap = 'edit' and stand is not null then jsonb_build_object('source_asset_id', stand) else '{}'::jsonb end;
         if refs_n > ref_max then
           q := jsonb_build_object('priced', false, 'reason', 'refs_not_supported',
@@ -144,7 +153,7 @@ begin
           q := public.film_try_price(f.org_id, cap, kmodel, params);
         end if;
         ln := ln || jsonb_build_object('capability', cap,
-                                       'params', (params - 'prompt' - 'source_asset_id')
+                                       'params', (params - 'prompt' - 'negative_prompt' - 'source_asset_id')
                                                  || jsonb_strip_nulls(jsonb_build_object('quality', q -> 'quality')))
               || q;
       end if;
@@ -169,7 +178,7 @@ begin
     select min(x::numeric) filter (where x::numeric >= target), max(x::numeric) into dur, longest
       from jsonb_array_elements_text(case when jsonb_typeof(spec -> 'durations_s') = 'array' then spec -> 'durations_s'
                                           else '[]'::jsonb end) x
-     where x ~ '^[0-9]{1,3}(\.[0-9]+)?$';
+     where x ~ '^[0-9]{1,3}(<<chr92>>.[0-9]+)?$';
     for i in 1 .. sc.shot_count loop
       ln := jsonb_build_object('line', case when i = 1 then 'clip' else 'extend' end, 'scene_id', sc.id, 'position', sc.position,
                                'shot_index', i, 'model', cmodel, 'capability', 'i2v');
@@ -192,11 +201,16 @@ begin
                   || case when res is null then '{}'::jsonb else jsonb_build_object('resolution', res) end
                   || case when sc.clip_params ? 'audio' then jsonb_build_object('audio', sc.clip_params -> 'audio') else '{}'::jsonb end
                   || case when i = sc.shot_count and sc.last_frame <> 'none' then jsonb_build_object('end_asset_id', stand)
+                          else '{}'::jsonb end
+                  -- 0218: the words the take sends (0198: the scene's visual prompt, and its negative prompt when it has one), so the
+                  -- clip model's own prompt limit and whether it takes a negative prompt are asked here, not by the worker after the hold.
+                  || case when btrim(sc.visual_prompt) <> '' then jsonb_build_object('prompt', sc.visual_prompt) else '{}'::jsonb end
+                  || case when btrim(sc.negative_prompt) <> '' then jsonb_build_object('negative_prompt', sc.negative_prompt)
                           else '{}'::jsonb end;
         q := public.film_try_price(f.org_id, 'i2v', cmodel, params);
         -- The variant creative_price settled on (the model's pinned resolution, silent or with sound) is part of what was priced.
         ln := ln || jsonb_build_object('duration_s', dur,
-                                       'params', (params - 'source_asset_id' - 'end_asset_id')
+                                       'params', (params - 'source_asset_id' - 'end_asset_id' - 'prompt' - 'negative_prompt')
                                                  || case when params ? 'end_asset_id' then '{"end_frame": true}'::jsonb else '{}'::jsonb end
                                                  || jsonb_strip_nulls(jsonb_build_object('resolution', q -> 'resolution',
                                                                                          'audio', q -> 'audio')));
@@ -295,7 +309,10 @@ begin
     'lines', lines, 'scenes', scenes_, 'refusals', refusals,
     'planned_seconds', seconds, 'assembly_minutes', minutes);
 end
-$$;
+$$
+$fp0218$, '<<chr92>>', chr(92));
+end
+$do0220$;
 
 revoke all on function public.film_precheck(public.films) from public, anon, authenticated, service_role;
 revoke all on function public.film_price(public.films) from public, anon, authenticated, service_role;
@@ -306,11 +323,11 @@ declare
   h text;
 begin
   for r in select * from (values
-      ('public.film_price(public.films)', '5de6c9bb2a74079e2078cad2d91b3c34'),
-      ('public.film_precheck(public.films)', 'ff4fa7e8a6386420f32ab6a3a85a778c')) v(sig, want) loop
-    select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
+      ('public.film_price(public.films)', '3c22f87be736c073d17d93e040e914e1', '0218'),
+      ('public.film_precheck(public.films)', 'ff4fa7e8a6386420f32ab6a3a85a778c', '0171')) v(sig, want, by_) loop
+    select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
-      raise exception 'rollback 0220 end state: % is not 0171''s body (md5 %)', r.sig, h;
+      raise exception 'rollback 0220 end state: % is not %''s body (md5 %)', r.sig, r.by_, h;
     end if;
   end loop;
 end $$;

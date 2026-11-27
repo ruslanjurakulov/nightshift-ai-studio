@@ -209,7 +209,7 @@ def test_a_voice_planted_behind_the_api_still_prices_nothing_and_holds_nothing(d
 
 
 def test_a_quote_stored_before_0220_does_not_start_an_unsupported_film_after_it(db, a):
-    """The upgrade window: a quote_film answered on 0171's film_price (unsupported pair priced, quote row stored), then 0220 applied
+    """The upgrade window: a quote_film answered on 0218's film_price (unsupported pair priced, quote row stored), then 0220 applied
     before the person pressed Start. The start must refuse with the language, before the count."""
     fid = film_in(db, a, "uz", "elevenlabs-multilingual-v2")
     with psycopg.connect(db.dsn, autocommit=False) as c:
