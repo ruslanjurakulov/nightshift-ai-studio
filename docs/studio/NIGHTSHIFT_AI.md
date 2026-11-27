@@ -257,8 +257,9 @@ source text, language, aspect, `target_seconds`). Code: `app/api/brain/film/rout
 - **The conversation** is the person's own 0199 conversation for the project's workspace and channel (`ai_chat_start`), marked in its
   BRIEF with `"film_plan": { "film_id": "uuid" }` (an extra top-level field; the chat ignores it). It is found again by that marker,
   author and workspace, oldest first. `/api/brain` and the history list leave marked conversations out by the same predicate
-  (`brief->film_plan->>film_id IS NULL`), and `/api/brain/turn` refuses every action on one (`film_conversation` 409, no turn, nothing
-  saved). The marker write is asked twice; if it still fails, the press answers `unavailable` (503) with `retry_session: <id>`, the
+  (`brief->film_plan->>film_id IS NULL`), and `/api/brain/turn` refuses every action on one (`film_conversation` 409 with the
+  project's `film_id` when the marker is a uuid, no turn, nothing saved); the chat panel says so in its own words with a link to
+  that project's editor, never the code. The marker write is asked twice; if it still fails, the press answers `unavailable` (503) with `retry_session: <id>`, the
   panel keeps that id in component state only and sends it as `session` with the next press, and the server takes it back only
   when it is the caller's own conversation in the project's workspace and channel, not handed off, with an empty BRIEF, no message,
   and under 24 hours old; otherwise it starts a new one. A project whose channel left the workspace is `film_channel_missing` (409).
@@ -289,6 +290,9 @@ source text, language, aspect, `target_seconds`). Code: `app/api/brain/film/rout
 - **Models.** The project's own clip and key-frame models when it has them and they are on sale; one it names that is not on sale is
   refused `film_model_unavailable` `{ role: "clip" | "keyframe" }` (409), never swapped. A role with none: the server's
   `FILM_MODEL_PREFERENCE` pick, saved with the storyboard.
+- `plan_superseded` from this route says what the press used: `{ stage: "before_turns", used: 0 }` when the project moved before
+  any turn (nothing was used), or `{ stage: "after_turns", used: N }` with N this press's own reserved turns, `used: null` when a
+  reservation's outcome could not be read (said as "unknown", never 0).
 - Errors added: `film_has_scenes`, `film_not_editable`, `film_model_unavailable`, `chat_plan_required` (402) and `chat_daily_cap`
   (429) said before the press; `source_too_long` (422, `limit`), `title_claims_vendor` (422), `film_channel_missing` (409),
   `unavailable` with `retry_session` (503); and on `/api/brain/turn`, `film_conversation` (409). Everything else is `choose`'s, with

@@ -319,6 +319,34 @@ export async function filmLeaseView(supabase: SupabaseClient, film: PlanFilm, us
   return own;
 }
 
+/**
+ * The client with every ai_chat_reserve_turn counted into `turns`: a reserve that answered is a turn taken; one refused by the
+ * database (a creative_refuse NSxxx, any SQLSTATE: the transaction rolled back; a PGRSTxxx: never run) is none; one whose answer was lost (a thrown
+ * call, a fetch error with no code, an answer without its call id) may or may not have been taken, and the count becomes unknown.
+ */
+function countingReserves(supabase: SupabaseClient, turns: { reserved: number; known: boolean }): SupabaseClient {
+  return new Proxy(supabase, {
+    get(target, prop, receiver) {
+      if (prop !== "rpc") return Reflect.get(target, prop, receiver);
+      return (fn: string, ...rest: unknown[]) => {
+        const call = (target.rpc as (...a: unknown[]) => PromiseLike<Rpc>)(fn, ...rest);
+        if (fn !== "ai_chat_reserve_turn") return call;
+        return Promise.resolve(call).then((r) => {
+          // An answer without its call id is a reservation nobody can read back: counted as unknown, not as one or none.
+          if (!r.error) {
+            if (typeof (r.data as { call_id?: unknown } | null)?.call_id === "string") turns.reserved += 1;
+            else turns.known = false;
+          } else if (!/^(?:NS\d{3}|PGRST\d{3}|[0-9A-Z]{5})$/.test(r.error.code ?? "")) turns.known = false;
+          return r;
+        }, (e: unknown) => {
+          turns.known = false;
+          throw e;
+        });
+      };
+    },
+  });
+}
+
 /** 0211's lease as the panel follows it (a refresh, a second tab): running until `expires_at`, failed with its reason, or done. */
 export type LeaseView = { state: "running" | "failed" | "done" | "unknown"; reason: string | null; expires_at: string | null } | null;
 
@@ -361,8 +389,12 @@ export async function planFilm(args: {
   /** A conversation id from an earlier 503 `retry_session` (openFilmConversation). */
   retrySession?: string | null;
 }): Promise<Response> {
-  const { supabase, film, ready, userId } = args;
+  const { film, ready, userId } = args;
   const started = args.startedAt;
+  // This press's own turns, counted as they are reserved (the outline's and every plan call's, writeStoryboard's included): what a
+  // plan_superseded after them says was used. Unknown once a reserve's outcome cannot be told (rule 5: never 0, never a guess).
+  const turns = { reserved: 0, known: true };
+  const supabase = countingReserves(args.supabase, turns);
   const conv = await openFilmConversation(supabase, film, userId, ready.slots, args.retrySession ?? null);
   if (!conv.ok) return conv.res;
   const sid = conv.id;
@@ -385,7 +417,10 @@ export async function planFilm(args: {
     const d = (st.data ?? null) as { attempt?: unknown; state?: unknown } | null;
     return !st.error && !!d && d.attempt === lease.attempt && d.state === "running";
   };
-  const superseded = () => fail("plan_superseded", { error: "plan_superseded", film_id: film.id }, 409);
+  /** The project moved on. `before_turns`: nothing of this press was spent; `after_turns`: its reserved turns, or null if unknown. */
+  const superseded = (stage: "before_turns" | "after_turns") => fail("plan_superseded", {
+    error: "plan_superseded", film_id: film.id, stage, used: stage === "before_turns" ? 0 : turns.known ? turns.reserved : null,
+  }, 409);
 
   // 1. One plan at a time (0211): the same lease the chat's plan holds. Proposal 0, outline 0: a project's conversation plans one
   // thing only, its project.
@@ -413,7 +448,7 @@ export async function planFilm(args: {
     const fresh = await readPlanFilm(supabase, film.id);
     if (!fresh.ok) return fresh.res;
     if (fresh.film.scenes > 0) return fail("film_has_scenes", { error: "film_has_scenes", scenes: fresh.film.scenes }, 409);
-    if (fresh.film.version !== film.version) return superseded();
+    if (fresh.film.version !== film.version) return superseded("before_turns");
     // The person's own turns across every workspace (0199 per_user_daily), returned by the lease: the same up-front rule.
     if (typeof b.user_left === "number" && b.user_left < ready.turns.at_most) {
       return fail("plan_over_cap", { error: "plan_over_cap", needed: ready.turns.at_most, about: ready.turns.about, left: b.user_left, scope: "person" }, 429);
@@ -509,7 +544,7 @@ export async function planFilm(args: {
 
     // 4. Saved into the project at the version read before anything was spent, only while this attempt holds the lease. An edit made
     // meanwhile moved the version on: their edit wins, and nothing is written (`plan_superseded`).
-    if (!(await stillOurs())) return superseded();
+    if (!(await stillOurs())) return superseded("after_turns");
     const patch: Record<string, unknown> = {
       scenes: shaped.scenes,
       ...(ready.models.setClip && clip ? { clip_model: clip.id } : {}),
@@ -517,7 +552,7 @@ export async function planFilm(args: {
     };
     const saved = (await supabase.rpc("save_film", { p_film: film.id, p_version: film.version, p_patch: patch })) as Rpc;
     if (saved.error) {
-      if (saved.error.message === "film_changed") return superseded();
+      if (saved.error.message === "film_changed") return superseded("after_turns");
       return fail("film_refused", { error: "film_refused", reason: machineReason(saved.error.message), film_id: film.id }, 409);
     }
     const version = (saved.data as { film?: { version?: unknown } } | null)?.film?.version;

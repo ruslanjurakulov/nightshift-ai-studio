@@ -400,3 +400,29 @@ describe("refusal coverage (Lens L3): every code the routes send, its words and 
     expect(refusalText(w, 429, { error: "plan_over_cap", needed: 7 }).text).not.toMatch(/\b0\b/);
   });
 });
+
+describe("plan_superseded says what was used, by the server's stage and count (rule 5)", () => {
+  it.each([
+    ["before any turn", { stage: "before_turns", used: 0 }, w.supersededBefore],
+    ["after 4 turns", { stage: "after_turns", used: 4 }, fmt(w.supersededAfter, { n: 4 })],
+    ["after turns it could not count", { stage: "after_turns", used: null }, w.supersededAfterUnknown],
+  ])("%s: its own words, and Reload is offered", async (_n, extra, text) => {
+    answer = (url, method) => (method === "POST" ? { status: 409, body: { error: "plan_superseded", film_id: FILM, ...extra } } : { status: 200, body: READY });
+    const onWritten = writer();
+    await waitFor(() => expect(button().disabled).toBe(false));
+    fireEvent.click(button());
+    await waitFor(() => expect(screen.getByTestId("fs-ai-notice").textContent).toBe(text));
+    expect(screen.getByTestId("fs-ai-reload")).toBeTruthy();
+    expect(onWritten).not.toHaveBeenCalled();
+  });
+
+  it.each([["en", t], ["ru", filmStudioRu], ["uz", filmStudioUz]] as const)("%s: nothing used is never said as a count, and null reads as unknown", (_l, d) => {
+    const a = d.canvas.ai;
+    expect(refusalText(a, 409, { error: "plan_superseded", stage: "before_turns", used: 0 }).text).toBe(a.supersededBefore);
+    expect(refusalText(a, 409, { error: "plan_superseded", stage: "after_turns", used: 7 }).text).toContain("7");
+    const unknown = refusalText(a, 409, { error: "plan_superseded", stage: "after_turns", used: null }).text;
+    expect(unknown).toBe(a.supersededAfterUnknown);
+    expect(unknown).not.toMatch(/\d/);
+    expect(unknown).toMatch(/unknown|неизвестно|nomaʼlum/);
+  });
+});

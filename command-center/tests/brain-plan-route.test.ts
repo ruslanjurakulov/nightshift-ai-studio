@@ -635,11 +635,20 @@ describe("fix round: the chat and a project's conversation, claims, raw database
     state.session = { ...state.session!, step: "ready", brief: { film_plan: { film_id: FILM } } };
     const res = await post(body);
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "film_conversation" });
+    // With the project's id, so the chat can link to its editor.
+    expect(await res.json()).toEqual({ error: "film_conversation", film_id: FILM });
     for (const fn of ["ai_chat_reserve_turn", "ai_chat_save_brief", "save_film", "create_film_draft", "ai_chat_record_handoff", "ai_chat_plan_begin"]) {
       expect(called(fn), fn).toHaveLength(0);
     }
     expect(llm).not.toHaveBeenCalled();
+  });
+
+  it("a marker that is not a film id is still refused, without an id to link to", async () => {
+    setup(180, [60, 60, 60]);
+    state.session = { ...state.session!, brief: { film_plan: { film_id: "../../etc" } } };
+    const res = await post({ action: "turn", text: "hi there" });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "film_conversation" });
   });
 
   it.each([[{}], [{ film_plan: null }], [{ film_plan: {} }]])(

@@ -83,8 +83,11 @@ async function loadSession(supabase: SupabaseClient, id: unknown): Promise<{ ok:
   // answer, a choice or a hand-off in it would write the chat's BRIEF over the project's marker, or spend the project's turns.
   // Refused here, before any reserve or save, by the same predicate the chat's reads exclude it by (brief->film_plan->>film_id).
   const marker = (data.brief as Record<string, unknown> | null)?.[FILM_PLAN_KEY];
-  if (marker && typeof marker === "object" && typeof (marker as { film_id?: unknown }).film_id === "string") {
-    return { ok: false, res: brainJson({ error: "film_conversation" }, 409) };
+  const markedFilm = marker && typeof marker === "object" ? (marker as { film_id?: unknown }).film_id : undefined;
+  if (typeof markedFilm === "string") {
+    // With the project's id when it is one (the BRIEF is its author's to write): the chat links to that project's editor.
+    const filmId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(markedFilm) ? markedFilm : null;
+    return { ok: false, res: brainJson(filmId ? { error: "film_conversation", film_id: filmId } : { error: "film_conversation" }, 409) };
   }
   return { ok: true, s: data as Session };
 }

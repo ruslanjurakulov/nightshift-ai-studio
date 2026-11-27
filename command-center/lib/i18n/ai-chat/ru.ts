@@ -69,6 +69,7 @@ export const aiChatRu: AiChatDictionary = {
   checkAgain: "Проверить снова",
   seePlans: "Посмотреть тарифы",
   openProject: "Открыть проект",
+  openFilm: "Открыть фильм",
   confirmAge: "Подтвердить возраст",
   shell: {
     greeting: "Здравствуйте, {name}",
@@ -130,6 +131,7 @@ export const aiChatRu: AiChatDictionary = {
     adult_attestation_required: "Сначала подтвердите, что вам 18 лет или больше. Это спрашивается один раз, в разделе «Создать».",
     session_closed: "Этот план уже передан. Нажмите «Новый чат», чтобы начать другой.",
     card_changed: "Вопрос изменился. Ответьте на последний.",
+    film_conversation: "Этот разговор относится к плану фильма — откройте фильм, чтобы продолжить там.",
     assistant_unavailable: "Nightshift AI сейчас недоступен. Попробуйте позже.",
     unavailable: "Nightshift AI сейчас не смог ответить. Попробуйте ещё раз.",
     plan_failed: "Раскадровку не удалось написать: не получилась глава {n} из {total}. Цена не рассчитана. Попробуйте ещё раз.",

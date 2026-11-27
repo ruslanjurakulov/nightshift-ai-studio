@@ -59,7 +59,16 @@ export function refusalText(w: AiWords, status: number, body: Record<string, unk
     }
     case "plan_unavailable":
     case "not_enabled": return { text: w.planUnavailable, retry: false };
-    case "plan_superseded": return { text: w.superseded, retry: false };
+    case "plan_superseded": {
+      // Whether this press spent anything is the server's to say (rule 5): nothing before its first turn, its own count after, and
+      // "unknown" when that count could not be told. An answer without the stage keeps the older words.
+      if (body.stage === "before_turns") return { text: w.supersededBefore, retry: false };
+      if (body.stage === "after_turns") {
+        const used = num(body.used);
+        return { text: used === null ? w.supersededAfterUnknown : fmt(w.supersededAfter, { n: used }), retry: false };
+      }
+      return { text: w.superseded, retry: false };
+    }
     case "plan_length_mismatch": return { text: w.lengthMismatch, retry: true };
     case "prompt_too_long": return { text: fmt(w.promptTooLong, { limit: num(body.limit) ?? "?" }), retry: true };
     case "film_refused": return { text: w.filmRefused, retry: true };

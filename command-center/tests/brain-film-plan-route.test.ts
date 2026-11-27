@@ -63,6 +63,10 @@ const state = {
   startError: null as null | { code?: string; message: string },
   /** Runs inside ai_chat_quota (the precheck): the clock moving on while it waits. */
   onQuota: null as null | (() => void),
+  /** The project's version moves on when the lease is granted (an edit landing between the first read and the plan). */
+  bumpOnBegin: false,
+  /** Which reserve (1-based) answers without a call id: a reservation that cannot be read. */
+  unreadableReserve: 0,
 };
 const rpc = vi.fn();
 const llm = vi.fn();
@@ -83,6 +87,7 @@ const client = {
   from: (t: string) => table(t),
   rpc: async (fn: string, args: Record<string, unknown>) => {
     rpc(fn, args);
+    if (fn === "ai_chat_plan_begin" && state.bumpOnBegin) state.version += 1;
     const leased = lease.rpc(fn, args);
     if (leased) return leased;
     if (fn === "film_json") {
@@ -107,6 +112,7 @@ const client = {
     }
     if (fn === "ai_chat_reserve_turn") {
       reserved += 1;
+      if (reserved === state.unreadableReserve) return { data: { used: 3 + reserved, limit: 30 }, error: null };
       return { data: { call_id: `call-${reserved}`, used: 3 + reserved, limit: 30 }, error: null };
     }
     if (fn === "save_film") {
@@ -177,6 +183,8 @@ beforeEach(() => {
   state.chatOnSale = true;
   state.startError = null;
   state.onQuota = null;
+  state.bumpOnBegin = false;
+  state.unreadableReserve = 0;
   gate.refusal = null;
   reserved = 0;
 });
@@ -240,7 +248,9 @@ describe("POST /api/brain/film: the press", () => {
     state.saveError = { code: "NS409", message: "film_changed" };
     const res = await press();
     expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ error: "plan_superseded", film_id: FILM });
+    // After its turns: says how many this press reserved, the server's own count.
+    expect(await res.json()).toMatchObject({ error: "plan_superseded", film_id: FILM, stage: "after_turns", used: called("ai_chat_reserve_turn").length });
+    expect(called("ai_chat_reserve_turn").length).toBeGreaterThan(0);
     // Only the marker was ever written to the conversation: no storyboard BRIEF after a refused save.
     expect(called("ai_chat_save_brief")).toHaveLength(1);
     expect(called("ai_chat_plan_end").at(-1)).toMatchObject({ p_state: "failed", p_reason: "plan_superseded" });
@@ -479,5 +489,35 @@ describe("fix round (Lens H1, L1, L2, L3)", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe("plan_superseded says what this press used (rule 5)", () => {
+  it("an edit that lands before the first turn: before_turns, used 0, and no turn is taken", async () => {
+    state.bumpOnBegin = true;
+    const res = await press();
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "plan_superseded", film_id: FILM, stage: "before_turns", used: 0 });
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+    expect(llm).not.toHaveBeenCalled();
+  });
+
+  it("a lease taken over before save_film: after_turns with the count of this press's reserved turns", async () => {
+    state.beforeSave = null;
+    state.plan = (parts, data) => {
+      const l = lease.leases.get(SESSION);
+      if (l) lease.leases.set(SESSION, { ...l, attempt: l.attempt + 1 });
+      return exact(parts, data);
+    };
+    const body = await (await press()).json();
+    expect(body).toMatchObject({ error: "plan_superseded", stage: "after_turns", used: called("ai_chat_reserve_turn").length });
+  });
+
+  it("a reservation that cannot be read makes the count unknown: used null, never 0 and never a guess", async () => {
+    state.unreadableReserve = 2;
+    state.saveError = { code: "NS409", message: "film_changed" };
+    const body = await (await press()).json();
+    expect(body).toMatchObject({ error: "plan_superseded", stage: "after_turns" });
+    expect(body.used).toBeNull();
   });
 });
