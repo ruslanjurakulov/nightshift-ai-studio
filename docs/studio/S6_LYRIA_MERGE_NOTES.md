@@ -49,3 +49,6 @@ with "rollback 0224: ... a later file sits on 0224". Every file below must keep 
 - **`docs/MIGRATIONS.md`**: keep both sections.
 - **After the merge**, a later small PR takes `MUSIC` out of `REGISTRY_ONLY_CAPABILITIES`, once Atlas confirms 0228 is live.
   `tests/test_sonilo.py` then loses its `| {MUSIC}`.
+- **If #0230 (geo allow-list, `claude/nsai-s6-geo-trigger`) merges first**: the `google-lyria-3.5` row must get the same
+  `available_countries` list as every other `provider: google` row, or the 0230 validator fails the registry and the 0230
+  trigger refuses every Lyria job as `country_unverified`. If this PR merges first, 0230's branch adds it instead.
