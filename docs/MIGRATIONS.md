@@ -2688,3 +2688,23 @@ table or grant; `film_expire_segments` is called, never replaced. It spends noth
   unschedule fails it fails too and changes nothing (no job is left calling a dropped function). 0212 also refuses to apply over a
   `film_sweep_runs` of another shape (columns, the SQLSTATE check, the runner check). Set `NIGHTSHIFT_FILM_SWEEP` off first, or
   the service logs a missing function every 5 minutes; the watchdog goes back to "0212 not applied".
+## Creative jobs: members read named columns, never a worker id (0225, provisional)
+
+0225 (`0225_creative_jobs_member_columns.sql`) closes ledger BR-0036-01, BR-0036-02 and BR-S-031 (all low).
+
+- **Grant.** `authenticated` loses 0036's SELECT on the whole of `creative_jobs` and gets SELECT on 38 named columns: every column
+  except `worker_id` (the worker's host name and process id by default) and `provider_task_id` (the vendor's task id, which 0171
+  already withholds on `film_takes`). `anon` holds nothing. A guard stops the file when the table has a column it does not list
+  (or lacks one it lists): a new column is decided on deliberately. A member's `select *`, a whole-row reference or either
+  withheld column answers 42501.
+- **Readers checked** (the file's header lists them): the Command Center's `JOB_COLUMNS` reads, `jobDurations` and the workflow
+  step read; 0037's `creative_economics` view; 0072's `caption_tracks_select` policy. None reads a withheld column. The worker,
+  the operator bot and the showcase export use the service key, whose table grant is unchanged.
+- **History redaction (BR-0036-02).** Rows written before 0215 carry `detail.worker` in `creative_job_events` and `film_events`.
+  Each such row's `worker` key becomes `worker_ref = left(md5(worker), 12)`, the reference 0215 writes on new rows. As 0088 did,
+  the append-only trigger is disabled for the update and enabled again in the same transaction; the file counts and checksums the
+  rows and stops if anything other than that key changed. Idempotent: a second run finds nothing.
+- **Requires** 0036, 0166. Meant to follow 0215; applied earlier it says so (NOTICE), and running it again after 0215 redacts
+  what the old functions wrote in between.
+- Lab: `tests/security/test_sec_worker_identity_reads.py`. Rollback: `docs/sql/rollback_0225_creative_jobs_member_columns.sql`
+  restores the table grant only; the redaction is not undone (the worker ids are not stored anywhere else).

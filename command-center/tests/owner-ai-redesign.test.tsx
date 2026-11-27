@@ -264,6 +264,42 @@ describe("the chat", () => {
     expect((screen.getByRole("button", { name: a.newChat }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("disables unconfigured models and sends the remembered choice after remounting", async () => {
+    const storageKey = "ns.owner-ai.model";
+    localStorage.removeItem(storageKey);
+    try {
+      const mountPicker = () => render(
+        <OwnerAssistant
+          a={a}
+          greeting={GREETING}
+          verifyHref="/verify"
+          signInHref="/login"
+          configuredModels={{ "anthropic-claude-sonnet-5-5": true, "openai-gpt-6-luna": false, "gemini-3.6-flash": true }}
+        />,
+      );
+      const picker = () => screen.getByRole("combobox", { name: a.modelPicker.label }) as HTMLSelectElement;
+      const first = mountPicker();
+      expect(picker().value).toBe("gemini-3.6-flash");
+      const unavailable = screen.getByRole("option", { name: /GPT-6 Luna/ }) as HTMLOptionElement;
+      expect(unavailable.disabled).toBe(true);
+      expect(unavailable.textContent).toContain(a.modelPicker.notConfigured);
+      fireEvent.change(picker(), { target: { value: unavailable.value } });
+      expect(picker().value).toBe("gemini-3.6-flash");
+      expect(localStorage.getItem(storageKey)).toBeNull();
+
+      fireEvent.change(picker(), { target: { value: "anthropic-claude-sonnet-5-5" } });
+      first.unmount();
+      mountPicker();
+      expect(picker().value).toBe("anthropic-claude-sonnet-5-5");
+      reply(200, { answer: "Hello" });
+      await askByTyping("Hello");
+      expect(fetchMock.mock.calls[0][0]).toBe("/api/brain/owner/turn");
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ model: "anthropic-claude-sonnet-5-5" });
+    } finally {
+      localStorage.removeItem(storageKey);
+    }
+  });
+
   it("sends on Enter, not on Shift+Enter, and never mid-composition", () => {
     expect(sendsOnKey({ key: "Enter", shiftKey: false })).toBe(true);
     expect(sendsOnKey({ key: "Enter", shiftKey: true })).toBe(false);

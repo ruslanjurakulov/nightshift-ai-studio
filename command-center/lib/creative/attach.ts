@@ -72,6 +72,11 @@ export interface AttachUpload {
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
   signal?: AbortSignal;
+  /**
+   * The ticket once the file is sent (before the worker has checked it): a caller that must not send the same file twice
+   * (lib/creative/sample-preload.ts) keeps it, to ask about that upload again (waitForUpload) instead of sending another.
+   */
+  onTicket?: (ticket: string) => void;
 }
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -91,7 +96,25 @@ export async function uploadAttachment(input: AttachUpload): Promise<AttachResul
     signal: input.signal,
   });
   if (!sent.ok) return { ok: false, error: sent.error, maxBytes: sent.maxBytes ?? null };
+  input.onTicket?.(sent.ticket);
+  return waitForUpload({ ticket: sent.ticket, fetchImpl: doFetch, sleep, now, signal: input.signal });
+}
 
+/**
+ * An upload already sent (its ticket): wait for the library to hold it, then read what it registered. The second half of
+ * uploadAttachment, for a caller that kept a ticket from an earlier press. Never throws.
+ */
+export async function waitForUpload(input: {
+  ticket: string;
+  fetchImpl?: typeof fetch;
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+  signal?: AbortSignal;
+}): Promise<AttachResult> {
+  const doFetch = input.fetchImpl ?? fetch;
+  const sleep = input.sleep ?? wait;
+  const now = input.now ?? Date.now;
+  const sent = { ticket: input.ticket };
   const deadline = now() + ATTACH_WAIT_MS;
   let assetId: string | null = null;
   while (!assetId) {
