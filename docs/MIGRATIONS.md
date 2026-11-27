@@ -2446,6 +2446,85 @@ video is cross-posted.
 - **Requires** 0029 and 0112. The body is replaced only if it is 0029's or 0205's (md5 guard).
 - **Undo.** `docs/sql/rollback_0205_publish_refusal_gate_verdict.sql` puts 0029's body back exactly.
 
+## Film Studio: archive and resume a project that stopped, re-run a failed assembly, and only a member spends (0215)
+
+0215 (`0215_film_archive_resume.sql`, provisional number) closes switch-on gate G1 (`docs/FILM_STUDIO.md`, "Resume";
+`docs/studio/S2_GAPS.md`). Before it, a film that paused (something was charged and the run stopped short) or was cancelled after a
+charge could neither be archived (0166's `archive_film` takes draft / planned only) nor go on (`start_film` takes draft / planned
+only). It also narrows a low-severity leak S3 found (the film worker's id, by default the host name and process id, in
+`segment_claimed` events): `film_read` no longer hands it to a member and new claim events record a reference instead. It does
+not close the leak entirely (below: BR-0036-01/02 and BR-0215-01 are open in the security ledger).
+
+- **Archive.** `archive_film` (0166's body, one hunk) also takes a `paused` or `cancelled` film, editors and above as before. It is
+  refused while a segment of the film is open (`NS409 segment_open`) or a refund waits to collect from one of its holds
+  (`NS409 refund_pending`). It moves no money and deletes no take or file; the `archived` event keeps `from_status` and the pause
+  reason.
+- **Resume** (owners and admins, `start_film`'s caller rules): `quote_film_resume(film, version)` prices only the lines the newest
+  segment did not complete, at today's rates, through 0171's `film_price` (no pricing of its own), with each line's earlier
+  confirmed price, `original_remaining`, `delta` and `changed`; one unpriced line makes the total and the quote id null.
+  `start_film_resume(film, quote_id, idempotency_key)` follows `start_film`'s refusal order, takes one new segment (`purpose
+  'resume'`, `resumed_from`) and one new hold `fm-…` of the resume total only, carries every completed take into it at 0
+  (`charge_basis carried_not_charged`; `film_takes_carried_check` refuses any charge on such a take), and queues the film. A completed
+  take whose file was deleted since is not carried; its line is priced and made again (`film_resume_done`). New
+  words: `film_not_resumable`, `nothing_to_resume` (NS409). A cancelled film is not resumable (0171 keeps `cancelled` only for a
+  cancel after a charge, which `start_film` never restarts); archive it.
+- **The cap is the whole film's.** `max_credits_per_film` is asked of what the film's segments already captured plus the resume
+  total, in the start and in the quote's `blocked_by` (Breach hole 1), and so is `start_film`'s (and `quote_film`'s) for a film
+  back at draft after a paid segment (BR-0215-R2-01). One helper, `film_captured(film)`, says what the film already cost.
+- **Settling** (0198's `film_settle_locked`, two marked hunks): a segment whose assembly is recorded completed settles `completed`
+  (the film `ready`) whatever reason reaches it, the sweep's deadline included; a resume segment that captured 0 and made nothing new
+  puts the film back to `paused` (after a cancel, with the earlier pause reason), never `cancelled` (Breach hole 2).
+- **Only a member spends** (the owner's decision, 22 Nov): `start_film`, `start_film_resume` and `rerun_film_assembly` need an owner
+  or admin seat in `org_members` (`is_org_spender(org, role)`, standalone so later spend paths reuse it), never only 0043's `accessible_org_ids`; a platform owner or admin who is not
+  one gets `NS400 not_a_member` ("ask the workspace's owner to add you as a member") with who may call, before anything is counted.
+  `quote_film` (0198's body, one hunk) and `quote_film_resume` still answer them (no hold) and say `not_a_member` in `blocked_by`.
+  The exempt organization's credits are the platform's own: its platform owner or admin starts and resumes there as before.
+- **A failed assembly, made again** (agreed with the coordinator; no separate migration): `rerun_film_assembly(film, quote_id,
+  idempotency_key)` for a film whose every take is made and whose assembly failed with one of S4's retryable words
+  (`film_assembly_retryable`), or whose word was lost (the settle reason is `deadline`, `worker_lost` or `assembly_failed`:
+  an unknown cause, re-run at the cost of the assembly line only; after two such re-runs in a row the third is refused
+  `assembly_not_retryable` with `word=<last> reruns=2`, and the remedy is support, a person: `film_lost_reruns`); `not_assembly_failure`, `assembly_not_retryable` (with the word), `film_changed`; the event is
+  `assembly_rerun`. A resume quote also stores what it carries (`film_quotes.carried`), and the start refuses `film_changed` when
+  any of it moved since.
+- **The worker** is unchanged: the carried takes are completed, so it makes only what is left and assembles; 0171 settles the new
+  segment and captures at most its hold. A resume that makes nothing new leaves the film paused (never draft).
+- **The leak, what 0215 closes.** `film_claim_segment` and `claim_creative_job` (0198's bodies, one hunk each) record `worker_ref`
+  (the first 12 hex of md5 of the worker id) instead of the id in every event written from now on; `film_read` (0166's, one hunk)
+  drops `detail.worker` from every event a member reads through `film_json`, `save_film` and `archive_film`, old rows included; a
+  `start_film` replay no longer answers `worker_id`.
+- **The leak, what stays open** (in the security ledger, each with its own fix): `worker_ref` is an unsalted md5, so a member who
+  guesses the host name can recover the id (BR-0215-01, info; pinned as a strict xfail). And BR-0036-01/02: 0036 grants the whole `creative_jobs` table to members, so `creative_jobs.worker_id` (the
+  creative worker's and, for a film take's job, the film worker's id) is still readable by a member's direct select, and so is
+  `detail.worker` in `film_events` / `creative_job_events` rows written before 0215 (both tables are append-only). The app reads
+  neither (`lib/creative/operations.ts` `JOB_COLUMNS` names no worker). To redact the old rows, the owner may run once, as the table
+  owner (it lifts each append-only trigger inside this one transaction only, as the erasure runbook in `docs/FILM_STUDIO.md` does):
+
+  ```sql
+  begin;
+  set local lock_timeout = '5s';
+  alter table public.film_events disable trigger film_events_append_only;
+  update public.film_events
+     set detail = (detail - 'worker') || jsonb_build_object('worker_ref', left(md5(detail ->> 'worker'), 12))
+   where event = 'segment_claimed' and detail ? 'worker';
+  alter table public.film_events enable trigger film_events_append_only;
+  alter table public.creative_job_events disable trigger creative_job_events_append_only;
+  update public.creative_job_events
+     set detail = (detail - 'worker') || jsonb_build_object('worker_ref', left(md5(detail ->> 'worker'), 12))
+   where event = 'claimed' and detail ? 'worker';
+  alter table public.creative_job_events enable trigger creative_job_events_append_only;
+  -- Both read 'O' before commit:
+  select tgrelid::regclass, tgenabled from pg_trigger
+   where tgname in ('film_events_append_only', 'creative_job_events_append_only');
+  commit;
+  ```
+- **Requires** 0166, 0167, 0171, 0187, 0192, 0198. Each replaced body is replaced only if it is the earlier file's or 0215's (md5
+  guard); 0166's and 0198's replays and rollbacks refuse while 0215 is on (take it out first).
+- **Browser routes** for archive of a paused film (the existing `POST /api/films/{id}/archive` already calls `archive_film`) and for
+  the two resume calls are a follow-up; no UI changes here.
+- **Undo.** `docs/sql/rollback_0215_film_archive_resume.sql` (owner-applied): the seven earlier bodies back, the ten functions
+  dropped; the columns and record checks kept, 0171's state check back only when no segment ever resumed. Refused while a resume
+  segment is open.
+
 ## The database's own country gate, and the price by picture size (0208, provisional)
 
 0208 (`0208_geo_gate_and_image_size_price.sql`) changes no answer for a model on sale today (0142 keeps every model with a country
