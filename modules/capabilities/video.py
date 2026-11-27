@@ -64,6 +64,7 @@ from modules.capabilities.base import (
 from modules.capabilities.modelark import RESULT_HOSTS as MODELARK_RESULT_HOSTS
 from modules.capabilities.modelark import map_code as modelark_code
 from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, checked_polling_url, unconfirmed
+from modules import ffmpeg_limits, media_library
 from modules.media_library import counted_rate, frame_count, parse_rate, shortest_length
 
 logger = logging.getLogger(__name__)
@@ -573,18 +574,34 @@ _FPS_DEMUXERS = {".mp4": "mov", ".mov": "mov", ".webm": "matroska", ".mkv": "mat
 #: those are decoded and counted, within the same time limit.
 _ONE_FRAME_PER_PACKET = frozenset({"h264", "hevc", "prores"})
 
-_TOO_SLOW = "the video is too long to check within the time limit; shorten it"
+#: Still-image codecs: FFmpeg's decoder for each returns exactly one picture
+#: per packet and keeps no state between packets, so a track of at most one
+#: packet and one sample is one picture: a thumbnail kept as its own track
+#: (an MP4 or MOV muxed ``-map 0 -map 1 -c copy`` with a JPEG; cameras write
+#: the same), which main's ``v:0`` read accepted (BR-L-211 round 3, Lens).
+#: Not gif or webp: one packet of either can be an animation. Never a motion
+#: codec: a single VP9 packet can be a superframe of 8 shown frames.
+_STILL_CODECS = frozenset({"mjpeg", "png", "bmp"})
+
+#: What a member reads for a codec and a container in a refusal; anything
+#: else gets the generic wording rather than a guessed name.
+_CODEC_NAMES = {"h264": "H.264", "hevc": "HEVC", "prores": "ProRes", "vp8": "VP8", "vp9": "VP9", "av1": "AV1",
+                "mpeg4": "MPEG-4", "mpeg2video": "MPEG-2", "mjpeg": "Motion JPEG"}
+_CONTAINER_NAMES = {".mp4": "MP4", ".mov": "MOV", ".webm": "WebM", ".mkv": "MKV"}
 
 
 @dataclass(frozen=True)
 class FrameReading:
     """What the upscale's price ceiling is checked against. ``rate`` None is
     unknown, never a number; ``refusal`` is a reason already worded for the
-    member (more than one picture stream, a probe out of time), and wins."""
+    member (more than one picture stream, a probe out of time, a frame over
+    the decoder's cap), and wins."""
 
     rate: Optional[float] = None
     avg: Optional[float] = None
     frames: Optional[int] = None
+    #: The picture's length the rate was counted over (``shortest_length``).
+    #: Not the priced length: the price is the file's ``format.duration``.
     seconds: Optional[float] = None
     refusal: Optional[str] = None
     #: More shown frames were decoded than there are packets (VP9 superframes,
@@ -592,17 +609,50 @@ class FrameReading:
     packed: bool = False
 
 
-def _ffprobe_json(argv: List[str], timeout: float) -> Optional[dict]:
-    """ffprobe's JSON, or None when it is not JSON. A timeout is raised: it
-    needs its own remedy, not the unreadable file's."""
+def _ffprobe_run(argv: List[str], timeout: float, **kw) -> Tuple[Optional[dict], bytes]:
+    """ffprobe's JSON (None when it is not JSON) and its stderr. A timeout is
+    raised: it needs its own remedy, not the unreadable file's."""
     try:
-        out = subprocess.run(argv, capture_output=True, timeout=timeout, check=False)
-        data = json.loads(out.stdout or b"{}")
+        out = subprocess.run(argv, capture_output=True, timeout=timeout, check=False, **kw)
     except subprocess.TimeoutExpired:
         raise
-    except (OSError, subprocess.SubprocessError, ValueError):
+    except (OSError, subprocess.SubprocessError):
+        return None, b""
+    err = out.stderr if isinstance(out.stderr, bytes) else b""
+    try:
+        data = json.loads(out.stdout or b"{}")
+    except ValueError:
+        return None, err
+    return (data if isinstance(data, dict) else None), err
+
+
+def _is_still(stream: dict) -> bool:
+    count = frame_count(stream)
+    return str(stream.get("codec_name") or "").lower() in _STILL_CODECS and count is not None and count <= 1
+
+
+def _what(codec: Optional[str], suffix: str) -> str:
+    """"VP9 WebM", "WebM" or "video": only what the probe and the type said."""
+    container = _CONTAINER_NAMES.get(suffix)
+    name = _CODEC_NAMES.get(str(codec or "").lower())
+    if name and container:
+        return f"{name} {container}"
+    return container or (f"{name} video" if name else "video")
+
+
+def _decode_refusal(stderr: bytes, what: str) -> Optional[str]:
+    """The decoder refused a frame (ffmpeg_limits.REFUSAL_MARKERS), so the
+    count it returned is short: a refusal with its own remedy, not a reading
+    and not "unknown"."""
+    if not any(m in stderr for m in ffmpeg_limits.REFUSAL_MARKERS):
         return None
-    return data if isinstance(data, dict) else None
+    if b"exceeds specified max pixel count" in stderr:
+        # Floored, so the figure stated is one the cap accepts.
+        cap_mp = int(media_library.VIDEO_MAX_PIXELS / 100_000) / 10
+        return (f"a frame in this {what} is larger than the upscale accepts; export it again at no more than "
+                f"{cap_mp:.1f} megapixels a frame (8K UHD, 7680x4320, fits)")
+    return (f"decoding this {what} needed more memory than the upscale allows; export it again at a smaller "
+            "frame size")
 
 
 def read_frames(path: str, *, timeout: int = 30) -> FrameReading:
@@ -614,57 +664,83 @@ def read_frames(path: str, *, timeout: int = 30) -> FrameReading:
     forgiven (a length measured first-to-last timestamp is a frame short). The
     header alone lied both ways: a sample table padded at the tail read 0.287
     fps for 120, and a shortened mvhd/mdhd/tkhd read 10 s of 60 fps as 0.25 s.
+    Frames are the larger of packets and samples (``frame_count``): samples an
+    edit list leaves out are never read as packets, and are still sent.
 
     Every stream is read, not ``v:0``: moving ``moov/udta`` ahead of the trak
     made the cover art stream 0 (one packet, so 0 fps), and a 1 fps first
     stream vouched for a 240 fps second one; the vendor is sent the whole file.
-    Cover art is dropped, and more than one picture left is refused. Frames
-    are packets only for ``_ONE_FRAME_PER_PACKET``; any other codec is decoded
-    and counted, in what is left of ``timeout``."""
+    Cover art and one-picture still tracks are dropped, and more than one
+    picture left is refused. Frames are packets only for
+    ``_ONE_FRAME_PER_PACKET``; any other codec is decoded and counted, in what
+    is left of ``timeout``, under the limits every other decode of a member's
+    file runs under (``ffmpeg_limits``, ``media_library.decoder_cap``)."""
     exe = shutil.which("ffprobe")
     if not exe:
         return FrameReading()
+    suffix = Path(str(path)).suffix.lower()
     # The file is a member's library copy: only the file protocol, and the
     # demuxer its type names (as the media library's own probe does), so a
     # playlist or concat script cannot make ffprobe open anything else.
-    demuxer = _FPS_DEMUXERS.get(Path(str(path)).suffix.lower())
+    demuxer = _FPS_DEMUXERS.get(suffix)
     base = [exe, "-v", "error", "-protocol_whitelist", "file", *(["-f", demuxer] if demuxer else [])]
     deadline = time.monotonic() + timeout
     try:
-        data = _ffprobe_json([*base, "-count_packets", "-show_entries",
-                              "stream=index,codec_type,codec_name,avg_frame_rate,nb_frames,nb_read_packets,"
-                              "duration:stream_disposition=attached_pic:format=duration",
-                              "-of", "json", str(path)], timeout)
+        data, _ = _ffprobe_run([*base, "-count_packets", "-show_entries",
+                                "stream=index,codec_type,codec_name,avg_frame_rate,nb_frames,nb_read_packets,"
+                                "duration:stream_disposition=attached_pic:format=duration",
+                                "-of", "json", str(path)], timeout)
     except subprocess.TimeoutExpired:
-        # Counting packets is reading the file once; a file that outlasts it
-        # is long (or built to be), and re-exporting it as MP4 would not help.
-        return FrameReading(refusal=_TOO_SLOW)
+        # Counting packets is reading the file once, whatever its codec (which
+        # this probe did not get to report): only a shorter file helps.
+        return FrameReading(refusal=f"this {_what(None, suffix)} is too long to read within the time limit; "
+                                    "shorten it and upscale the shorter copy")
     if data is None:
         return FrameReading()
     streams, fmt = data.get("streams"), data.get("format") or {}
     if not isinstance(streams, list) or not isinstance(fmt, dict):
         return FrameReading()
     pictures = [st for st in streams if isinstance(st, dict) and st.get("codec_type") == "video"
-                and not (st.get("disposition") if isinstance(st.get("disposition"), dict) else {}).get("attached_pic")]
+                and not (st.get("disposition") if isinstance(st.get("disposition"), dict) else {}).get("attached_pic")
+                and not _is_still(st)]
     if len(pictures) > 1:
         return FrameReading(refusal=f"this file holds {len(pictures)} video streams; export it again with just "
                                     "the one to upscale")
     if not pictures:
         return FrameReading()
     stream = dict(pictures[0])
-    if str(stream.get("codec_name") or "").lower() not in _ONE_FRAME_PER_PACKET:
+    codec = str(stream.get("codec_name") or "").lower()
+    if codec not in _ONE_FRAME_PER_PACKET:
+        what = _what(codec, suffix)
+        # The file's own codec and container: telling a VP9 WebM to become
+        # H.264 MP4 was a remedy for a file the member does not have.
+        too_slow = (f"this {what} is too long to count its frames within the time limit; shorten it and upscale "
+                    "the shorter copy")
         remaining = deadline - time.monotonic()
         index = stream.get("index")
         if remaining <= 0:
-            return FrameReading(refusal=f"{_TOO_SLOW} or export it as H.264 MP4")
+            return FrameReading(refusal=too_slow)
         if not isinstance(index, int) or isinstance(index, bool) or index < 0:
             return FrameReading()
+        # A decode of the member's frames, so it gets what the proxy and the
+        # thumbnail get: the frame cap before the input (VP9, AV1 and H.264 can
+        # switch to a bigger frame at any keyframe, which only the decoder
+        # meets), two decoder threads, the address-space limit and
+        # MALLOC_ARENA_MAX. The upscale takes video types only, so the cap is
+        # the video one whatever the suffix.
+        mime = _RUNWAY_VIDEO_TYPES.get(suffix, "video/mp4")
+        argv = ffmpeg_limits.limited_argv([*base, *media_library.decoder_cap(mime), "-count_frames",
+                                           "-select_streams", str(index), "-show_entries", "stream=nb_read_frames",
+                                           "-of", "json", str(path)])
         try:
-            decoded = _ffprobe_json([*base, "-count_frames", "-select_streams", str(index), "-show_entries",
-                                     "stream=nb_read_frames", "-of", "json", str(path)], remaining)
-        except subprocess.TimeoutExpired:
-            # H.264 MP4 is counted by its packets, which is fast.
-            return FrameReading(refusal=f"{_TOO_SLOW} or export it as H.264 MP4")
+            decoded, stderr = _ffprobe_run(argv, remaining, env=ffmpeg_limits.child_env())
+        except subprocess.TimeoutExpired as e:
+            # A frame refused on the way is the truer reason than the clock.
+            stderr = e.stderr if isinstance(e.stderr, bytes) else b""
+            return FrameReading(refusal=_decode_refusal(stderr, what) or too_slow)
+        refused = _decode_refusal(stderr, what)
+        if refused:
+            return FrameReading(refusal=refused)
         got = (decoded or {}).get("streams")
         got = got[0] if isinstance(got, list) and got and isinstance(got[0], dict) else {}
         shown = frame_count({"nb_read_packets": got.get("nb_read_frames")})
@@ -672,7 +748,7 @@ def read_frames(path: str, *, timeout: int = 30) -> FrameReading:
         if not shown or packets is None:
             return FrameReading()
         # The larger of the two: a decode that stops early must not lower the
-        # count below the packets the vendor is sent.
+        # count below the samples the vendor is sent.
         stream = {**stream, "nb_read_packets": str(max(shown, packets))}
         packed = shown > packets
     else:
@@ -779,13 +855,16 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
                 # keyframe), and what a forged header looks like. Refused
                 # either way, since what Runway bills for the extra frames is
                 # unverified; re-encoding is the fix for both.
-                raise AdapterError(E_BAD_REQUEST, f"the file holds {reading.frames} frames for the "
-                                                  f"{reading.seconds:.1f} seconds it is priced at, as a clip cut "
+                # "Of picture": the rate is counted over the picture's length,
+                # the price over the file's (format.duration); they differ when
+                # the sound outlasts the picture (Lens round 3, 4).
+                raise AdapterError(E_BAD_REQUEST, f"the file holds {reading.frames} frames in "
+                                                  f"{reading.seconds:.1f} seconds of picture, as a clip cut "
                                                   "without re-encoding does; re-encode the trimmed clip and "
                                                   "upscale the new copy")
-            raise AdapterError(E_BAD_REQUEST, f"this video runs at {fps:.0f} frames a second for the length it is "
-                                              f"priced at; the upscale takes up to {self.MAX_FPS:.0f}, so export it "
-                                              f"again at {self.MAX_FPS:.0f} frames a second or fewer")
+            raise AdapterError(E_BAD_REQUEST, f"this video runs at {fps:.0f} frames a second of picture; the "
+                                              f"upscale takes up to {self.MAX_FPS:.0f}, so export it again at "
+                                              f"{self.MAX_FPS:.0f} frames a second or fewer")
         uri = self._upload(path)
         data = self.post(f"{self.base_url}/v1/video_upscale",
                          {"model": vendor_model, "videoUri": uri, "resolution": request.upscale_target})

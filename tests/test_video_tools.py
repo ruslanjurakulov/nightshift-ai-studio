@@ -48,12 +48,15 @@ from tests.test_voice_tools import RecordingSession
 # BR-L-211's regressions run in the ordinary Tests job through this import.
 from tests.security.test_upscale_frame_count import (  # noqa: F401
     CountedRateTests,
+    HiddenSamplePins,
     IngestFrameCountTests,
     RealBytesTests,
     UpscaleFrameCountPins,
     UpscaleCutClipPins,
     UpscaleDecodedFramePins,
+    UpscaleDecodeLimitPins,
     UpscaleLegitimateClipsStayAccepted,
+    UpscaleStillTrackPins,
     UpscaleStreamPins,
 )
 

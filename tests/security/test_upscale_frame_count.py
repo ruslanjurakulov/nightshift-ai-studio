@@ -24,6 +24,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+from modules import ffmpeg_limits as fl
 from modules import media_library as ml
 from modules.capabilities import build_adapter
 from modules.capabilities import video
@@ -85,26 +86,30 @@ def _probe(avg="60/1", frames=None, packets=None, stream_s=None, format_s=None, 
 
 
 class _Upscale(unittest.TestCase):
-    """Submits through the REAL ``video_fps`` with ffprobe's answer faked, so
-    the probe's arguments and its reading are both what production runs."""
+    """Submits through the REAL ``read_frames`` with ffprobe's answer faked,
+    so the probe's arguments and its reading are both what production runs."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
 
-    def submit(self, probe_json, name="source.mp4", decoded=None):
+    def submit(self, probe_json, name="source.mp4", decoded=None, decoded_stderr=b""):
         """``decoded``: what ``-count_frames`` answers (a JSON dict, or an
-        exception to raise); the packet probe answers ``probe_json``."""
+        exception to raise), with ``decoded_stderr`` on stderr; the packet
+        probe answers ``probe_json``. ``self.run_kw`` keeps each call's
+        keyword arguments (the decode's environment)."""
         src = self.tmp / name
         src.write_bytes(MP4)
         seen = []
+        self.run_kw = []
 
         def fake_run(argv, **kw):
             seen.append(argv)
+            self.run_kw.append(kw)
             if "-count_frames" in argv:
                 if isinstance(decoded, BaseException):
                     raise decoded
-                return subprocess.CompletedProcess(argv, 0, json.dumps(decoded or {}).encode(), b"")
+                return subprocess.CompletedProcess(argv, 0, json.dumps(decoded or {}).encode(), decoded_stderr)
             if isinstance(probe_json, BaseException):
                 raise probe_json
             return subprocess.CompletedProcess(argv, 0, json.dumps(probe_json).encode(), b"")
@@ -143,11 +148,12 @@ class UpscaleFrameCountPins(_Upscale):
                                     "avg_frame_rate": "9600/33413", "r_frame_rate": "120/1",
                                     "nb_frames": "240", "nb_read_packets": "240", "duration": "2.000000"}],
                        "format": {"duration": "2.000000"}}
-        self.assertRefusedBeforeUpload(tail_padded, "holds 240 frames for the 2.0 seconds it is priced at")
+        self.assertRefusedBeforeUpload(tail_padded, "holds 240 frames in 2.0 seconds of picture")
 
     def test_br_l_211_a_shortened_header_is_refused_before_upload(self):
         # 60 fps, 10 s, 600 frames; mvhd/mdhd/tkhd durations divided by 40.
-        self.assertRefusedBeforeUpload(_probe("60/1", 600, 600, 0.25, 0.25), "holds 600 frames for the 0.2 seconds")
+        self.assertRefusedBeforeUpload(_probe("60/1", 600, 600, 0.25, 0.25),
+                                       "holds 600 frames in 0.2 seconds of picture")
 
     def test_br_l_211_frames_beyond_the_priced_length_after_an_edit_list_trim_are_refused(self):
         # 60 fps with 660 samples but an edit list that says 10 s: the vendor
@@ -284,17 +290,29 @@ class UpscaleDecodedFramePins(_Upscale):
         p = _probe("30/1", 60, 60, 2.0, 2.0, codec="vp9")
         self.assertRefusedBeforeUpload(p, "could not be read", decoded={"streams": [{}]})
 
-    def test_a_decode_that_runs_out_of_time_names_the_remedy(self):
-        p = _probe("30/1", 60, 60, 2.0, 2.0, codec="vp9")
-        self.assertRefusedBeforeUpload(
-            p, "the video is too long to check within the time limit; shorten it or export it as H.264 MP4",
-            decoded=subprocess.TimeoutExpired(["ffprobe"], 30))
+    def test_a_decode_that_runs_out_of_time_names_the_files_own_codec_and_container(self):
+        # Round 3, item 6 (Atlas): a VP9 WebM was told to become H.264 MP4.
+        p = _probe("30/1", None, 60, None, 2.0, codec="vp9")
+        err, calls, _ = self.submit(p, name="source.webm", decoded=subprocess.TimeoutExpired(["ffprobe"], 30))
+        self.assertEqual(err.message, "this VP9 WebM is too long to count its frames within the time limit; "
+                                      "shorten it and upscale the shorter copy")
+        self.assertEqual(calls, [])
+        err, _, _ = self.submit(_probe("30/1", None, 60, None, 2.0, codec="av1"), name="source.mkv",
+                                decoded=subprocess.TimeoutExpired(["ffprobe"], 30))
+        self.assertEqual(err.message, "this AV1 MKV is too long to count its frames within the time limit; "
+                                      "shorten it and upscale the shorter copy")
 
-    def test_a_packet_count_that_runs_out_of_time_does_not_say_export_as_mp4(self):
-        err, calls, _ = self.submit(subprocess.TimeoutExpired(["ffprobe"], 30), decoded=None)
-        self.assertIsNotNone(err)
-        self.assertIn("too long to check within the time limit", err.message)
-        self.assertNotIn("MP4", err.message)
+    def test_a_decode_timeout_of_a_codec_without_a_name_says_only_the_container(self):
+        err, _, _ = self.submit(_probe("30/1", None, 60, None, 2.0, codec="theora"), name="source.mkv",
+                                decoded=subprocess.TimeoutExpired(["ffprobe"], 30))
+        self.assertEqual(err.message, "this MKV is too long to count its frames within the time limit; "
+                                      "shorten it and upscale the shorter copy")
+
+    def test_a_packet_count_that_runs_out_of_time_does_not_name_another_format(self):
+        err, calls, _ = self.submit(subprocess.TimeoutExpired(["ffprobe"], 30), name="source.webm", decoded=None)
+        self.assertEqual(err.message, "this WebM is too long to read within the time limit; shorten it and "
+                                      "upscale the shorter copy")
+        self.assertNotIn("H.264", err.message)
         self.assertEqual(calls, [])
 
 
@@ -307,19 +325,27 @@ class UpscaleCutClipPins(_Upscale):
         # A 30 fps 2 s cut: 197 frames in 2.1 s.
         err, calls, _ = self.submit(_probe("30/1", 197, 197, 2.1, 2.1, r="30/1"))
         self.assertIsNotNone(err, "a cut clip was submitted")
-        self.assertEqual(err.message, "the file holds 197 frames for the 2.1 seconds it is priced at, as a clip "
-                                      "cut without re-encoding does; re-encode the trimmed clip and upscale the "
-                                      "new copy")
+        # "Seconds of picture", not "priced at": the rate is counted over the
+        # picture's length, and the price over the file's (Lens round 3, 4).
+        self.assertEqual(err.message, "the file holds 197 frames in 2.1 seconds of picture, as a clip cut without "
+                                      "re-encoding does; re-encode the trimmed clip and upscale the new copy")
         self.assertEqual(calls, [])
 
     def test_a_60_fps_cut_gets_the_same_remedy(self):
         self.assertRefusedBeforeUpload(_probe("60/1", 632, 632, 10.034, 10.034),
-                                       "the file holds 632 frames for the 10.0 seconds it is priced at")
+                                       "the file holds 632 frames in 10.0 seconds of picture")
 
     def test_a_truly_high_rate_file_keeps_the_ceiling_message(self):
         err, _, _ = self.submit(_probe("120/1", 240, 240, 2.0, 2.0, r="120/1"))
-        self.assertIn("takes up to 60", err.message)
-        self.assertNotIn("re-encode the trimmed clip", err.message)
+        self.assertEqual(err.message, "this video runs at 120 frames a second of picture; the upscale takes up to "
+                                      "60, so export it again at 60 frames a second or fewer")
+
+    def test_the_seconds_stated_are_the_pictures_not_the_priced_files(self):
+        # Lens round 3, 4: sound to 3.0 s prices 3 s; the frames were counted
+        # over the picture's 2.1 s, which is the figure the message may state.
+        err, _, _ = self.submit(_probe("30/1", 197, 197, 2.1, 3.0, r="30/1"))
+        self.assertIn("197 frames in 2.1 seconds of picture", err.message)
+        self.assertNotIn("priced at", err.message)
 
 
 class CountedRateTests(unittest.TestCase):
@@ -407,6 +433,164 @@ class IngestFrameCountTests(unittest.TestCase):
         self.assertAlmostEqual(p.work_px, 1920 * 1080 * 30 * 600)
 
 
+_SWITCH_STDERR = (b"[vp9 @ 0x55f5b103f7c0] [IMGUTILS @ 0x7f35b77a0060] Picture size 8192x8192 exceeds specified max "
+                  b"pixel count 36683776, see the documentation if you wish to increase it\n"
+                  b"[vp9 @ 0x55f5b103f7c0] Failed to initialize decoder for 8192x8192 @ 0\n")
+
+
+class UpscaleDecodeLimitPins(_Upscale):
+    """Round 3, item 1 (Lens): the ``-count_frames`` decode of a member's file
+    ran with no frame cap, thread pin or address-space limit, unlike every
+    other decode of member media (``ffmpeg_limits``)."""
+
+    def _decode(self, name="source.webm", **kw):
+        p = _probe("30/1", None, 60, None, 2.0, codec="vp9")
+        err, calls, seen = self.submit(p, name=name, decoded={"streams": [{"nb_read_frames": "60"}]}, **kw)
+        i = next(n for n, a in enumerate(seen) if "-count_frames" in a)
+        return err, calls, seen[i], self.run_kw[i]
+
+    def test_br_l_211_the_frame_decode_runs_under_the_decoder_limits(self):
+        err, _, argv, kw = self._decode()
+        self.assertIsNone(err, err and err.message)
+        prefix = fl.limited_argv([])
+        self.assertEqual(argv[:len(prefix)], prefix, "the decode must run under the address-space limit")
+        inner = argv[len(prefix):]
+        self.assertTrue(inner[0].endswith("ffprobe"))
+        src = inner.index(str(self.tmp / "source.webm"))
+        self.assertEqual(inner[inner.index("-max_pixels") + 1], str(ml.decoder_max_pixels("video/webm")))
+        self.assertLess(inner.index("-max_pixels"), src)
+        self.assertEqual(inner[inner.index("-threads") + 1], str(fl.DECODE_THREADS))
+        self.assertLess(inner.index("-threads"), src)
+        for k, v in fl.CHILD_ENV.items():
+            self.assertEqual((kw.get("env") or {}).get(k), v)
+
+    def test_every_accepted_container_gets_the_video_frame_cap(self):
+        for name, mime in (("source.mp4", "video/mp4"), ("source.mov", "video/quicktime"),
+                           ("source.mkv", "video/x-matroska")):
+            with self.subTest(name=name):
+                _, _, argv, _ = self._decode(name)
+                self.assertEqual(argv[argv.index("-max_pixels") + 1], str(ml.decoder_max_pixels(mime)))
+                self.assertEqual(ml.decoder_max_pixels(mime), ml.decoder_max_pixels("video/webm"))
+
+    def test_br_l_211_a_frame_over_the_cap_is_refused_with_the_size_remedy_not_unknown(self):
+        err, calls, _, _ = self._decode(decoded_stderr=_SWITCH_STDERR)
+        self.assertEqual(err.message, "a frame in this VP9 WebM is larger than the upscale accepts; export it "
+                                      "again at no more than 35.6 megapixels a frame (8K UHD, 7680x4320, fits)")
+        self.assertEqual(calls, [])
+
+    def test_a_decode_out_of_memory_under_the_limit_is_refused(self):
+        err, calls, _, _ = self._decode(decoded_stderr=b"[vp9 @ 0x1] get_buffer() failed\n")
+        self.assertEqual(err.message, "decoding this VP9 WebM needed more memory than the upscale allows; export "
+                                      "it again at a smaller frame size")
+        self.assertEqual(calls, [])
+
+    def test_a_damaged_frame_is_not_a_refusal(self):
+        # What a flipped byte logs (ffmpeg_limits): not a marker, so the count stands.
+        err, _, _, _ = self._decode(decoded_stderr=b"[vp9 @ 0x1] Error parsing frame header\n")
+        self.assertIsNone(err, err and err.message)
+
+
+def _still(index, codec="mjpeg", packets=1):
+    """A thumbnail kept as its own track, not tagged attached_pic (Lens's
+    two_trak.mp4: ``-map 0 -map 1 -c copy`` of a JPEG)."""
+    return {"index": index, "codec_type": "video", "codec_name": codec, "avg_frame_rate": "25/1",
+            "r_frame_rate": "25/1", "nb_frames": str(packets), "nb_read_packets": str(packets),
+            "duration": "0.040000", "disposition": {"attached_pic": 0}}
+
+
+class UpscaleStillTrackPins(_Upscale):
+    """Round 3, item 2 (Lens): main read v:0 and accepted a one-frame JPEG
+    track beside the video; round 2 refused it as a second video stream."""
+
+    def _with(self, *extra):
+        p = _probe("30/1", 120, 120, 4.0, 4.0)
+        p["streams"].extend(extra)
+        return p
+
+    def test_a_one_packet_jpeg_track_beside_h264_is_accepted(self):
+        self.assertSubmitted(self._with(_still(1)))
+
+    def test_a_one_packet_jpeg_track_ahead_of_h264_is_accepted(self):
+        p = self._with()
+        p["streams"].insert(0, _still(1))
+        self.assertSubmitted(p)
+
+    def test_a_one_packet_png_track_is_accepted(self):
+        self.assertSubmitted(self._with(_still(1, codec="png")))
+
+    def test_a_two_packet_jpeg_track_is_refused(self):
+        self.assertRefusedBeforeUpload(self._with(_still(1, packets=2)), "this file holds 2 video streams")
+
+    def test_a_one_packet_vp9_track_is_still_a_second_video_stream(self):
+        # A VP9 packet can be a superframe of 8 shown frames: never a still.
+        self.assertRefusedBeforeUpload(self._with(_still(1, codec="vp9")), "this file holds 2 video streams")
+
+    def test_a_jpeg_track_with_no_count_is_not_assumed_to_be_one_picture(self):
+        still = _still(1)
+        del still["nb_frames"], still["nb_read_packets"]
+        self.assertRefusedBeforeUpload(self._with(still), "this file holds 2 video streams")
+
+    def test_a_jpeg_track_with_one_packet_but_more_samples_is_refused(self):
+        still = _still(1)
+        still["nb_frames"] = "50"
+        self.assertRefusedBeforeUpload(self._with(still), "this file holds 2 video streams")
+
+    def test_only_a_one_packet_jpeg_is_unknown_not_a_rate(self):
+        self.assertRefusedBeforeUpload({"streams": [_still(0)], "format": {"duration": "4"}}, "could not be read")
+
+
+class HiddenSamplePins(_Upscale):
+    """Round 3, item 3 (Breach finding 1): samples outside the MP4 edit list.
+    hide_tail2.mp4 plays 2 s at 30 fps and carries 8 s at 240 fps beyond the
+    edit: ffprobe reads 60 packets (the demuxer drops what the edit leaves
+    out) and ``nb_frames`` 1980 (the sample table), avg 18. The vendor is sent
+    every sample."""
+
+    HIDDEN = {"streams": [{"index": 0, "codec_type": "video", "codec_name": "h264",
+                           "avg_frame_rate": "475200/26399", "r_frame_rate": "240/1", "nb_frames": "1980",
+                           "nb_read_packets": "60", "duration": "2.000000"}],
+              "format": {"duration": "2.000000"}}
+
+    def test_br_l_211_samples_outside_the_edit_list_are_counted_and_refused_before_upload(self):
+        self.assertRefusedBeforeUpload(self.HIDDEN, "the file holds 1980 frames in 2.0 seconds of picture")
+
+    def test_br_l_211_the_frame_count_is_the_larger_of_packets_and_samples(self):
+        self.assertEqual(ml.frame_count({"nb_read_packets": "60", "nb_frames": "1980"}), 1980)
+        self.assertEqual(ml.frame_count({"nb_read_packets": "200", "nb_frames": "2"}), 200)
+        # A header 0 (a fragmented MP4) is still unknown, not a count.
+        self.assertEqual(ml.frame_count({"nb_read_packets": "50", "nb_frames": "0"}), 50)
+        self.assertEqual(ml.frame_count({"nb_frames": "1980"}), 1980)
+        self.assertEqual(ml.frame_count({"nb_read_packets": "0"}), 0)
+
+    def test_br_l_211_hidden_samples_count_in_the_decoded_path_too(self):
+        p = json.loads(json.dumps(self.HIDDEN))
+        p["streams"][0]["codec_name"] = "vp9"
+        self.assertRefusedBeforeUpload(p, "1980 frames", decoded={"streams": [{"nb_read_frames": "60"}]})
+
+    def test_br_l_211_ingest_budgets_the_hidden_samples(self):
+        with self.assertRaises(ml.IngestReject) as e:
+            ml.interpret_probe("video/mp4", {"streams": [{"codec_type": "video", "width": 7680, "height": 4320,
+                                                          "avg_frame_rate": "30/1", "nb_read_packets": "60",
+                                                          "nb_frames": "36000", "duration": "2"}],
+                                             "format": {"duration": "2"}})
+        self.assertEqual(e.exception.reason, "too_long")
+
+    def test_samples_with_no_packet_read_are_still_not_media(self):
+        # The larger count budgets; it must not vouch for a stream the
+        # demuxer reads nothing of.
+        with self.assertRaises(ml.IngestReject) as e:
+            ml.interpret_probe("video/mp4", {"streams": [{"codec_type": "video", "width": 64, "height": 64,
+                                                          "avg_frame_rate": "30/1", "nb_read_packets": "0",
+                                                          "nb_frames": "1980", "duration": "2"}],
+                                             "format": {"duration": "2"}})
+        self.assertEqual(e.exception.reason, "not_media")
+
+    def test_one_preroll_sample_above_the_packets_is_forgiven(self):
+        # An x264 MP4 with B-frames and an edit list: one sample more than the
+        # packets read, within the one frame of slack.
+        self.assertSubmitted(_probe("30/1", 121, 120, 4.0, 4.0))
+
+
 def _shorten_headers(src: Path, dst: Path, factor: int) -> None:
     """Divide the mvhd, mdhd and tkhd durations by ``factor``, leaving every
     sample in place: the forged file Sentinel built for case (b)."""
@@ -465,6 +649,83 @@ def _superpack(src: Path, dst: Path, k: int) -> None:
         for j, p in enumerate(packets):
             fh.write(struct.pack("<IQ", len(p), j * k))
             fh.write(p)
+
+
+def _boxes(buf: bytes):
+    out, i = [], 0
+    while i < len(buf):
+        n, t = struct.unpack(">I4s", buf[i:i + 8])
+        out.append([t, buf[i + 8:i + n]])
+        i += n
+    return out
+
+
+def _unbox(boxes) -> bytes:
+    return b"".join(struct.pack(">I4s", len(body) + 8, t) + body for t, body in boxes)
+
+
+def _stts_pad(src: Path, dst: Path, pad_s: float) -> None:
+    """Give the last video sample ``pad_s`` seconds (stts) and grow mdhd to
+    match (Breach's stts_pad.py)."""
+    md = {}
+
+    def fix(boxes):
+        for x in boxes:
+            t, body = x
+            if t == b"mdhd":
+                md["ts"], md["box"] = struct.unpack(">I", body[12:16])[0], x
+            if t in (b"moov", b"trak", b"mdia", b"minf", b"stbl"):
+                kids = _boxes(body)
+                fix(kids)
+                x[1] = _unbox(kids)
+            if t == b"stts":
+                n = struct.unpack(">I", body[4:8])[0]
+                ents = [list(struct.unpack(">II", body[8 + 8 * i:16 + 8 * i])) for i in range(n)]
+                ents[-1][0] -= 1
+                ents = [e for e in ents + [[1, int(pad_s * md["ts"])]] if e[0]]
+                x[1] = body[:4] + struct.pack(">I", len(ents)) + b"".join(struct.pack(">II", *e) for e in ents)
+                q = bytearray(md["box"][1])
+                q[16:20] = struct.pack(">I", sum(a * d for a, d in ents))
+                md["box"][1] = bytes(q)
+
+    top = _boxes(src.read_bytes())
+    fix(top)
+    dst.write_bytes(_unbox(top))
+
+
+def _elst_cut(src: Path, dst: Path, start_s: float, seg_s: float) -> None:
+    """Make the video trak's edit list one segment [start, start + seg) and
+    shorten mvhd/tkhd to it; the samples outside stay in the file (Breach's
+    elst_cut.py)."""
+    top, ts = _boxes(src.read_bytes()), {}
+
+    def scan(boxes):
+        for t, body in boxes:
+            if t in (b"mvhd", b"mdhd"):
+                ts[t] = struct.unpack(">I", body[12:16])[0]
+            if t in (b"moov", b"trak", b"mdia"):
+                scan(_boxes(body))
+
+    scan(top)
+    seg, mt = int(seg_s * ts[b"mvhd"]), int(start_s * ts[b"mdhd"])
+
+    def fix(boxes):
+        out = []
+        for t, body in boxes:
+            if t == b"edts":
+                continue
+            if t in (b"mvhd", b"tkhd"):
+                off = 16 if t == b"mvhd" else 20
+                body = body[:off] + struct.pack(">I", seg) + body[off + 4:]
+            if t in (b"moov", b"trak", b"mdia"):
+                body = _unbox(fix(_boxes(body)))
+            out.append([t, body])
+            if t == b"tkhd":
+                elst = struct.pack(">II", 0, 1) + struct.pack(">IIhh", seg, mt, 1, 0)
+                out.append([b"edts", _unbox([[b"elst", elst]])])
+        return out
+
+    dst.write_bytes(_unbox(fix(top)))
 
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg + ffprobe")
@@ -541,6 +802,65 @@ class RealBytesTests(unittest.TestCase):
                      "-deadline", "realtime", "-cpu-used", "8", "-an", str(honest))
         err, _ = self._submit(honest)
         self.assertIsNone(err, err and err.message)
+
+    def test_br_l_211_real_samples_hidden_outside_the_edit_list_are_refused(self):
+        # Breach round 3, finding 1, at 64x64: 2 s at 30 fps, then 8 s at 240 fps
+        # past the edit, the last sample padded so the average reads 18.
+        src, padded, hidden = self.tmp / "src.mp4", self.tmp / "padded.mp4", self.tmp / "hide_tail.mp4"
+        self._ffmpeg("-f", "lavfi", "-i", "testsrc2=s=64x64:r=240:d=10", "-vf", r"select='gte(t\,2)+not(mod(n\,8))'",
+                     "-fps_mode", "passthrough", "-c:v", "libx264", "-preset", "ultrafast", "-g", "1",
+                     "-use_editlist", "0", "-an", str(src))
+        _stts_pad(src, padded, 100)
+        _elst_cut(padded, hidden, 0, 2)
+        probe = json.loads(subprocess.run(ml.probe_command("ffprobe", hidden, "video/mp4"), capture_output=True,
+                                          check=True, timeout=60).stdout)
+        stream = probe["streams"][0]
+        self.assertEqual((stream["nb_read_packets"], stream["nb_frames"]), ("60", "1980"),
+                         "the forgery did not hide the samples from the packet count")
+        self.assertEqual(ml.frame_count(stream), 1980)
+        err, calls = self._submit(hidden)
+        self.assertIsNotNone(err, "1980 frames priced as 2 s were submitted")
+        self.assertIn("1980 frames in 2.0 seconds of picture", err.message)
+        self.assertEqual(calls, [])
+
+    def test_br_l_211_a_real_vp9_frame_size_switch_is_refused_before_upload(self):
+        # Lens round 3, switch.webm: a small VP9 WebM joined by -c copy with a
+        # short one whose frames are over the decoder cap. The header and the
+        # packet count read the small frame; only the decoder meets the big one.
+        small, big, joined = self.tmp / "a.webm", self.tmp / "b.webm", self.tmp / "switch.webm"
+        side = 6400
+        self.assertGreater(side * side, ml.decoder_max_pixels("video/webm"))
+        vp9 = ["-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8", "-an"]
+        self._ffmpeg("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=1", *vp9, str(small))
+        self._ffmpeg("-f", "lavfi", "-i", f"color=c=blue:s={side}x{side}:r=30:d=0.1", *vp9, str(big))
+        listing = self.tmp / "list.txt"
+        listing.write_text(f"file '{small}'\nfile '{big}'\n", encoding="utf-8")
+        self._ffmpeg("-f", "concat", "-safe", "0", "-i", str(listing), "-c", "copy", str(joined))
+        err, calls = self._submit(joined)
+        self.assertIsNotNone(err, "a VP9 WebM switching to a frame over the cap was submitted")
+        self.assertTrue(err.message.startswith("a frame in this VP9 WebM is larger than the upscale accepts"),
+                        err.message)
+        self.assertEqual(calls, [])
+
+    def test_a_real_jpeg_thumbnail_track_is_accepted_and_two_real_videos_are_not(self):
+        # Lens round 3, two_trak.mp4/.mov and aux2.mov.
+        main, thumb, aux = self.tmp / "main.mp4", self.tmp / "thumb.jpg", self.tmp / "aux.mp4"
+        x264 = ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-an"]
+        self._ffmpeg("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=4", *x264, str(main))
+        self._ffmpeg("-f", "lavfi", "-i", "testsrc=size=160x120:rate=1", "-frames:v", "1", str(thumb))
+        self._ffmpeg("-f", "lavfi", "-i", "testsrc=size=160x120:rate=30:duration=4", *x264, str(aux))
+        for ext in (".mp4", ".mov"):
+            with self.subTest(ext=ext):
+                two = self.tmp / f"two_trak{ext}"
+                self._ffmpeg("-i", str(main), "-i", str(thumb), "-map", "0", "-map", "1", "-c", "copy", str(two))
+                err, calls = self._submit(two)
+                self.assertIsNone(err, err and err.message)
+                both = self.tmp / f"aux2{ext}"
+                self._ffmpeg("-i", str(main), "-i", str(aux), "-map", "0", "-map", "1", "-c", "copy", str(both))
+                err, calls = self._submit(both)
+                self.assertIsNotNone(err, "two real video tracks were submitted")
+                self.assertIn("this file holds 2 video streams", err.message)
+                self.assertEqual(calls, [])
 
     def test_br_l_211_a_real_shortened_header_reads_as_its_frames(self):
         short = self.tmp / "short.mp4"

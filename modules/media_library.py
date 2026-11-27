@@ -593,7 +593,10 @@ def interpret_probe(sniffed: str, data: Mapping) -> Probe:
         # a video's cap is lower than a still's (BR-L-010).
         w, h = _check_frame(v, width, height, VIDEO_MAX_PIXELS)
         _check_every_picture(streams, VIDEO_MAX_PIXELS)
-        if frame_count(v) == 0:
+        # No packet read is no picture shown, whatever the sample table says
+        # (an edit list can leave every sample out): the larger count below
+        # is for budgeting, not for vouching that there is a picture.
+        if frame_count(v) == 0 or _num(v.get("nb_read_packets")) == 0:
             raise IngestReject("not_media", "the video stream holds no pictures")
         # Every picture stream is budgeted, summed (BR-L-211): the proxy maps
         # v:0 and the thumbnail the largest picture, so the stream a step
@@ -639,15 +642,23 @@ def _rate(v) -> Optional[float]:
 
 
 def frame_count(stream: Mapping) -> Optional[int]:
-    """How many pictures a stream holds: the packets ffprobe counted
-    (``-count_packets``, ``nb_read_packets``), else the container's sample
-    count (``nb_frames``), else None. A counted 0 is 0 (an empty stream); a
-    header 0 is unknown, because a fragmented MP4 writes 0 with samples to come."""
+    """How many pictures a stream holds: the larger of the packets ffprobe
+    counted (``-count_packets``, ``nb_read_packets``) and the container's
+    sample count (``nb_frames``), whichever are known, else None. Neither
+    alone: the demuxer drops the samples an MP4 edit list leaves out, so 8 s
+    of 240 fps past a 2 s edit read 60 packets and 1980 samples, and the
+    vendor is sent every sample (BR-L-211, round 3); a padded or fragmented
+    header undercounts the other way. A counted 0 with no sample count is 0
+    (an empty stream); a header 0 is unknown, because a fragmented MP4 writes
+    0 with samples to come."""
+    counts = []
     packets = _num(stream.get("nb_read_packets"))
     if packets is not None and packets >= 0:
-        return int(packets)
+        counts.append(int(packets))
     frames = _num(stream.get("nb_frames"))
-    return int(frames) if frames is not None and frames > 0 else None
+    if frames is not None and frames > 0:
+        counts.append(int(frames))
+    return max(counts) if counts else None
 
 
 def shortest_length(stream: Mapping, fmt: Mapping) -> Optional[float]:

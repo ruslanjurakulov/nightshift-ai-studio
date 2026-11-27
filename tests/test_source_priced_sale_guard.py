@@ -65,7 +65,11 @@ def is_open(status: str) -> bool:
     return not s.startswith("fixed") or "partially" in s
 
 
-_DEFINES_CREATIVE_PRICE = re.compile(r"create\s+or\s+replace\s+function\s+public\.creative_price\s*\(", re.I)
+# Any spelling Postgres accepts for a definition: without "or replace", without
+# the schema, or quoted. A later file written one of those ways is the function
+# the database runs, and must not be skipped for an older one (Lens round 3, 6).
+_DEFINES_CREATIVE_PRICE = re.compile(
+    r'create\s+(or\s+replace\s+)?function\s+(public\.)?"?creative_price"?\s*\(', re.I)
 _SOURCE_SECOND_CAPS = re.compile(
     r"if cap in \(([^)]*)\) then\s*\n\s*--[^\n]*\n\s*qty := public\.creative_source_seconds")
 
@@ -161,6 +165,26 @@ class SaleGuardHelpers(unittest.TestCase):
                               "0200_b.sql": self.SHAPED.replace("'dub', 'captions'", "'video_upscale'"),
                               "0300_c.sql": "-- mentions public.creative_price only in a comment\n"})
         self.assertEqual(source_second_caps(d), ("0200_b.sql", {"video_upscale"}))
+
+    def test_every_spelling_of_a_definition_is_the_latest_one(self):
+        for head in ("create function public.creative_price(",
+                     "CREATE OR REPLACE FUNCTION creative_price (",
+                     'create or replace function public."creative_price"(',
+                     'create function "creative_price"('):
+            with self.subTest(head=head):
+                d = self._migrations({"0100_a.sql": self.SHAPED,
+                                      "0200_b.sql": head + "p_org uuid) returns int as $$ select 1 $$;\n"})
+                with self.assertRaises(AssertionError) as e:
+                    source_second_caps(d)
+                self.assertIn("0200_b.sql", str(e.exception))
+
+    def test_a_call_or_a_comment_is_not_a_definition(self):
+        d = self._migrations({"0100_a.sql": self.SHAPED,
+                              "0200_b.sql": "select public.creative_price(null);\n"
+                                            "-- create or replace public.creative_price later\n"
+                                            "create function public.creative_price_v2(x int) returns int "
+                                            "as $$ select 1 $$;\n"})
+        self.assertEqual(source_second_caps(d), ("0100_a.sql", {"dub", "captions"}))
 
     def test_a_latest_creative_price_without_the_shape_fails_instead_of_reading_an_older_one(self):
         d = self._migrations({"0100_a.sql": self.SHAPED,
