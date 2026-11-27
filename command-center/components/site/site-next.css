@@ -1887,13 +1887,9 @@ html:is([lang="ru"], [lang="uz"]) .nx .lp-root .nx-h2 { font-size: var(--lp-h2-r
   .nx .lp-root :is(#samples, #models) > .nx-wrap > .nx-sub { grid-column: 2; grid-row: 2; align-self: end; margin: 0 0 6px; font-size: 15px; line-height: 1.5; }
 }
 
-/* The first screen: the display weight and the page's one accent. */
+/* The first screen: the display weight. Its key is the reference's black pill and its note a 13 px caption (home.css), not the
+   page's accent: the owner asked for that hero "in this style" (2026-11-22). */
 .nx .lp-root .hm-hero-title { font-weight: var(--lp-display-weight); letter-spacing: -0.025em; }
-.nx .lp-root .hm-eyebrow { color: rgba(255, 255, 255, 0.82); font-size: 0.8125rem; }
-.nx .lp-root .hm-idea-go { --_bg: var(--lp-accent); --_bg-hover: var(--lp-accent-hover); --_fg: #fff; --_edge: var(--lp-accent); }
-.nx .lp-root .hm-idea-row:has(.hm-idea-field:focus-visible) { border-color: #8b84ff; box-shadow: 0 0 0 1px #8b84ff; }
-/* The honesty note is a caption beside the key it qualifies, not a paragraph. */
-.nx .lp-root .hm-idea-note { font-size: 0.8125rem; color: rgba(230, 238, 252, 0.8); }
 
 /* The steps: the live piece leads; the numeral is a quiet caption above the title, not a second accent. */
 .nx .lp-root .nx-strip-no { font-size: 14px; font-weight: 600; line-height: 1.3; color: var(--ns-text-dim); }

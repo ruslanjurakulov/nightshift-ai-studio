@@ -172,13 +172,16 @@ class GoogleTermsTests(unittest.TestCase):
     def test_prices_of_the_google_entries_were_not_touched(self):
         # This change added notes, web_only and dates, and priced nothing. The Gemini 3.x entries were gated
         # later, on 2026-11-11, under the same Gemini API terms (tests/test_registry_corrections_2026_11_11.py);
-        # the Veo entries are past their shutdown and keep no gate.
+        # The Veo entries are past their shutdown; on 2026-11-21 they got terms_review_required because every Google row now carries
+        # a country list (Google's allow-list terms, docs/GEO_BLOCK.md) and the validator refuses a list without a terms gate (0142's
+        # rule: a model with a list stays off sale). Their prices are still untouched.
         r = reg.load()
         for mid, price in (("veo-3.1", 0.4), ("veo-3.1-fast", 0.1), ("veo-3.1-lite", 0.05),
                            ("gemini-3.1-flash-image", 0.067), ("gemini-3-pro-image", 0.134)):
             self.assertEqual(r[mid].raw["pricing"]["provider_usd_per_unit"], price, mid)
         for mid in VEO_IDS:
-            self.assertIsNone(r[mid].terms_gate, mid)
+            self.assertEqual(r[mid].terms_gate, "terms_review_required", mid)
+            self.assertTrue(r[mid].raw.get("blocked_countries"), mid)
         for mid in OPS_IDS + ("gemini-3.1-flash-image", "gemini-3-pro-image"):
             self.assertEqual(r[mid].terms_gate, "terms_review_required", mid)
 

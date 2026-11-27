@@ -67,7 +67,7 @@ describe("with one sample merged", () => {
     // The card is its picture and the AI-generated badge (media first); its model is named in the dialog it opens, which is the
     // sample's own box too (components/site/SampleDetail.tsx).
     const card = section.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`) as HTMLElement;
-    expect(card.textContent).toContain(t.site.gallery.badge);
+    expect(card.textContent).toContain(t.site.gallery.badgeName);
     expect(card.textContent).not.toMatch(/Runway/);
     const back = vi.spyOn(window.history, "back").mockImplementation(() => window.dispatchEvent(new PopStateEvent("popstate")));
     fireEvent.click(card.querySelector("button.nx-gallery-open")!);

@@ -134,7 +134,8 @@ describe("the landing's pictures are our own Studio's", () => {
     cards.forEach((card, i) => {
       const p = pieces[i];
       expect(card.dataset.piece).toBe(p.id);
-      expect(within(card).getByText(h.ai)).toBeTruthy();
+      // Just "AI" on the picture (owner, 2026-11-22); the picture's description below says it in full.
+      expect(card.querySelector(".hm-reel-badge")?.textContent).toBe(dictionaries[code].site.gallery.badge);
       const credit = card.querySelector(".hm-reel-credit")?.textContent ?? "";
       for (const m of p.models) expect(credit).toContain(m);
       expect(credit.startsWith(h.credit.split("{model}")[0])).toBe(true);
@@ -170,16 +171,39 @@ describe("the landing's pictures are our own Studio's", () => {
 });
 
 describe("the hero", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the one sentence is the page's h1, then the idea box and the way to how it works", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the one sentence is the page's h1, then one line and the idea box, and nothing else", (code) => {
     const { container } = page(code);
     const h = dictionaries[code].landingHome.hero;
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(h.title);
-    const hero = within(container.querySelector(".hm-hero") as HTMLElement);
-    // The idea box is the first call to action: a labelled field and one button, in the visitor's language.
-    expect(hero.getByLabelText(h.idea.label).tagName).toBe("TEXTAREA");
+    const box = container.querySelector(".hm-hero") as HTMLElement;
+    const hero = within(box);
+    expect(box.querySelector(".hm-hero-sub")?.textContent).toBe(h.subline);
+    // The idea box is the first call to action: a field still named by its label (visually hidden) and one button.
+    expect(hero.getByLabelText(h.idea.label).tagName).toBe("INPUT");
     expect(hero.getByRole("button", { name: new RegExp(h.idea.submit) })).toBeTruthy();
     expect(hero.getByText(h.idea.note)).toBeTruthy();
-    expect(hero.getByRole("link", { name: h.secondary }).getAttribute("href")).toBe("#how");
+    // The reference's first screen: no eyebrow, no long lead, no second way out (the page's nav leads to "How it works").
+    const body = box.querySelector(".hm-hero-body") as HTMLElement;
+    expect([...body.children].map((c) => c.className.split(" ")[0])).toEqual(["ds-display", "hm-hero-sub", "hm-idea"]);
+    expect(body.textContent).not.toContain(h.eyebrow);
+    expect(box.textContent).not.toContain(h.lead);
+    expect(box.querySelectorAll("a")).toHaveLength(0);
+  });
+
+  it("styles the bar after the reference: a fixed-height glass pill, the black key inside it, the note a 13 px caption, the label hidden only from the eye", () => {
+    const css = readFileSync(path.join(process.cwd(), "components/landing/home/home.css"), "utf8");
+    const rule = (sel: string) => css.match(new RegExp(`\\n  ${sel.replace(/[.()]/g, "\\$&")} \\{[^}]*\\}`))?.[0] ?? "";
+    // Its height is the stylesheet's, never its content's: the hero is the same box before and after hydration (CLS 0).
+    expect(rule(".hm-idea-row")).toMatch(/height: 80px;[^}]*border-radius: 999px;[^}]*backdrop-filter: blur/);
+    expect(css).toMatch(/@media \(max-width: 640px\) \{\s*\.hm-idea-row \{[^}]*height: 132px;/);
+    expect(rule(".hm-idea .hm-idea-go")).toMatch(/--_bg: #000;[^}]*--_fg: #fff;[^}]*border-radius: 999px;[^}]*font-weight: 700;/);
+    expect(rule(".hm-idea-note")).toMatch(/font-size: 0\.8125rem;/);
+    expect(rule(".hm-idea-label")).toMatch(/position: absolute; width: 1px; height: 1px;[^}]*clip-path: inset\(50%\)/);
+    expect(rule(".hm-idea-label")).not.toMatch(/display: none|visibility: hidden/);
+    // A keyboard sees where it is: the bar draws the field's ring, and only where :has() can (elsewhere the field keeps its own).
+    expect(css).toMatch(/@supports selector\(:has\(\*\)\) \{\s*\.hm-idea-field:focus-visible \{ outline: none; \}\s*\.hm-idea-row:has\(\.hm-idea-field:focus-visible\) \{ outline: 3px solid/);
+    // Centred, as the reference is.
+    expect(rule(".hm-hero-body")).toMatch(/align-items: center;[^}]*text-align: center;/);
   });
 
   it("says the brief's sentence in each language, the dash kept with the words before it", () => {

@@ -206,7 +206,7 @@ describe("what the three pieces say", () => {
     expect(container.textContent ?? "").not.toMatch(/powered by/i);
     for (const a of container.querySelectorAll("a")) expect(a.getAttribute("href") ?? "").not.toMatch(/runway\.com|ideogram\.ai|^https?:/);
     // Every box says it is AI-generated.
-    for (const box of container.querySelectorAll(".nxc-info, .nxb, .nxt")) expect(box.textContent).toContain(t.site.gallery.badge);
+    for (const box of container.querySelectorAll(".nxc-info, .nxb, .nxt")) expect(box.textContent).toContain(t.site.gallery.badgeName);
   });
 
   it("“Use this prompt” only fills the Studio form through sign-up, names no model, and exists only for a tool with a form", () => {
