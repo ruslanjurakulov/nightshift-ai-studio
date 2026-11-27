@@ -1,7 +1,7 @@
 import "server-only";
 import { headers } from "next/headers";
 import { runAgeRefusal, type RunAgeAnswer } from "@/lib/age";
-import { BLOCKED_COUNTRIES, blockedCountriesOf, type BlockedMap } from "@/lib/geo/blocked";
+import { GOOGLE_AVAILABLE_REGIONS, GOOGLE_BLOCKED, refusesUnknownCountry } from "@/lib/geo/blocked";
 import { readAgeAnswer } from "@/lib/server/age";
 import { readCountry, type CountryReading } from "@/lib/server/geo";
 import { CHAT_MODELS, type ChatModelId } from "@/lib/server/brain/llm";
@@ -9,15 +9,14 @@ import { CHAT_GATE_REMEDY, type ChatGateError, type ChatGateVerdict } from "@/li
 
 /**
  * Google's two conditions on a Gemini chat turn, asked BEFORE the cap is touched and before any call to Google. A creative job has
- * the database behind it (0196's age gate, PR #881's country gate on creative_jobs); a chat turn has nothing after this server, so
+ * the database behind it (0196's age gate, 0208's country gate on creative_jobs); a chat turn has nothing after this server, so
  * this is the only place they hold, and both fail closed:
  *
  *   * 18+ (Gemini API Additional Terms; registry requires_adult; 0192): only a person who confirmed they are an adult. An unread
  *     answer, or 0192 not applied, is refused (try again) rather than spending on Google for someone who may never have answered.
- *   * The end user's country (lib/geo/blocked, lib/server/geo): a known country on the model's list is refused; an unknown one is
- *     refused for every reason, because Google's terms allow use only inside listed regions and "we could not tell" is not inside.
- *     While the model has no country list in lib/geo/blocked at all (PR #881 adds Google's), nothing can tell an allowed country
- *     from a blocked one, so every turn is refused: no list is not "allowed everywhere".
+ *   * The end user's country, by Google's own list in lib/geo/blocked (GOOGLE_BLOCKED, the twin of the registry's blocked_countries;
+ *     never a copy here, so the chat and Create cannot disagree about a country). Google's terms are an allow-list, so the geo
+ *     module refuses an unknown country for its models (refusesUnknownCountry), and so does this gate, for every reason.
  *
  * Claude and GPT are not Google's: they pass untouched (no header read, no age read), exactly as before. A refusal is the reason,
  * never another model (CLAUDE.md rule 4).
@@ -31,21 +30,23 @@ export function chatGateVerdict(refusal: ChatGateRefusal | null): ChatGateVerdic
   return refusal ? { code: refusal.error, remedy: CHAT_GATE_REMEDY[refusal.error] } : null;
 }
 
-export function chatGateDecision(
-  id: ChatModelId,
-  age: RunAgeAnswer,
-  country: CountryReading | null,
-  map: BlockedMap = BLOCKED_COUNTRIES,
-): ChatGateRefusal | null {
+const UNVERIFIED: ChatGateRefusal = { status: 451, error: "country_unverified" };
+
+export function chatGateDecision(id: ChatModelId, age: RunAgeAnswer, country: CountryReading | null): ChatGateRefusal | null {
   if (CHAT_MODELS[id].provider !== "google") return null;
   // Run now's rule for a run nothing after the route asks again ("actions"): minor 403, none 428, unread 503. And 0192 not applied
   // ("absent", which a run lets through) is refused too: no attestation exists to show this person is an adult.
   const ageRefusal = runAgeRefusal(age, "actions");
   if (ageRefusal) return ageRefusal as ChatGateRefusal;
   if (age !== "adult") return { status: 503, error: "age_unavailable" };
-  const list = blockedCountriesOf(id, map);
-  if (list.length === 0 || !country || country.country === null) return { status: 451, error: "country_unverified" };
-  return list.includes(country.country) ? { status: 451, error: "country_blocked" } : null;
+  // A Google chat model the geo module does not name (GOOGLE_MODELS, the registry's twin) was never registered as one of Google's
+  // allow-list models: nothing vouches that GOOGLE_BLOCKED is its list, so it answers no one until it is added there.
+  if (!refusesUnknownCountry(id)) return UNVERIFIED;
+  if (!country || country.country === null) return UNVERIFIED;
+  if (GOOGLE_BLOCKED.includes(country.country)) return { status: 451, error: "country_blocked" };
+  // Neither blocked nor listed: a code outside ISO 3166-1 that is not Google's XK. GOOGLE_BLOCKED is "every ISO code Google does not
+  // list", so a reading it cannot place would otherwise pass an allow-list by default; it is unknown, and refused as unknown.
+  return GOOGLE_AVAILABLE_REGIONS.includes(country.country) ? null : UNVERIFIED;
 }
 
 /** The same for the current request. Reads the person's attestation and the request's country only for a Google model. */
