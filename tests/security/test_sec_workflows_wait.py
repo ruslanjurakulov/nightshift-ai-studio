@@ -277,26 +277,22 @@ def roster(db):
     return person(db, platform="owner")
 
 
-def test_a_platform_admin_confirms_in_a_customer_org_only_while_still_admin(db, roster):
+def test_a_platform_admin_without_a_seat_neither_starts_nor_carries_on_a_run_in_a_customer_org(db, roster):
+    """0226 (the owner's decision, 22 Nov): a platform admin with no seat in an organization reads it but never spends its credits.
+    Before 0226 such an admin started runs there and their confirmation kept spending while they stayed admin."""
     c = db.new_org()
     p = person(db, platform="admin")  # no org_members row in c at all
-    assert may(db, p, c.org) is True
     wf = flow(db, c)
     run = str(uuid.uuid4())
-    out = db.start(p, run, wf["id"], wf["version"], VALUES, TOTAL)
-    assert out["run"]["started_by"] == p
+    assert err(lambda: db.start(p, run, wf["id"], wf["version"], VALUES, TOTAL)) == ("NS400", "not_a_member")
+    assert run_holds(db, run) == (0, 0)
+    # A run whose confirmer is such an admin (one confirmed before 0226): its next step is made as them and refused, never held.
+    out = db.start(c.owner, run, wf["id"], wf["version"], VALUES, TOTAL)
     db.worker(db.steps(run)[0][2], charge=4)
-    # Still admin: a member of c carries the run on.
+    db.su("update public.workflow_runs set started_by = %s where id = %s", [p, run])
     out = db.advance(c.owner, run)
-    assert statuses(out) == ["completed", "running", "pending"]
-    db.worker(out["steps"][1]["job_id"], charge=10)
-    # Demoted to platform editor: no organization role in c, so no longer allowed to spend there.
-    set_platform_role(db, p, "editor")
-    assert may(db, p, c.org) is False
-    out = db.advance(c.owner, run)
-    assert statuses(out) == ["completed", "completed", "failed"]
-    assert out["steps"][2]["error_code"] == "confirmation_revoked" and out["steps"][2]["job_id"] is None
-    assert out["run"]["status"] == "failed" and out["run"]["charged_credits"] == 14
+    assert statuses(out)[:2] == ["completed", "failed"], statuses(out)
+    assert out["steps"][1]["error_code"] == "not_a_member" and out["steps"][1]["job_id"] is None
     assert run_holds(db, run) == (0, 0)
 
 

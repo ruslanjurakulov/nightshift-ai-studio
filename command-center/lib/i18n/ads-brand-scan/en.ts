@@ -159,6 +159,7 @@ export const adsBrandScanEn = {
     failed: "That did not work. Nothing was changed.",
     invalid_host: "Enter a domain such as shop.example.com (letters, digits, dots and hyphens; an international name in its xn-- form).",
     hosting_parent: "That is a hosting service or a country domain, not one site. Enter your own site's full name instead.",
+    not_a_member: "You are not a member of this workspace, so you cannot spend its credits. Ask the person who runs this workspace to add you as a member. Nothing was started or charged.",
     invalid_url: "Enter an https address on your domain, without a port or a password.",
     invalid_idempotency_key: "That request could not be read. Nothing was changed.",
     invalid_fields: "Some of those fields cannot be accepted. Nothing was changed.",

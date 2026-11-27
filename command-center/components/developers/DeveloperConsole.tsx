@@ -727,7 +727,9 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
     setBusy(false);
     const key = e ? null : mintedKey(data);
     if (!key) {
-      setError(e?.code === "NS409" ? d.keyLimitReached : isMissing(e) ? d.createNeedsMigration : d.createFailed);
+      // 0226: a key spends as the person who made it, so only an owner or admin MEMBER makes one (not_a_member, NS400).
+      const notMember = e?.code === "NS400" && (e.message ?? "").trim() === "not_a_member";
+      setError(notMember ? d.keyNotAMember : e?.code === "NS409" ? d.keyLimitReached : isMissing(e) ? d.createNeedsMigration : d.createFailed);
       await load();
       return;
     }

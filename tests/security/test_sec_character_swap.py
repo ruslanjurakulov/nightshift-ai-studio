@@ -1031,10 +1031,12 @@ def fingerprint(s, ours: bool):
 def test_a_replay_changes_nothing_not_even_the_owners_price(conn, w):
     s = w.su
     settings(s, org_daily_jobs=7)
+    sec_db.take_off_0226(s)  # 0226 sits on 0137's request_character_swap, which 0137's guard and rollback refuse
     before = (fingerprint(s, True), fingerprint(s, False), counts(s))
     s.conn.execute(migration_body())
     s.conn.execute(migration_body())
     assert (fingerprint(s, True), fingerprint(s, False), counts(s)) == before
+    sec_db.put_back_0226(s)
     become(s, None)
     assert s.rows("select credits_per_usd from public.character_swap_models order by position") == [(10,), (None,)]
     assert s.rows("select org_daily_jobs, platform_daily_jobs, platform_in_flight from public.character_swap_settings") == [(7, 200, 20)]
@@ -1045,6 +1047,7 @@ def test_a_replay_changes_nothing_not_even_the_owners_price(conn, w):
 def test_the_file_refuses_a_function_of_its_name_that_somebody_changed_by_hand(conn, w, name):
     s = w.su
     become(s, None)
+    sec_db.take_off_0226(s)  # 0226 sits on 0137's request_character_swap, which 0137's guard and rollback refuse
     definition = s.value("select pg_get_functiondef(%s::regprocedure)", [ALL[name]])
     marker = "begin" if "\nbegin" in definition else "select"
     s.conn.execute(definition.replace(marker, marker + " /* changed by hand */", 1))
@@ -1059,6 +1062,7 @@ def test_the_file_refuses_a_function_of_its_name_that_somebody_changed_by_hand(c
 def test_the_rollback_refuses_while_people_have_rows_or_a_job_is_in_flight(conn, w):
     s = w.su
     become(s, None)
+    sec_db.take_off_0226(s)  # 0226 sits on 0137's request_character_swap, which 0137's guard and rollback refuse
     before = (fingerprint(s, True), counts(s))
     out = s.run(rollback_body())
     assert not out.ok and "the character studio tables hold" in out.error and "character_swap_rollback_delete_rows" in out.error, out
@@ -1076,6 +1080,7 @@ def test_the_rollback_removes_exactly_what_0137_added_and_0137_applies_again(con
     with as_superuser(conn, commit=False) as su:
         su.conn.execute("update public.character_swap_jobs set status = 'failed', error_code = 'lab', finished_at = now() "
                         "where status in ('requested', 'running')")
+        sec_db.take_off_0226(su)  # 0226 sits on 0137's request_character_swap, which 0137's guard and rollback refuse
         ours, others = fingerprint(su, True), fingerprint(su, False)
         assets = su.value("select count(*) from public.media_assets")
         sec_db.take_off_0137(su)
@@ -1083,9 +1088,10 @@ def test_the_rollback_removes_exactly_what_0137_added_and_0137_applies_again(con
         assert fingerprint(su, False) == others, "nothing that 0137 did not add was touched"
         assert su.value("select count(*) from public.media_assets") == assets, "the outputs stay in the library"
         su.conn.execute(rollback_body())
-        sec_db.put_back_0137(su)
+        su.conn.execute(migration_body())  # 0137 alone (put_back_0137 would put 0226 back on it too, which is not 0137)
         assert fingerprint(su, True) == ours, "0137 applies again on top, to exactly what it was"
         assert su.rows("select credits_per_usd from public.character_swap_models") == [(None,), (None,)]
+        sec_db.put_back_0226(su)
 
 
 def test_0137_touches_no_object_it_did_not_add(conn, sc):
@@ -1093,7 +1099,8 @@ def test_0137_touches_no_object_it_did_not_add(conn, sc):
     name = f"ns_swap_base_{uuid.uuid4().hex[:8]}"
     dsn = sec_db.create_database(admin, name)
     try:
-        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith("0137_")])
+        # 0226 (only a member spends) replaces a body of a file left out here and refuses to apply without it: out too.
+        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0137_", "0226_"))])
         with psycopg.connect(dsn, autocommit=True) as c:
             s = sec_db.Session(c)
             assert all(v == [] for v in fingerprint(s, True).values())

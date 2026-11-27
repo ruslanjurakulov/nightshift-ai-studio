@@ -2568,3 +2568,37 @@ list off sale, and every model priced by size carries a terms gate). Post-event:
 - **Not covered.** The queue worker does not re-check availability before it submits a job (a follow-up). None can be queued on
   this model today, because it is terms-gated and not a preview; the file names any job that is not finished.
 - **Tests.** `tests/test_retire_omni_1_1_migration.py`, `tests/security/test_sec_retire_omni_1_1.py`.
+
+## Only a member spends a workspace's credits, on every path (0226, provisional)
+
+0226 (`0226_org_spender_everywhere.sql`) applies the owner's decision of 22 Nov, which 0215 applied to the film paths, to every other
+path that spends a workspace's credits. 0043's `accessible_org_ids` makes a platform owner or admin an admin of every organization;
+that stays read-only support access. Spending takes a seat in `org_members` (0215's `is_org_spender(org, role)`); in the exempt
+organization, whose credits are the platform's own, a platform owner or admin may, as before. A read-only check before this file
+found no non-member staff activity on any of these paths in production.
+
+- **Sixteen bodies, one marked hunk each, nothing else changed** (md5 guard: the earlier body or 0226's own). Each asks
+  `is_org_spender` right after its own who-may-call check, with the role it already asked of a member, and refuses `not_a_member`
+  (NS400; `api_err` 403 for the API and connected apps) before anything is locked, counted, priced, held or written:
+  `reserve_credits` (admin; the platform's own caller is still trusted), `create_creative_job` (any member), `start_workflow_run`
+  and `advance_workflow_run` (editor), `approve_storyboard`, `request_scene_regenerate`, `request_repurpose`,
+  `start_series_episode` (admin), the paid four-argument `request_editor_export`, `request_brand_scan`, `request_character_swap`,
+  `request_download` (editor; its exempt organization is not asked, as it has no platform-admin rule there),
+  `render_jobs_payment_guard` (a signed-in browser's row, admin), `create_api_key` (admin; `create_scoped_api_key` calls it first),
+  and at use time `api_begin` (the key's maker) and `oauth_ctx` (the connected app's person), both before the request is counted.
+- **Refused as before**: a member of another organization, a viewer where an editor is asked, a key whose maker is no admin at all
+  (`key_owner_not_admin`), a connection whose person lost access (`workspace_access_lost`). The new check never answers first.
+- **Covered without a body of their own**: every API endpoint (through `api_begin`) and MCP tool (through `oauth_ctx`); a
+  workflow's later steps (made as the confirmer through `create_creative_job`: the step stops with `not_a_member`);
+  `request_reply_draft` already asks `inbox_real_member`. Free paths (the free editor exports, `request_series_plan`, the Studio AI
+  chat) and every quote are not asked.
+- **The app** reads `not_a_member` as its own word (403) in each path's map, with en / ru / uz copy (`tests/not-a-member.test.ts`):
+  the run's hold, downloads, storyboard approval, scene repair, repurpose, series start, paid export, brand scan, character swap,
+  generations and workflows, the Developer console's key creation, the API spec and the connected assistant's sentence.
+- **Publishing and privacy**: untouched (CLAUDE.md rule 2). No browser path gains anything; each may only refuse more.
+- **Replay**: the file replays onto itself. Re-running 0192 after it fails loudly; re-running 0042, 0057, 0074, 0080, 0085, 0093,
+  0094 or 0120 silently puts that file's body back (apply 0226 again after). The replays and rollbacks of 0122, 0133, 0136, 0137,
+  0147 and 0192 refuse while it is on: take 0226 out first.
+- **Requires** 0215 (`is_org_spender`) and the files above.
+- **Undo.** `docs/sql/rollback_0226_org_spender_everywhere.sql` (owner-applied): the sixteen earlier bodies back, verbatim, with
+  their grants. It adds nothing else, so nothing else is undone.

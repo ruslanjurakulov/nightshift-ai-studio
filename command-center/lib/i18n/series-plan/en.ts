@@ -236,6 +236,7 @@ export const seriesPlanEn = {
       rate_limited: "Too many requests. Wait a little and try again.",
       run_limit: "Your plan's limit of runs at the same time is in use. Wait for one to finish, then try again.",
       forbidden: "You can't start an episode here. Ask someone who manages this workspace.",
+      not_a_member: "You are not a member of this workspace, so you cannot spend its credits. Ask the person who runs this workspace to add you as a member. Nothing was started or charged.",
       confirmation_required: "This episode needs your confirmation of its niche first.",
       price_required: "The price is missing. Reload the page and try again.",
       already_started: "This episode was already started.",

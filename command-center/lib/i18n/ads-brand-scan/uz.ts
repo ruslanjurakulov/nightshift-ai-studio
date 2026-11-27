@@ -157,6 +157,7 @@ export const adsBrandScanUz: AdsBrandScanDictionary = {
     failed: "Boʻlmadi. Hech narsa oʻzgartirilmadi.",
     invalid_host: "shop.example.uz kabi domen kiriting (harflar, raqamlar, nuqta va chiziqcha; xalqaro nom — xn-- koʻrinishida).",
     hosting_parent: "Bu bitta sayt emas, xosting xizmati yoki mamlakat domeni. Saytingizning toʻliq nomini kiriting.",
+    not_a_member: "Siz bu ish maydonining aʼzosi emassiz, shuning uchun uning kreditlarini sarflay olmaysiz. Ish maydonini boshqaradigan kishidan sizni aʼzo sifatida qoʻshishini soʻrang. Hech narsa boshlanmadi va yechilmadi.",
     invalid_url: "Domeningizdagi https manzilni port va parolsiz kiriting.",
     invalid_idempotency_key: "Soʻrovni oʻqib boʻlmadi. Hech narsa oʻzgartirilmadi.",
     invalid_fields: "Bu maydonlarning baʼzilarini qabul qilib boʻlmaydi. Hech narsa oʻzgartirilmadi.",

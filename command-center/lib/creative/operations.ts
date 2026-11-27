@@ -290,6 +290,8 @@ export const CREATIVE_ERRORS = [
   "insufficient_credits",
   "run_limit_reached",
   "forbidden",
+  // 0226: a generation spends the workspace's credits, which takes a seat in it (a platform admin who holds none reads, never spends).
+  "not_a_member",
   "not_found",
   "not_cancellable",
   // The model needs words for this tool (registry inputs.prompt_required) and none were sent: refused at the quote and the
@@ -364,6 +366,7 @@ const NS400: Partial<Record<string, { status: number; code: CreativeError }>> = 
   no_model_available: { status: 422, code: "no_model_available" },
   invalid_params: { status: 400, code: "invalid_params" },
   invalid_idempotency_key: { status: 400, code: "invalid_idempotency_key" },
+  not_a_member: { status: 403, code: "not_a_member" },
 };
 const NS409: Partial<Record<string, CreativeError>> = {
   price_changed: "price_changed",
