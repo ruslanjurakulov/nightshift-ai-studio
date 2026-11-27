@@ -73,13 +73,16 @@ describe("who Nightshift AI is", () => {
 
   // What would break: a customer asks "is this legal for my channel" or "should I put my earnings in crypto" mid-plan, and the
   // planning assistant answers as if it were their lawyer or adviser.
-  it("the system prompt forbids medical, legal and financial advice and points the person to a professional instead", () => {
+  it("declines personal professional advice in chat and still plans educational videos for viewers", () => {
     expect(SYSTEM_PROMPT).toContain(NO_PROFESSIONAL_ADVICE_RULE);
-    expect(NO_PROFESSIONAL_ADVICE_RULE).toMatch(/^Never give the person medical, legal or financial advice/);
+    expect(NO_PROFESSIONAL_ADVICE_RULE).toContain("Never give the person in the chat personal medical, legal or financial advice about their own situation");
+    expect(NO_PROFESSIONAL_ADVICE_RULE).toContain("you cannot advise them");
     expect(NO_PROFESSIONAL_ADVICE_RULE).toMatch(/even when they ask directly/);
     expect(NO_PROFESSIONAL_ADVICE_RULE).toMatch(/ask a qualified professional \(a doctor, a lawyer, or a licensed financial adviser\)/);
     // It sends the person back to the plan, rather than ending the conversation with a refusal.
     expect(NO_PROFESSIONAL_ADVICE_RULE).toMatch(/then ask the "ask_next" question as usual/);
+    expect(NO_PROFESSIONAL_ADVICE_RULE).toContain("Plan general educational videos on these subjects for the channel's viewers as usual.");
+    expect(NO_PROFESSIONAL_ADVICE_RULE).toContain('The "What you never plan" list still applies.');
   });
 });
 

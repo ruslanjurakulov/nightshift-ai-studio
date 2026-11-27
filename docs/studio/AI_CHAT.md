@@ -44,10 +44,12 @@ What the flag values do:
 
 - The owner chooses it: `select public.ai_chat_set_model('gemini-3.6-flash');`. 0199's default is Claude Sonnet 5.5; the owner
   decided on Gemini 3.6 Flash for customers (2026-11-22: cheaper, and the Anthropic organisation's monthly cap had been reached).
-- `ai_chat_settings.model` is the customer chat's model only. The owner's own chat (`/owner/ai`) runs `OWNER_CHAT_MODEL`
-  (lib/server/brain/llm.ts, Claude Sonnet 5.5) whatever this setting says: 0199 records the setting as the model of every customer
-  turn, and 0203 records the owner's turns with the model the owner route passes, so each meter names the model that really ran.
-- It must be a registry text model. Each turn also checks that it is on sale (`sellable_models('describe','web')`) and keyed on this server.
+- `ai_chat_settings.model` applies only to the customer chat. In `/owner/ai`, the owner picks Gemini 3.6 Flash, Claude Sonnet 5.5 or GPT-6 Luna. The browser remembers the choice.
+  The default is Gemini when its server key is set, otherwise the first configured model. The owner route refuses an unknown
+  model ID (400) or a model without a server key (409, `not_configured`) and never switches models. For the owner's internal use,
+  hidden or terms-gated registry rows are allowed. Missing or disabled rows and an operational switch-off (`model_is_available`)
+  block the turn. Gemini passes through the same age and country gate as the customer chat.
+- The customer chat model must be a registry text model. Each turn also checks that it is on sale (`sellable_models('describe','web')`) and keyed on this server.
 - Customers never see or pick it. When it is down, the panel says "Nightshift AI is unavailable right now". No other model is tried.
 - **Gemini Flash needs**, before it answers anyone:
   - the repository secret `AI_CHAT_GEMINI_API_KEY` (the chat's own key, never the worker's `GEMINI_API_KEY`), set on GitHub under

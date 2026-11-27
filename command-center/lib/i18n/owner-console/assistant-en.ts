@@ -61,10 +61,10 @@ export const ownerAssistantEn = {
   errors: {
     googleGate: {
       adult_attestation_required: "Confirm that you are 18 or older in Create, then try Gemini again.",
-      adult_only_service: "Gemini is available only to adults. Contact support if your age was recorded incorrectly.",
+      adult_only_service: "Gemini is unavailable because of the age recorded for this account. Check the age answer on the account or choose another model.",
       age_unavailable: "Your age confirmation could not be checked. Try again.",
       country_blocked: "Gemini is unavailable in your country. Choose another model.",
-      country_unverified: "Your country could not be verified for Gemini. Contact support or choose another model.",
+      country_unverified: "The server could not determine the country for this request. Choose another model or try again from a known network.",
     },
     model_unavailable: {
       not_configured: "The chat model's key isn't set on this server. Add it in the server's settings, then ask again.",

@@ -62,10 +62,10 @@ export const ownerAssistantUz: typeof ownerAssistantEn = {
   errors: {
     googleGate: {
       adult_attestation_required: "Yaratish boʻlimida 18 yoshga toʻlganingizni tasdiqlang, soʻng Gemini bilan yana urinib koʻring.",
-      adult_only_service: "Gemini faqat voyaga yetganlar uchun. Yoshingiz notoʻgʻri qayd etilgan boʻlsa, yordam xizmatiga murojaat qiling.",
+      adult_only_service: "Akkauntda qayd etilgan yosh sababli Geminiʼdan foydalanib boʻlmaydi. Akkauntdagi yosh haqidagi javobni tekshiring yoki boshqa modelni tanlang.",
       age_unavailable: "Yosh tasdigʻini tekshirib boʻlmadi. Yana urinib koʻring.",
       country_blocked: "Gemini mamlakatingizda mavjud emas. Boshqa modelni tanlang.",
-      country_unverified: "Gemini uchun mamlakatingizni aniqlab boʻlmadi. Yordam xizmatiga murojaat qiling yoki boshqa modelni tanlang.",
+      country_unverified: "Server bu soʻrov qaysi mamlakatdan kelganini aniqlay olmadi. Boshqa modelni tanlang yoki oʻzingizga tanish tarmoqdan qayta urinib koʻring.",
     },
     model_unavailable: {
       not_configured: "Chat modelining kaliti bu serverda oʻrnatilmagan. Uni server sozlamalariga qoʻshing va qayta soʻrang.",

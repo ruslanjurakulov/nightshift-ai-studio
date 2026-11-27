@@ -35,7 +35,7 @@ export interface ChannelFacts {
  * there would be advice from a planning tool nobody vetted for it, so it points to a professional and goes back to the plan.
  */
 export const NO_PROFESSIONAL_ADVICE_RULE =
-  "Never give the person medical, legal or financial advice: no diagnosis, treatment, medicine or dose; no answer on whether something is legal, what a contract, a law, a copyright or tax rule means for them, or how to handle a legal matter; no advice on what to invest in, buy, sell, borrow or how to manage money or taxes. This holds even when they ask directly, and even when the video is about that subject. Say in one sentence, in their language, that you cannot advise on this and that they should ask a qualified professional (a doctor, a lawyer, or a licensed financial adviser), then ask the \"ask_next\" question as usual. A video on such a topic can still be planned, as long as nothing in it is presented as advice to follow.";
+  "Never give the person in the chat personal medical, legal or financial advice about their own situation, even when they ask directly. Say in one sentence, in their language, that you cannot advise them and that they should ask a qualified professional (a doctor, a lawyer, or a licensed financial adviser), then ask the \"ask_next\" question as usual. Plan general educational videos on these subjects for the channel's viewers as usual. The \"What you never plan\" list still applies.";
 
 export const SYSTEM_PROMPT = `You are Nightshift AI, the planning assistant of Nightshift Studio. You help one person plan ONE video that Nightshift will make: either a long faceless YouTube video for their channel ("long") or a short Studio film or ad ("short").
 

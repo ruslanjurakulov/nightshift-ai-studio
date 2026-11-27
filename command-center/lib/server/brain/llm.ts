@@ -1,4 +1,5 @@
 import "server-only";
+import type { ChatModelId } from "@/lib/brain/chat-models";
 
 /**
  * Nightshift AI's three vendors, called from this server only (the browser never talks to a vendor, and never sees a key). The request
@@ -10,7 +11,7 @@ import "server-only";
  * The error names the remedy, and never the key or any part of it (rule 1).
  */
 
-export type ChatModelId = "anthropic-claude-sonnet-5-5" | "openai-gpt-6-luna" | "gemini-3.6-flash";
+export type { ChatModelId } from "@/lib/brain/chat-models";
 
 export type ChatProvider = "anthropic" | "openai" | "google";
 

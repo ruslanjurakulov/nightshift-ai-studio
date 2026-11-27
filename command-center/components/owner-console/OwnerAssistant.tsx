@@ -6,7 +6,7 @@ import type { OwnerConsoleDictionary } from "@/lib/i18n/owner-console/en";
 import { ChatShell, type ChatTurn } from "@/components/chat/ChatShell";
 import { ChatHistoryFrame, type ChatHistorySource, type HistoryResult } from "@/components/chat/ChatHistory";
 import { isChatGateError } from "@/lib/brain/chat-gate";
-import type { ChatModelId } from "@/lib/server/brain/llm";
+import type { ChatModelId } from "@/lib/brain/chat-models";
 
 export { sendsOnKey } from "@/components/chat/ChatShell";
 

@@ -7,6 +7,8 @@
  * block. Synthetic figures only.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readAgeAnswer } from "@/lib/server/age";
+import { readCountry } from "@/lib/server/geo";
 import type { OwnerFacts } from "../lib/owner-console/facts-types";
 import { factsForPrompt, ownerUserBlock, readHistory, readOwnerAnswer, OWNER_AI_SYSTEM, PROMPT_CHANNELS } from "../lib/owner-console/ai-prompt";
 
@@ -34,7 +36,6 @@ const s = vi.hoisted(() => ({
   rpcCalls: [] as { name: string; args: unknown }[],
   registry: { availability: "ga" } as { availability: string } | null,
   registryReads: [] as string[],
-  country: "US",
   facts: null as unknown,
   factsErr: null as unknown,
   llm: { ok: true, text: '{"answer":"Pay Lab Vendor.","draft":null}', tokensIn: 10, tokensOut: 5 } as Record<string, unknown>,
@@ -79,9 +80,9 @@ vi.mock("@/lib/server/owner-brain-facts", () => {
     },
   };
 });
-vi.mock("@/lib/server/age", () => ({ readAgeAnswer: async () => "adult" }));
+vi.mock("@/lib/server/age", () => ({ readAgeAnswer: vi.fn(async () => "adult") }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
-vi.mock("@/lib/server/geo", () => ({ readCountry: () => ({ country: s.country }) }));
+vi.mock("@/lib/server/geo", () => ({ readCountry: vi.fn(() => ({ country: "US", why: "found" })) }));
 vi.mock("@/lib/server/brain/llm", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/server/brain/llm")>(),
   callChatModel: async (id: string, system: string, user: string, opts: Record<string, unknown>) => {
@@ -111,7 +112,6 @@ beforeEach(() => {
   s.rpcCalls = [];
   s.registry = { availability: "ga" };
   s.registryReads = [];
-  s.country = "US";
   vi.stubEnv("AI_CHAT_ANTHROPIC_API_KEY", "test-only");
   vi.stubEnv("AI_CHAT_OPENAI_API_KEY", "test-only");
   vi.stubEnv("AI_CHAT_GEMINI_API_KEY", "test-only");
@@ -208,9 +208,15 @@ describe("the model", () => {
     expect(s.rpcCalls.find((c) => c.name === "owner_ai_turn_save")?.args).toMatchObject({ p_model: model });
   });
 
-  it("a Gemini country refusal happens before facts, reservation or any vendor call", async () => {
-    s.country = "RU";
-    expect(await call({ question: "Hello", model: "gemini-3.6-flash" })).toEqual({ status: 451, body: { error: "country_blocked" } });
+  it.each([
+    { age: "adult", country: { country: "RU", why: "found" }, status: 451, error: "country_blocked" },
+    { age: "none", country: undefined, status: 428, error: "adult_attestation_required" },
+    { age: "unknown", country: undefined, status: 503, error: "age_unavailable" },
+    { age: "adult", country: { country: null, why: "no_address" }, status: 451, error: "country_unverified" },
+  ] as const)("Gemini refuses $error before facts, reservation or any vendor call", async ({ age, country, status, error }) => {
+    vi.mocked(readAgeAnswer).mockResolvedValueOnce(age);
+    vi.mocked(readCountry).mockReturnValueOnce(country ?? { country: "US", why: "found" });
+    expect(await call({ question: "Hello", model: "gemini-3.6-flash" })).toEqual({ status, body: { error } });
     expect(s.factsCalls).toBe(0);
     expect(s.rpcCalls.map((c) => c.name)).not.toContain("owner_ai_reserve_turn");
     expect(s.llmCalls).toEqual([]);
