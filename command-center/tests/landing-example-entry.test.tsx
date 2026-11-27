@@ -22,6 +22,7 @@ import { Landing } from "@/components/landing/Landing";
 import type { MoneyAnchor } from "@/lib/landing";
 import { IDEA_NEXT } from "@/lib/site/idea-handoff";
 import { WELCOME_CREDITS } from "@/lib/pricing";
+import { publicNav } from "@/lib/public-nav";
 
 afterEach(cleanup);
 
@@ -40,23 +41,26 @@ const CLAIMS = {
 } as const;
 
 /**
- * The first screen is the street-stall hero the owner kept (components/landing/home/HomeHero.tsx, 2026-11-22). Its old #try demo
- * left the landing with it (a second "type a topic" box under the idea box said the same thing twice); what the old pins guarded
- * still holds and is pinned here: one quiet way down the page that lands on a real section, an entry that starts and spends
- * nothing (CLAUDE.md #3), and the pricing link and the welcome promise just under the first screen.
+ * The first screen is the street-stall hero the owner kept (components/landing/home/HomeHero.tsx, 2026-11-22), drawn since the same
+ * day "in the style" of kling.ai's: the title, one line and one glass bar. Its old #try demo left the landing with it (a second
+ * "type a topic" box under the idea box said the same thing twice); what the old pins guarded still holds and is pinned here: a way
+ * down the page that lands on a real section (the header's "How it works", now that the first screen has no link of its own), an
+ * entry that starts and spends nothing (CLAUDE.md #3), and the pricing link and the welcome promise just under the first screen.
  */
-describe("landing hero → the idea box and #how", () => {
-  it.each(LOCALES)("%s: the only ways out of the first screen are the idea box (to sign-up, the Studio next) and a quiet link to #how", (locale) => {
+describe("landing hero → the idea box, and #how from the page's nav", () => {
+  it.each(LOCALES)("%s: the only way out of the first screen is the idea box (to sign-up, the Studio next); the nav leads to #how", (locale) => {
     const { container } = renderLanding(locale);
     const hero = container.querySelector("section.hm-hero") as HTMLElement;
     expect(hero).toBeTruthy();
-    const h = dictionaries[locale].landingHome.hero;
-    // One link, and it is not a button: the idea box's own key is the first screen's one call to action.
-    const links = hero.querySelectorAll("a");
-    expect(links).toHaveLength(1);
-    expect(links[0].getAttribute("href")).toBe("#how");
-    expect(links[0].textContent).toBe(h.secondary);
-    expect(links[0].classList.contains("nx-btn")).toBe(false);
+    const t = dictionaries[locale];
+    // No link at all: the idea box's own key is the first screen's one call to action, as the reference's one bar is.
+    expect(hero.querySelectorAll("a")).toHaveLength(0);
+    // "How it works" is still reachable from the first screen: the header every public page carries leads there (since the
+    // mega-menu, from the Studio panel; lib/public-nav.ts is the header's one source).
+    const items: { href: string; label: string }[] = publicNav(t, { devPages: false }).flatMap((e): { href: string; label: string }[] =>
+      e.kind === "link" ? [e] : e.columns.flatMap((c) => c.links),
+    );
+    expect(items.find((l) => l.href === "/#how")?.label).toBe(t.site.nav.how);
     // The box is a GET form to sign-up with the Studio as `next`; its field has no name, so the words never enter an address.
     const form = hero.querySelector("form") as HTMLFormElement;
     expect(form.getAttribute("action")).toBe("/signup");
@@ -64,13 +68,15 @@ describe("landing hero → the idea box and #how", () => {
     expect(hero.querySelectorAll("form")).toHaveLength(1);
     const named = [...form.querySelectorAll("[name]")].map((el) => [el.getAttribute("name"), el.getAttribute("value")]);
     expect(named).toEqual([["next", IDEA_NEXT]]);
-    expect(form.querySelector("textarea")?.hasAttribute("name")).toBe(false);
+    const field = form.querySelector("[data-testid='idea-field']") as HTMLInputElement;
+    expect(field.tagName).toBe("INPUT");
+    expect(field.hasAttribute("name")).toBe(false);
     expect(form.querySelectorAll("button[type='submit']")).toHaveLength(1);
     // Lean: no price, no promises list and no pill above the fold (they are just under it, in .nx-facts).
     expect(hero.querySelector(".nx-pill, .nx-note, .nx-price, .nx-trust, .nx-btn")).toBeNull();
   });
 
-  it.each(LOCALES)("%s: #how is exactly one labelled section, the same one the hero's link targets", (locale) => {
+  it.each(LOCALES)("%s: #how is exactly one labelled section, the one the nav's \"How it works\" targets", (locale) => {
     const { container } = renderLanding(locale);
     const targets = container.querySelectorAll("#how");
     expect(targets).toHaveLength(1);
@@ -91,7 +97,7 @@ describe("landing hero → the idea box and #how", () => {
     const { container } = renderLanding(locale);
     const hero = container.querySelector("section.hm-hero") as HTMLElement;
     expect(hero.textContent).toContain(h.idea.note);
-    for (const words of [h.title, h.lead, h.idea.note, h.idea.submit, h.secondary]) {
+    for (const words of [h.title, h.subline, h.lead, h.idea.note, h.idea.submit]) {
       expect(words).not.toMatch(CLAIMS[locale]);
       expect(words).not.toMatch(/\d/);
     }

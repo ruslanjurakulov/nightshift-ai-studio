@@ -14,6 +14,7 @@ import { stockInUse } from "@/components/site/stock-in-use";
 import { EXAMPLE_THUMB_JOB } from "@/components/site/samples";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { SignOffPicture } from "@/components/site/SolutionPictures";
+import { aiMarkOf } from "./helpers/ai-mark";
 
 /**
  * The public site's photographs and footage are real stock by Pexels contributors (round 7b). These tests keep the three
@@ -105,10 +106,10 @@ describe("the publish desk's frame says what it is, on the frame and, for a phon
     expect(frame.getAttribute("data-showcase-entry")).toBe(EXAMPLE_THUMB_JOB);
     expect(frame.getAttribute("data-clip")).toBe("sample");
     expect(frame.querySelector("[data-sample]")).toBeNull();
-    expect(frame.querySelector(".nx-result-badge[data-kind='ai']")?.textContent).toBe(t.site.gallery.badge);
+    expect(aiMarkOf(frame.querySelector(".nx-result-badge[data-kind='ai']"))).toEqual({ seen: t.site.gallery.badge, said: t.site.gallery.badgeName });
     expect(frame.querySelector(".nx-result-credit")).toBeNull();
     expect(container.querySelector(".st-signoff-caption")).toBeNull();
-    expect(container.querySelector(".nx-place-credit")?.textContent).toBe(t.site.gallery.badge);
+    expect(aiMarkOf(container.querySelector(".nx-place-credit"))).toEqual({ seen: t.site.gallery.badge, said: t.site.gallery.badgeName });
     expect(container.innerHTML).not.toMatch(/pexels/i);
     // The flat drawn placeholder is gone.
     expect(container.querySelector(".st-clip-pic")).toBeNull();

@@ -22,7 +22,8 @@ import {
 import { LABEL_MAX, MAX_INPUTS, MAX_STEPS, MIN_STEPS, NAME_MAX, coerceQuote, coerceRun, coerceWorkflow } from "@/lib/workflows";
 
 export interface WorkflowDb {
-  rpc(fn: string, args: Record<string, unknown>): Promise<DbAnswer>;
+  /** `headers`: extra request headers for this one call (0208's server-signed country, lib/server/geo-claim.ts). */
+  rpc(fn: string, args: Record<string, unknown>, headers?: Record<string, string>): Promise<DbAnswer>;
   /** The organization's workflows (RLS: its members), newest edit first. */
   listWorkflows(orgId: string): Promise<DbAnswer>;
   readWorkflow(id: string): Promise<DbAnswer>;
@@ -199,7 +200,12 @@ export function parseRunInput(body: unknown): { ok: true; input: RunInput } | { 
   return { ok: true, input: { runId: b.run_id, version: b.version, inputs, maxCredits: mc } };
 }
 
-export async function startRun(db: WorkflowDb, workflowId: string, input: RunInput): Promise<CreativeResult> {
+export async function startRun(
+  db: WorkflowDb,
+  workflowId: string,
+  input: RunInput,
+  headers?: Record<string, string>,
+): Promise<CreativeResult> {
   if (!isUuid(workflowId)) return fail(404, "not_found");
   const { data, error } = await db.rpc("start_workflow_run", {
     p_run: input.runId,
@@ -207,7 +213,7 @@ export async function startRun(db: WorkflowDb, workflowId: string, input: RunInp
     p_version: input.version,
     p_inputs: input.inputs,
     p_max_credits: input.maxCredits,
-  });
+  }, headers);
   if (error) return mapWorkflowError(error);
   const run = coerceRun(data);
   if (!run) return fail(502, "failed");
@@ -215,9 +221,14 @@ export async function startRun(db: WorkflowDb, workflowId: string, input: RunInp
   return { status: replay ? 200 : 201, body: { run, replay } };
 }
 
-async function runCall(db: WorkflowDb, fn: "advance_workflow_run" | "cancel_workflow_run", id: string): Promise<CreativeResult> {
+async function runCall(
+  db: WorkflowDb,
+  fn: "advance_workflow_run" | "cancel_workflow_run",
+  id: string,
+  headers?: Record<string, string>,
+): Promise<CreativeResult> {
   if (!isUuid(id)) return fail(404, "not_found");
-  const { data, error } = await db.rpc(fn, { p_run: id });
+  const { data, error } = await db.rpc(fn, { p_run: id }, headers);
   if (error) return mapWorkflowError(error);
   const run = coerceRun(data);
   if (!run) return fail(502, "failed");
@@ -225,8 +236,8 @@ async function runCall(db: WorkflowDb, fn: "advance_workflow_run" | "cancel_work
 }
 
 /** Carry a run on: settle the step that finished and start the next. Safe to call as often as the page likes. */
-export function advanceRun(db: WorkflowDb, id: string): Promise<CreativeResult> {
-  return runCall(db, "advance_workflow_run", id);
+export function advanceRun(db: WorkflowDb, id: string, headers?: Record<string, string>): Promise<CreativeResult> {
+  return runCall(db, "advance_workflow_run", id, headers);
 }
 
 export function cancelRun(db: WorkflowDb, id: string): Promise<CreativeResult> {

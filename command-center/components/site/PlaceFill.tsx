@@ -5,12 +5,13 @@ import { LoopClip } from "@/components/site/LoopClip";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { SAMPLES, SampleImg, type PlaceMedia } from "@/components/site/samples";
 import { posterSrcSet } from "@/lib/site/renditions";
+import { AiMark } from "@/components/site/AiMark";
 
 type Site = Dictionary["site"];
 /** The words a place needs to label what it shows: the stock labels and credit template, and the sample labels (the public sign-in dictionary carries exactly these, lib/i18n/public.ts). */
 export type PlaceCopy = {
   samples: Pick<Site["samples"], "tag" | "frameTag" | "clipTag" | "credit" | "alts">;
-  gallery: Pick<Site["gallery"], "badge" | "bgClip" | "bgImage">;
+  gallery: Pick<Site["gallery"], "badge" | "badgeName" | "bgClip" | "bgImage">;
 };
 
 /**
@@ -52,10 +53,10 @@ export function placeAlt(m: PlaceMedia, s: PlaceCopy): string {
  * model name, no "Try this prompt", no maker's credit: a place's picture decorates copy about something else (owner, 2026-11-13).
  * The model and the prompt are on the sample's own card (components/site/ShowcaseGallery.tsx) and on the tool wall (AiCredit).
  */
-export function AiBadge({ g, className = "nx-ai-credit" }: { g: Pick<PlaceCopy["gallery"], "badge">; className?: string }) {
+export function AiBadge({ g, className = "nx-ai-credit" }: { g: Pick<PlaceCopy["gallery"], "badge" | "badgeName">; className?: string }) {
   return (
     <span className={className}>
-      <span className="nx-ai-badge">{g.badge}</span>
+      <span className="nx-ai-badge"><AiMark short={g.badge} name={g.badgeName} /></span>
     </span>
   );
 }
@@ -72,14 +73,14 @@ export function AiCredit({
   badge = true,
 }: {
   entry: ShowcaseEntry;
-  g: Pick<PlaceCopy["gallery"], "badge">;
+  g: Pick<PlaceCopy["gallery"], "badge" | "badgeName">;
   className?: string;
   /** False where the picture already prints the "AI-generated" badge. */
   badge?: boolean;
 }) {
   return (
     <span className={className}>
-      {badge && <span className="nx-ai-badge">{g.badge}</span>}
+      {badge && <span className="nx-ai-badge"><AiMark short={g.badge} name={g.badgeName} /></span>}
       <span className="nx-ai-model">{entry.modelName}</span>
     </span>
   );
@@ -137,7 +138,7 @@ export function PlaceFill({
           {...(eager ? { fetchPriority: "high" as const } : {})}
         />
         {m.moving && <ShowcaseClip jobId={entry.jobId} early={early} compact={compact} position={m.position} soundToggle={sound} />}
-        {labels && <span className="nx-result-badge" data-kind="ai">{s.gallery.badge}</span>}
+        {labels && <span className="nx-result-badge" data-kind="ai"><AiMark short={s.gallery.badge} name={s.gallery.badgeName} /></span>}
       </>
     );
   }
