@@ -868,3 +868,8 @@ sec_film_resume_0215.extend(TABLES, FUNCTIONS)
 import sec_org_spender_0226  # noqa: E402
 
 sec_org_spender_0226.extend(TABLES, FUNCTIONS)
+
+# Migration 0232 (one storyboard plan per film, its turns reserved at begin): tests/security/sec_film_lease_0232.py
+import sec_film_lease_0232  # noqa: E402
+
+sec_film_lease_0232.extend(TABLES, FUNCTIONS)

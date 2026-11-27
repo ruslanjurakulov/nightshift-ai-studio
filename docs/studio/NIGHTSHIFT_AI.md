@@ -266,13 +266,20 @@ source text, language, aspect, `target_seconds`). Code: `app/api/brain/film/rout
   The outline call stores the
   press as the person's message (the project's title); every plan call after it is a `p_retry` turn. The lease is 0211's with
   proposal 0, outline 0. Request ids: `fo` + 40 hex of a sha256 of the conversation, project and attempt, and the plan's `pl…` ids.
-- **One plan at a time, per person.** Two first presses racing (two tabs, a double click) can each make and mark a conversation.
-  So after its lease is granted, a press lists all of the person's marked conversations of the project (at most 5) and asks each
-  other one's lease: while any is running, or cannot be read, it ends its own lease and answers `plan_running` (409) with no turn
-  taken. It then reads the project again: scenes are `film_has_scenes`, a moved version `plan_superseded`, again with no turn. The
-  database does not tie a plan to a project yet, so this is per person, not per project: two editors pressing on the same empty
-  project within ~5 min: one plan is superseded, its turns are spent, the project is never double-written. Migration 0232 closes
-  that later.
+- **One plan at a time, per project (0232).** Two first presses racing (two tabs, a double click) can each make and mark a
+  conversation. So after its lease is granted, a press lists all of the person's marked conversations of the project (at most 5)
+  and asks each other one's lease: while any is running, or cannot be read, it ends its own lease and answers `plan_running` (409)
+  with no turn taken. Then it takes migration 0232's film lease (`ai_chat_film_plan_begin(session, film, at_most)`, also taken by
+  the chat's `choose` on the draft it plans): one running plan per FILM in the database, whoever presses (another editor, the
+  chat's draft and this button), refused `plan_running` with when it ends; and the plan's worst case of turns reserved under the
+  workspace's cap lock against the workspace's daily cap (or the Free trial) and the person's own limit, refused `plan_over_cap`
+  (429) with the real `left` when it does not fit. The plan's own turns come out of that reservation; every other turn sees it as
+  used; what is not taken comes back at `ai_chat_plan_end` and, for a server that died, the moment the 320 s lease expires. It then
+  reads the project again: scenes are `film_has_scenes`, a moved version `plan_superseded`, again with no turn. **Until 0232 is
+  applied** the function is missing and the press goes on as before: one plan at a time per person only (two editors pressing on
+  the same empty project within ~5 min: one plan is superseded, its turns are spent, the project is never double-written), and
+  the cap check is a read, so a plan may stop halfway when other chats or plans use today's messages meanwhile. A press with 0232
+  answers `reserved` (the turns held for it); without it, no `reserved` is claimed.
 - **Never over a person's work.** A project with scenes is refused `film_has_scenes` (409) before any turn; the panel also stays
   off while the editor has scenes or unsaved changes. `save_film` is called at the version read first: an edit made meanwhile is
   `plan_superseded`, and nothing is written. While the plan writes (or another tab's is followed, or a lost answer is confirmed)

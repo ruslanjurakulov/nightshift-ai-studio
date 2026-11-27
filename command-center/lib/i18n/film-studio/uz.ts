@@ -118,7 +118,7 @@ export const filmStudioUz: FilmStudioDictionary = {
       setsKeyframe: "Loyihada hali kadr modeli yoʻq: u {name} qilib ham belgilanadi. Keyin oʻzgartirishingiz mumkin.",
       writing: "Nightshift AI raskadrovkani yozmoqda. Bu bir necha daqiqa olishi mumkin, sahifani yopmang.",
       writingFor: "Yozilmoqda: {time}…",
-      writingElsewhere: "Bu raskadrovka allaqachon yozilmoqda (boshqa varaqda yoki sahifa yangilanishidan oldin). Tayyor boʻlgach, sahnalar shu yerda chiqadi.",
+      writingElsewhere: "Bu raskadrovka allaqachon yozilmoqda (boshqa varaqda, ish maydonidagi boshqa kishi tomonidan yoki sahifa yangilanishidan oldin). Tayyor boʻlgach, sahnalar shu yerda chiqadi.",
       done: "Raskadrovka yozildi: {n} ta sahna, jami {length}. Loyihani boshlashdan oldin ularni oʻqib, tahrir qiling.",
       lastFailed: "Bu raskadrovkani yozishga oxirgi urinish tugamadi. Loyihaga hech narsa saqlanmadi.",
       retry: "Qayta urinish",

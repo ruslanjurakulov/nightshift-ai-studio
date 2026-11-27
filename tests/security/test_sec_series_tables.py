@@ -1538,7 +1538,7 @@ def test_the_rollback_puts_0029s_validator_and_0111s_guard_back_and_0120_applies
     sigs = ("public.render_job_params_valid(jsonb,text)", "public.render_jobs_payment_guard()")
     try:
         # 0226 (only a member spends) replaces a body of a file left out here and refuses to apply without it: out too.
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0120_", "0122_", "0127_", "0145_", "0226_", "0227_"))])
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0120_", "0122_", "0127_", "0145_", "0226_", "0227_", "0232_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s_: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s_]).fetchone()[0],
                          b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s_]).fetchone()[0]) for s_ in sigs}

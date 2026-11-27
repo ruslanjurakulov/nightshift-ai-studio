@@ -698,3 +698,54 @@ describe("fix round: the chat and a project's conversation, claims, raw database
     expect(await (await choose()).json()).toMatchObject({ error: "film_refused", reason: "film_draft_limit" });
   });
 });
+
+describe("choose → 0232's film lease on the draft", () => {
+  it("without 0232 the plan goes on as before (the function is missing)", async () => {
+    setup(180, [60, 60, 60]);
+    const res = await choose();
+    expect(res.status).toBe(200);
+    expect(called("ai_chat_film_plan_begin")).toHaveLength(1);
+    expect(called("ai_chat_reserve_turn")).toHaveLength(windowsOf(180, [60, 60, 60]));
+  });
+
+  it("with 0232 the draft's plan reserves its worst case, after the draft exists and before the first turn", async () => {
+    setup(180, [60, 60, 60]);
+    lease.state.film = "on";
+    const res = await choose();
+    expect(res.status).toBe(200);
+    const n = windowsOf(180, [60, 60, 60]);
+    expect(called("ai_chat_film_plan_begin")).toEqual([{ p_session: SESSION, p_film: FILM, p_at_most: 2 * n }]);
+    const order = rpc.mock.calls.map((c) => c[0]);
+    expect(order.indexOf("create_film_draft")).toBeLessThan(order.indexOf("ai_chat_film_plan_begin"));
+    expect(order.indexOf("ai_chat_film_plan_begin")).toBeLessThan(order.indexOf("ai_chat_reserve_turn"));
+    expect(lease.films.get(FILM)?.state).toBe("done");
+  });
+
+  it("the film editor's button is planning this same draft: plan_running, no turn, nothing saved", async () => {
+    setup(180, [60, 60, 60]);
+    lease.state.film = "on";
+    lease.films.set(FILM, { session: "cccccccc-0000-4000-8000-000000000009", attempt: 1, reserved: 5, taken: 1, state: "running",
+                            expires: Date.now() + 100_000 });
+    const res = await choose();
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "plan_running" });
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+    expect(llm).not.toHaveBeenCalled();
+    nothingPriced();
+    expect(called("ai_chat_plan_end")).toEqual([{ p_session: SESSION, p_attempt: 1, p_state: "failed", p_reason: "plan_running" }]);
+  });
+
+  it("other plans' reservations leave too little: plan_over_cap with the database's left, no turn", async () => {
+    setup(180, [60, 60, 60]);
+    lease.state.film = "on";
+    lease.state.quota = () => ({ used: 3, limit: 30 });
+    lease.films.set("dddddddd-0000-4000-8000-000000000004", { session: "cccccccc-0000-4000-8000-000000000009", attempt: 1, reserved: 27,
+                                                              taken: 0, state: "running", expires: Date.now() + 100_000 });
+    const res = await choose();
+    expect(res.status).toBe(429);
+    const n = windowsOf(180, [60, 60, 60]);
+    expect(await res.json()).toEqual({ error: "plan_over_cap", needed: 2 * n, about: n, left: 0 });
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+    nothingPriced();
+  });
+});

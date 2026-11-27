@@ -140,7 +140,7 @@ export const aiChatUz: AiChatDictionary = {
     plan_length_mismatch: "{total} ta bobdan {n}-bob qayta soʻralganda ham oʻz uzunligiga mos kelmadi, shuning uchun raskadrovka ishlatilmadi. Hech narsa narxlanmadi. Qayta urinib koʻring.",
     plan_length_mismatch_plain: "Raskadrovka siz tanlagan uzunlikka mos kelmadi, shuning uchun ishlatilmadi. Hech narsa narxlanmadi. Qayta urinib koʻring.",
     plan_over_cap: "Raskadrovka albatta tugashi uchun bugun kamida {needed} kerak, {left}. U boshlanmadi, hech narsa ishlatilmadi. Qisqaroq film tanlang yoki 24 soat ichida qayta urinib koʻring.",
-    plan_running: "Bu raskadrovka allaqachon yozilmoqda (boshqa varaqda yoki sahifa yangilanishidan oldin). Nightshift AI uni shu yerda kutadi; boshqa hech narsa sarflanmaydi.",
+    plan_running: "Bu raskadrovka allaqachon yozilmoqda (boshqa varaqda, ish maydonidagi boshqa kishi tomonidan yoki sahifa yangilanishidan oldin). Nightshift AI uni shu yerda kutadi; boshqa hech narsa sarflanmaydi.",
     plan_unavailable: "Bu ish maydonida raskadrovka yozish hozircha mavjud emas. Hech narsa ishlatilmadi. Keyinroq qayta tekshiring.",
     plan_superseded: "Bu filmda allaqachon raskadrovka bor (muharrirda oʻzgartirilgan, avval yozilgan yoki boshqa varaqda yozilgan), shuning uchun yangisi uning ustiga yozilmadi. Film siz qoldirgandek turibdi. Kreditlar yechilmadi. Uni koʻrish uchun loyihani oching.",
     proposal_outdated: "Bu taklif eski versiyadan va siz tanlagan uzunlikka mos kelmaydi. Nightshift AIʼdan yangi ssenariylar soʻrang.",

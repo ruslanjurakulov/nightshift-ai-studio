@@ -521,3 +521,76 @@ describe("plan_superseded says what this press used (rule 5)", () => {
     expect(body.used).toBeNull();
   });
 });
+
+describe("0232: one plan per project, its turns reserved when it begins", () => {
+  it("without 0232 the press plans as before and claims no reservation (the function is missing: PGRST202)", async () => {
+    const res = await press();
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(called("ai_chat_film_plan_begin")).toHaveLength(1);
+    expect(d).not.toHaveProperty("reserved");
+    expect(called("ai_chat_reserve_turn").length).toBeGreaterThan(0);
+    expect(called("ai_chat_plan_end").at(-1)).toMatchObject({ p_state: "done" });
+  });
+
+  it("with 0232 the press reserves its worst case for this project, after 0211's lease and before its first turn", async () => {
+    lease.state.film = "on";
+    const atMost = (await (await read()).json()).turns.at_most as number;
+    rpc.mockReset();
+    const res = await press();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ reserved: atMost });
+    expect(called("ai_chat_film_plan_begin")).toEqual([{ p_session: SESSION, p_film: FILM, p_at_most: atMost }]);
+    const order = rpc.mock.calls.map((c) => c[0]);
+    expect(order.indexOf("ai_chat_plan_begin")).toBeLessThan(order.indexOf("ai_chat_film_plan_begin"));
+    expect(order.indexOf("ai_chat_film_plan_begin")).toBeLessThan(order.indexOf("ai_chat_reserve_turn"));
+    // Ended with the plan (0211's plan_end ends the film lease of its attempt).
+    expect(lease.films.get(FILM)?.state).toBe("done");
+  });
+
+  it("another plan of this project (a colleague, the chat's draft) holds it: plan_running, no turn, our lease ends failed", async () => {
+    lease.state.film = "on";
+    lease.films.set(FILM, { session: "cccccccc-0000-4000-8000-000000000009", attempt: 1, reserved: 9, taken: 2, state: "running",
+                            expires: Date.now() + 100_000 });
+    const res = await press();
+    expect(res.status).toBe(409);
+    const d = await res.json();
+    expect(d.error).toBe("plan_running");
+    expect(typeof d.expires_at).toBe("string");
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+    expect(llm).not.toHaveBeenCalled();
+    expect(called("save_film")).toHaveLength(0);
+    expect(called("ai_chat_plan_end").at(-1)).toMatchObject({ p_state: "failed", p_reason: "plan_running" });
+  });
+
+  it("what is left after other running plans' reservations does not cover it: plan_over_cap with the database's real left", async () => {
+    lease.state.film = "on";
+    lease.state.quota = () => ({ used: 3, limit: 30 });
+    lease.films.set("dddddddd-0000-4000-8000-000000000004", { session: "cccccccc-0000-4000-8000-000000000009", attempt: 1, reserved: 26,
+                                                              taken: 0, state: "running", expires: Date.now() + 100_000 });
+    const atMost = (await (await read()).json()).turns.at_most as number;
+    rpc.mockReset();
+    const res = await press();
+    expect(res.status).toBe(429);
+    const d = await res.json();
+    expect(d).toMatchObject({ error: "plan_over_cap", needed: atMost, left: 1 });
+    expect(d).not.toHaveProperty("scope");
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+    expect(llm).not.toHaveBeenCalled();
+    expect(called("ai_chat_plan_end").at(-1)).toMatchObject({ p_state: "failed", p_reason: "plan_over_cap" });
+  });
+
+  it("a film-lease answer that carries no reservation plans nothing", async () => {
+    lease.state.film = "on";
+    const real = lease.rpc;
+    lease.rpc = (fn, args) => (fn === "ai_chat_film_plan_begin" ? { data: { attempt: 1 }, error: null } : real(fn, args));
+    try {
+      const res = await press();
+      expect(res.status).toBe(503);
+      expect(await res.json()).toMatchObject({ error: "unavailable" });
+      expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+    } finally {
+      lease.rpc = real;
+    }
+  });
+});

@@ -2800,6 +2800,55 @@ The audit allow-list adds `model.terms_accept` and `model.terms_revoke`.
 
 Apply as one transaction after 0018 (platform role), 0035 (registry), 0107 (operator MFA) and 0145 (audit allow-list).
 The owner-applied rollback is `docs/sql/rollback_0227_owner_model_terms_acceptance.sql`.
+## One storyboard plan per film, its turns reserved when it begins (0232, provisional)
+
+0232 (`0232_ai_chat_film_plan_leases.sql`) closes Breach BR-FILM-01/02/03 on #953. 0211's lease is per conversation, so two
+conversations planning one film (one person's racing presses, two editors, the chat's draft and the film editor's button) both
+ran, and the up-front cap check was a read that reserved nothing, so two plans at the cap both started and the second stopped
+halfway with its turns spent.
+
+- **`ai_chat_film_plan_leases`**: one row per film (which conversation and 0211 attempt plans it, `reserved`, `taken`,
+  `released`, running | failed | done, the same `expires_at` as 0211's lease). RLS on, an author-only SELECT policy as a second
+  wall, no grant to any API role. A partial unique index keeps one running film plan per conversation.
+- **`ai_chat_film_plan_begin(session, film, at_most)`** (new, `authenticated`): called by both routes right after 0211's
+  `ai_chat_plan_begin` and before the first turn. The caller is the conversation's author, an editor with a seat
+  (`is_org_spender`, else `not_a_member`), the film of the conversation's own workspace (any channel: save_film may move it; else
+  `film_not_found`), and 0211's lease running (else `plan_not_current`). Another running plan of the film: `plan_running` (detail:
+  its end). Then, under the workspace's advisory lock (`ai_chat_reserve_turn`'s) and the person's: `at_most` (1 to 500) reserved
+  against the daily cap or the Free trial and against `per_user_daily`; `plan_over_cap` with `left=N needed=M scope=…` when it does
+  not fit, nothing written. The platform's global limit is not reserved.
+- **A new function, not a new argument on `ai_chat_plan_begin`**: a new argument is a new signature (two PostgREST overloads, or
+  the old one dropped under a running app) and a fifth replaced body. Riding on 0211's attempt lets 0211's own `plan_end` close
+  both with one added statement.
+- **Four bodies replaced** (md5 guard: the earlier body or 0232's own; refuses anything else with "apply 0226 first"):
+  `ai_chat_used` fe5ef9dd… (0199) -> 013c1080…, `ai_chat_trial_left` ec3fc5ff… (0199) -> f2a0591c… (both add what running,
+  unexpired film plans hold: `greatest(0, reserved - taken)` each, through the internal `ai_chat_reserved(org)`),
+  `ai_chat_reserve_turn` e105fa93… (0226) -> f4a92790… (a turn of a conversation whose film plan runs is taken out of its
+  reservation before the caps are read, so it is counted once; the person's limit also counts `ai_chat_reserved_by(user)`), and
+  `ai_chat_plan_end` 4df6a1c4… (0226) -> 71c2feb9… (the film lease of the attempt ends with it; `released` = what was not taken).
+  Relied on unchanged and guarded: `ai_chat_plan_session` 75c67929…, `ai_chat_plan_begin` 2002d73e… (0226), `ai_chat_plan_state`
+  c2aede96… (0211). A database with 0211's plan bodies (872b3f92, bcb630a5, 5b94856b) or 0199's `ai_chat_reserve_turn` is refused.
+- **Release.** At `plan_end`, done or failed. At expiry, at once: an expired lease is not counted, so a crashed plan's unused
+  turns come back without anything being run; the next film begin in the workspace sweeps it (failed / expired, `released`) and
+  closes its own pending calls as `vendor_error` with unknown tokens (0211's rule: the vendor may have been paid, they stay counted).
+- **Locks**, in one order everywhere: the workspace's advisory lock, the conversation's row, 0211's lease, the film lease, calls
+  (another transaction's lease or call SKIP LOCKED). `ai_chat_reserve_turn` now locks the conversation's row right after the
+  workspace's lock, because `plan_end` takes the conversation and then the film lease.
+- **The app** degrades honestly: before 0232 the function is missing (PGRST202 / 42883) and both routes plan as with #953 (the
+  per-person yield, the read-only cap check) and the film route's answer claims no `reserved`. The route-level yield stays as
+  defence in depth. `plan_running` copy (en / ru / uz) now also names someone else in the workspace.
+- **No backslash** in the file or its rollback: `ai_chat_reserve_turn`'s two `E''` lists go through EXECUTE with a token, as in
+  0226; the fold is `regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')`.
+- **Publishing and privacy**: untouched (CLAUDE.md rule 2). A lease spends no credit, starts and publishes nothing.
+- **Replay.** The file replays onto itself. Re-running 0199 or 0211 applies silently and puts the older bodies back (apply 0226
+  and then 0232 again after). Re-running 0226 fails loudly (its guard refuses 0232's `ai_chat_reserve_turn` and `ai_chat_plan_end`):
+  take 0232 out with its rollback first, then 0226, then 0232. The lab's `take_off_0226` takes 0232 off first and `put_back_0226`
+  puts it back (`tests/security/test_sec_film_lease_0232.py`).
+- **Requires** 0166 (films), 0199, 0211, 0215 (`is_org_spender`) and 0226.
+- **Undo.** `docs/sql/rollback_0232_ai_chat_film_plan_leases.sql` (owner-applied): the four earlier bodies back verbatim with their
+  grants; the new function, the two helpers and the table dropped (which plans held which film; it references films, so a kept one
+  would stop 0166's rollback). Turns, calls and conversations are 0199's and stay.
+
 ## Only a member spends a workspace's credits, on every path (0226, provisional)
 
 0226 (`0226_org_spender_everywhere.sql`) applies the owner's decision of 22 Nov, which 0215 applied to the film paths, to every other

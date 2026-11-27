@@ -10,6 +10,7 @@ import { callChatModel, type ChatModelId } from "@/lib/server/brain/llm";
 import { chatModelGate } from "@/lib/server/brain/google-gate";
 import { catalogueClaimNames, clipShapeOf, filmCatalogue, promptLimitOf, type FilmCatalogue } from "@/lib/server/brain/clip";
 import { writeStoryboard } from "@/lib/server/brain/plan";
+import { beginFilmLease } from "@/lib/server/brain/film-lease";
 import { brainJson, chosenModelState, dbRefusal, machineReason, modelFromRef, vendorUser } from "@/lib/server/brain/session";
 
 /**
@@ -22,10 +23,14 @@ import { brainJson, chosenModelState, dbRefusal, machineReason, modelFromRef, ve
  *   - 0211's lease, so one plan runs at a time per conversation; it is asked again before every write. A person has one
  *     conversation per project, but two first presses racing can make two (Breach BR-FILM-01): so once its lease is granted, a press
  *     also asks every other conversation of the person's marked with this project, and yields (`plan_running`, no turn) while any
- *     of them is running or cannot be read. This is per person: two EDITORS pressing on the same empty project within ~5 min: one
- *     plan is superseded, its turns are spent, the project is never double-written (BR-FILM-02, closed by migration 0232 later);
- *   - the up-front cap check: begun only when today's turns cover the worst case, so it does not stop halfway for the cap unless
- *     other chats or plans use today's messages meanwhile (it reads what is left, it reserves nothing: BR-FILM-03);
+ *     of them is running or cannot be read. Kept as defence in depth: on its own it is per person;
+ *   - 0232's film lease (lib/server/brain/film-lease), right after: one plan per PROJECT in the database, whoever presses (two
+ *     editors, the chat's draft and this button: BR-FILM-02), and the plan's worst case of turns reserved under the workspace's cap
+ *     lock, so a plan that begins can finish (BR-FILM-03). Before 0232 is applied the function is missing and the press goes on as
+ *     above, with the read-only cap check below and no `reserved` in its answer: per person, and a plan may stop halfway for the cap
+ *     when other chats or plans use today's messages meanwhile;
+ *   - the up-front cap check: begun only when today's turns cover the worst case (a read, said before the press; 0232 makes it a
+ *     reservation);
  *   - G1 (the length is the project's target_seconds exactly), G3 (clip_params.audio for a scene with lines), G4 (shot counts from
  *     the clip model), the prompt limits of the models it is made with (UTF-16, never cut), no negative_prompt, no seed.
  * What is the film editor's own: the project must be EMPTY (a person's scenes are never replaced: refused before any turn, and
@@ -443,6 +448,13 @@ export async function planFilm(args: {
     if (!mine.ok) return fail("unavailable", { error: "unavailable" }, 503);
     const other = await runningAmong(supabase, mine.ids.filter((id) => id !== sid));
     if (other.state !== "none") return fail("plan_running", { error: "plan_running", expires_at: other.state === "running" ? other.expires_at : null }, 409);
+    // One plan per project, whoever presses, with its worst case reserved (0232): before the project is read again, so a plan that
+    // held it and finished meanwhile has written its scenes by then. A refusal takes no turn; ending ours (finally) ends it too.
+    const filmLease = await beginFilmLease(supabase, sid, film.id, ready.turns);
+    if (!filmLease.ok) {
+      ending = { state: "failed", reason: filmLease.reason };
+      return filmLease.res;
+    }
     // And the project again, now that no other plan of ours is running: one that finished meanwhile wrote its scenes (or an edit
     // moved the version). Said before any turn, never planned over.
     const fresh = await readPlanFilm(supabase, film.id);
@@ -568,6 +580,8 @@ export async function planFilm(args: {
       scenes: shaped.scenes.length,
       seconds: planned.scenes.reduce((a, s) => a + s.duration_s, 0),
       models: { clip: clip?.name ?? null, keyframe: keyframe?.name ?? null },
+      // The turns the database reserved for this plan (0232); absent when it is not applied: no reservation is claimed.
+      ...(filmLease.held ? { reserved: filmLease.reserved } : {}),
     }));
   } finally {
     const held = lease as { attempt: number } | null;

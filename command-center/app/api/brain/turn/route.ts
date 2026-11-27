@@ -39,6 +39,7 @@ import { chatPricing } from "@/lib/server/brain/quote";
 import { catalogueClaimNames, clipShapeOf, filmCatalogue, promptLimitOf } from "@/lib/server/brain/clip";
 import { FILM_MODEL_PREFERENCE, MODEL_ID, pickFilmModel, type OnSaleModel, type PickedModel } from "@/lib/brain/film-models";
 import { writeStoryboard } from "@/lib/server/brain/plan";
+import { beginFilmLease } from "@/lib/server/brain/film-lease";
 import { claimsAuthorship, outlineText, planLimits, planTurns, withPlanTurns } from "@/lib/brain/plan";
 import { brainJson, channelOrg, chosenModelState, dbRefusal, machineReason, modelFromRef, notFound, vendorUser } from "@/lib/server/brain/session";
 import { FILM_PLAN_KEY } from "@/lib/brain/film-plan";
@@ -381,6 +382,8 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
   try {
     let limits = planLimits(null, promptLimit);
     let model: ChatModelId | null = null;
+    /** The plan's worst case and its usual count (lib/brain/plan planTurns): what 0232's film lease reserves once the draft exists. */
+    let planNeeds: { at_most: number; about: number } | null = null;
     if (!planned) {
       const q0 = await supabase.rpc("ai_chat_quota", { p_org: s.org_id });
       if (q0.error) return dbRefusal(q0.error) ?? brainJson({ error: "unavailable" }, 503);
@@ -407,6 +410,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
       // 2. One plan at a time per conversation (0211). Without the lease there is no plan: never two of them, never one unguarded.
       const refused = await beginLease(turns);
       if (refused) return refused;
+      planNeeds = turns;
     }
 
     // 3. The draft, before any turn is spent on its storyboard (Breach BR-S1-03): settings only, no scene, so a workspace that cannot
@@ -453,6 +457,16 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     // 4. The storyboard, each call's request id derived from this attempt: a repeat inside it is 0199's duplicate, a Retry is a
     // new attempt with new ids.
     if (!planned && lease && model) {
+      // One plan per film (0232), now that the draft is known: the film editor's button on this same draft is the other way in
+      // (BR-FILM-02), and the worst case is reserved under the workspace's cap lock so the plan can finish (BR-FILM-03). Refused:
+      // nothing taken, our 0211 lease ends failed below. Before 0232 is applied the function is missing and the plan goes on as before.
+      if (planNeeds) {
+        const filmLease = await beginFilmLease(supabase, s.id, f.id, planNeeds);
+        if (!filmLease.ok) {
+          ending = { state: "failed", reason: filmLease.reason };
+          return filmLease.res;
+        }
+      }
       const last = (lastRead.data?.[0] ?? null) as { role?: string; content?: string } | null;
       const run = await writeStoryboard({
         supabase, sessionId: s.id, model, endUser: await vendorUser(s.org_id),

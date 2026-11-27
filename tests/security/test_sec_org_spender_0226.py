@@ -30,6 +30,7 @@ import pytest
 from psycopg import sql
 
 import sec_db
+import sec_film_lease_0232 as later
 import sec_org_spender_0226 as spender
 import test_sec_brand_scan as bs
 import test_sec_character_swap as cs
@@ -908,6 +909,11 @@ def md5_of(c, sig):
     return c.execute("select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) from pg_proc where oid = to_regprocedure(%s)", [sig]).fetchone()[0]
 
 
+def is_0226s(c, sig, now_) -> bool:
+    """0226's body, or, where 0232 (one plan per film) sits on it, 0232's: the lab applies every file, so two of these are 0232's."""
+    return md5_of(c, sig) in (now_, later.REPLACED.get(sig))
+
+
 def _bodies() -> dict:
     """Each replaced function's body as the file writes it, by name (request_editor_export: the four-argument one, the only one here)."""
     # A body with a backslash is written as an EXECUTE whose backslashes are a token (the file holds none): read it as it runs.
@@ -930,7 +936,7 @@ def test_the_file_replaces_exactly_the_twenty_two_bodies_and_each_spend_path_ask
     assert sorted(bodies) == sorted(sig.split("(")[0].removeprefix("public.") for sig, *_ in spender.PATHS)
     for sig, role, _src, _was, now_ in spender.PATHS:
         name = sig.split("(")[0].removeprefix("public.")
-        assert md5_of(conn, sig) == now_, sig
+        assert is_0226s(conn, sig, now_), sig
         if name in (CONFIRMER, RECORD):
             continue
         assert f"is_org_spender(" in bodies[name] and f"'{role}')" in bodies[name].split("is_org_spender(", 1)[1].split("\n", 1)[0], name
@@ -980,6 +986,8 @@ select md5(string_agg(p.oid::regprocedure::text || md5(p.prosrc) || coalesce(arr
 
 def test_a_replay_changes_nothing(conn):
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
+        # 0232 sits on two of these bodies and 0226's guard refuses its bodies (its REPLAY note): off first, as the note says.
+        sec_db.take_off_0232(c)
         before = c.execute(SNAPSHOT).fetchone()[0]
         c.execute(MIGRATION.read_text(encoding="utf-8"))
         c.execute(MIGRATION.read_text(encoding="utf-8"))
@@ -1007,6 +1015,7 @@ def _rollback_text():
 
 def test_the_rollback_puts_every_earlier_body_back_then_0226_applies_again(conn):
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
+        sec_db.take_off_0232(c)  # 0226's rollback refuses 0232's bodies
         grants = {sig: c.execute("select proacl::text from pg_proc where oid = to_regprocedure(%s)", [sig]).fetchone()[0]
                   for sig, *_ in spender.PATHS}
         c.execute(_rollback_text())
@@ -1022,6 +1031,7 @@ def test_the_rollback_puts_every_earlier_body_back_then_0226_applies_again(conn)
 
 def test_the_rollback_refuses_a_body_that_is_not_0226s(conn):
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
+        sec_db.take_off_0232(c)
         c.execute("create or replace function public.advance_workflow_run(p_run uuid) returns jsonb language plpgsql "
                   "security definer set search_path = public, pg_temp as $$ begin return '{}'::jsonb; end $$")
         with pytest.raises(psycopg.Error) as e:
@@ -1040,8 +1050,10 @@ def test_sec_dbs_take_off_and_put_back_chain_goes_through_0226(conn):
             assert not sec_db.has_0226(c), off.__name__
             back(c)
             assert sec_db.has_0226(c), back.__name__
+            # put_back_0226 puts 0232 back on it too.
+            assert sec_db.has_0232(c), back.__name__
             for sig, *_rest, now_ in spender.PATHS:
-                assert md5_of(c, sig) == now_, (back.__name__, sig)
+                assert is_0226s(c, sig, now_), (back.__name__, sig)
             c.rollback()
 
 

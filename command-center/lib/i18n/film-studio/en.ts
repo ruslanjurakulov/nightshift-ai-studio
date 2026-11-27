@@ -123,7 +123,7 @@ export const filmStudioEn = {
       setsKeyframe: "The project has no picture model yet: this also sets it to {name}. You can change it later.",
       writing: "Nightshift AI is writing the storyboard. It can take a few minutes; please keep this page open.",
       writingFor: "Writing for {time}…",
-      writingElsewhere: "This storyboard is already being written (in another tab, or before the page was refreshed). The scenes appear here when it is done.",
+      writingElsewhere: "This storyboard is already being written (in another tab, by someone else in this workspace, or before the page was refreshed). The scenes appear here when it is done.",
       done: "The storyboard was written. Scenes: {n}; length: {length}. Read and edit them before you start the project.",
       lastFailed: "The last attempt to write this storyboard did not finish. Nothing was saved to the project.",
       retry: "Try again",

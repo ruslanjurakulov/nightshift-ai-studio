@@ -1260,7 +1260,7 @@ def test_replaying_the_migration_twice_changes_nothing(db):
         # before 0208, on after it.
         # 0226 sits on 0093's api_begin, 0094's reserve_credits and request_download, 0147's oauth_ctx and 0192's bodies, and calls
         # 0215's is_org_spender: off first of all, on again last.
-        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0226, sec_db.ROLLBACK_0219, sec_db.ROLLBACK_0218, sec_db.ROLLBACK_0215, sec_db.ROLLBACK_0208, sec_db.ROLLBACK_0198, sec_db.ROLLBACK_0196,
+        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0232, sec_db.ROLLBACK_0226, sec_db.ROLLBACK_0219, sec_db.ROLLBACK_0218, sec_db.ROLLBACK_0215, sec_db.ROLLBACK_0208, sec_db.ROLLBACK_0198, sec_db.ROLLBACK_0196,
                                     sec_db.ROLLBACK_0192])
     sec_db.apply_files(db.dsn, [path, path])
     after = (db.su("select count(*) from public.oauth_grants")[0][0], db.su("select count(*) from public.oauth_tokens")[0][0],

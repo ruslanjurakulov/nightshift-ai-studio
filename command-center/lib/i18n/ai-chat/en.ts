@@ -142,7 +142,7 @@ export const aiChatEn = {
     plan_length_mismatch: "Chapter {n} of {total} did not add up to its length, even when asked again, so the storyboard was not used. Nothing was priced. Try again.",
     plan_length_mismatch_plain: "The storyboard did not add up to the length you chose, so it was not used. Nothing was priced. Try again.",
     plan_over_cap: "To be sure it can finish, writing this storyboard needs at least {needed} today, and {left}. It was not started and nothing was used. Choose a shorter film, or try again within 24 hours.",
-    plan_running: "This storyboard is already being written (in another tab, or before the page was refreshed). Nightshift AI waits for it here; nothing more is used.",
+    plan_running: "This storyboard is already being written (in another tab, by someone else in this workspace, or before the page was refreshed). Nightshift AI waits for it here; nothing more is used.",
     plan_unavailable: "Writing storyboards isn’t available in this workspace yet. Nothing was used. Please check back later.",
     plan_superseded: "This film already has a storyboard (changed in the editor, written before, or by another tab), so this one was not saved over it. The film is as you left it. No credits were charged. Open the project to see it.",
     proposal_outdated: "This proposal is from an older version and doesn’t add up to the length you chose. Ask Nightshift AI for new scenarios.",
