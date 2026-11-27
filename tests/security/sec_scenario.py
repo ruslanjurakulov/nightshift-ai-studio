@@ -339,6 +339,23 @@ def _seed_models(conn: psycopg.Connection) -> None:
                [f"model_{m.replace('-', '_')}_image" for m in (MODEL_SOLD, MODEL_HIDDEN, MODEL_GATED)])
 
 
+def seed_model_terms_acceptance(s, accepted_by: str) -> None:
+    # The isolation test needs a row to clone from this closed table.
+    row = _model_row("lab-terms-isolation", terms_gate="written_consent_required")
+    s.rows(
+        "insert into public.model_registry (id, display_name, provider, adapter, capabilities, spec, credit_unit, entitlement) "
+        "values (%s, %s, %s, %s, %s, %s::jsonb, %s, %s) returning id",
+        [row[key] for key in ("id", "display_name", "provider", "adapter", "capabilities")]
+        + [json.dumps(row["spec"]), row["credit_unit"], row["entitlement"]],
+    )
+    s.rows(
+        "insert into public.model_terms_acceptance (model_id, gate, provider, adapter, vendor_model, accepted_by) "
+        "select id, spec ->> 'terms_gate', provider, adapter, spec ->> 'vendor_model', %s "
+        "from public.model_registry where id = %s returning model_id",
+        [accepted_by, row["id"]],
+    )
+
+
 #: Worker status seed (0045): one media worker and one creative worker, both
 #: reporting 'running', each with a detail text no customer may ever see.
 WORKER_MEDIA, WORKER_CREATIVE = "lab-media-1", "lab-creative-1"

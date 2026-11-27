@@ -1,4 +1,5 @@
 -- Owner-applied rollback. Restore gates before removing acceptance records.
+-- Restore only acceptances for the current vendor identity.
 -- Preserve newer gates from the registry and hide any affected model on sale.
 -- Audit rows remain in the audit log.
 begin;
@@ -25,7 +26,9 @@ update public.model_registry m
    set availability = case when m.availability in ('beta', 'ga') then 'hidden' else m.availability end,
        spec = jsonb_set(m.spec, '{terms_gate}', to_jsonb(coalesce(nullif(m.spec ->> 'terms_gate', ''), a.gate)))
   from public.model_terms_acceptance a
- where a.model_id = m.id;
+ where a.model_id = m.id
+   and a.provider = m.provider and a.adapter = m.adapter
+   and a.vendor_model is not distinct from m.spec ->> 'vendor_model';
 
 drop function public.owner_accept_model_terms(text, text, text);
 drop function public.owner_revoke_model_terms(text);

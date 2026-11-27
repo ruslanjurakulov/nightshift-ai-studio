@@ -4,12 +4,17 @@
 -- LIVE ON APPLY. No model, terms gate, or availability changes on apply.
 -- The owner can clear a reviewed gate, then use the existing availability
 -- control. The probe and price checks continue to apply.
+-- Vendor identity binds an acceptance to the terms the owner actually reviewed.
+-- An ungated sync uses up the acceptance so a later gate requires fresh review.
 -- APPLY AS ONE TRANSACTION. Rollback: docs/sql/rollback_0227_owner_model_terms_acceptance.sql.
 set local lock_timeout = '5s';
 
 create table if not exists public.model_terms_acceptance (
   model_id text primary key references public.model_registry(id),
   gate text not null,
+  provider text not null,
+  adapter text not null,
+  vendor_model text,
   accepted_by uuid not null,
   accepted_at timestamptz not null default now(),
   note text
@@ -60,14 +65,13 @@ begin
     raise exception 'gate_changed' using errcode = 'P2272';
   end if;
 
-  insert into public.model_terms_acceptance (model_id, gate, accepted_by)
-  values (m.id, p_gate, auth.uid())
-  on conflict (model_id) do update
-    set gate = excluded.gate, accepted_by = excluded.accepted_by,
-        accepted_at = excluded.accepted_at, note = excluded.note
+  -- Clear any previous acceptance before recording this review.
+  update public.model_registry set spec = spec - 'terms_gate' where id = m.id;
+
+  insert into public.model_terms_acceptance (model_id, gate, provider, adapter, vendor_model, accepted_by)
+  values (m.id, p_gate, m.provider, m.adapter, m.spec ->> 'vendor_model', auth.uid())
   returning accepted_at into acceptance_time;
 
-  update public.model_registry set spec = spec - 'terms_gate' where id = m.id;
   return jsonb_build_object('model_id', m.id, 'gate', p_gate, 'accepted_at', acceptance_time,
                             'availability', m.availability);
 end
@@ -116,26 +120,20 @@ create or replace function public.model_terms_acceptance_guard()
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
   incoming_gate text := nullif(new.spec ->> 'terms_gate', '');
-  accepted_gate text;
 begin
   if incoming_gate is null then
-    return new;
-  end if;
-
-  -- An upsert uses the BEFORE INSERT result as EXCLUDED on conflict. Lock
-  -- the existing row before changing that result, so revoke cannot restore
-  -- a gate between the INSERT and UPDATE phases of the sync.
-  if tg_op = 'INSERT' then
-    perform 1 from public.model_registry where id = new.id for update;
-  end if;
-  select a.gate into accepted_gate
-    from public.model_terms_acceptance a where a.model_id = new.id;
-
-  if incoming_gate = accepted_gate and new.provider <> 'bytedance' then
+    delete from public.model_terms_acceptance where model_id = old.id;
+  elsif new.provider <> 'bytedance' and exists (
+    select 1 from public.model_terms_acceptance a
+     where a.model_id = new.id and a.gate = incoming_gate
+       and a.provider = new.provider and a.adapter = new.adapter
+       and a.vendor_model is not distinct from new.spec ->> 'vendor_model'
+  ) then
     new.spec := new.spec - 'terms_gate';
-  elsif tg_op = 'UPDATE' and accepted_gate is not null and new.availability in ('beta', 'ga')
-        and incoming_gate is distinct from old.spec ->> 'terms_gate' then
-    -- Changed terms must take effect even if the model is already on sale.
+  elsif new.availability in ('beta', 'ga')
+        and exists (select 1 from public.model_terms_acceptance a where a.model_id = new.id) then
+    -- Only a model the owner put on sale through an acceptance is hidden here: its terms changed under it. A gated model that
+    -- never had one keeps 0035's CHECK, so a sync that would put a gate on a model on sale still fails loudly.
     new.availability := 'hidden';
   end if;
 
@@ -144,8 +142,10 @@ end
 $$;
 
 drop trigger if exists model_terms_acceptance_guard on public.model_registry;
+-- The conflict UPDATE must see the original EXCLUDED gate, and availability
+-- and probe writes must leave the acceptance in place.
 create trigger model_terms_acceptance_guard
-  before insert or update on public.model_registry
+  before update of spec, provider, adapter on public.model_registry
   for each row execute function public.model_terms_acceptance_guard();
 
 revoke all on function public.model_terms_acceptance_guard() from public, anon, authenticated, service_role;
