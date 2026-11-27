@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
 /**
  * A public animation sample's "Try this prompt" (lib/site/showcase-link.ts -> lib/site/sample-source.ts -> GenerateSection). What
- * would break without these: an i2v sample opening the Studio with no picture and no words (the owner's "a click opens the Studio
- * with its prompt and the model selected" false for six samples); `sample=` turning into an open loader that fetches whatever the
- * address names; a refused or failed picture leaving a form that looks as if it had one (CLAUDE.md #5); the link quoting, holding or
- * creating a job without a press (CLAUDE.md #3); a reload or React's second effect run putting the same picture in the library twice.
+ * would break without these: an i2v sample opening the Studio with no picture and no words; `sample=` turning into an open loader
+ * that fetches whatever the address names; a link that names a sample the Studio would refuse; anything written for a visitor who
+ * never presses "Use this picture" (Atlas decision 22 Nov: a copy per visitor fills the media volume and every quota); a refused or
+ * failed copy leaving a form that looks as if it had a picture (CLAUDE.md #5); the press quoting, holding or creating a job
+ * (CLAUDE.md #3); a second press, a reload or a second tab making a second copy; a starting frame shown as a sample of its own.
  */
-import { StrictMode, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const panel = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }));
 vi.mock("@/components/studio/GeneratePanel", () => ({
@@ -31,7 +32,11 @@ import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";
 import { fmt } from "@/lib/i18n/core";
 import { GenerateSection } from "@/components/studio/GenerateSection";
-import { SHOWCASE_ENTRIES, modelLeftOut } from "@/lib/site/showcase";
+import { SHOWCASE_ENTRIES, modelLeftOut, sourceOnlyJobs } from "@/lib/site/showcase";
+import { showcaseItems, showcaseItemsWithSources } from "@/components/site/ShowcaseGallery";
+import { landingExcludedJobs, slotMedia } from "@/components/site/slots";
+import { landingGalleryJobs } from "@/components/site/landing-samples";
+import { beforeAfterPairs } from "@/lib/site/carousel";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { linksSample, signupTryHref, studioTryHref, tryHref } from "@/lib/site/showcase-link";
 import { SAMPLE_PARAM, isShippedPicture, resolveSampleSource, sampleSourcePicture, type SampleSource } from "@/lib/site/sample-source";
@@ -171,7 +176,11 @@ describe("the Studio resolves `sample=` against the shipped data only", () => {
     for (const e of RESOLVABLE) {
       const sourceJob = (e.input as { jobId: string }).jobId;
       const r = resolveSampleSource(e.jobId, { capability: "i2v", sourceId: null }, SHOWCASE_ENTRIES, FILES);
-      expect(r, e.jobId).toEqual({ state: "ready", sampleId: e.jobId, src: FILES[sourceJob].poster, name: `sample-${sourceJob.slice(0, 8)}.webp` });
+      const pic = SHOWCASE_ENTRIES.find((x) => x.jobId === sourceJob)!;
+      expect(r, e.jobId).toEqual({
+        state: "ready", sampleId: e.jobId, src: FILES[sourceJob].poster, name: `sample-${sourceJob.slice(0, 8)}.webp`,
+        sourceJobId: sourceJob, width: pic.width, height: pic.height,
+      });
       // Its own source, never the animation's poster.
       expect((r as { src: string }).src).not.toBe(FILES[e.jobId].poster);
     }
@@ -224,10 +233,21 @@ const en = dictionaries.en;
 const wrap = (ui: ReactNode, locale: "en" | "ru" | "uz" = "en") => <I18nProvider locale={locale}>{ui}</I18nProvider>;
 const last = () => panel.props[panel.props.length - 1];
 const I2V_FORM = { capability: "i2v" as const, model: "", prompt: "drift", aspect: "16:9", duration: 5, sourceId: null };
-const READY: SampleSource = { state: "ready", sampleId: RESOLVABLE[0]?.jobId ?? "", src: "/_next/static/media/poster.abc.webp", name: "sample-abc.webp" };
+const SOURCE_JOB = "e3da9148-f2f8-443e-95b1-8ed36ef3dea4";
+const READY: Extract<SampleSource, { state: "ready" }> = {
+  state: "ready",
+  sampleId: "fc1fad12-16de-4cd5-9cd9-e77ed245f469",
+  src: "/_next/static/media/poster.abc.webp",
+  name: "sample-e3da9148.webp",
+  sourceJobId: SOURCE_JOB,
+  width: 1280,
+  height: 720,
+};
 
 let fetchMock: ReturnType<typeof vi.fn>;
 let quota = false;
+/** The workspace's library as the name search answers it: what an earlier copy (another tab, another day) left there. */
+let library: Array<Record<string, unknown>> = [];
 const writes = () =>
   fetchMock.mock.calls.filter(([, init]) => ((init as RequestInit | undefined)?.method ?? "GET") !== "GET").map(([url, init]) => `${(init as RequestInit).method} ${url}`);
 const gets = () => fetchMock.mock.calls.filter(([, init]) => ((init as RequestInit | undefined)?.method ?? "GET") === "GET").map(([url]) => String(url));
@@ -236,15 +256,21 @@ const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { sta
 beforeEach(() => {
   panel.props = [];
   quota = false;
+  library = [];
   sessionStorage.clear();
   Element.prototype.scrollIntoView = vi.fn();
-  window.history.replaceState(null, "", `/all-channels/create?tool=i2v&model=m&${SAMPLE_PARAM}=${READY.state === "ready" ? READY.sampleId : ""}&prompt=drift`);
+  window.history.replaceState(null, "", `/all-channels/create?tool=i2v&model=m&${SAMPLE_PARAM}=${READY.sampleId}&prompt=drift`);
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const method = (init?.method ?? "GET").toUpperCase();
-    if (url === (READY as { src: string }).src) return { ok: true, status: 200, blob: async () => new Blob([new Uint8Array([82, 73, 70, 70, 1, 2, 3, 4])], { type: "image/webp" }) };
+    if (url === READY.src) return { ok: true, status: 200, blob: async () => new Blob([new Uint8Array([82, 73, 70, 70, 1, 2, 3, 4])], { type: "image/webp" }) };
+    if (url.startsWith("/api/media?") && method === "GET") return json({ assets: library });
     if (url === "/api/media/uploads" && method === "POST")
-      return quota ? json({ error: "quota_exceeded" }, 409) : json({ ticket: TICKET, upload_url: `/api/media/uploads/${TICKET}`, name: "sample-abc.webp" });
-    if (url === `/api/media/uploads/${TICKET}` && method === "PUT") return json({ ok: true });
+      return quota ? json({ error: "quota_exceeded" }, 409) : json({ ticket: TICKET, upload_url: `/api/media/uploads/${TICKET}`, name: READY.name });
+    if (url === `/api/media/uploads/${TICKET}` && method === "PUT") {
+      // What the worker registers: the copy, by its name and the size it measured.
+      library = [{ id: ASSET, kind: "image", name: READY.name, width: READY.width, height: READY.height }];
+      return json({ ok: true });
+    }
     if (url === `/api/media/uploads/${TICKET}`) return json({ status: "ingested", asset_id: ASSET });
     if (url === `/api/media/${ASSET}`) return json({ asset: { id: ASSET, kind: "image" } });
     return json({ jobs: [], templates: [] });
@@ -257,11 +283,15 @@ afterEach(() => {
 });
 
 const sourceAsked = () => (last()?.sourceRequest as { id: string } | null | undefined)?.id ?? null;
+const section = (sample: SampleSource | null, locale: "en" | "ru" | "uz" = "en") =>
+  wrap(<GenerateSection orgId={ORG} models={[]} desk="video" initial={I2V_FORM} sample={sample} />, locale);
+const posts = () => writes().filter((w) => w.startsWith("POST"));
 
 describe("GenerateSection with a sample's picture", () => {
-  it("refused: no picture is loaded, the form has no source, the note says so, and nothing is fetched for it", async () => {
-    render(wrap(<GenerateSection orgId={ORG} models={[]} desk="video" initial={I2V_FORM} sample={{ state: "refused" }} />));
+  it("refused: no picture is shown or loaded, the form has no source, the note says so, and nothing is fetched for it", async () => {
+    render(section({ state: "refused" }));
     expect(screen.getByTestId("sample-source").textContent).toBe(en.gen.sampleSource.refused);
+    expect(screen.queryByTestId("sample-proposed")).toBeNull();
     await new Promise((r) => setTimeout(r, 50));
     expect(sourceAsked()).toBeNull();
     expect((last().initial as { sourceId: string | null }).sourceId).toBeNull();
@@ -269,74 +299,118 @@ describe("GenerateSection with a sample's picture", () => {
     expect(gets().filter((u) => u.includes("/media"))).toEqual([]);
   });
 
+  it("on load: the shipped poster is shown as a labelled, proposed source, and nothing is written or even read for it", async () => {
+    render(section(READY));
+    const card = screen.getByTestId("sample-proposed");
+    expect(card.textContent).toContain(en.gen.sampleSource.label);
+    expect(card.textContent).toContain(en.gen.sampleSource.useNote);
+    expect(card.querySelector("img")?.getAttribute("src")).toBe(READY.src);
+    expect(screen.getByTestId("sample-use").textContent).toBe(en.gen.sampleSource.use);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(writes()).toEqual([]);
+    expect(gets().filter((u) => u.includes("/media") || u === READY.src)).toEqual([]);
+    expect(sourceAsked()).toBeNull();
+    // The address still names the sample: nothing has happened yet.
+    expect(new URL(window.location.href).searchParams.get(SAMPLE_PARAM)).toBe(READY.sampleId);
+  });
+
   it(
-    "ready: the picture goes into the library by the ordinary upload, becomes the source, and that upload is the only write",
+    "the press copies it once through the ordinary upload, makes it the source and swaps the address; no creative call",
     async () => {
-      render(wrap(<GenerateSection orgId={ORG} models={[]} desk="video" initial={I2V_FORM} sample={READY} />));
-      expect(screen.getByTestId("sample-source").textContent).toBe(en.gen.sampleSource.loading);
+      render(section(READY));
+      fireEvent.click(screen.getByTestId("sample-use"));
       await waitFor(() => expect(sourceAsked()).toBe(ASSET), { timeout: 4000 });
       expect(screen.getByTestId("sample-source").textContent).toBe(en.gen.sampleSource.ready);
-      // The words and the tool stay as the link set them.
+      expect(screen.queryByTestId("sample-proposed")).toBeNull();
       expect((last().initial as { prompt: string; capability: string }).prompt).toBe("drift");
       expect((last().initial as { capability: string }).capability).toBe("i2v");
       expect(writes()).toEqual(["POST /api/media/uploads", `PUT /api/media/uploads/${TICKET}`]);
+      // It looked for an earlier copy first, by name, in this workspace.
+      expect(gets()).toContain(`/api/media?org=${ORG}&q=${encodeURIComponent(READY.name)}`);
       expect(fetchMock.mock.calls.some(([u]) => String(u).startsWith("/api/creative"))).toBe(false);
-      // The address names the library file now, not the sample.
       expect(new URL(window.location.href).searchParams.get("source")).toBe(ASSET);
       expect(new URL(window.location.href).searchParams.has(SAMPLE_PARAM)).toBe(false);
-      expect(sessionStorage.getItem(`${SAMPLE_ASSET_KEY}:${ORG}:${(READY as { sampleId: string }).sampleId}`)).toBe(ASSET);
+      expect(sessionStorage.getItem(`${SAMPLE_ASSET_KEY}:${ORG}:${SOURCE_JOB}`)).toBe(ASSET);
     },
     8000,
   );
 
   it(
-    "a reload of the same link (or React's second effect run) never uploads the picture twice",
+    "a double press makes one copy; a later visit in this tab, or another tab (found by name), makes none",
     async () => {
-      const { unmount } = render(
-        wrap(
-          <StrictMode>
-            <GenerateSection orgId={ORG} models={[]} desk="video" initial={I2V_FORM} sample={READY} />
-          </StrictMode>,
-        ),
-      );
+      const { unmount } = render(section(READY));
+      const key = screen.getByTestId("sample-use");
+      fireEvent.click(key);
+      fireEvent.click(key);
       await waitFor(() => expect(sourceAsked()).toBe(ASSET), { timeout: 4000 });
-      expect(writes().filter((w) => w.startsWith("POST"))).toHaveLength(1);
+      expect(posts()).toHaveLength(1);
       unmount();
+
+      // The same tab, the old address again (Back): the tab remembers the copy and only reads it.
       panel.props = [];
-      // The old address again (a stale tab, Back): the tab remembers the file; it is only read, not sent again.
-      render(wrap(<GenerateSection orgId={ORG} models={[]} desk="video" initial={I2V_FORM} sample={READY} />));
+      const again = render(section(READY));
+      fireEvent.click(screen.getByTestId("sample-use"));
       await waitFor(() => expect(sourceAsked()).toBe(ASSET), { timeout: 4000 });
-      expect(writes().filter((w) => w.startsWith("POST"))).toHaveLength(1);
-      expect(screen.getByTestId("sample-source").textContent).toBe(en.gen.sampleSource.ready);
+      expect(posts()).toHaveLength(1);
+      again.unmount();
+
+      // Another tab (no memory of it): the library's name search finds the copy, so nothing is sent again.
+      sessionStorage.clear();
+      panel.props = [];
+      render(section(READY));
+      fireEvent.click(screen.getByTestId("sample-use"));
+      await waitFor(() => expect(sourceAsked()).toBe(ASSET), { timeout: 4000 });
+      expect(posts()).toHaveLength(1);
     },
-    10000,
+    12000,
   );
 
-  it("the site's copy not coming back is said, with no source and no upload", async () => {
-    const missing: SampleSource = { ...(READY as Extract<SampleSource, { state: "ready" }>), src: "/_next/static/media/gone.webp" };
-    render(wrap(<GenerateSection orgId={ORG} models={[]} desk="video" initial={I2V_FORM} sample={missing} />));
-    // The default answer for an unknown path is a JSON body, not a picture: refused as a picture.
-    await waitFor(() => expect(screen.getByTestId("sample-source").textContent).toBe(en.gen.sampleSource.refused));
-    expect(sourceAsked()).toBeNull();
-    expect(writes()).toEqual([]);
-  });
+  it("a file of the same name but another size is not taken for the copy", async () => {
+    library = [{ id: "44444444-4444-4444-8444-444444444444", kind: "image", name: READY.name, width: 640, height: 360 }];
+    render(section(READY));
+    fireEvent.click(screen.getByTestId("sample-use"));
+    await waitFor(() => expect(sourceAsked()).toBe(ASSET), { timeout: 4000 });
+    expect(posts()).toHaveLength(1);
+  }, 8000);
 
-  it("a refused upload names its reason and leaves no source", async () => {
+  it("over quota: the library's own words with the remedy, no source, nothing half-uploaded used, and the key stays", async () => {
     quota = true;
-    render(wrap(<GenerateSection orgId={ORG} models={[]} desk="video" initial={I2V_FORM} sample={READY} />));
+    render(section(READY));
+    fireEvent.click(screen.getByTestId("sample-use"));
     await waitFor(() =>
       expect(screen.getByTestId("sample-source").textContent).toBe(fmt(en.gen.sampleSource.failedWhy, { reason: en.media.errors.quota_exceeded })),
     );
     expect(sourceAsked()).toBeNull();
     expect(writes()).toEqual(["POST /api/media/uploads"]);
+    expect(sessionStorage.length).toBe(0);
+    expect(new URL(window.location.href).searchParams.has("source")).toBe(false);
+    const key = screen.getByTestId("sample-use") as HTMLButtonElement;
+    expect(key.disabled).toBe(false);
+    // Space freed: the same key works.
+    quota = false;
+    fireEvent.click(key);
+    await waitFor(() => expect(sourceAsked()).toBe(ASSET), { timeout: 4000 });
+  }, 8000);
+
+  it("the site's copy not coming back is said, with no source and no upload", async () => {
+    render(section({ ...READY, src: "/_next/static/media/gone.webp" }));
+    fireEvent.click(screen.getByTestId("sample-use"));
+    // The default answer for an unknown path is a JSON body, not a picture: refused as a picture.
+    await waitFor(() => expect(screen.getByTestId("sample-source").textContent).toBe(en.gen.sampleSource.unavailable));
+    expect(sourceAsked()).toBeNull();
+    expect(writes()).toEqual([]);
   });
 
-  it("the note is in uz and ru too", () => {
-    render(wrap(<GenerateSection orgId={ORG} models={[]} desk="video" initial={I2V_FORM} sample={{ state: "refused" }} />, "uz"));
-    expect(screen.getByTestId("sample-source").textContent).toBe(dictionaries.uz.gen.sampleSource.refused);
-    cleanup();
-    render(wrap(<GenerateSection orgId={ORG} models={[]} desk="video" initial={I2V_FORM} sample={{ state: "refused" }} />, "ru"));
-    expect(screen.getByTestId("sample-source").textContent).toBe(dictionaries.ru.gen.sampleSource.refused);
+  it("the key and its note are in uz and ru too", () => {
+    for (const loc of ["uz", "ru"] as const) {
+      render(section(READY, loc));
+      expect(screen.getByTestId("sample-use").textContent).toBe(dictionaries[loc].gen.sampleSource.use);
+      expect(screen.getByTestId("sample-proposed").textContent).toContain(dictionaries[loc].gen.sampleSource.useNote);
+      cleanup();
+      render(section({ state: "refused" }, loc));
+      expect(screen.getByTestId("sample-source").textContent).toBe(dictionaries[loc].gen.sampleSource.refused);
+      cleanup();
+    }
   });
 });
 
@@ -359,5 +433,31 @@ describe("the sample picture's words, in en, ru and uz", () => {
       expect(s, k).not.toMatch(/[oOgG]['‘’`]/);
     }
     expect(Object.values(dictionaries.uz.gen.sampleSource).join(" ")).toContain("ʻ");
+  });
+});
+
+describe("a starting frame is not its own sample (Atlas/owner decision 22 Nov)", () => {
+  const FRAMES = ["e3da9148-f2f8-443e-95b1-8ed36ef3dea4", "f17146fd-054c-4970-9dac-f7a0dc929bd6", "1504b313-3a3c-4e78-bfda-5bca3ef7f3da"];
+
+  it("derived from the data: every picture an i2v sample was animated from, and nothing else", () => {
+    expect([...sourceOnlyJobs(SHOWCASE_ENTRIES)].sort()).toEqual([...FRAMES].sort());
+    // A future export's source is hidden without anyone listing it.
+    const pic = { ...T2I, jobId: "77777777-7777-4777-8777-777777777777" };
+    const clip = { ...I2V[0], jobId: "88888888-8888-4888-8888-888888888888", input: { kind: "operator_job" as const, jobId: pic.jobId, assetId: pic.assetId } };
+    expect(sourceOnlyJobs([...SHOWCASE_ENTRIES, pic, clip]).has(pic.jobId)).toBe(true);
+    // A text clip's (none) input or a picture nobody animated stays a sample.
+    expect(sourceOnlyJobs(SHOWCASE_ENTRIES).has(T2I.jobId)).toBe(FRAMES.includes(T2I.jobId));
+  });
+
+  it("absent from every grid, still found for its clip, still in its slot, still beside its clip in picture → video", () => {
+    const grid = showcaseItems().map(({ e }) => e.jobId);
+    for (const j of FRAMES) expect(grid, j).not.toContain(j);
+    expect(landingGalleryJobs(landingExcludedJobs()).some((j) => FRAMES.includes(j))).toBe(false);
+    const all = showcaseItemsWithSources().map(({ e }) => e.jobId);
+    for (const j of FRAMES) expect(all, j).toContain(j);
+    const slot = slotMedia("solutions.developers");
+    expect(slot.kind === "ai" ? slot.entry.jobId : null).toBe("1504b313-3a3c-4e78-bfda-5bca3ef7f3da");
+    const pairs = beforeAfterPairs(showcaseItemsWithSources()).map((p) => p.picture.e.jobId);
+    expect(pairs).toContain("e3da9148-f2f8-443e-95b1-8ed36ef3dea4");
   });
 });

@@ -5,7 +5,8 @@
  * (lib/models-discovery prefillModel), and shows which model and price it will use before anything runs.
  *
  * An animation (i2v) also carries `sample=<its job id>`, but only when the Studio's own resolver (lib/site/sample-source.ts, against
- * the same shipped data) finds its starting picture: the Studio then puts that picture in the person's library as the form's picture.
+ * the same shipped data) finds its starting picture: the Studio then shows that picture as a proposed source, which the person may
+ * copy into their library with "Use this picture".
  * One whose picture does not ship gets no reference (a link sure to be refused would only show every visitor an error note); its
  * form opens with the words and the model, and asks for a picture as it always does.
  *

@@ -16,7 +16,7 @@ import { DeskAvailabilityNote, NothingOnSaleNote } from "@/components/studio/Ava
 import { toolOpen } from "@/lib/tool-availability";
 import { IDEA_PARAM, takeIdea } from "@/lib/site/idea-handoff";
 import { attachErrorKey, attachWords } from "@/lib/creative/attach";
-import { preloadSampleOnce } from "@/lib/creative/sample-preload";
+import { copySampleOnce } from "@/lib/creative/sample-preload";
 import { SAMPLE_PARAM, type SampleSource } from "@/lib/site/sample-source";
 import { formatMediaBytes } from "@/lib/media";
 import "@/components/studio/desk.css";
@@ -77,7 +77,7 @@ export function GenerateSection({
   idea?: boolean;
   /**
    * `?sample=<job>` on a picture-to-video form, as the create page resolved it against the shipped showcase data
-   * (lib/site/sample-source.ts): the sample's own starting picture, put in the library and set as the source, or a refusal said.
+   * (lib/site/sample-source.ts): the sample's own starting picture, shown as a proposed source until "Use this picture", or a refusal said.
    */
   sample?: SampleSource | null;
 }) {
@@ -133,58 +133,56 @@ export function GenerateSection({
     toComposer();
   };
 
-  // A sample's starting picture (`sample=`): into the library through the ordinary upload, then the form's source, once per link
-  // visit (lib/creative/sample-preload.ts). The upload is the only write; the person still presses the priced key (rule 3). A
-  // refused or failed one says so: never a form that looks as if the picture were there (rule 5).
-  const [sampleLine, setSampleLine] = useState<{ tone: "ok" | "error" | "busy"; text: string } | null>(
-    sample?.state === "refused" ? { tone: "error", text: t.gen.sampleSource.refused } : null,
+  // A sample's starting picture (`sample=`, lib/site/sample-source.ts): shown as a PROPOSED source, and nothing is written on load
+  // (Atlas decision 22 Nov). Only "Use this picture" copies it into the library, once per workspace (lib/creative/sample-preload.ts),
+  // and makes it the form's source; the price is asked only then, and Generate stays its own press (rule 3). A refused or failed one
+  // says so and leaves no source: never a form that looks as if the picture were there (rule 5).
+  const [samplePhase, setSamplePhase] = useState<"proposed" | "copying" | "used" | "refused">(
+    sample?.state === "ready" ? "proposed" : sample?.state === "refused" ? "refused" : "proposed",
   );
-  // Another form put in the composer meanwhile (a template, "Try again"): the picture is not forced into it.
-  const prefillNonce = useRef(prefill?.nonce ?? 0);
-  prefillNonce.current = prefill?.nonce ?? 0;
+  const [sampleError, setSampleError] = useState<string | null>(null);
+  const sampleLive = useRef(true);
   useEffect(() => {
-    if (sample?.state !== "ready") return;
-    let live = true;
-    const startedOn = prefillNonce.current;
-    setSampleLine({ tone: "busy", text: t.gen.sampleSource.loading });
-    void preloadSampleOnce({ orgId, sample }).then((r) => {
-      if (!live) return;
-      if (!r.ok) {
-        const key = r.error === "picture_unavailable" ? null : attachErrorKey(r.error);
-        const media = t.media.errors as Record<string, string>;
-        const text =
-          key && "flow" in key && key.flow === "stillChecking"
-            ? t.gen.sampleSource.checking
-            : key && "media" in key && media[key.media] && key.media !== "failed"
-              ? fmt(t.gen.sampleSource.failedWhy, { reason: fmt(media[key.media], { max: formatMediaBytes(r.maxBytes ?? null) || "—" }) })
-              : key === null
-                ? t.gen.sampleSource.refused
-                : t.gen.sampleSource.failed;
-        setSampleLine({ tone: "error", text });
-        return;
-      }
-      // The address now names the library file: a reload opens the form on it and uploads nothing.
-      try {
-        const u = new URL(window.location.href);
-        u.searchParams.delete(SAMPLE_PARAM);
-        u.searchParams.set("source", r.assetId);
-        window.history.replaceState(window.history.state, "", `${u.pathname}${u.search}${u.hash}`);
-      } catch {
-        // The tab's storage still remembers the file for this sample.
-      }
-      if (prefillNonce.current !== startedOn) {
-        setSampleLine({ tone: "ok", text: t.gen.sampleSource.inLibrary });
-        return;
-      }
-      pickAsSource(r.assetId);
-      setSampleLine({ tone: "ok", text: t.gen.sampleSource.ready });
-    });
+    sampleLive.current = true;
     return () => {
-      live = false;
+      sampleLive.current = false;
     };
-    // Once per link: the resolved sample is fixed for this mount (the page keys the section by the form).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const takeSample = async () => {
+    if (sample?.state !== "ready" || samplePhase === "copying") return;
+    setSamplePhase("copying");
+    setSampleError(null);
+    const { sampleId, src, name, sourceJobId, width, height } = sample;
+    const r = await copySampleOnce({ orgId, sample: { sampleId, src, name, sourceJobId, width, height } });
+    if (!sampleLive.current) return;
+    if (!r.ok) {
+      const key = r.error === "picture_unavailable" ? null : attachErrorKey(r.error);
+      const media = t.media.errors as Record<string, string>;
+      const text =
+        key && "flow" in key && key.flow === "stillChecking"
+          ? t.gen.sampleSource.checking
+          : key && "media" in key && media[key.media] && key.media !== "failed"
+            ? fmt(t.gen.sampleSource.failedWhy, { reason: fmt(media[key.media], { max: formatMediaBytes(r.maxBytes ?? null) || "—" }) })
+            : key === null
+              ? t.gen.sampleSource.unavailable
+              : t.gen.sampleSource.failed;
+      // The key stays: the person can free space, sign in again or try later, and press it again.
+      setSampleError(text);
+      setSamplePhase("proposed");
+      return;
+    }
+    // The address now names the library file: a reload opens the form on it and copies nothing.
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete(SAMPLE_PARAM);
+      u.searchParams.set("source", r.assetId);
+      window.history.replaceState(window.history.state, "", `${u.pathname}${u.search}${u.hash}`);
+    } catch {
+      // The name in the library still finds the copy again.
+    }
+    pickAsSource(r.assetId);
+    setSamplePhase("used");
+  };
 
   const describe = (id: string) => {
     const value = describePrefill(id, defaultDescribeLanguage(locale));
@@ -210,16 +208,51 @@ export function GenerateSection({
     />
   );
 
-  const sampleNote = sampleLine ? (
-    <p
-      className="m-0 text-sm text-[var(--color-muted)]"
-      role="status"
-      data-testid="sample-source"
-      data-tone={sampleLine.tone}
-    >
-      {sampleLine.text}
-    </p>
-  ) : null;
+  const ss = t.gen.sampleSource;
+  const sampleNote =
+    sample === null ? null : samplePhase === "refused" ? (
+      <p className="m-0 text-sm text-[var(--color-muted)]" role="status" data-testid="sample-source" data-tone="error">
+        {ss.refused}
+      </p>
+    ) : samplePhase === "used" ? (
+      <p className="m-0 text-sm text-[var(--color-muted)]" role="status" data-testid="sample-source" data-tone="ok">
+        {ss.ready}
+      </p>
+    ) : sample.state === "ready" ? (
+      <div className="studio-field flex items-start gap-3 p-3" data-testid="sample-proposed">
+        {/* The site's own hashed poster (same origin, resolved by the server from the shipped data): shown, not uploaded. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={sample.src}
+          alt={ss.alt}
+          width={sample.width}
+          height={sample.height}
+          className="h-16 w-auto max-w-24 shrink-0 rounded-md object-cover"
+        />
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="m-0 text-sm font-medium">{ss.label}</p>
+          <p className="m-0 text-xs text-[var(--color-muted)]">{ss.proposed}</p>
+          <div>
+            <button
+              type="button"
+              className="btn-quiet inline-flex min-h-11 items-center gap-2 px-4 text-sm"
+              data-testid="sample-use"
+              disabled={samplePhase === "copying"}
+              aria-describedby="sample-use-note"
+              onClick={() => void takeSample()}
+            >
+              {samplePhase === "copying" ? ss.copying : ss.use}
+            </button>
+          </div>
+          <p id="sample-use-note" className="m-0 text-xs text-[var(--color-muted)]">
+            {ss.useNote}
+          </p>
+          <p className="m-0 text-xs text-[var(--color-muted)]" role="status" data-testid="sample-source" data-tone={sampleError ? "error" : "busy"}>
+            {sampleError ?? (samplePhase === "copying" ? ss.copying : "")}
+          </p>
+        </div>
+      </div>
+    ) : null;
 
   const cutNote =
     ideaCut !== null ? (

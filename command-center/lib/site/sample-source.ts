@@ -7,9 +7,9 @@
  * #5). The address can therefore never make the Studio fetch an arbitrary file: the only URLs this returns are the site's own
  * hashed posters.
  *
- * The browser then puts that picture into the person's library through the library's ordinary upload (lib/creative/attach.ts
- * uploadAttachment, the path a file attached on the home page takes) and sets it as the form's source. Nothing is priced, held or
- * started: the person still presses Generate and sees the price (CLAUDE.md #3).
+ * The form shows that picture as a PROPOSED source and writes nothing on load. Only when the person presses "Use this picture" is
+ * it copied into their library (lib/creative/sample-preload.ts, through the library's ordinary upload, once per workspace) and set
+ * as the form's source; only then is the price asked, and Generate is its own press (CLAUDE.md #3).
  *
  * Kept free of file imports (the files map is passed in), so the tests can give it their own.
  */
@@ -29,11 +29,19 @@ const SHIPPED_PICTURE = /^\/(?![/\\])[A-Za-z0-9._~/-]+\.webp$/;
 
 export type SampleSource =
   /** The sample's own source picture, as this deployment ships it, and the name the library file gets. */
-  | { state: "ready"; sampleId: string; src: string; name: string }
+  | { state: "ready"; sampleId: string; src: string; name: string; sourceJobId: string; width: number; height: number }
   /** The link named a sample, and it is not one whose picture we ship: no picture is loaded and the form says so. */
   | { state: "refused" };
 
 type Files = Readonly<Record<string, { poster?: unknown } | undefined>>;
+
+/**
+ * The name the copy gets in the library, and the marker it is found by again (lib/creative/sample-preload.ts): one per source
+ * picture, so two animations of the same picture share one copy.
+ */
+export function sampleFileName(sourceJobId: string): string {
+  return `sample-${sourceJobId.slice(0, 8)}.webp`;
+}
 
 /** Whether `src` is a picture path this resolver may hand to the browser. */
 export function isShippedPicture(src: unknown): src is string {
@@ -45,7 +53,11 @@ export function isShippedPicture(src: unknown): src is string {
  * `operator_job` input whose job is itself a shipped PICTURE entry), and that entry's poster must ship. A `site_art` input is not
  * resolved yet (no i2v sample uses one, and the site art has no generated files map to look it up in): it reads as refused.
  */
-export function sampleSourcePicture(sampleId: string, entries: readonly ShowcaseEntry[], files: Files): { src: string; sourceJobId: string } | null {
+export function sampleSourcePicture(
+  sampleId: string,
+  entries: readonly ShowcaseEntry[],
+  files: Files,
+): { src: string; sourceJobId: string; width: number; height: number } | null {
   const entry = entries.find((e) => e.jobId === sampleId);
   if (!entry || entry.capability !== "i2v" || entry.input.kind !== "operator_job") return null;
   const sourceJobId = entry.input.jobId;
@@ -54,7 +66,7 @@ export function sampleSourcePicture(sampleId: string, entries: readonly Showcase
   // Own keys only: `__proto__` or `constructor` must never read as a shipped file.
   if (!Object.prototype.hasOwnProperty.call(files, sourceJobId)) return null;
   const src = files[sourceJobId]?.poster;
-  return isShippedPicture(src) ? { src, sourceJobId } : null;
+  return isShippedPicture(src) ? { src, sourceJobId, width: source.width, height: source.height } : null;
 }
 
 /**
@@ -73,5 +85,5 @@ export function resolveSampleSource(
   if (typeof raw !== "string" || !UUID.test(raw)) return { state: "refused" };
   const pic = sampleSourcePicture(raw, entries, files);
   if (!pic) return { state: "refused" };
-  return { state: "ready", sampleId: raw, src: pic.src, name: `sample-${pic.sourceJobId.slice(0, 8)}.webp` };
+  return { state: "ready", sampleId: raw, src: pic.src, name: sampleFileName(pic.sourceJobId), sourceJobId: pic.sourceJobId, width: pic.width, height: pic.height };
 }
