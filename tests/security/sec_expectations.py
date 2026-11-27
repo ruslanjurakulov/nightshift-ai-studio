@@ -831,6 +831,12 @@ import sec_owner_ai_history_0209  # noqa: E402
 
 sec_owner_ai_history_0209.extend(TABLES, FUNCTIONS)
 
+# Migration 0212 (the recorded film sweep: one row per runner, film_sweep and film_sweep_status for the service role only):
+# tests/security/sec_film_sweep_0212.py
+import sec_film_sweep_0212  # noqa: E402
+
+sec_film_sweep_0212.extend(TABLES, FUNCTIONS)
+
 # Migration 0215 (Film Studio: archive a paused or cancelled film, resume a paused one; the worker's id kept out of members' reads):
 # tests/security/sec_film_resume_0215.py
 import sec_film_resume_0215  # noqa: E402
