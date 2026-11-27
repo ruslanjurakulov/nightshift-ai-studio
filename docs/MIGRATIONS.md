@@ -2752,7 +2752,7 @@ that stays read-only support access. Spending takes a seat in `org_members` (021
 organization, whose credits are the platform's own, a platform owner or admin may, as before. A read-only check before this file
 found no non-member staff activity on any of these paths in production.
 
-- **Seventeen bodies, one marked hunk each, nothing else changed** (md5 guard: the earlier body or 0226's own). Sixteen spend paths
+- **Twenty-two bodies, one marked hunk each, nothing else changed** (md5 guard: the earlier body or 0226's own). Sixteen spend paths
   ask `is_org_spender` right after their own who-may-call check, with the role they already asked of a member, and refuse
   `not_a_member` (NS400; `api_err` 403 for the API and connected apps) before anything is counted, priced, held or written:
   `reserve_credits` (admin; the platform's own caller is still trusted), `create_creative_job` (any member), `start_workflow_run`
@@ -2773,23 +2773,34 @@ found no non-member staff activity on any of these paths in production.
   on later steps. Its non-exempt branch now asks only for a seat of editor or above (0074's platform arm and its dead
   `p_org = default_org_id()` arm go); the exempt branch keeps its platform owner or admin arm. Such a step stops with
   `confirmation_revoked` and holds nothing.
+- **The owner's five** (27 Nov). `ai_chat_start` and `ai_chat_reserve_turn` (Nightshift AI: the workspace's trial and daily cap)
+  ask `is_org_spender(org, 'editor')` before the cap or the trial is read or counted; `set_api_key_access`, `set_api_key_limit`
+  and `api_activate` ask `is_org_spender(org, 'admin')` before anything is written. A platform owner or admin without a seat no
+  longer chats on a customer's trial, widens a key or accepts the API terms. The chat route and the Developer console name the
+  refusal (en / ru / uz, `tests/not-a-member-chat-api.test.ts`). `api_set_monthly_limit` (the workspace's own API limit) was not in
+  the owner's list and is unchanged.
+- **No backslash** in the file or its rollback (an apply tool can rewrite escape sequences): the md5 fold is
+  `regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')`, which the lab compares with the `\s+` shorthand on every body. The three
+  earlier bodies that hold a backslash (`request_brand_scan`'s position test, `ai_chat_reserve_turn`'s two `E''` character lists)
+  are written as an EXECUTE whose backslashes are a token that `replace()` turns back into `chr(92)`: each source, and its md5, is
+  the earlier text plus the hunk.
 - **Refused as before**: a member of another organization, a viewer where an editor is asked, a key whose maker is no admin at all
   (`key_owner_not_admin`), a connection whose person lost access (`workspace_access_lost`). The new check never answers first.
 - **Covered without a body of their own**: every API endpoint (through `api_begin`) and MCP tool (through `oauth_ctx`);
-  `request_reply_draft` already asks `inbox_real_member`. Free paths (the free editor exports, `request_series_plan`, the Studio AI
-  chat) and every quote are not asked.
+  `request_reply_draft` already asks `inbox_real_member`. Free paths (the free editor exports, `request_series_plan`) and every
+  quote are not asked.
 - **Accepted, not changed** (DB review): a `not_a_member` answer of `api_begin` / `oauth_ctx` is not logged through `api_finish`
   (L4: the request context is not built yet, as for `api_not_activated`), and the review's I1, both left as they are.
 - **The app** reads `not_a_member` as its own word (403) in each path's map, with en / ru / uz copy (`tests/not-a-member.test.ts`):
   the run's hold, downloads, storyboard approval, scene repair, repurpose, series start, paid export, brand scan, character swap,
   generations and workflows, the Developer console's key creation, the API spec and the connected assistant's sentence.
 - **Publishing and privacy**: untouched (CLAUDE.md rule 2). No browser path gains anything; each may only refuse more.
-- **Replay.** The file replays onto itself. Any earlier file that defines one of these seventeen functions restores its older body
+- **Replay.** The file replays onto itself. Any earlier file that defines one of these twenty-two functions restores its older body
   when it is re-run, unless it carries an md5 guard that refuses a body it was not written on. Measured on the lab with 0226 applied
   (`tests/security/test_sec_org_spender_0226.py` pins both lists): re-running 0120, 0122, 0129, 0132, 0133, 0136, 0137, 0147, 0174
   or 0192 fails loudly (take 0226, and whatever else sits on that file, out first), and so does 0020 on a database that holds
   ledger rows of a later kind; re-running 0030, 0031, 0036, 0040, 0041, 0042, 0057, 0060, 0062, 0070, 0073, 0074, 0075, 0076, 0080,
-  0085, 0093, 0094 or 0111 applies silently and puts an older body back (apply 0226 again after).
+  0085, 0093, 0094, 0111 or 0199 applies silently and puts an older body back (apply 0226 again after).
 - **Requires** 0215 (`is_org_spender`) and the files above.
-- **Undo.** `docs/sql/rollback_0226_org_spender_everywhere.sql` (owner-applied): the seventeen earlier bodies back, verbatim, with
+- **Undo.** `docs/sql/rollback_0226_org_spender_everywhere.sql` (owner-applied): the twenty-two earlier bodies back, verbatim, with
   their grants. It adds nothing else, so nothing else is undone.

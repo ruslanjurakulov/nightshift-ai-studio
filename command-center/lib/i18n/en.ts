@@ -4888,6 +4888,7 @@ export const en = {
     createNeedsMigration: "Key creation is not enabled on this deployment yet: apply migration 0062.",
     keyLimitReached: "This organization already has 10 active keys. Revoke one first.",
     keyNotAMember: "Only a member who manages this workspace can create a key: a key spends as the person who made it. Ask the person who runs this workspace to add you as a member.",
+    settingsNotAMember: "Only a member who manages this workspace can change its API settings. Ask the person who runs this workspace to add you as a member.",
     newKeyTitle: "Your new key",
     newKeyNote: "Copy it now — it will not be shown again. Anyone who has it can do everything its access allows, including spending the API balance and credits.",
     copy: "Copy",

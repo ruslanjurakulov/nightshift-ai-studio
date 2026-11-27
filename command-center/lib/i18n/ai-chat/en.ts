@@ -116,6 +116,7 @@ export const aiChatEn = {
     adult_only_service: "Nightshift is for adults (18+). When your age was asked, you answered that you are under 18, so Nightshift AI can't be used on this account.",
     adult_attestation_required: "Confirm that you are 18 or older first. It is asked once, on Create.",
     session_closed: "This plan was already handed off. Press New chat to start another one.",
+    not_a_member: "You are not a member of this workspace, so you cannot use its Nightshift AI. Ask the person who runs this workspace to add you as a member.",
     card_changed: "That question has changed. Answer the latest one.",
     assistant_unavailable: "Nightshift AI is unavailable right now. Try again later.",
     unavailable: "Nightshift AI could not answer right now. Try again.",

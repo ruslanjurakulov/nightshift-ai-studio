@@ -1,11 +1,11 @@
 """Security-lab contract for migration 0226 (only a member spends an organization's credits, on every path: 0215's is_org_spender asked
-by the seventeen spend paths and rules that did not ask it yet).
+by the twenty-two spend paths and rules that did not ask it yet).
 
 Kept in its own module, like sec_film_resume_0215. One hook wires it in, at the bottom of sec_expectations.py:
 
         import sec_org_spender_0226; sec_org_spender_0226.extend(TABLES, FUNCTIONS)
 
-0226 adds no table and no function: it replaces seventeen bodies, each keeping its signature and its grants, so every catalog entry
+0226 adds no table and no function: it replaces twenty-two bodies, each keeping its signature and its grants, so every catalog entry
 (TABLES, FUNCTIONS) stays as the earlier migrations declared it and extend() adds nothing. What this module holds is the one list
 the tests, the drift-guard pins and sec_db's chain read: each path, the role it asks of a member, and its body's md5 before and after
 (whitespace runs read as one space, the way the file's own guard reads them). The attacks are in test_sec_org_spender_0226.py.
@@ -51,6 +51,17 @@ PATHS = (
     # caller, so it reads org_members itself): a seat of editor or above, and the platform owner or admin only in the exempt organization.
     ("public.workflow_confirmer_may_spend(uuid, uuid)", "editor", "0074",
      "bf5b3922c06fb82f832de36394e88ef7", "f3869c81bfc92baa38380830943f9985"),
+    # The owner's yes (27 Nov): Nightshift AI's trial and daily cap, and a key's access, limit and the API's terms.
+    ("public.ai_chat_start(uuid, text)", "editor", "0199",
+     "f2365e962c429bd2640e5b3b155a32d5", "a8f1f8c7b6880c44fe0ccdb32e2ccbc5"),
+    ("public.ai_chat_reserve_turn(uuid, text, boolean, text)", "editor", "0199",
+     "7c89309bd1e2c15109d3824cc1104df8", "e105fa9373fac86e9a36cf4a945a21b4"),
+    ("public.set_api_key_access(uuid, text[], integer, numeric)", "admin", "0062",
+     "31a0ee1c15ba91f948446f95c8aeb1d2", "3255e1411d0d2ec9d5a85121e62d1dd3"),
+    ("public.set_api_key_limit(uuid, bigint)", "admin", "0031",
+     "538ad2e8ed9ab8eac10e11e3e60ba655", "c2b04ddeacdc908d02be94360bcc8e66"),
+    ("public.api_activate(uuid, text)", "admin", "0031",
+     "8cc2ead31d60e2c809c9e2ca4f161b90", "345750e4dfb8abdf49076e222b9ed22d"),
 )
 
 

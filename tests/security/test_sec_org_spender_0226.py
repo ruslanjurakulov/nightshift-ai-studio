@@ -910,9 +910,11 @@ def md5_of(c, sig):
 
 def _bodies() -> dict:
     """Each replaced function's body as the file writes it, by name (request_editor_export: the four-argument one, the only one here)."""
-    text = MIGRATION.read_text(encoding="utf-8")
+    # A body with a backslash is written as an EXECUTE whose backslashes are a token (the file holds none): read it as it runs.
+    text = MIGRATION.read_text(encoding="utf-8").replace("<0226:backslash>", "\\")
     out = {}
-    for m in re.finditer(r"(?m)^create or replace function public\.(\w+)\(.*?\bas \$\$(.*?)\$\$;", text, re.S):
+    for m in re.finditer(r"(?m)^(?:  execute replace\(\$fn0226\$)?create or replace function public\.(\w+)\(.*?\bas \$\$(.*?)\$\$(?:;|\$fn0226\$)",
+                         text, re.S):
         out[m.group(1)] = m.group(2)
     return out
 
@@ -921,7 +923,7 @@ def _bodies() -> dict:
 CONFIRMER = "workflow_confirmer_may_spend"
 
 
-def test_the_file_replaces_exactly_the_seventeen_bodies_and_each_spend_path_asks_is_org_spender_with_its_role(conn):
+def test_the_file_replaces_exactly_the_twenty_two_bodies_and_each_spend_path_asks_is_org_spender_with_its_role(conn):
     bodies = _bodies()
     assert sorted(bodies) == sorted(sig.split("(")[0].removeprefix("public.") for sig, *_ in spender.PATHS)
     for sig, role, _src, _was, now_ in spender.PATHS:
@@ -1049,11 +1051,11 @@ def test_the_api_doors_ask_the_seat_first_inside_their_own_500_block_before_the_
         assert body.index("'not_a_member'") < body.index(counted), name
 
 
-#: What re-running each earlier file that defines one of the seventeen functions does once 0226 is on (the file's REPLAY note).
+#: What re-running each earlier file that defines one of the twenty-two functions does once 0226 is on (the file's REPLAY note).
 #: The lab holds ledger rows of later kinds, so 0020's own credit_transactions check refuses it here (on an empty database it is silent).
 LOUD = {"0020", "0120", "0122", "0129", "0132", "0133", "0136", "0137", "0147", "0174", "0192"}
 SILENT = {"0030", "0031", "0036", "0040", "0041", "0042", "0057", "0060", "0062", "0070", "0073", "0074", "0075",
-          "0076", "0080", "0085", "0093", "0094", "0111"}
+          "0076", "0080", "0085", "0093", "0094", "0111", "0199"}
 
 
 def test_the_replay_note_names_exactly_the_files_that_fail_loudly_and_the_ones_that_silently_put_an_older_body_back(conn):
@@ -1076,3 +1078,150 @@ def test_the_replay_note_names_exactly_the_files_that_fail_loudly_and_the_ones_t
     note = re.sub(r"\s*\n--\s*", " ", MIGRATION.read_text(encoding="utf-8").split("-- REPLAY.", 1)[1].split("-- NUMBER.", 1)[0])
     for n in LOUD | SILENT:
         assert n in note, n
+
+
+# ── Nightshift AI: ai_chat_start and ai_chat_reserve_turn (editor) ───────────
+
+import test_sec_ai_chat as chat  # noqa: E402
+
+
+def chat_ready(s, org):
+    """The organization's plan given a daily cap well above what the lab used, so who may chat is the only question."""
+    become(s, None)
+    chat._cap(s, chat._plan(s, org), 1000)
+
+
+def chat_state(s, org):
+    become(s, None)
+    return (s.value("select count(*) from public.ai_chat_sessions where org_id = %s", [org]),
+            s.value("select count(*) from public.ai_chat_calls where org_id = %s", [org]),
+            s.value("select count(*) from public.ai_chat_messages m join public.ai_chat_sessions x on x.id = m.session_id "
+                    "where x.org_id = %s", [org]))
+
+
+def session_of(s, org, who, channel=None):
+    """A conversation of `who`, written as the database owner (a staff member's, as one made before 0226 would be)."""
+    become(s, None)
+    return str(s.value("insert into public.ai_chat_sessions (org_id, channel_id, created_by, model) "
+                       "values (%s, %s, %s, (select model from public.ai_chat_settings where id)) returning id", [org, channel, who.uid]))
+
+
+START_CHAT = "select public.ai_chat_start(%s, %s)"
+TURN = "select public.ai_chat_reserve_turn(%s, %s)"
+
+
+def test_ai_chat_a_member_starts_and_takes_a_turn_a_non_member_platform_admin_uses_none_of_the_cap_or_the_trial(w):
+    s = w.su
+    chat_ready(s, w.org)
+    mine = as_(s, w.member, START_CHAT, [w.org, w.channel])
+    assert mine.ok, mine
+    assert as_(s, w.member, TURN, [str(mine.rows[0][0]), "hello"]).ok
+    before = chat_state(s, w.org)
+    out = as_(s, w.staff, START_CHAT, [w.org, w.channel])
+    assert not_a_member(out), out
+    theirs = session_of(s, w.org, w.staff, w.channel)
+    before = chat_state(s, w.org)
+    out = as_(s, w.staff, TURN, [theirs, "hello"])
+    assert not_a_member(out), out
+    assert chat_state(s, w.org) == before  # nothing counted against the cap or the trial, no message stored
+
+
+def test_ai_chat_platform_staff_in_the_exempt_organization_chat(w):
+    s = w.su
+    chat_ready(s, w.exempt)
+    out = as_(s, w.staff, START_CHAT, [w.exempt, None])
+    assert out.ok, out
+    assert as_(s, w.staff, TURN, [str(out.rows[0][0]), "hello"]).ok
+
+
+def test_ai_chat_another_organizations_member_is_refused_as_before(w):
+    s = w.su
+    chat_ready(s, w.org)
+    out = as_(s, w.foreign, START_CHAT, [w.org, None])
+    assert not out.ok and (out.sqlstate, out.error) == ("NS403", "forbidden"), out
+    theirs = session_of(s, w.org, w.foreign)
+    out = as_(s, w.foreign, TURN, [theirs, "hello"])
+    assert not out.ok and (out.sqlstate, out.error) == ("NS404", "session_not_found"), out
+
+
+# ── the API's settings: set_api_key_access, set_api_key_limit, api_activate (admin) ──
+
+ACCESS = "select public.set_api_key_access(%s, array['videos:read'], 30, null)"
+LIMIT = "select public.set_api_key_limit(%s, 500)"
+ACTIVATE = "select public.api_activate(%s, 'v2')"
+
+
+def key_row(s, org):
+    become(s, None)
+    h = uuid.uuid4().hex + uuid.uuid4().hex
+    return str(s.value("insert into public.api_keys (org_id, name, key_hash, created_by) values (%s, 'spend lab', %s, %s) returning id",
+                       [org, h, w_member_uid(s, org)]))
+
+
+def w_member_uid(s, org):
+    return s.value("select user_id from public.org_members where org_id = %s and role = 'owner' and user_id is not null limit 1", [org]) \
+        or s.value("select user_id from public.app_members where role = 'owner' limit 1")
+
+
+def api_settings_state(s, org):
+    become(s, None)
+    return (s.rows("select scopes, rpm_limit, monthly_limit_cents from public.api_keys where org_id = %s order by id", [org]),
+            s.rows("select terms_version, activated_at from public.api_settings where org_id = %s", [org]),
+            s.value("select count(*) from public.app_audit_log where action in ('api_key.access', 'api.activate')"))
+
+
+def eligible(s, org):
+    """The API opens after a first credit purchase (api_org_eligible): one recorded top-up, as the payment webhook writes it."""
+    become(s, None)
+    s.rows("insert into public.api_accounts (org_id, balance_cents, paid_total_cents) values (%s, 1000, 1000) "
+           "on conflict (org_id) do update set paid_total_cents = greatest(public.api_accounts.paid_total_cents, 1000) returning 1", [org])
+    if not s.value("select public.api_org_eligible(%s)", [org]):
+        s.rows("insert into public.credit_transactions (org_id, kind, amount, balance_after, reserved_after, note, external_id) "
+               "select %s, 'purchase', 1, a.balance + 1, a.reserved, 'lab pack', %s from public.credit_accounts a where a.org_id = %s "
+               "returning 1", [org, f"lab-pack-{uuid.uuid4().hex[:8]}", org])
+
+
+def test_api_settings_a_member_changes_them_a_non_member_platform_admin_changes_nothing(w):
+    s = w.su
+    key = key_row(s, w.org)
+    eligible(s, w.org)
+    for q, p in ((ACCESS, [key]), (LIMIT, [key]), (ACTIVATE, [w.org])):
+        out = as_(s, w.member, q, p)
+        assert out.ok, (q, out)
+    before = api_settings_state(s, w.org)
+    for q, p in ((ACCESS, [key]), (LIMIT, [key]), (ACTIVATE, [w.org])):
+        out = as_(s, w.staff, q, p)
+        assert not_a_member(out), (q, out)
+    assert api_settings_state(s, w.org) == before
+
+
+def test_api_settings_platform_staff_in_the_exempt_organization_change_them(w):
+    s = w.su
+    key = key_row(s, w.exempt)
+    eligible(s, w.exempt)
+    for q, p in ((ACCESS, [key]), (LIMIT, [key]), (ACTIVATE, [w.exempt])):
+        out = as_(s, w.staff, q, p)
+        assert out.ok, (q, out)
+
+
+def test_api_settings_another_organizations_member_is_refused_as_before(w):
+    s = w.su
+    key = key_row(s, w.org)
+    for q, p in ((ACCESS, [key]), (LIMIT, [key]), (ACTIVATE, [w.org])):
+        out = as_(s, w.foreign, q, p)
+        assert not out.ok and out.sqlstate == "42501", (q, out)
+
+
+def test_neither_the_file_nor_its_rollback_holds_a_backslash():
+    """An apply tool can rewrite escape sequences: the files are written without one (the three bodies that hold a backslash go
+    through EXECUTE with a token that replace() turns back into chr(92))."""
+    for path in (MIGRATION, ROLLBACK):
+        assert "\\" not in path.read_text(encoding="utf-8"), path.name
+
+
+def test_the_files_fold_reads_every_body_exactly_as_the_shorthand_of_the_earlier_guards(conn):
+    """The guards here fold whitespace with [[:space:]]+ (no backslash); the earlier files' guards and this lab use \\s+. Same md5."""
+    for sig, *_ in spender.PATHS:
+        a, b = conn.execute("select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')), md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) "
+                            "from pg_proc where oid = to_regprocedure(%s)", [sig]).fetchone()
+        assert a == b and a is not None, sig

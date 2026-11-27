@@ -116,6 +116,7 @@ export const aiChatUz: AiChatDictionary = {
     adult_only_service: "Nightshift kattalar (18+) uchun. Yoshingiz soʻralganda 18 yoshga toʻlmaganingizni aytdingiz, shuning uchun bu akkauntda Nightshift AIʼdan foydalanib boʻlmaydi.",
     adult_attestation_required: "Avval 18 yosh yoki undan kattaligingizni tasdiqlang. Bu bir marta, «Yaratish» boʻlimida soʻraladi.",
     session_closed: "Bu reja allaqachon uzatilgan. Boshqasini boshlash uchun «Yangi suhbat»ni bosing.",
+    not_a_member: "Siz bu ish maydonining aʼzosi emassiz, shuning uchun uning Nightshift AIʼdan foydalana olmaysiz. Ish maydonini boshqaradigan kishidan sizni aʼzo sifatida qoʻshishini soʻrang.",
     card_changed: "Savol oʻzgardi. Oxirgisiga javob bering.",
     assistant_unavailable: "Nightshift AI hozir mavjud emas. Keyinroq urinib koʻring.",
     unavailable: "Nightshift AI hozir javob bera olmadi. Qayta urinib koʻring.",

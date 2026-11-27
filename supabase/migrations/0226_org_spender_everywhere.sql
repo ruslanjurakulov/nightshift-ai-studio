@@ -16,7 +16,7 @@
 --     grant's person, is_org_member admin).
 --   * A live read-only check (coordinator, before this file) found no non-member platform staff activity on any of them in production.
 --
--- CHANGE (additive; seventeen bodies replaced, each with one marked 0226 hunk and nothing else changed; nothing added): each path asks
+-- CHANGE (additive; twenty-two bodies replaced, each with one marked 0226 hunk and nothing else changed; nothing added): each path asks
 --   0215's is_org_spender(org, role) right after its own who-may-call check, with the role it already demanded of a member, and
 --   refuses not_a_member (NS400, through the refusal the path already uses: creative_refuse, a raise, or api_err 403 for the API and
 --   connected apps) BEFORE anything is counted, priced, reserved or written. Two paths take a row lock first, to ask who may call:
@@ -44,6 +44,11 @@
 --   api_begin                  admin   8b3b4fb4f4a5ab698584bc4f30e9fd14 (0093) -> 9ff0b39b5c5f86b82a4df3054b1908e8
 --   oauth_ctx                  admin   fe42c9e4f53a6c9aaba40077ce905cdc (0147) -> 8cf90c6006cf30dc492c56fbfdcdb789
 --   workflow_confirmer_may_spend editor  bf5b3922c06fb82f832de36394e88ef7 (0074) -> f3869c81bfc92baa38380830943f9985
+--   ai_chat_start              editor  f2365e962c429bd2640e5b3b155a32d5 (0199) -> a8f1f8c7b6880c44fe0ccdb32e2ccbc5
+--   ai_chat_reserve_turn       editor  7c89309bd1e2c15109d3824cc1104df8 (0199) -> e105fa9373fac86e9a36cf4a945a21b4
+--   set_api_key_access         admin   31a0ee1c15ba91f948446f95c8aeb1d2 (0062) -> 3255e1411d0d2ec9d5a85121e62d1dd3
+--   set_api_key_limit          admin   538ad2e8ed9ab8eac10e11e3e60ba655 (0031) -> c2b04ddeacdc908d02be94360bcc8e66
+--   api_activate               admin   8cc2ead31d60e2c809c9e2ca4f161b90 (0031) -> 345750e4dfb8abdf49076e222b9ed22d
 --
 -- COVERED WITHOUT A BODY OF THEIR OWN:
 --   * api_create_video, api_request_download, api_creative_create and every other API endpoint open with api_begin; oauth_create_video,
@@ -60,22 +65,34 @@
 --   * creative_platform_reserve clears the claims for its reserve_credits call (the platform's own caller): the path that called it
 --     (create_creative_job, request_brand_scan, request_character_swap, request_reply_draft) asks first.
 --
+-- AND THE OWNER'S FIVE (27 Nov): the Studio AI chat (Nightshift AI) spends the workspace's trial and daily cap, and a key's access,
+--   its monthly limit and the API's terms decide what keys may spend. ai_chat_start and ai_chat_reserve_turn ask
+--   is_org_spender(org, 'editor') (their is_org_member role), refusing not_a_member through creative_refuse before the cap or the
+--   trial is read or counted; set_api_key_access, set_api_key_limit and api_activate ask is_org_spender(org, 'admin') before anything
+--   is written. A platform owner or admin without a seat no longer chats on a customer's trial, widens a key or accepts the terms.
+--
+-- NO BACKSLASH in this file or its rollback: an apply tool can rewrite escape sequences. The md5 fold is written
+--   regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g') (the same class as the shorthand the earlier guards use; the lab compares both
+--   on every body here). Three earlier bodies hold a backslash (request_brand_scan's position test, ai_chat_reserve_turn's two E''
+--   character lists); each is written as an EXECUTE whose backslashes are a token that replace() turns back into chr(92), so the
+--   function's source, and its md5, is the earlier text plus the hunk, nothing else.
+--
 -- NOT CHANGED: every price, hold, capture, refund and rate rule; film_price / film_precheck (0220) and the film paths 0215 covers; the
---   free paths (the two- and three-argument editor exports, request_series_plan, the Studio AI chat) spend no credits and are not
+--   free paths (the two- and three-argument editor exports, request_series_plan) spend no credits and are not
 --   asked; quotes take no hold and answer as before. There is no publish path here and nothing about privacy (CLAUDE.md rule 2): no
 --   browser path gains anything, every one may only refuse more.
 --
--- REPLAY. This file replays onto itself. The general rule: any earlier file that defines one of these seventeen functions restores
+-- REPLAY. This file replays onto itself. The general rule: any earlier file that defines one of these twenty-two functions restores
 --   its older body when it is re-run, unless it carries an md5 guard that refuses a body it was not written on. Measured on a lab
 --   database with this file applied (tests/security/test_sec_org_spender_0226.py pins both lists):
 --   * re-running 0120, 0122, 0129, 0132, 0133, 0136, 0137, 0147, 0174 or 0192 FAILS LOUDLY: take this file (and whatever else sits
 --     on that file) out first with its rollback. So does 0020 on a database that holds ledger rows of a later kind (its own
 --     credit_transactions check refuses them); on an empty one it is silent and puts 0020's reserve_credits back;
---   * re-running 0030, 0031, 0036, 0040, 0041, 0042, 0057, 0060, 0062, 0070, 0073, 0074, 0075, 0076, 0080, 0085, 0093, 0094
---     or 0111 applies SILENTLY and puts an older body back: apply this file again after.
+--   * re-running 0030, 0031, 0036, 0040, 0041, 0042, 0057, 0060, 0062, 0070, 0073, 0074, 0075, 0076, 0080, 0085, 0093, 0094,
+--     0111 or 0199 applies SILENTLY and puts an older body back: apply this file again after.
 --
 -- NUMBER. Provisionally 0226; the coordinator confirms it at merge. Needs 0215 (is_org_spender) and the files named above.
--- Undo: docs/sql/rollback_0226_org_spender_everywhere.sql (owner-applied): the seventeen earlier bodies back, verbatim. Nothing else to
+-- Undo: docs/sql/rollback_0226_org_spender_everywhere.sql (owner-applied): the twenty-two earlier bodies back, verbatim. Nothing else to
 --   undo: this file adds no table, column or function.
 --
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
@@ -91,7 +108,7 @@ begin
   if to_regprocedure('public.is_org_spender(uuid, text)') is null then
     raise exception '0226 asks 0215''s is_org_spender: apply 0215_film_archive_resume.sql first';
   end if;
-  -- The 17 bodies this file replaces: the earlier one, or this file's own (a replay).
+  -- The 22 bodies this file replaces: the earlier one, or this file's own (a replay).
   for r in select * from (values
       ('public.reserve_credits(uuid, text, numeric)', '20800909ce4fdbcff87c5a99e735299f', '0fc6122a91a6287c632a59f2855a0d14', '0094'),
       ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', 'a5e00e65d1161bccd2acefb7745e659b', 'ab939bb64ef626e30c1438c6030d8801', '0192'),
@@ -109,8 +126,13 @@ begin
       ('public.create_api_key(uuid, text, bigint)', '4b311587d0f62ade8334beec83049e01', 'c751606e0eafff55b916e603c1d78f2e', '0042'),
       ('public.api_begin(text, text, text)', '8b3b4fb4f4a5ab698584bc4f30e9fd14', '9ff0b39b5c5f86b82a4df3054b1908e8', '0093'),
       ('public.oauth_ctx(text, text, text)', 'fe42c9e4f53a6c9aaba40077ce905cdc', '8cf90c6006cf30dc492c56fbfdcdb789', '0147'),
-      ('public.workflow_confirmer_may_spend(uuid, uuid)', 'bf5b3922c06fb82f832de36394e88ef7', 'f3869c81bfc92baa38380830943f9985', '0074')) v(sig, was, now_, src) loop
-    select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
+      ('public.workflow_confirmer_may_spend(uuid, uuid)', 'bf5b3922c06fb82f832de36394e88ef7', 'f3869c81bfc92baa38380830943f9985', '0074'),
+      ('public.ai_chat_start(uuid, text)', 'f2365e962c429bd2640e5b3b155a32d5', 'a8f1f8c7b6880c44fe0ccdb32e2ccbc5', '0199'),
+      ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', '7c89309bd1e2c15109d3824cc1104df8', 'e105fa9373fac86e9a36cf4a945a21b4', '0199'),
+      ('public.set_api_key_access(uuid, text[], integer, numeric)', '31a0ee1c15ba91f948446f95c8aeb1d2', '3255e1411d0d2ec9d5a85121e62d1dd3', '0062'),
+      ('public.set_api_key_limit(uuid, bigint)', '538ad2e8ed9ab8eac10e11e3e60ba655', 'c2b04ddeacdc908d02be94360bcc8e66', '0031'),
+      ('public.api_activate(uuid, text)', '8cc2ead31d60e2c809c9e2ca4f161b90', '345750e4dfb8abdf49076e222b9ed22d', '0031')) v(sig, was, now_, src) loop
+    select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is null or h <> all (array[r.was, r.now_]) then
       raise exception '0226 found % with a body that is neither %''s nor 0226''s (md5 %): read the live body first', r.sig, r.src, h;
     end if;
@@ -1226,7 +1248,11 @@ $$;
 -- 10. request_brand_scan (0133's body, one marked 0226 hunk: editor or above, a seat)
 -- ───────────────────────────────────────────────────────────────────────────
 
-create or replace function public.request_brand_scan(p_org uuid, p_url text, p_idem text, p_max_credits numeric) returns jsonb
+-- This body holds a backslash. A backslash can be rewritten on its way through an apply tool, so this file holds none:
+-- the statement is run through EXECUTE, each backslash spelled <0226:backslash> and turned back into chr(92). Its source is unchanged.
+do $bs0226$
+begin
+  execute replace($fn0226$create or replace function public.request_brand_scan(p_org uuid, p_url text, p_idem text, p_max_credits numeric) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
   uid     uuid := auth.uid();
@@ -1262,7 +1288,7 @@ begin
   end if;
   -- Read only now, after sign-in and the role.
   v_url := btrim(coalesce(p_url, ''));
-  if v_url = '' or not public.ads_site_url_ok(v_url) or position(E'\\' in v_url) > 0 then
+  if v_url = '' or not public.ads_site_url_ok(v_url) or position(E'<0226:backslash><0226:backslash>' in v_url) > 0 then
     raise exception 'invalid_url' using errcode = 'NS400';
   end if;
   v_host := substring(v_url from '^https://([^/]+)');
@@ -1363,7 +1389,8 @@ begin
   return jsonb_build_object('id', v_id, 'status', 'requested', 'credits', case when v_ref is null then 0 else v_price end,
                             'replayed', false);
 end
-$$;
+$$$fn0226$, '<0226:backslash>', chr(92));
+end $bs0226$;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 11. request_character_swap (0137's body, one marked 0226 hunk: editor or above, a seat)
@@ -2181,6 +2208,264 @@ create or replace function public.workflow_confirmer_may_spend(p_user uuid, p_or
     end)
 $$;
 
+-- ───────────────────────────────────────────────────────────────────────────
+-- 18. ai_chat_start (0199's body, one marked 0226 hunk: editor or above, a seat)
+-- ───────────────────────────────────────────────────────────────────────────
+
+create or replace function public.ai_chat_start(p_org uuid, p_channel text) returns uuid
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  v_user uuid := auth.uid();
+  v_id uuid;
+  v_cap integer;
+begin
+  if v_user is null then
+    raise exception 'sign in first' using errcode = '42501';
+  end if;
+  -- Planning a video is a maker's act: an editor or above, as creating one is (a viewer cannot spend the workspace's turns).
+  if p_org is null or not public.is_org_member(p_org, 'editor') then
+    perform public.creative_refuse('forbidden', 'an editor of this workspace can use Nightshift AI', 'NS403');
+  end if;
+  -- 0226 (the owner's decision, 22 Nov; 0215's is_org_spender): spending an organization's credits takes a seat in it. 0043's
+  -- accessible_org_ids makes a platform owner or admin an admin of every organization; that stays read-only support access. In the
+  -- exempt organization the credits are the platform's own, so its platform owner or admin may, as before. Before the daily cap, the trial or the plan is read, or anything is counted or written.
+  if not public.is_org_spender(p_org, 'editor') then
+    perform public.creative_refuse('not_a_member', 'you are not an owner, admin or editor member of this workspace; ask the workspace''s owner to add you as a member', 'NS400');
+  end if;
+  if (select count(*) from public.ai_chat_sessions x where x.created_by = v_user and x.created_at > now() - interval '24 hours')
+     >= (select sessions_per_user_daily from public.ai_chat_settings where id) then
+    perform public.creative_refuse('chat_daily_cap', 'too many new conversations today', 'NS429');
+  end if;
+  if p_channel is not null and not exists (select 1 from public.channels c where c.channel_id = p_channel and c.org_id = p_org) then
+    perform public.creative_refuse('channel_not_found', 'that channel is not in this workspace', 'NS404');
+  end if;
+  v_cap := public.ai_chat_cap(p_org);
+  if (v_cap is null and public.ai_chat_trial_left(p_org) = 0) or v_cap = 0 then
+    perform public.creative_refuse('chat_plan_required', 'Nightshift AI is on the Plus, Pro and Business plans', 'NS402');
+  end if;
+  insert into public.ai_chat_sessions (org_id, channel_id, created_by, model)
+  values (p_org, p_channel, v_user, (select model from public.ai_chat_settings where id)) returning id into v_id;
+  return v_id;
+end
+$$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 19. ai_chat_reserve_turn (0199's body, one marked 0226 hunk: editor or above, a seat)
+-- ───────────────────────────────────────────────────────────────────────────
+
+-- This body holds a backslash. A backslash can be rewritten on its way through an apply tool, so this file holds none:
+-- the statement is run through EXECUTE, each backslash spelled <0226:backslash> and turned back into chr(92). Its source is unchanged.
+do $bs0226$
+begin
+  execute replace($fn0226$create or replace function public.ai_chat_reserve_turn(p_session uuid, p_text text, p_retry boolean default false,
+                                                      p_request_id text default null) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  v_user uuid := auth.uid();
+  s public.ai_chat_sessions;
+  v_max integer;
+  v_cap integer;
+  v_used integer;
+  v_call uuid;
+  -- Every whitespace a person can type, not only spaces (Breach: a message of tabs and newlines took a turn), and the invisible ones
+  -- (zero-width, word joiner, BOM) removed first, so a message of NBSPs or zero-width spaces is empty (Lens on 0199).
+  -- Breach on 0199 added the rest that render as nothing: soft hyphen, joiners, bidi marks, variation selectors, tags, fillers.
+  v_text text := btrim(regexp_replace(coalesce(p_text, ''),
+                         E'[<0226:backslash>u00AD<0226:backslash>u034F<0226:backslash>u180E<0226:backslash>u200B-<0226:backslash>u200F<0226:backslash>u202A-<0226:backslash>u202E<0226:backslash>u2060-<0226:backslash>u2064<0226:backslash>uFEFF<0226:backslash>uFE00-<0226:backslash>uFE0F<0226:backslash>U000E0000-<0226:backslash>U000E007F]', '', 'g'),
+                       E' <0226:backslash>t<0226:backslash>r<0226:backslash>n<0226:backslash>f<0226:backslash>u0085<0226:backslash>u00A0<0226:backslash>u115F<0226:backslash>u1160<0226:backslash>u1680<0226:backslash>u2000<0226:backslash>u2001<0226:backslash>u2002<0226:backslash>u2003<0226:backslash>u2004<0226:backslash>u2005<0226:backslash>u2006<0226:backslash>u2007<0226:backslash>u2008<0226:backslash>u2009<0226:backslash>u200A<0226:backslash>u2028<0226:backslash>u2029<0226:backslash>u202F<0226:backslash>u205F<0226:backslash>u2800<0226:backslash>u3000<0226:backslash>u3164<0226:backslash>uFFA0' || chr(11));
+  st public.ai_chat_settings;
+begin
+  if v_user is null then
+    raise exception 'sign in first' using errcode = '42501';
+  end if;
+  select * into s from public.ai_chat_sessions where id = p_session and created_by = v_user;
+  if not found or not public.is_org_member(s.org_id, 'editor') then
+    perform public.creative_refuse('session_not_found', 'no such conversation', 'NS404');
+  end if;
+  -- 0226 (the owner's decision, 22 Nov; 0215's is_org_spender): spending an organization's credits takes a seat in it. 0043's
+  -- accessible_org_ids makes a platform owner or admin an admin of every organization; that stays read-only support access. In the
+  -- exempt organization the credits are the platform's own, so its platform owner or admin may, as before. Before the turn is checked, the organization's lock is taken, or the cap or the trial is counted.
+  if not public.is_org_spender(s.org_id, 'editor') then
+    perform public.creative_refuse('not_a_member', 'you are not an owner, admin or editor member of this workspace; ask the workspace''s owner to add you as a member', 'NS400');
+  end if;
+  if s.step = 'created' then
+    perform public.creative_refuse('session_closed', 'this plan was handed off; start a new conversation', 'NS409');
+  end if;
+  if p_request_id is not null and p_request_id !~ '^[A-Za-z0-9_-]{8,64}$' then
+    perform public.creative_refuse('invalid_params', 'a request id is 8 to 64 letters, digits, - or _');
+  end if;
+  select * into st from public.ai_chat_settings where id;
+  v_max := st.max_input_chars;
+  if coalesce(p_retry, false) then
+    if (select m.role from public.ai_chat_messages m where m.session_id = s.id order by m.id desc limit 1) is distinct from 'user' then
+      perform public.creative_refuse('nothing_to_retry', 'the last message was answered', 'NS409');
+    end if;
+  elsif v_text = '' then
+    perform public.creative_refuse('invalid_params', 'say something first');
+  end if;
+  if char_length(v_text) > coalesce(v_max, 2000) then
+    perform public.creative_refuse('message_too_long', format('at most %s characters', coalesce(v_max, 2000)));
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('ai_chat:' || s.org_id::text, 0));
+  -- The same press again (a network retry): answered as a duplicate, with nothing written (under the lock: two copies racing find
+  -- each other, and the unique index is the last word).
+  -- The refusal names the conversation the first copy went to: a retried Start finds its own (Lens on 0199).
+  if p_request_id is not null and exists (select 1 from public.ai_chat_calls c where c.user_id = v_user and c.request_id = p_request_id) then
+    perform public.creative_refuse('duplicate_request',
+      coalesce((select c.session_id::text from public.ai_chat_calls c where c.user_id = v_user and c.request_id = p_request_id), ''), 'NS409');
+  end if;
+  v_cap := public.ai_chat_cap(s.org_id);
+  v_used := public.ai_chat_used(s.org_id);
+  if v_cap is null then
+    -- The lifetime trial, counted under the same workspace lock as the cap (two tabs cannot both take the last one).
+    if public.ai_chat_trial_left(s.org_id) = 0 then
+      perform public.creative_refuse('chat_plan_required', 'Nightshift AI is on the Plus, Pro and Business plans', 'NS402');
+    end if;
+  elsif v_cap = 0 then
+    perform public.creative_refuse('chat_plan_required', 'Nightshift AI is on the Plus, Pro and Business plans', 'NS402');
+  elsif v_used >= v_cap then
+    perform public.creative_refuse('chat_daily_cap', format('used=%s limit=%s', v_used, v_cap), 'NS429');
+  end if;
+  -- The person's own turns everywhere, and the platform's: under their own locks, after the workspace's, always in this order.
+  perform pg_advisory_xact_lock(hashtextextended('ai_chat_user:' || v_user::text, 0));
+  -- Every outcome counts here, not_sent too: a member can reserve and finish their own calls by hand, and each writes rows
+  -- (Lens and Breach on 0199: not_sent passed every cap). The plan cap is the one that forgives what was not their doing.
+  if (select count(*) from public.ai_chat_calls c where c.user_id = v_user and c.created_at > now() - interval '24 hours')
+     >= st.per_user_daily then
+    perform public.creative_refuse('chat_daily_cap', 'your own daily limit across workspaces is reached', 'NS429');
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('ai_chat_global', 0));
+  if (select count(*) from public.ai_chat_calls c where c.created_at > now() - interval '24 hours') >= st.global_daily then
+    perform public.creative_refuse('chat_unavailable', 'Nightshift AI has reached its daily limit; try again later', 'NS503');
+  end if;
+  if not coalesce(p_retry, false) then
+    insert into public.ai_chat_messages (session_id, created_by, role, content) values (s.id, v_user, 'user', v_text);
+  end if;
+  insert into public.ai_chat_calls (org_id, user_id, session_id, model, request_id)
+  values (s.org_id, v_user, s.id, (select model from public.ai_chat_settings where id), p_request_id) returning id into v_call;
+  update public.ai_chat_sessions set updated_at = now() where id = s.id;
+  return jsonb_build_object('call_id', v_call, 'used', v_used + 1, 'limit', v_cap,
+                            'trial_left', case when v_cap is null then public.ai_chat_trial_left(s.org_id) end);
+end
+$$$fn0226$, '<0226:backslash>', chr(92));
+end $bs0226$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 20. set_api_key_access (0062's body, one marked 0226 hunk: admin or above, a seat)
+-- ───────────────────────────────────────────────────────────────────────────
+
+create or replace function public.set_api_key_access(
+  p_key_id uuid, p_scopes text[], p_rpm_limit integer, p_creative_monthly_credits numeric
+) returns boolean
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  k        public.api_keys;
+  v_scopes text[];
+begin
+  select * into k from public.api_keys where id = p_key_id;
+  if k.id is null or auth.uid() is null or not public.is_org_member(k.org_id, 'admin') then
+    raise exception 'only an owner or admin of the key''s organization may change it' using errcode = '42501';
+  end if;
+  -- 0226 (the owner's decision, 22 Nov; 0215's is_org_spender): spending an organization's credits takes a seat in it. 0043's
+  -- accessible_org_ids makes a platform owner or admin an admin of every organization; that stays read-only support access. In the
+  -- exempt organization the credits are the platform's own, so its platform owner or admin may, as before. A key spends as the person who made it, within what this sets: before anything is written.
+  if not public.is_org_spender(k.org_id, 'admin') then
+    raise exception 'not_a_member' using errcode = 'NS400',
+      detail = 'you are not an owner or admin member of this workspace; ask the workspace''s owner to add you as a member';
+  end if;
+  if k.revoked_at is not null then
+    raise exception 'this key is revoked' using errcode = '22023';
+  end if;
+  v_scopes := array(select distinct s from unnest(coalesce(p_scopes, '{}'::text[])) s order by s);
+  if cardinality(v_scopes) = 0 or not public.api_scopes_valid(v_scopes) then
+    raise exception 'choose at least one valid scope' using errcode = '22023';
+  end if;
+  if p_rpm_limit is not null and p_rpm_limit not between 1 and 300 then
+    raise exception 'requests per minute: 1 to 300' using errcode = '22023';
+  end if;
+  if p_creative_monthly_credits is not null and p_creative_monthly_credits not between 0 and 100000000 then
+    raise exception 'credit limit out of range' using errcode = '22023';
+  end if;
+  update public.api_keys
+     set scopes = v_scopes, rpm_limit = p_rpm_limit, creative_monthly_credits = p_creative_monthly_credits
+   where id = p_key_id;
+  insert into public.app_audit_log (actor_user_id, actor_email, action, target, detail)
+  values (auth.uid(), nullif(auth.jwt() ->> 'email', ''), 'api_key.access', p_key_id::text,
+          jsonb_build_object('org_id', k.org_id, 'scopes', to_jsonb(v_scopes), 'rpm_limit', p_rpm_limit,
+                             'creative_monthly_credits', p_creative_monthly_credits));
+  return true;
+end
+$$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 21. set_api_key_limit (0031's body, one marked 0226 hunk: admin or above, a seat)
+-- ───────────────────────────────────────────────────────────────────────────
+
+create or replace function public.set_api_key_limit(p_key_id uuid, p_cents bigint) returns boolean
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  k public.api_keys;
+begin
+  select * into k from public.api_keys where id = p_key_id;
+  if k.id is null or auth.uid() is null or not public.is_org_member(k.org_id, 'admin') then
+    raise exception 'only an owner or admin of the key''s organization may change it' using errcode = '42501';
+  end if;
+  -- 0226 (the owner's decision, 22 Nov; 0215's is_org_spender): spending an organization's credits takes a seat in it. 0043's
+  -- accessible_org_ids makes a platform owner or admin an admin of every organization; that stays read-only support access. In the
+  -- exempt organization the credits are the platform's own, so its platform owner or admin may, as before. A key's monthly limit is how much it may spend: before anything is written.
+  if not public.is_org_spender(k.org_id, 'admin') then
+    raise exception 'not_a_member' using errcode = 'NS400',
+      detail = 'you are not an owner or admin member of this workspace; ask the workspace''s owner to add you as a member';
+  end if;
+  if p_cents is not null and (p_cents < 0 or p_cents > 100000000) then
+    raise exception 'limit out of range' using errcode = '22023';
+  end if;
+  update public.api_keys set monthly_limit_cents = p_cents where id = p_key_id;
+  return true;
+end
+$$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 22. api_activate (0031's body, one marked 0226 hunk: admin or above, a seat)
+-- ───────────────────────────────────────────────────────────────────────────
+
+create or replace function public.api_activate(p_org uuid, p_terms_version text) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  s public.api_settings;
+begin
+  if auth.uid() is null or not public.is_org_member(p_org, 'admin') then
+    raise exception 'only an owner or admin of this organization may activate the API' using errcode = '42501';
+  end if;
+  -- 0226 (the owner's decision, 22 Nov; 0215's is_org_spender): spending an organization's credits takes a seat in it. 0043's
+  -- accessible_org_ids makes a platform owner or admin an admin of every organization; that stays read-only support access. In the
+  -- exempt organization the credits are the platform's own, so its platform owner or admin may, as before. Accepting the API terms is the organization's own act: before anything is checked or written.
+  if not public.is_org_spender(p_org, 'admin') then
+    raise exception 'not_a_member' using errcode = 'NS400',
+      detail = 'you are not an owner or admin member of this workspace; ask the workspace''s owner to add you as a member';
+  end if;
+  if not public.api_org_eligible(p_org) then
+    raise exception 'buy any credit pack first; the API can be activated after the first purchase'
+      using errcode = 'NS403';
+  end if;
+  if coalesce(p_terms_version, '') !~ '^[a-z0-9.-]{1,40}$' then
+    raise exception 'accept the API terms' using errcode = '22023';
+  end if;
+  insert into public.api_settings (org_id, activated_at, activated_by, terms_version, updated_by)
+  values (p_org, now(), auth.uid(), p_terms_version, auth.uid())
+  on conflict (org_id) do update
+     set activated_at = coalesce(public.api_settings.activated_at, now()),
+         activated_by = coalesce(public.api_settings.activated_by, auth.uid()),
+         terms_version = excluded.terms_version, updated_at = now(), updated_by = auth.uid()
+  returning * into s;
+  perform public.api_account_lock(p_org);
+  insert into public.app_audit_log (actor_user_id, actor_email, action, target, detail)
+  values (auth.uid(), nullif(auth.jwt() ->> 'email', ''), 'api.activate', p_org::text,
+          jsonb_build_object('terms_version', p_terms_version));
+  return jsonb_build_object('activated_at', s.activated_at, 'terms_version', s.terms_version);
+end
+$$;
+
 -- The replaced bodies keep their earlier grants (create or replace keeps them); restated so a replay leaves the same state.
 revoke all on function public.reserve_credits(uuid, text, numeric) from public, anon, authenticated, service_role;
 grant execute on function public.reserve_credits(uuid, text, numeric) to authenticated;
@@ -2214,6 +2499,16 @@ grant execute on function public.create_api_key(uuid, text, bigint) to authentic
 revoke all on function public.api_begin(text, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.oauth_ctx(text, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.workflow_confirmer_may_spend(uuid, uuid) from public, anon, authenticated, service_role;
+revoke all on function public.ai_chat_start(uuid, text) from public, anon, authenticated, service_role;
+grant execute on function public.ai_chat_start(uuid, text) to authenticated;
+revoke all on function public.ai_chat_reserve_turn(uuid, text, boolean, text) from public, anon, authenticated, service_role;
+grant execute on function public.ai_chat_reserve_turn(uuid, text, boolean, text) to authenticated;
+revoke all on function public.set_api_key_access(uuid, text[], integer, numeric) from public, anon, authenticated, service_role;
+grant execute on function public.set_api_key_access(uuid, text[], integer, numeric) to authenticated;
+revoke all on function public.set_api_key_limit(uuid, bigint) from public, anon, authenticated, service_role;
+grant execute on function public.set_api_key_limit(uuid, bigint) to authenticated;
+revoke all on function public.api_activate(uuid, text) from public, anon, authenticated, service_role;
+grant execute on function public.api_activate(uuid, text) to authenticated;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- The end state, asserted inside the transaction
@@ -2240,8 +2535,13 @@ begin
       ('public.create_api_key(uuid, text, bigint)', 'c751606e0eafff55b916e603c1d78f2e'),
       ('public.api_begin(text, text, text)', '9ff0b39b5c5f86b82a4df3054b1908e8'),
       ('public.oauth_ctx(text, text, text)', '8cf90c6006cf30dc492c56fbfdcdb789'),
-      ('public.workflow_confirmer_may_spend(uuid, uuid)', 'f3869c81bfc92baa38380830943f9985')) v(sig, want) loop
-    select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
+      ('public.workflow_confirmer_may_spend(uuid, uuid)', 'f3869c81bfc92baa38380830943f9985'),
+      ('public.ai_chat_start(uuid, text)', 'a8f1f8c7b6880c44fe0ccdb32e2ccbc5'),
+      ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', 'e105fa9373fac86e9a36cf4a945a21b4'),
+      ('public.set_api_key_access(uuid, text[], integer, numeric)', '3255e1411d0d2ec9d5a85121e62d1dd3'),
+      ('public.set_api_key_limit(uuid, bigint)', 'c2b04ddeacdc908d02be94360bcc8e66'),
+      ('public.api_activate(uuid, text)', '345750e4dfb8abdf49076e222b9ed22d')) v(sig, want) loop
+    select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception '0226 end state: % does not hold this file''s body (md5 %)', r.sig, h;
     end if;
@@ -2296,7 +2596,22 @@ begin
      or has_function_privilege('service_role', 'public.oauth_ctx(text, text, text)', 'execute')
      or has_function_privilege('anon', 'public.workflow_confirmer_may_spend(uuid, uuid)', 'execute')
      or has_function_privilege('authenticated', 'public.workflow_confirmer_may_spend(uuid, uuid)', 'execute')
-     or has_function_privilege('service_role', 'public.workflow_confirmer_may_spend(uuid, uuid)', 'execute') then
+     or has_function_privilege('service_role', 'public.workflow_confirmer_may_spend(uuid, uuid)', 'execute')
+     or has_function_privilege('anon', 'public.ai_chat_start(uuid, text)', 'execute')
+     or not has_function_privilege('authenticated', 'public.ai_chat_start(uuid, text)', 'execute')
+     or has_function_privilege('service_role', 'public.ai_chat_start(uuid, text)', 'execute')
+     or has_function_privilege('anon', 'public.ai_chat_reserve_turn(uuid, text, boolean, text)', 'execute')
+     or not has_function_privilege('authenticated', 'public.ai_chat_reserve_turn(uuid, text, boolean, text)', 'execute')
+     or has_function_privilege('service_role', 'public.ai_chat_reserve_turn(uuid, text, boolean, text)', 'execute')
+     or has_function_privilege('anon', 'public.set_api_key_access(uuid, text[], integer, numeric)', 'execute')
+     or not has_function_privilege('authenticated', 'public.set_api_key_access(uuid, text[], integer, numeric)', 'execute')
+     or has_function_privilege('service_role', 'public.set_api_key_access(uuid, text[], integer, numeric)', 'execute')
+     or has_function_privilege('anon', 'public.set_api_key_limit(uuid, bigint)', 'execute')
+     or not has_function_privilege('authenticated', 'public.set_api_key_limit(uuid, bigint)', 'execute')
+     or has_function_privilege('service_role', 'public.set_api_key_limit(uuid, bigint)', 'execute')
+     or has_function_privilege('anon', 'public.api_activate(uuid, text)', 'execute')
+     or not has_function_privilege('authenticated', 'public.api_activate(uuid, text)', 'execute')
+     or has_function_privilege('service_role', 'public.api_activate(uuid, text)', 'execute') then
     raise exception '0226 end state: a grant is not what this file sets';
   end if;
 end $$;
@@ -2304,7 +2619,7 @@ end $$;
 -- ───────────────────────────────────────────────────────────────────────────
 -- Verify (read-only, run after applying; every row should read true)
 -- ───────────────────────────────────────────────────────────────────────────
--- select v.sig, md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) = v.want as is_0226s
+-- select v.sig, md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) = v.want as is_0226s
 --   from (values
 --     ('public.reserve_credits(uuid, text, numeric)', '0fc6122a91a6287c632a59f2855a0d14'),
 --     ('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)', 'ab939bb64ef626e30c1438c6030d8801'),
@@ -2322,5 +2637,10 @@ end $$;
 --     ('public.create_api_key(uuid, text, bigint)', 'c751606e0eafff55b916e603c1d78f2e'),
 --     ('public.api_begin(text, text, text)', '9ff0b39b5c5f86b82a4df3054b1908e8'),
 --     ('public.oauth_ctx(text, text, text)', '8cf90c6006cf30dc492c56fbfdcdb789'),
---     ('public.workflow_confirmer_may_spend(uuid, uuid)', 'f3869c81bfc92baa38380830943f9985')
+--     ('public.workflow_confirmer_may_spend(uuid, uuid)', 'f3869c81bfc92baa38380830943f9985'),
+--     ('public.ai_chat_start(uuid, text)', 'a8f1f8c7b6880c44fe0ccdb32e2ccbc5'),
+--     ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', 'e105fa9373fac86e9a36cf4a945a21b4'),
+--     ('public.set_api_key_access(uuid, text[], integer, numeric)', '3255e1411d0d2ec9d5a85121e62d1dd3'),
+--     ('public.set_api_key_limit(uuid, bigint)', 'c2b04ddeacdc908d02be94360bcc8e66'),
+--     ('public.api_activate(uuid, text)', '345750e4dfb8abdf49076e222b9ed22d')
 --   ) v(sig, want) left join pg_proc p on p.oid = to_regprocedure(v.sig);

@@ -1,13 +1,13 @@
 -- rollback_0226_org_spender_everywhere.sql — takes migration 0226 (only a member spends an organization's credits, on every path)
 -- out. OWNER-APPLY: paste into the Supabase SQL editor. Nothing in the app runs it.
 --
--- WHAT COMES BACK, verbatim: the seventeen earlier bodies below. A platform owner or admin with no seat in an organization may again
+-- WHAT COMES BACK, verbatim: the twenty-two earlier bodies below. A platform owner or admin with no seat in an organization may again
 --   spend its credits on these paths (0043's accessible_org_ids), and an API key or a connected app made by one keeps spending there.
 --   The film paths keep 0215's rule (take 0215 out for those).
 -- WHAT IS KEPT: everything else. 0226 added no table, column or function; nothing it refused was written.
 --
 -- WHAT IT DOES, in one transaction:
---   0. REFUSES (changes nothing) if any of the seventeen bodies is not 0226's (a later change would be undone).
+--   0. REFUSES (changes nothing) if any of the twenty-two bodies is not 0226's (a later change would be undone).
 --   1. Puts the earlier bodies back, verbatim, with their grants.
 --   2. Asserts the end state.
 --
@@ -29,6 +29,11 @@
 --   api_begin                  admin   8b3b4fb4f4a5ab698584bc4f30e9fd14 (0093) -> 9ff0b39b5c5f86b82a4df3054b1908e8
 --   oauth_ctx                  admin   fe42c9e4f53a6c9aaba40077ce905cdc (0147) -> 8cf90c6006cf30dc492c56fbfdcdb789
 --   workflow_confirmer_may_spend editor  bf5b3922c06fb82f832de36394e88ef7 (0074) -> f3869c81bfc92baa38380830943f9985
+--   ai_chat_start              editor  f2365e962c429bd2640e5b3b155a32d5 (0199) -> a8f1f8c7b6880c44fe0ccdb32e2ccbc5
+--   ai_chat_reserve_turn       editor  7c89309bd1e2c15109d3824cc1104df8 (0199) -> e105fa9373fac86e9a36cf4a945a21b4
+--   set_api_key_access         admin   31a0ee1c15ba91f948446f95c8aeb1d2 (0062) -> 3255e1411d0d2ec9d5a85121e62d1dd3
+--   set_api_key_limit          admin   538ad2e8ed9ab8eac10e11e3e60ba655 (0031) -> c2b04ddeacdc908d02be94360bcc8e66
+--   api_activate               admin   8cc2ead31d60e2c809c9e2ca4f161b90 (0031) -> 345750e4dfb8abdf49076e222b9ed22d
 
 begin;
 set local lock_timeout = '5s';
@@ -55,8 +60,13 @@ begin
       ('public.create_api_key(uuid, text, bigint)', 'c751606e0eafff55b916e603c1d78f2e'),
       ('public.api_begin(text, text, text)', '9ff0b39b5c5f86b82a4df3054b1908e8'),
       ('public.oauth_ctx(text, text, text)', '8cf90c6006cf30dc492c56fbfdcdb789'),
-      ('public.workflow_confirmer_may_spend(uuid, uuid)', 'f3869c81bfc92baa38380830943f9985')) v(sig, want) loop
-    select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
+      ('public.workflow_confirmer_may_spend(uuid, uuid)', 'f3869c81bfc92baa38380830943f9985'),
+      ('public.ai_chat_start(uuid, text)', 'a8f1f8c7b6880c44fe0ccdb32e2ccbc5'),
+      ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', 'e105fa9373fac86e9a36cf4a945a21b4'),
+      ('public.set_api_key_access(uuid, text[], integer, numeric)', '3255e1411d0d2ec9d5a85121e62d1dd3'),
+      ('public.set_api_key_limit(uuid, bigint)', 'c2b04ddeacdc908d02be94360bcc8e66'),
+      ('public.api_activate(uuid, text)', '345750e4dfb8abdf49076e222b9ed22d')) v(sig, want) loop
+    select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0226: % is not 0226''s body (md5 %): if an older file was re-run over it, apply 0226 again first, then roll back; if a later file changed it, take that file out first', r.sig, h;
     end if;
@@ -1078,7 +1088,11 @@ end
 $$;
 
 -- request_brand_scan: 0133's body, verbatim.
-create or replace function public.request_brand_scan(p_org uuid, p_url text, p_idem text, p_max_credits numeric) returns jsonb
+-- This body holds a backslash. A backslash can be rewritten on its way through an apply tool, so this file holds none:
+-- the statement is run through EXECUTE, each backslash spelled <0226:backslash> and turned back into chr(92). Its source is unchanged.
+do $bs0226$
+begin
+  execute replace($fn0226$create or replace function public.request_brand_scan(p_org uuid, p_url text, p_idem text, p_max_credits numeric) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
   uid     uuid := auth.uid();
@@ -1107,7 +1121,7 @@ begin
   end if;
   -- Read only now, after sign-in and the role.
   v_url := btrim(coalesce(p_url, ''));
-  if v_url = '' or not public.ads_site_url_ok(v_url) or position(E'\\' in v_url) > 0 then
+  if v_url = '' or not public.ads_site_url_ok(v_url) or position(E'<0226:backslash><0226:backslash>' in v_url) > 0 then
     raise exception 'invalid_url' using errcode = 'NS400';
   end if;
   v_host := substring(v_url from '^https://([^/]+)');
@@ -1208,7 +1222,8 @@ begin
   return jsonb_build_object('id', v_id, 'status', 'requested', 'credits', case when v_ref is null then 0 else v_price end,
                             'replayed', false);
 end
-$$;
+$$$fn0226$, '<0226:backslash>', chr(92));
+end $bs0226$;
 
 -- request_character_swap: 0137's body, verbatim.
 create or replace function public.request_character_swap(p_org uuid, p_project uuid, p_input uuid, p_refs uuid[], p_prompt text, p_model text,
@@ -1938,6 +1953,216 @@ create or replace function public.workflow_confirmer_may_spend(p_user uuid, p_or
     end)
 $$;
 
+-- ai_chat_start: 0199's body, verbatim.
+create or replace function public.ai_chat_start(p_org uuid, p_channel text) returns uuid
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  v_user uuid := auth.uid();
+  v_id uuid;
+  v_cap integer;
+begin
+  if v_user is null then
+    raise exception 'sign in first' using errcode = '42501';
+  end if;
+  -- Planning a video is a maker's act: an editor or above, as creating one is (a viewer cannot spend the workspace's turns).
+  if p_org is null or not public.is_org_member(p_org, 'editor') then
+    perform public.creative_refuse('forbidden', 'an editor of this workspace can use Nightshift AI', 'NS403');
+  end if;
+  if (select count(*) from public.ai_chat_sessions x where x.created_by = v_user and x.created_at > now() - interval '24 hours')
+     >= (select sessions_per_user_daily from public.ai_chat_settings where id) then
+    perform public.creative_refuse('chat_daily_cap', 'too many new conversations today', 'NS429');
+  end if;
+  if p_channel is not null and not exists (select 1 from public.channels c where c.channel_id = p_channel and c.org_id = p_org) then
+    perform public.creative_refuse('channel_not_found', 'that channel is not in this workspace', 'NS404');
+  end if;
+  v_cap := public.ai_chat_cap(p_org);
+  if (v_cap is null and public.ai_chat_trial_left(p_org) = 0) or v_cap = 0 then
+    perform public.creative_refuse('chat_plan_required', 'Nightshift AI is on the Plus, Pro and Business plans', 'NS402');
+  end if;
+  insert into public.ai_chat_sessions (org_id, channel_id, created_by, model)
+  values (p_org, p_channel, v_user, (select model from public.ai_chat_settings where id)) returning id into v_id;
+  return v_id;
+end
+$$;
+
+-- ai_chat_reserve_turn: 0199's body, verbatim.
+-- This body holds a backslash. A backslash can be rewritten on its way through an apply tool, so this file holds none:
+-- the statement is run through EXECUTE, each backslash spelled <0226:backslash> and turned back into chr(92). Its source is unchanged.
+do $bs0226$
+begin
+  execute replace($fn0226$create or replace function public.ai_chat_reserve_turn(p_session uuid, p_text text, p_retry boolean default false,
+                                                      p_request_id text default null) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  v_user uuid := auth.uid();
+  s public.ai_chat_sessions;
+  v_max integer;
+  v_cap integer;
+  v_used integer;
+  v_call uuid;
+  -- Every whitespace a person can type, not only spaces (Breach: a message of tabs and newlines took a turn), and the invisible ones
+  -- (zero-width, word joiner, BOM) removed first, so a message of NBSPs or zero-width spaces is empty (Lens on 0199).
+  -- Breach on 0199 added the rest that render as nothing: soft hyphen, joiners, bidi marks, variation selectors, tags, fillers.
+  v_text text := btrim(regexp_replace(coalesce(p_text, ''),
+                         E'[<0226:backslash>u00AD<0226:backslash>u034F<0226:backslash>u180E<0226:backslash>u200B-<0226:backslash>u200F<0226:backslash>u202A-<0226:backslash>u202E<0226:backslash>u2060-<0226:backslash>u2064<0226:backslash>uFEFF<0226:backslash>uFE00-<0226:backslash>uFE0F<0226:backslash>U000E0000-<0226:backslash>U000E007F]', '', 'g'),
+                       E' <0226:backslash>t<0226:backslash>r<0226:backslash>n<0226:backslash>f<0226:backslash>u0085<0226:backslash>u00A0<0226:backslash>u115F<0226:backslash>u1160<0226:backslash>u1680<0226:backslash>u2000<0226:backslash>u2001<0226:backslash>u2002<0226:backslash>u2003<0226:backslash>u2004<0226:backslash>u2005<0226:backslash>u2006<0226:backslash>u2007<0226:backslash>u2008<0226:backslash>u2009<0226:backslash>u200A<0226:backslash>u2028<0226:backslash>u2029<0226:backslash>u202F<0226:backslash>u205F<0226:backslash>u2800<0226:backslash>u3000<0226:backslash>u3164<0226:backslash>uFFA0' || chr(11));
+  st public.ai_chat_settings;
+begin
+  if v_user is null then
+    raise exception 'sign in first' using errcode = '42501';
+  end if;
+  select * into s from public.ai_chat_sessions where id = p_session and created_by = v_user;
+  if not found or not public.is_org_member(s.org_id, 'editor') then
+    perform public.creative_refuse('session_not_found', 'no such conversation', 'NS404');
+  end if;
+  if s.step = 'created' then
+    perform public.creative_refuse('session_closed', 'this plan was handed off; start a new conversation', 'NS409');
+  end if;
+  if p_request_id is not null and p_request_id !~ '^[A-Za-z0-9_-]{8,64}$' then
+    perform public.creative_refuse('invalid_params', 'a request id is 8 to 64 letters, digits, - or _');
+  end if;
+  select * into st from public.ai_chat_settings where id;
+  v_max := st.max_input_chars;
+  if coalesce(p_retry, false) then
+    if (select m.role from public.ai_chat_messages m where m.session_id = s.id order by m.id desc limit 1) is distinct from 'user' then
+      perform public.creative_refuse('nothing_to_retry', 'the last message was answered', 'NS409');
+    end if;
+  elsif v_text = '' then
+    perform public.creative_refuse('invalid_params', 'say something first');
+  end if;
+  if char_length(v_text) > coalesce(v_max, 2000) then
+    perform public.creative_refuse('message_too_long', format('at most %s characters', coalesce(v_max, 2000)));
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('ai_chat:' || s.org_id::text, 0));
+  -- The same press again (a network retry): answered as a duplicate, with nothing written (under the lock: two copies racing find
+  -- each other, and the unique index is the last word).
+  -- The refusal names the conversation the first copy went to: a retried Start finds its own (Lens on 0199).
+  if p_request_id is not null and exists (select 1 from public.ai_chat_calls c where c.user_id = v_user and c.request_id = p_request_id) then
+    perform public.creative_refuse('duplicate_request',
+      coalesce((select c.session_id::text from public.ai_chat_calls c where c.user_id = v_user and c.request_id = p_request_id), ''), 'NS409');
+  end if;
+  v_cap := public.ai_chat_cap(s.org_id);
+  v_used := public.ai_chat_used(s.org_id);
+  if v_cap is null then
+    -- The lifetime trial, counted under the same workspace lock as the cap (two tabs cannot both take the last one).
+    if public.ai_chat_trial_left(s.org_id) = 0 then
+      perform public.creative_refuse('chat_plan_required', 'Nightshift AI is on the Plus, Pro and Business plans', 'NS402');
+    end if;
+  elsif v_cap = 0 then
+    perform public.creative_refuse('chat_plan_required', 'Nightshift AI is on the Plus, Pro and Business plans', 'NS402');
+  elsif v_used >= v_cap then
+    perform public.creative_refuse('chat_daily_cap', format('used=%s limit=%s', v_used, v_cap), 'NS429');
+  end if;
+  -- The person's own turns everywhere, and the platform's: under their own locks, after the workspace's, always in this order.
+  perform pg_advisory_xact_lock(hashtextextended('ai_chat_user:' || v_user::text, 0));
+  -- Every outcome counts here, not_sent too: a member can reserve and finish their own calls by hand, and each writes rows
+  -- (Lens and Breach on 0199: not_sent passed every cap). The plan cap is the one that forgives what was not their doing.
+  if (select count(*) from public.ai_chat_calls c where c.user_id = v_user and c.created_at > now() - interval '24 hours')
+     >= st.per_user_daily then
+    perform public.creative_refuse('chat_daily_cap', 'your own daily limit across workspaces is reached', 'NS429');
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('ai_chat_global', 0));
+  if (select count(*) from public.ai_chat_calls c where c.created_at > now() - interval '24 hours') >= st.global_daily then
+    perform public.creative_refuse('chat_unavailable', 'Nightshift AI has reached its daily limit; try again later', 'NS503');
+  end if;
+  if not coalesce(p_retry, false) then
+    insert into public.ai_chat_messages (session_id, created_by, role, content) values (s.id, v_user, 'user', v_text);
+  end if;
+  insert into public.ai_chat_calls (org_id, user_id, session_id, model, request_id)
+  values (s.org_id, v_user, s.id, (select model from public.ai_chat_settings where id), p_request_id) returning id into v_call;
+  update public.ai_chat_sessions set updated_at = now() where id = s.id;
+  return jsonb_build_object('call_id', v_call, 'used', v_used + 1, 'limit', v_cap,
+                            'trial_left', case when v_cap is null then public.ai_chat_trial_left(s.org_id) end);
+end
+$$$fn0226$, '<0226:backslash>', chr(92));
+end $bs0226$;
+
+-- set_api_key_access: 0062's body, verbatim.
+create or replace function public.set_api_key_access(
+  p_key_id uuid, p_scopes text[], p_rpm_limit integer, p_creative_monthly_credits numeric
+) returns boolean
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  k        public.api_keys;
+  v_scopes text[];
+begin
+  select * into k from public.api_keys where id = p_key_id;
+  if k.id is null or auth.uid() is null or not public.is_org_member(k.org_id, 'admin') then
+    raise exception 'only an owner or admin of the key''s organization may change it' using errcode = '42501';
+  end if;
+  if k.revoked_at is not null then
+    raise exception 'this key is revoked' using errcode = '22023';
+  end if;
+  v_scopes := array(select distinct s from unnest(coalesce(p_scopes, '{}'::text[])) s order by s);
+  if cardinality(v_scopes) = 0 or not public.api_scopes_valid(v_scopes) then
+    raise exception 'choose at least one valid scope' using errcode = '22023';
+  end if;
+  if p_rpm_limit is not null and p_rpm_limit not between 1 and 300 then
+    raise exception 'requests per minute: 1 to 300' using errcode = '22023';
+  end if;
+  if p_creative_monthly_credits is not null and p_creative_monthly_credits not between 0 and 100000000 then
+    raise exception 'credit limit out of range' using errcode = '22023';
+  end if;
+  update public.api_keys
+     set scopes = v_scopes, rpm_limit = p_rpm_limit, creative_monthly_credits = p_creative_monthly_credits
+   where id = p_key_id;
+  insert into public.app_audit_log (actor_user_id, actor_email, action, target, detail)
+  values (auth.uid(), nullif(auth.jwt() ->> 'email', ''), 'api_key.access', p_key_id::text,
+          jsonb_build_object('org_id', k.org_id, 'scopes', to_jsonb(v_scopes), 'rpm_limit', p_rpm_limit,
+                             'creative_monthly_credits', p_creative_monthly_credits));
+  return true;
+end
+$$;
+
+-- set_api_key_limit: 0031's body, verbatim.
+create or replace function public.set_api_key_limit(p_key_id uuid, p_cents bigint) returns boolean
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  k public.api_keys;
+begin
+  select * into k from public.api_keys where id = p_key_id;
+  if k.id is null or auth.uid() is null or not public.is_org_member(k.org_id, 'admin') then
+    raise exception 'only an owner or admin of the key''s organization may change it' using errcode = '42501';
+  end if;
+  if p_cents is not null and (p_cents < 0 or p_cents > 100000000) then
+    raise exception 'limit out of range' using errcode = '22023';
+  end if;
+  update public.api_keys set monthly_limit_cents = p_cents where id = p_key_id;
+  return true;
+end
+$$;
+
+-- api_activate: 0031's body, verbatim.
+create or replace function public.api_activate(p_org uuid, p_terms_version text) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  s public.api_settings;
+begin
+  if auth.uid() is null or not public.is_org_member(p_org, 'admin') then
+    raise exception 'only an owner or admin of this organization may activate the API' using errcode = '42501';
+  end if;
+  if not public.api_org_eligible(p_org) then
+    raise exception 'buy any credit pack first; the API can be activated after the first purchase'
+      using errcode = 'NS403';
+  end if;
+  if coalesce(p_terms_version, '') !~ '^[a-z0-9.-]{1,40}$' then
+    raise exception 'accept the API terms' using errcode = '22023';
+  end if;
+  insert into public.api_settings (org_id, activated_at, activated_by, terms_version, updated_by)
+  values (p_org, now(), auth.uid(), p_terms_version, auth.uid())
+  on conflict (org_id) do update
+     set activated_at = coalesce(public.api_settings.activated_at, now()),
+         activated_by = coalesce(public.api_settings.activated_by, auth.uid()),
+         terms_version = excluded.terms_version, updated_at = now(), updated_by = auth.uid()
+  returning * into s;
+  perform public.api_account_lock(p_org);
+  insert into public.app_audit_log (actor_user_id, actor_email, action, target, detail)
+  values (auth.uid(), nullif(auth.jwt() ->> 'email', ''), 'api.activate', p_org::text,
+          jsonb_build_object('terms_version', p_terms_version));
+  return jsonb_build_object('activated_at', s.activated_at, 'terms_version', s.terms_version);
+end
+$$;
+
 revoke all on function public.reserve_credits(uuid, text, numeric) from public, anon, authenticated, service_role;
 grant execute on function public.reserve_credits(uuid, text, numeric) to authenticated;
 grant execute on function public.reserve_credits(uuid, text, numeric) to service_role;
@@ -1970,6 +2195,16 @@ grant execute on function public.create_api_key(uuid, text, bigint) to authentic
 revoke all on function public.api_begin(text, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.oauth_ctx(text, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.workflow_confirmer_may_spend(uuid, uuid) from public, anon, authenticated, service_role;
+revoke all on function public.ai_chat_start(uuid, text) from public, anon, authenticated, service_role;
+grant execute on function public.ai_chat_start(uuid, text) to authenticated;
+revoke all on function public.ai_chat_reserve_turn(uuid, text, boolean, text) from public, anon, authenticated, service_role;
+grant execute on function public.ai_chat_reserve_turn(uuid, text, boolean, text) to authenticated;
+revoke all on function public.set_api_key_access(uuid, text[], integer, numeric) from public, anon, authenticated, service_role;
+grant execute on function public.set_api_key_access(uuid, text[], integer, numeric) to authenticated;
+revoke all on function public.set_api_key_limit(uuid, bigint) from public, anon, authenticated, service_role;
+grant execute on function public.set_api_key_limit(uuid, bigint) to authenticated;
+revoke all on function public.api_activate(uuid, text) from public, anon, authenticated, service_role;
+grant execute on function public.api_activate(uuid, text) to authenticated;
 
 do $$
 declare
@@ -1993,8 +2228,13 @@ begin
       ('public.create_api_key(uuid, text, bigint)', '4b311587d0f62ade8334beec83049e01'),
       ('public.api_begin(text, text, text)', '8b3b4fb4f4a5ab698584bc4f30e9fd14'),
       ('public.oauth_ctx(text, text, text)', 'fe42c9e4f53a6c9aaba40077ce905cdc'),
-      ('public.workflow_confirmer_may_spend(uuid, uuid)', 'bf5b3922c06fb82f832de36394e88ef7')) v(sig, want) loop
-    select md5(regexp_replace(p.prosrc, '\s+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
+      ('public.workflow_confirmer_may_spend(uuid, uuid)', 'bf5b3922c06fb82f832de36394e88ef7'),
+      ('public.ai_chat_start(uuid, text)', 'f2365e962c429bd2640e5b3b155a32d5'),
+      ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', '7c89309bd1e2c15109d3824cc1104df8'),
+      ('public.set_api_key_access(uuid, text[], integer, numeric)', '31a0ee1c15ba91f948446f95c8aeb1d2'),
+      ('public.set_api_key_limit(uuid, bigint)', '538ad2e8ed9ab8eac10e11e3e60ba655'),
+      ('public.api_activate(uuid, text)', '8cc2ead31d60e2c809c9e2ca4f161b90')) v(sig, want) loop
+    select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
     if h is distinct from r.want then
       raise exception 'rollback 0226 end state: % is not the earlier body (md5 %)', r.sig, h;
     end if;

@@ -50,7 +50,7 @@ type HistoryRead<T> = { ok: true; value: T } | { ok: false; gone?: boolean; mess
 /** Refusals a Retry cannot change: the same press would meet the same answer. */
 const NO_RETRY = [
   "chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose",
-  "forbidden", "content_refused", "output_too_long",
+  "forbidden", "content_refused", "output_too_long", "not_a_member",
   // The account's own 18+ answer (0192): a Retry would meet the same refusal; the remedy is where the age is answered (Pixel on #900).
   "adult_only_service", "adult_attestation_required",
 ];
@@ -322,6 +322,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (e === "adult_only_service") return LEGAL.contactEmail ? c.errors.adult_only_service : `${c.errors.adult_only_service} ${t.age.contactNoEmail}`;
     if (e === "adult_attestation_required") return c.errors.adult_attestation_required;
     if (e === "session_closed") return c.errors.session_closed;
+    if (e === "not_a_member") return c.errors.not_a_member;
     if (e === "card_changed") return c.errors.card_changed;
     // The model is the owner's choice and hidden from customers: any model failure reads as "unavailable right now".
     if (e === "model_failed" || e === "model_unavailable" || e === "model_answer_invalid") return c.errors.assistant_unavailable;

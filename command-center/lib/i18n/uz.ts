@@ -4864,6 +4864,7 @@ export const uz: Dictionary = {
     createNeedsMigration: "Bu joylashtirishda kalit yaratish hali yoqilmagan: 0062 migratsiyasini qoʻllang.",
     keyLimitReached: "Tashkilotda allaqachon 10 ta faol kalit bor. Avval bittasini bekor qiling.",
     keyNotAMember: "Kalitni faqat bu ish maydonini boshqaradigan aʼzo yarata oladi: kalit uni yaratgan kishi nomidan sarflaydi. Ish maydonini boshqaradigan kishidan sizni aʼzo sifatida qoʻshishini soʻrang.",
+    settingsNotAMember: "API sozlamalarini faqat bu ish maydonini boshqaradigan aʼzo oʻzgartira oladi. Ish maydonini boshqaradigan kishidan sizni aʼzo sifatida qoʻshishini soʻrang.",
     newKeyTitle: "Yangi kalitingiz",
     newKeyNote: "Hozir nusxa oling — u boshqa koʻrsatilmaydi. Kalitga ega har kim uning ruxsati beradigan hamma ishni qila oladi, jumladan API balansi va kreditlarni sarflashni ham.",
     copy: "Nusxa olish",
