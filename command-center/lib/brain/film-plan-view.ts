@@ -25,12 +25,29 @@ export interface PlanReadyView {
 export type PlanCheck =
   | { kind: "ready"; ready: PlanReadyView }
   | { kind: "running"; expiresAt: string | null }
-  | { kind: "blocked"; text: string; retry: boolean };
+  | ({ kind: "blocked" } & Refusal);
+
+/**
+ * A refusal as the panel says it. `retry`: pressing again (or checking again) can change it. `check`: it cannot be pressed past, but
+ * it changes by itself in time (today's cap), so Check again is offered (Pixel 9). `signIn`: the remedy is signing in again.
+ */
+export interface Refusal { text: string; retry: boolean; check?: boolean; signIn?: boolean }
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
-/** A refusal's words (GET or POST), by its error and, for a few, its reason. Unknown errors read as "could not check", retryable. */
-export function refusalText(w: AiWords, status: number, body: Record<string, unknown>): { text: string; retry: boolean } {
+/**
+ * A refusal's words, by its error and, for a few, its reason. `via`: which request it answered. An error nobody named reads as
+ * "could not check" after a GET and as "could not be written" after a press (Pixel 8), retryable either way.
+ */
+export function refusalText(w: AiWords, status: number, body: Record<string, unknown>, via: "get" | "post" = "get"): Refusal {
+  const r = words(w, status, body, via);
+  const e = typeof body.error === "string" ? body.error : "";
+  if (status === 401 || e === "unauthorized" || e === "session_expired") return { ...r, signIn: true };
+  if (e === "chat_daily_cap" || e === "plan_over_cap") return { ...r, check: true };
+  return r;
+}
+
+function words(w: AiWords, status: number, body: Record<string, unknown>, via: "get" | "post"): { text: string; retry: boolean } {
   const e = typeof body.error === "string" ? body.error : "";
   const reason = typeof body.reason === "string" ? body.reason : "";
   if (status === 404) return { text: w.off, retry: false };
@@ -87,7 +104,7 @@ export function refusalText(w: AiWords, status: number, body: Record<string, unk
       // A key the vendor refused, or a model this server has no key for: the owner's fix, never a retry's (NIGHTSHIFT_AI.md).
       if (reason === "vendor_auth" || reason === "not_configured") return { text: w.planFailedFinal, retry: false };
       return { text: w.planFailed, retry: true };
-    default: return { text: w.unavailable, retry: true };
+    default: return { text: via === "post" ? w.planFailed : w.unavailable, retry: true };
   }
 }
 
@@ -107,6 +124,7 @@ export function readCheck(w: AiWords, status: number, body: unknown): PlanCheck 
       kind: "ready",
       ready: {
         about, most, left: num(b.left), scope: b.scope === "trial" ? "trial" : "plan",
+        // "" is a model the press sets that has no display name: said as "sets one" (setsText), never by an id.
         sets: { clip: typeof sets.clip === "string" ? sets.clip : null, keyframe: typeof sets.keyframe === "string" ? sets.keyframe : null },
         lastFailed: plan?.state === "failed",
       },
@@ -120,4 +138,11 @@ export function readCheck(w: AiWords, status: number, body: unknown): PlanCheck 
 export function costText(w: AiWords, r: PlanReadyView): string {
   if (r.left === null) return fmt(w.costUnknown, { about: r.about, most: r.most });
   return fmt(r.scope === "trial" ? w.costTrial : w.cost, { about: r.about, most: r.most, left: r.left });
+}
+
+/** What the press would set on the project, by the model's display name, or "sets one" when it has none. */
+export function setsText(w: AiWords, r: PlanReadyView): string[] {
+  const clip = r.sets.clip === null ? "" : r.sets.clip ? fmt(w.setsClip, { name: r.sets.clip }) : w.setsClipUnnamed;
+  const keyframe = r.sets.keyframe === null ? "" : r.sets.keyframe ? fmt(w.setsKeyframe, { name: r.sets.keyframe }) : w.setsKeyframeUnnamed;
+  return [clip, keyframe].filter(Boolean);
 }

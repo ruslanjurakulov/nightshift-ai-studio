@@ -97,7 +97,7 @@ function asPicked(list: OnSaleModel[], id: string): PickedModel | null {
   const m = list.find((x) => x.id === id);
   if (!m) return null;
   const d = (m.durations ?? []).filter((x) => Number.isInteger(x) && x > 0).sort((a, b) => a - b);
-  return { id, name: m.name || id, durations: d.length ? d : null };
+  return { id, name: m.name || null, durations: d.length ? d : null };
 }
 
 /**

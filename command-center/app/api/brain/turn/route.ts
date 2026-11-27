@@ -311,7 +311,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
   const asPicked = (list: OnSaleModel[], id: string): PickedModel => {
     const m = list.find((x) => x.id === id);
     const d = (m?.durations ?? []).filter((x) => Number.isInteger(x) && x > 0).sort((a, b) => a - b);
-    return { id, name: m?.name || id, durations: d.length ? d : null };
+    return { id, name: m?.name || null, durations: d.length ? d : null };
   };
   // A new draft: the server's pick, in its fixed order (lib/brain/film-models). None on sale for a role: that role stays unset.
   const pick = {

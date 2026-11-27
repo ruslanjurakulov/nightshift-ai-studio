@@ -13,7 +13,7 @@ import { filmStudioRu } from "../lib/i18n/film-studio/ru";
 import { filmStudioUz } from "../lib/i18n/film-studio/uz";
 import { fmt } from "../lib/i18n";
 import { coerceFilmView } from "../lib/films";
-import { costText, readCheck, refusalText } from "../lib/brain/film-plan-view";
+import { costText, readCheck, refusalText, setsText } from "../lib/brain/film-plan-view";
 import { FILM, filmJson, sceneJson } from "./films-fixtures";
 
 vi.mock("@/lib/i18n/context", async () => {
@@ -24,7 +24,7 @@ vi.mock("@/lib/i18n/context", async () => {
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: () => {}, refresh: () => {} }), usePathname: () => "/alpha/create/projects" }));
 vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (s: string) => `/alpha${s}` }));
 
-const { FilmCanvas, AiWriter, AI_WAIT_POLL_MS } = await import("../components/films/FilmCanvas");
+const { FilmCanvas, AiWriter, AI_WAIT_POLL_MS, AI_CONFIRM_MAX_MS, AI_CHECK_TIMEOUT_MS } = await import("../components/films/FilmCanvas");
 const w = t.canvas.ai;
 
 let calls: { method: string; url: string; body: Record<string, unknown> | undefined }[] = [];
@@ -58,6 +58,15 @@ const writer = (o: Partial<Parameters<typeof AiWriter>[0]> = {}) => {
   return onWritten;
 };
 const button = () => screen.getByTestId("fs-ai") as HTMLButtonElement;
+/** Off is aria-disabled, never `disabled` (focus would be lost on every state change: Pixel 1). */
+const off = () => {
+  expect(button().disabled).toBe(false);
+  return button().getAttribute("aria-disabled") === "true";
+};
+/** What the two live regions say now: the alert's failure, else the status. */
+const alertText = () => screen.queryByTestId("fs-ai-alert-text")?.textContent ?? "";
+const statusText = () => screen.getByTestId("fs-ai-status").textContent ?? "";
+const notice = () => alertText() || statusText();
 const reason = () => screen.getByTestId("fs-ai-reason").textContent ?? "";
 const brainCalls = () => calls.filter((c) => c.url.startsWith("/api/brain/film"));
 
@@ -69,9 +78,12 @@ describe("off without asking the server", () => {
     ["unsaved changes", { dirty: true }, w.dirty],
   ])("%s: off with its reason, and nothing is asked", (_n, props, text) => {
     writer(props);
-    expect(button().disabled).toBe(true);
+    expect(off()).toBe(true);
     expect(reason()).toBe(text);
-    expect(document.getElementById(button().getAttribute("aria-describedby")!)?.textContent).toBe(text);
+    // Described by the reason first, then the two live regions (empty: an off reason is not a failure).
+    const [first, ...rest] = button().getAttribute("aria-describedby")!.split(" ");
+    expect(document.getElementById(first)?.textContent).toBe(text);
+    expect(rest.map((id) => document.getElementById(id)?.textContent)).toEqual(["", ""]);
     expect(brainCalls()).toHaveLength(0);
   });
 });
@@ -79,9 +91,9 @@ describe("off without asking the server", () => {
 describe("what the server says before a press", () => {
   it("checking, then on, saying what it uses of what is left, the model it sets, and no price", async () => {
     writer();
-    expect(button().disabled).toBe(true);
+    expect(off()).toBe(true);
     expect(reason()).toBe(w.checking);
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(off()).toBe(false));
     expect(reason()).toContain(fmt(w.cost, { about: 2, most: 3, left: 27 }));
     expect(reason()).toContain(fmt(w.setsClip, { name: "MiniMax H3" }));
     expect(reason()).not.toMatch(/\$|cr\b|price:/i);
@@ -94,8 +106,10 @@ describe("what the server says before a press", () => {
     ["the model down", 409, { error: "model_unavailable", reason: "not_on_sale" }, w.modelDown, true],
     ["the 18+ gate", 428, { error: "adult_attestation_required" }, w.confirmAge, false],
     ["the country gate", 451, { error: "country_blocked" }, w.region, false],
-    ["the cap", 429, { error: "plan_over_cap", needed: 7, about: 4, left: 2 }, fmt(w.overCap, { most: 7, left: 2 }), false],
-    ["the person's own cap", 429, { error: "plan_over_cap", needed: 7, about: 4, left: 2, scope: "person" }, fmt(w.overCapPerson, { most: 7, left: 2 }), false],
+    // The caps lift in time: Check again (Pixel 9), never a press.
+    ["the cap", 429, { error: "plan_over_cap", needed: 7, about: 4, left: 2 }, fmt(w.overCap, { most: 7, left: 2 }), true],
+    ["the person's own cap", 429, { error: "plan_over_cap", needed: 7, about: 4, left: 2, scope: "person" }, fmt(w.overCapPerson, { most: 7, left: 2 }), true],
+    ["today's messages used up", 429, { error: "chat_daily_cap" }, w.dailyCap, true],
     ["0211 missing", 503, { error: "plan_unavailable" }, w.planUnavailable, false],
     ["the project has scenes (saved elsewhere)", 409, { error: "film_has_scenes" }, w.hasScenes, false],
     ["the project's own model off sale", 409, { error: "film_model_unavailable", role: "keyframe" }, w.keyframeOff, false],
@@ -103,8 +117,10 @@ describe("what the server says before a press", () => {
   ])("%s: off with its own words; Check again only where it can change", async (_n, status, body, text, retry) => {
     answer = () => ({ status, body });
     writer();
-    await waitFor(() => expect(reason()).toBe(text));
-    expect(button().disabled).toBe(true);
+    // A refusal found before a press is said in the alert region, once: never again under the button (Pixel 2, 5).
+    await waitFor(() => expect(alertText()).toBe(text));
+    expect(reason()).toBe("");
+    expect(off()).toBe(true);
     expect(!!screen.queryByTestId("fs-ai-check")).toBe(retry);
   });
 
@@ -116,9 +132,9 @@ describe("what the server says before a press", () => {
       return new Response(JSON.stringify(READY), { status: 200 });
     }));
     writer();
-    await waitFor(() => expect(reason()).toBe(w.network));
+    await waitFor(() => expect(alertText()).toBe(w.network));
     fireEvent.click(screen.getByTestId("fs-ai-check"));
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(off()).toBe(false));
   });
 
   it("a trial workspace is told it uses trial messages; an unknown left says no number for it", async () => {
@@ -134,39 +150,41 @@ describe("the press", () => {
     let finish: (v: { status: number; body: unknown }) => void = () => {};
     answer = (url, method) => (method === "POST" ? new Promise((r) => { finish = r; }) : { status: 200, body: READY });
     writer();
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(off()).toBe(false));
     fireEvent.click(button());
     await waitFor(() => expect(screen.getByTestId("fs-ai-progress")).toBeTruthy());
-    expect(button().disabled).toBe(true);
-    expect(reason()).toContain(w.writing);
+    expect(off()).toBe(true);
+    // The start is said once, in the status region; under the button only the timer, which is not announced.
+    expect(statusText()).toBe(w.writing);
+    expect(reason()).toBe(fmt(w.writingFor, { time: "0:00" }));
     expect(calls.filter((c) => c.method === "POST")).toEqual([{ method: "POST", url: "/api/brain/film", body: { film: FILM } }]);
     // A second click while it writes sends nothing.
     fireEvent.click(button());
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
     await act(async () => finish({ status: 502, body: { error: "plan_failed", reason: "vendor_error" } }));
-    await waitFor(() => expect(screen.getByTestId("fs-ai-notice").textContent).toBe(w.planFailed));
+    await waitFor(() => expect(notice()).toBe(w.planFailed));
     expect(screen.queryByTestId("fs-ai-progress")).toBeNull();
     // A retry can change a failed call: asked again, and the button offers Try again.
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(off()).toBe(false));
     expect(button().textContent).toBe(w.retry);
   });
 
   it("a refusal a retry cannot change keeps the button off with it", async () => {
     answer = (url, method) => (method === "POST" ? { status: 422, body: { error: "content_refused" } } : { status: 200, body: READY });
     writer();
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(off()).toBe(false));
     fireEvent.click(button());
-    await waitFor(() => expect(screen.getByTestId("fs-ai-notice").textContent).toBe(w.contentRefused));
-    await waitFor(() => expect(reason()).toBe(w.contentRefused));
-    expect(button().disabled).toBe(true);
+    await waitFor(() => expect(notice()).toBe(w.contentRefused));
+    await waitFor(() => expect(reason()).toBe(""));
+    expect(off()).toBe(true);
   });
 
   it("plan_superseded is said with a Reload offer, and the project is read again only when the person presses it", async () => {
     answer = (url, method) => (method === "POST" ? { status: 409, body: { error: "plan_superseded", film_id: FILM } } : { status: 200, body: READY });
     const onWritten = writer();
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(off()).toBe(false));
     fireEvent.click(button());
-    await waitFor(() => expect(screen.getByTestId("fs-ai-notice").textContent).toBe(w.superseded));
+    await waitFor(() => expect(notice()).toBe(w.superseded));
     // Never by itself: the person's edits are on screen.
     expect(onWritten).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("fs-ai-reload"));
@@ -181,13 +199,13 @@ describe("the press", () => {
       return { status: 200, body: { film: filmJson({ version: 4 }, written) } };
     };
     render(<FilmCanvas initial={coerceFilmView(filmJson({}, []))!} canEdit pictures={[]} characters={[]} listHref="/alpha/create/projects" />);
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(off()).toBe(false));
     fireEvent.click(button());
     await waitFor(() => expect(within(screen.getByTestId("fs-board")).getAllByRole("option")).toHaveLength(2));
     expect(calls.some((c) => c.method === "GET" && c.url === `/api/films/${FILM}`)).toBe(true);
-    expect(screen.getByTestId("fs-ai-notice").textContent).toBe(fmt(w.done, { n: 2, length: "3:00" }));
+    expect(notice()).toBe(fmt(w.done, { n: 2, length: "3:00" }));
     // The project has scenes now: off with that reason, and never a second storyboard over them.
-    expect(button().disabled).toBe(true);
+    expect(off()).toBe(true);
     expect(reason()).toBe(w.hasScenes);
   });
 });
@@ -199,7 +217,7 @@ describe("a plan already running (a refresh, another tab)", () => {
     answer = () => (running ? { status: 200, body: { ready: false, plan: { state: "running", expires_at: "2026-11-27T10:00:00Z" } } } : { status: 409, body: { error: "film_has_scenes" } });
     const onWritten = writer();
     await waitFor(() => expect(reason()).toBe(w.writingElsewhere));
-    expect(button().disabled).toBe(true);
+    expect(off()).toBe(true);
     expect(screen.getByTestId("fs-ai-progress")).toBeTruthy();
     running = false;
     await act(async () => { await vi.advanceTimersByTimeAsync(AI_WAIT_POLL_MS + 10); });
@@ -210,11 +228,11 @@ describe("a plan already running (a refresh, another tab)", () => {
   it("a press that finds one running waits for it instead of failing", async () => {
     answer = (url, method) => (method === "POST" ? { status: 409, body: { error: "plan_running", expires_at: "2026-11-27T10:00:00Z" } } : { status: 200, body: READY });
     writer();
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(off()).toBe(false));
     answer = (url, method) => (method === "POST" ? { status: 409, body: { error: "plan_running" } } : { status: 200, body: { ready: false, plan: { state: "running", expires_at: null } } });
     fireEvent.click(button());
     await waitFor(() => expect(reason()).toBe(w.writingElsewhere));
-    expect(screen.getByTestId("fs-ai-notice").textContent).toBe("");
+    expect(notice()).toBe("");
   });
 });
 
@@ -255,7 +273,7 @@ describe("fix round: the canvas while it writes, a lost answer, unsaved changes"
     // Every copy of the settings panel (the wide inspector and the narrow sheet).
     const titles = () => screen.getAllByLabelText(t.create.titleLabel) as HTMLInputElement[];
     const title = () => ({ disabled: titles().every((x) => x.disabled), enabled: titles().every((x) => !x.disabled) });
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(off()).toBe(false));
     expect(title().enabled).toBe(true);
     expect(screen.queryByTestId("fs-add")).toBeTruthy();
     fireEvent.click(button());
@@ -278,7 +296,7 @@ describe("fix round: the canvas while it writes, a lost answer, unsaved changes"
     rerender(<AiWriter {...props} dirty />);
     running = false;
     await act(async () => { await vi.advanceTimersByTimeAsync(AI_WAIT_POLL_MS + 10); });
-    await waitFor(() => expect(screen.getByTestId("fs-ai-notice").textContent).toBe(w.writtenKept));
+    await waitFor(() => expect(notice()).toBe(w.writtenKept));
     expect(onWritten).not.toHaveBeenCalled();
   });
 
@@ -295,16 +313,16 @@ describe("fix round: the canvas while it writes, a lost answer, unsaved changes"
       return gets === 2 ? { status: 200, body: { ready: false, plan: { state: "running", expires_at: null } } } : { status: 409, body: { error: "film_has_scenes", scenes: 9 } };
     };
     const onWritten = writer();
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(off()).toBe(false));
     fireEvent.click(button());
-    await waitFor(() => expect(reason()).toBe(w.confirming));
-    expect(button().disabled).toBe(true);
+    await waitFor(() => expect(statusText()).toBe(w.confirming));
+    expect(off()).toBe(true);
     expect(screen.getByTestId("fs-ai-progress")).toBeTruthy();
     await act(async () => { await vi.advanceTimersByTimeAsync(AI_WAIT_POLL_MS + 10); });
     expect(onWritten).not.toHaveBeenCalled();
     await act(async () => { await vi.advanceTimersByTimeAsync(AI_WAIT_POLL_MS + 10); });
     await waitFor(() => expect(onWritten).toHaveBeenCalledTimes(1));
-    expect(screen.getByTestId("fs-ai-notice").textContent).toBe(w.doneConfirmed);
+    expect(statusText()).toBe(w.doneConfirmed);
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
     await act(async () => { await vi.advanceTimersByTimeAsync(3 * AI_WAIT_POLL_MS); });
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
@@ -320,12 +338,12 @@ describe("fix round: the canvas while it writes, a lost answer, unsaved changes"
       return gets === 1 ? { status: 200, body: READY } : { status: 200, body: { ...READY, plan: { state: "failed", reason: "vendor_error", expires_at: null } } };
     };
     const onWritten = writer();
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(off()).toBe(false));
     fireEvent.click(button());
-    await waitFor(() => expect(reason()).toBe(w.confirming));
+    await waitFor(() => expect(statusText()).toBe(w.confirming));
     await act(async () => { await vi.advanceTimersByTimeAsync(AI_WAIT_POLL_MS + 10); });
-    await waitFor(() => expect(screen.getByTestId("fs-ai-notice").textContent).toBe(w.planFailed));
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(notice()).toBe(w.planFailed));
+    await waitFor(() => expect(off()).toBe(false));
     expect(button().textContent).toBe(w.retry);
     await act(async () => { await vi.advanceTimersByTimeAsync(3 * AI_WAIT_POLL_MS); });
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
@@ -341,10 +359,11 @@ describe("fix round: the canvas while it writes, a lost answer, unsaved changes"
         : { status: 200, body: { film: { id: FILM, version: 4 }, scenes: 3, seconds: 180 } };
     };
     writer();
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(off()).toBe(false));
     fireEvent.click(button());
-    await waitFor(() => expect(screen.getByTestId("fs-ai-notice").textContent).toBe(w.unavailable));
-    await waitFor(() => expect(button().disabled).toBe(false));
+    // An error the press's answer does not name: "could not be written", not "could not check" (Pixel 8).
+    await waitFor(() => expect(notice()).toBe(w.planFailed));
+    await waitFor(() => expect(off()).toBe(false));
     fireEvent.click(button());
     await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(2));
     expect(calls.filter((c) => c.method === "POST").map((c) => c.body)).toEqual([{ film: FILM }, { film: FILM, session: "aaaaaaaa-0000-4000-8000-000000000009" }]);
@@ -355,10 +374,10 @@ describe("fix round: the canvas while it writes, a lost answer, unsaved changes"
   it("an answer without the length says how many scenes, never 0:00", async () => {
     answer = (url, method) => (method === "POST" ? { status: 200, body: { film: { id: FILM, version: 4 }, scenes: 4 } } : { status: 200, body: READY });
     writer();
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(off()).toBe(false));
     fireEvent.click(button());
-    await waitFor(() => expect(screen.getByTestId("fs-ai-notice").textContent).toBe(fmt(w.doneNoLength, { n: 4 })));
-    expect(screen.getByTestId("fs-ai-notice").textContent).not.toContain("0:00");
+    await waitFor(() => expect(notice()).toBe(fmt(w.doneNoLength, { n: 4 })));
+    expect(notice()).not.toContain("0:00");
   });
 
   it("only the latest GET sets what the button says: an older answer arriving late is dropped", async () => {
@@ -372,10 +391,10 @@ describe("fix round: the canvas while it writes, a lost answer, unsaved changes"
     const props = { t, filmId: FILM, canEdit: true, readOnly: false, hasScenes: false, dirty: false, reasonId: "why", onWritten };
     const { rerender } = render(<AiWriter {...props} version={3} />);
     rerender(<AiWriter {...props} version={4} />);
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(off()).toBe(false));
     await act(async () => releaseFirst({ status: 404, body: { error: "not_found" } }));
     expect(reason()).not.toBe(w.off);
-    expect(button().disabled).toBe(false);
+    expect(off()).toBe(false);
   });
 });
 
@@ -393,7 +412,7 @@ describe("refusal coverage (Lens L3): every code the routes send, its words and 
     ["the person's plan_over_cap without left", 429, { error: "plan_over_cap", needed: 7, scope: "person" }, fmt(w.overCapPersonNoLeft, { most: 7 }), false],
     ["plan_over_cap with left 0", 429, { error: "plan_over_cap", needed: 7, left: 0 }, fmt(w.overCap, { most: 7, left: 0 }), false],
   ])("%s", (_n, status, body, text, retry) => {
-    expect(refusalText(w, status, body)).toEqual({ text, retry });
+    expect(refusalText(w, status, body)).toMatchObject({ text, retry });
   });
 
   it("a plan_over_cap without `left` is never drawn as 0", () => {
@@ -409,9 +428,9 @@ describe("plan_superseded says what was used, by the server's stage and count (r
   ])("%s: its own words, and Reload is offered", async (_n, extra, text) => {
     answer = (url, method) => (method === "POST" ? { status: 409, body: { error: "plan_superseded", film_id: FILM, ...extra } } : { status: 200, body: READY });
     const onWritten = writer();
-    await waitFor(() => expect(button().disabled).toBe(false));
+    await waitFor(() => expect(off()).toBe(false));
     fireEvent.click(button());
-    await waitFor(() => expect(screen.getByTestId("fs-ai-notice").textContent).toBe(text));
+    await waitFor(() => expect(notice()).toBe(text));
     expect(screen.getByTestId("fs-ai-reload")).toBeTruthy();
     expect(onWritten).not.toHaveBeenCalled();
   });
@@ -424,5 +443,208 @@ describe("plan_superseded says what was used, by the server's stage and count (r
     expect(unknown).toBe(a.supersededAfterUnknown);
     expect(unknown).not.toMatch(/\d/);
     expect(unknown).toMatch(/unknown|неизвестно|nomaʼlum/);
+  });
+});
+
+describe("Pixel round: focus, live regions, dead ends, a hung or lost answer", () => {
+  it("1: the button keeps focus through every state (aria-disabled, never disabled), and an off press sends nothing", async () => {
+    let finish: (v: { status: number; body: unknown }) => void = () => {};
+    answer = (url, method) => (method === "POST" ? new Promise((r) => { finish = r; }) : { status: 200, body: READY });
+    writer();
+    button().focus();
+    expect(off()).toBe(true);
+    fireEvent.click(button());
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
+    await waitFor(() => expect(off()).toBe(false));
+    fireEvent.click(button());
+    await waitFor(() => expect(off()).toBe(true));
+    expect(document.activeElement).toBe(button());
+    fireEvent.click(button());
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+    await act(async () => finish({ status: 502, body: { error: "plan_failed", reason: "vendor_error" } }));
+    await waitFor(() => expect(off()).toBe(false));
+    expect(document.activeElement).toBe(button());
+  });
+
+  it("1: Check again and Reload hand focus back to the button when they go away", async () => {
+    let n = 0;
+    vi.stubGlobal("fetch", vi.fn(async (_u: string, init?: RequestInit) => {
+      n += 1;
+      if ((init?.method ?? "GET") === "POST") return new Response(JSON.stringify({ error: "plan_superseded", stage: "after_turns", used: 2 }), { status: 409 });
+      if (n === 1) throw new TypeError("offline");
+      return new Response(JSON.stringify(READY), { status: 200 });
+    }));
+    writer();
+    const again = await screen.findByTestId("fs-ai-check");
+    again.focus();
+    fireEvent.click(again);
+    await waitFor(() => expect(screen.queryByTestId("fs-ai-check")).toBeNull());
+    expect(document.activeElement).toBe(button());
+    await waitFor(() => expect(off()).toBe(false));
+    fireEvent.click(button());
+    const reload = await screen.findByTestId("fs-ai-reload");
+    reload.focus();
+    fireEvent.click(reload);
+    expect(screen.queryByTestId("fs-ai-reload")).toBeNull();
+    expect(document.activeElement).toBe(button());
+  });
+
+  it("2: both live regions are there from the first paint and keep their roles; the start is said once, never the timer", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let finish: (v: { status: number; body: unknown }) => void = () => {};
+    answer = (url, method) => (method === "POST" ? new Promise((r) => { finish = r; }) : { status: 200, body: READY });
+    writer();
+    const status = screen.getByTestId("fs-ai-status");
+    const alert = screen.getByTestId("fs-ai-alert");
+    expect([status.getAttribute("role"), alert.getAttribute("role")]).toEqual(["status", "alert"]);
+    await waitFor(() => expect(off()).toBe(false));
+    fireEvent.click(button());
+    await waitFor(() => expect(statusText()).toBe(w.writing));
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
+    expect(statusText()).toBe(w.writing);
+    expect(reason()).not.toBe(fmt(w.writingFor, { time: "0:00" }));
+    expect(status.textContent).not.toMatch(/\d:\d\d/);
+    await act(async () => finish({ status: 502, body: { error: "plan_failed", reason: "vendor_error" } }));
+    await waitFor(() => expect(alertText()).toBe(w.planFailed));
+    // The same elements, the same roles: only their text changed.
+    expect(screen.getByTestId("fs-ai-status")).toBe(status);
+    expect(screen.getByTestId("fs-ai-alert")).toBe(alert);
+    expect(alert.getAttribute("role")).toBe("alert");
+  });
+
+  it("2, 5: a refusal found before a press reaches the alert, and every failure is said once on the page", async () => {
+    answer = () => ({ status: 402, body: { error: "chat_plan_required" } });
+    writer();
+    await waitFor(() => expect(alertText()).toBe(w.planRequired));
+    expect(screen.getAllByText(w.planRequired)).toHaveLength(1);
+    cleanup();
+    answer = (url, method) => (method === "POST" ? { status: 502, body: { error: "plan_failed", reason: "vendor_error" } } : { status: 200, body: READY });
+    writer();
+    await waitFor(() => expect(off()).toBe(false));
+    fireEvent.click(button());
+    await waitFor(() => expect(alertText()).toBe(w.planFailed));
+    expect(screen.getAllByText(w.planFailed)).toHaveLength(1);
+  });
+
+  it("5: a lost answer's confirming words are said once, in the status region", async () => {
+    answer = (url, method) => (method === "POST" ? Promise.reject(new TypeError("network")) : { status: 200, body: READY });
+    writer();
+    await waitFor(() => expect(off()).toBe(false));
+    fireEvent.click(button());
+    await waitFor(() => expect(statusText()).toBe(w.confirming));
+    expect(screen.getAllByText(w.confirming)).toHaveLength(1);
+    expect(reason()).toBe("");
+  });
+
+  it("3: an ended session is not a dead end: a sign-in link that comes back to this page", async () => {
+    window.history.pushState({}, "", "/alpha/create/projects/p1?tab=board");
+    answer = () => ({ status: 401, body: { error: "unauthorized" } });
+    writer();
+    await waitFor(() => expect(alertText()).toBe(w.session));
+    const link = screen.getByTestId("fs-ai-signin");
+    expect(link.textContent).toBe(w.signIn);
+    expect(link.getAttribute("href")).toBe(`/login?next=${encodeURIComponent("/alpha/create/projects/p1?tab=board")}`);
+    window.history.pushState({}, "", "/");
+  });
+
+  it("4: a lost press is confirmed for at most the lease's 320 s, then says it cannot reach the server, with Check again", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let gets = 0;
+    let reachable = false;
+    answer = (url, method) => {
+      if (method === "POST") return Promise.reject(new TypeError("network"));
+      gets += 1;
+      if (gets === 1) return { status: 200, body: READY };
+      return reachable ? { status: 200, body: READY } : Promise.reject(new TypeError("offline"));
+    };
+    const onBusy = vi.fn();
+    writer({ onBusy });
+    await waitFor(() => expect(off()).toBe(false));
+    fireEvent.click(button());
+    await waitFor(() => expect(statusText()).toBe(w.confirming));
+    // One poll at a time, as the browser would run them: each answer schedules the next.
+    for (let i = 0; i < Math.ceil(AI_CONFIRM_MAX_MS / AI_WAIT_POLL_MS) + 2 && alertText() !== w.lost; i++) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(AI_WAIT_POLL_MS + 10); });
+    }
+    await waitFor(() => expect(alertText()).toBe(w.lost));
+    // Not before the lease's window: about 320 s of asking.
+    expect(gets).toBeGreaterThanOrEqual(Math.floor(AI_CONFIRM_MAX_MS / AI_WAIT_POLL_MS));
+    const asked = gets;
+    await act(async () => { await vi.advanceTimersByTimeAsync(10 * AI_WAIT_POLL_MS); });
+    // It stopped asking, and the canvas stays locked: what happened is still not known.
+    expect(gets).toBe(asked);
+    expect(onBusy).toHaveBeenLastCalledWith(true);
+    expect(off()).toBe(true);
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+    reachable = true;
+    fireEvent.click(screen.getByTestId("fs-ai-check"));
+    await waitFor(() => expect(alertText()).toBe(w.planFailed));
+    await waitFor(() => expect(off()).toBe(false));
+    expect(onBusy).toHaveBeenLastCalledWith(false);
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+  });
+
+  it("8: an error the server does not name reads as 'could not be written' after a press, 'could not check' before one", () => {
+    expect(refusalText(w, 500, { error: "something_new" }, "post").text).toBe(w.planFailed);
+    expect(refusalText(w, 500, { error: "something_new" }).text).toBe(w.unavailable);
+  });
+
+  it("9: a press refused for today's cap offers Check again, which asks GET (never a press)", async () => {
+    let gets = 0;
+    answer = (url, method) => {
+      if (method === "POST") return { status: 429, body: { error: "plan_over_cap", needed: 7, about: 4, left: 2 } };
+      gets += 1;
+      return { status: 200, body: READY };
+    };
+    writer();
+    await waitFor(() => expect(off()).toBe(false));
+    fireEvent.click(button());
+    await waitFor(() => expect(alertText()).toBe(fmt(w.overCap, { most: 7, left: 2 })));
+    expect(off()).toBe(true);
+    const before = gets;
+    fireEvent.click(await screen.findByTestId("fs-ai-check"));
+    await waitFor(() => expect(gets).toBe(before + 1));
+    await waitFor(() => expect(off()).toBe(false));
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+  });
+
+  it("11: a GET that hangs is given up on after 20 s: could not check, with Check again", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let n = 0;
+    vi.stubGlobal("fetch", vi.fn((_u: string, init?: RequestInit) => {
+      n += 1;
+      if (n > 1) return Promise.resolve(new Response(JSON.stringify(READY), { status: 200 }));
+      return new Promise<Response>((_r, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    }));
+    writer();
+    expect(reason()).toBe(w.checking);
+    await act(async () => { await vi.advanceTimersByTimeAsync(AI_CHECK_TIMEOUT_MS + 10); });
+    await waitFor(() => expect(alertText()).toBe(w.unavailable));
+    fireEvent.click(screen.getByTestId("fs-ai-check"));
+    await waitFor(() => expect(off()).toBe(false));
+  });
+
+  it("19: after model_unavailable on a press, the words and the button agree (the check that follows says it)", async () => {
+    let gets = 0;
+    answer = (url, method) => {
+      if (method === "POST") return { status: 409, body: { error: "model_unavailable", reason: "not_configured" } };
+      gets += 1;
+      return gets === 1 ? { status: 200, body: READY } : { status: 409, body: { error: "model_unavailable", reason: "not_configured" } };
+    };
+    writer();
+    await waitFor(() => expect(off()).toBe(false));
+    fireEvent.click(button());
+    await waitFor(() => expect(alertText()).toBe(w.modelDown));
+    expect(off()).toBe(true);
+    expect(button().textContent).toBe(t.canvas.aiWrite);
+    expect(screen.getByTestId("fs-ai-check")).toBeTruthy();
+  });
+
+  it("15: a model the press sets that has no display name is said as 'sets one', never by an id", () => {
+    const r = readCheck(w, 200, { ...READY, sets: { clip: "", keyframe: null } });
+    expect(r.kind === "ready" && r.ready.sets.clip).toBe("");
+    if (r.kind === "ready") expect(setsText(w, r.ready)).toEqual([w.setsClipUnnamed]);
   });
 });

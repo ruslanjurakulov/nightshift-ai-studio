@@ -73,7 +73,8 @@ export async function GET(request: Request) {
     left: r.left,
     scope: r.scope,
     // What the press would set on the project, by name: only a role the project has no model for (never a swap of one it has).
-    sets: { clip: r.models.setClip ? r.models.clip?.name ?? null : null, keyframe: r.models.setKeyframe ? r.models.keyframe?.name ?? null : null },
+    // "" when the model it sets has no display name: said as "sets one", never as its raw id (Pixel 15).
+    sets: { clip: r.models.setClip ? r.models.clip?.name ?? "" : null, keyframe: r.models.setKeyframe ? r.models.keyframe?.name ?? "" : null },
     plan: lease.lease,
   });
 }

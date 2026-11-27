@@ -23,7 +23,8 @@ export type FilmModelRole = keyof typeof FILM_MODEL_PREFERENCE;
 
 /** `maxPromptChars`: the registry row's limits.max_prompt_chars (S9, 0218 counts it in UTF-16 units); absent or null = not known. */
 export interface OnSaleModel { id: string; name: string; durations: number[]; maxPromptChars?: number | null; provider?: string | null }
-export interface PickedModel { id: string; name: string; durations: number[] | null }
+/** `name`: the catalogue's display name, or null when it has none (a raw id is never shown as a name: Pixel 15). */
+export interface PickedModel { id: string; name: string | null; durations: number[] | null }
 
 /** The first model of the role's order that is on sale now; null when none is (nothing else is tried). */
 export function pickFilmModel(role: FilmModelRole, onSale: readonly OnSaleModel[]): PickedModel | null {
@@ -31,7 +32,7 @@ export function pickFilmModel(role: FilmModelRole, onSale: readonly OnSaleModel[
     const m = onSale.find((x) => x.id === id);
     if (m) {
       const d = m.durations.filter((x) => Number.isInteger(x) && x > 0).sort((a, b) => a - b);
-      return { id: m.id, name: m.name || m.id, durations: d.length ? d : null };
+      return { id: m.id, name: m.name || null, durations: d.length ? d : null };
     }
   }
   return null;

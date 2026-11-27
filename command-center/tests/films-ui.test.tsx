@@ -207,8 +207,9 @@ describe("the canvas", () => {
   it("the AI writer is off over a project that has scenes, with its reason, and asks the server nothing", () => {
     canvas();
     const ai = screen.getByTestId("fs-ai") as HTMLButtonElement;
-    expect(ai.disabled).toBe(true);
-    expect(document.getElementById(ai.getAttribute("aria-describedby")!)?.textContent).toBe(t.canvas.ai.hasScenes);
+    // Off as aria-disabled (never `disabled`: focus is kept), described by its reason first.
+    expect(ai.getAttribute("aria-disabled")).toBe("true");
+    expect(document.getElementById(ai.getAttribute("aria-describedby")!.split(" ")[0])?.textContent).toBe(t.canvas.ai.hasScenes);
     expect(calls.some((c) => c.url.includes("/api/brain/film"))).toBe(false);
   });
 
