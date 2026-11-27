@@ -412,8 +412,10 @@ ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164
            # 0208 sits on 0196's reroute_creative_job (and refuses to apply without it): out and back with it, last.
            "0208_geo_gate_and_image_size_price.sql",
            "0215_film_archive_resume.sql",
+           # 0226 sits on 0215 (is_org_spender) and 0192's bodies, and on nothing of 0208's or 0218's: out and back after 0215.
+           "0226_org_spender_everywhere.sql",
            # 0218 sits on 0208's creative_price and creative_params_problem: out and back with it, after it.
-           "0218_creative_prompt_limits.sql", "0226_org_spender_everywhere.sql")
+           "0218_creative_prompt_limits.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
