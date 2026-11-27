@@ -60,6 +60,7 @@ export const CARD_TITLES: Readonly<Record<string, Readonly<Record<Locale, string
   "e35f41fb-3162-4f9d-ae17-6420d558840d": { en: "Perfume bursting into droplets", ru: "Флакон рассыпается каплями", uz: "Tomchilarga sochilgan atir" },
   "49af4517-9ebf-44d9-80ed-f652cea6e071": { en: "Woman in a sunflower field", ru: "Девушка в поле подсолнухов", uz: "Kungaboqar dalasidagi ayol" },
   "cf2af7b1-5433-4661-979b-f65f3f8a4dbf": { en: "Watch wrapped in liquid chrome", ru: "Часы в ленте жидкого хрома", uz: "Suyuq xromga oʻralgan soat" },
+  "94baf12a-60db-42f6-a000-fcc118e344a0": { en: "Smartwatch on a stone plinth", ru: "Смарт-часы на каменной подставке", uz: "Tosh poydevordagi aqlli soat" },
 };
 
 /** A sample's title in this language, or null when it has none (a sample merged before its title was written). */

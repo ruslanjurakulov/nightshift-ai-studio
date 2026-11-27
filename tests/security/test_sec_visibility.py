@@ -1167,6 +1167,7 @@ def test_applying_it_again_changes_nothing(conn):
         su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))   # 0117 replaces audit_action_allowed on top of 0116's
         sec_db.put_back_0119(su)
         sec_db.put_back_0121(su)
+        sec_db.put_back_0227(su)
         assert snapshot(su) == before
 
 
@@ -1177,7 +1178,7 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
     base_dsn = sec_db.create_database(admin, base)
     try:
         sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence()
-                                      if not f.name.startswith(("0116_", "0117_", "0119_", "0121_", "0145_", *sec_db.NEEDS_0112_0116))])
+                                      if not f.name.startswith(("0116_", "0117_", "0119_", "0121_", "0145_", "0227_", *sec_db.NEEDS_0112_0116))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             fns = [r[0] for r in b.execute("select p.oid::regprocedure::text from pg_proc p where pronamespace = 'public'::regnamespace")]
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
@@ -1227,6 +1228,7 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
         sec_db.put_back_0121(su)
         sec_db.put_back_0164(su)
         sec_db.put_back_0202(su)
+        sec_db.put_back_0227(su)
         assert snapshot(su) == after
         sec_db.take_off_0145(su)                                      # 0145 sits on 0117's audit list: off before 0112/0116 replay it, back with put_back_0121
         su.conn.execute(MIGRATION_0116.read_text(encoding="utf-8"))
@@ -1235,4 +1237,5 @@ def test_the_rollback_stops_everything_keeps_the_record_restores_0112_byte_for_b
         su.conn.execute(MIGRATION_0117.read_text(encoding="utf-8"))
         sec_db.put_back_0119(su)
         sec_db.put_back_0121(su)
+        sec_db.put_back_0227(su)
         assert snapshot(su) == after
