@@ -10,8 +10,9 @@ import type { SiteCarouselDictionary } from "@/lib/i18n/site-carousel";
 import { clipsAllowed } from "@/components/site/LoopClip";
 import { usePageVisible, useReducedMotion, useClipTurn } from "@/components/site/clip-turns";
 import "@/components/site/prompt-ticker.css";
+import { AiMark } from "@/components/site/AiMark";
 
-export type TickerGalleryCopy = { badge: string; model: string; altClip: string };
+export type TickerGalleryCopy = { badge: string; badgeName: string; model: string; altClip: string };
 
 /** How long a result stays after its words are typed: its clip to the end, but never less than MIN or more than MAX. */
 const MIN_MS = 4000;
@@ -160,7 +161,7 @@ export function PromptTicker({ items, copy, g }: { items: SampleSlide[]; copy: S
           </span>
         </p>
         <p className="nxt-meta">
-          <span className="nx-ai-badge">{g.badge}</span>
+          <span className="nx-ai-badge"><AiMark short={g.badge} name={g.badgeName} /></span>
           <span className="nxt-model">
             {g.model} <strong>{s.modelName}</strong>
           </span>

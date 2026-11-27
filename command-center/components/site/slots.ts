@@ -111,8 +111,18 @@ export function slotJobs(slots: readonly SlotId[], entries?: readonly ShowcaseEn
   });
 }
 
-/** The landing's own slots (its gallery leaves out the samples they show). */
-export const LANDING_SLOTS = ["hero", "show.studio", "landing.final"] as const satisfies readonly SlotId[];
+/**
+ * The first screen's clip on "/" (components/landing/home/HomeHero.tsx): orbit, the night city, the steaming street stall. Not a slot:
+ * it has no stock fallback, and with no entry or clip the hero has no picture rather than a stand-in. Here, and not in the hero's own
+ * file, so the landing's list of what it shows (landingPlacedJobs) can name it without loading the reel's media manifest.
+ */
+export const HERO_JOB = "4e85c7e4-fd1a-4771-97ee-66c1fb853367";
+
+/**
+ * The landing's own slots (its gallery leaves out the samples they show): only the closing panel since the owner kept the street-stall
+ * hero (2026-11-22) and the page went to one gallery. The `hero` and `show.studio` slots stay for the pages that still draw them.
+ */
+export const LANDING_SLOTS = ["landing.final"] as const satisfies readonly SlotId[];
 
 /**
  * Samples the landing's gallery leaves out although no slot shows them: more sea, sky and surf. The first screen is a whale in a sea
@@ -128,13 +138,20 @@ export const LANDING_LEFT_OUT: readonly string[] = [
 ];
 
 /**
- * The samples a landing place shows: its slots, the tool wall (lib/site/tool-samples.ts), and the example topic's two clips (the
- * third step's phone and the Approvals card's thumbnail, EXAMPLE_JOBS). They are on the page, so they count in its facts and model
- * tiles; a sample surface leaves them out so nothing is shown twice. Functions, not constants, so they read the slots and the data
- * file as they are when called.
+ * The samples a landing place actually draws: the first screen's clip (HERO_JOB, while its entry and clip are here), its slots, the
+ * tool wall (lib/site/tool-samples.ts) and the third step's phone (EXAMPLE_PHONE_JOB). They are on the page, so they count in its
+ * facts and model tiles; a sample surface leaves them out so nothing is shown twice. Only what is drawn: a sample counted here that
+ * the page does not show would be a fact the visitor cannot check (CLAUDE.md #5). Functions, not constants, so they read the slots
+ * and the data file as they are when called.
  */
-export function landingPlacedJobs(): string[] {
-  return [...slotJobs(LANDING_SLOTS), ...TOOL_JOBS, ...EXAMPLE_JOBS.filter((j) => exampleMedia(j) !== null)];
+export function landingPlacedJobs(entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): string[] {
+  const hero = exampleMedia(HERO_JOB, entries, files);
+  return [
+    ...(hero?.moving ? [HERO_JOB] : []),
+    ...slotJobs(LANDING_SLOTS, entries, files),
+    ...TOOL_JOBS,
+    ...(exampleMedia(EXAMPLE_PHONE_JOB, entries, files) ? [EXAMPLE_PHONE_JOB] : []),
+  ];
 }
 
 /**
@@ -143,5 +160,8 @@ export function landingPlacedJobs(): string[] {
  * One list, so a new surface cannot show a sample twice or bring the sea back.
  */
 export function landingExcludedJobs(): string[] {
-  return [...landingPlacedJobs(), ...LANDING_LEFT_OUT];
+  const placed = landingPlacedJobs();
+  // The example topic's other clip is never a sample of its own on the landing, drawn or not: it is the one video the example ask
+  // makes (EXAMPLE_JOBS), and in a grid it would read as a second, unrelated result.
+  return [...placed, ...EXAMPLE_JOBS.filter((j) => !placed.includes(j)), ...LANDING_LEFT_OUT];
 }
