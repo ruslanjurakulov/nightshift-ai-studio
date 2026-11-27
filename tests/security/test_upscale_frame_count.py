@@ -28,8 +28,6 @@ from modules import media_library as ml
 from modules.capabilities import build_adapter
 from modules.capabilities import video
 from modules.capabilities.base import E_BAD_REQUEST, AdapterError, CapabilityRequest
-from tests.test_capabilities import FakeResp
-from tests.test_voice_tools import RecordingSession
 
 KEY = "key_TOPSECRET-runway-frame-count-0123456789"
 ENV = {"RUNWAYML_API_SECRET": KEY}
@@ -39,10 +37,37 @@ TICKET = {"uploadUrl": UPLOAD, "fields": {"key": "ephemeral/abc/source.mp4"}, "r
 TASK = "1f2e3d4c-5b6a-4789-8abc-def012345678"
 
 
+class _Resp:
+    def __init__(self, status=200, body=None):
+        self.status_code, self._body = status, body
+        self.text = json.dumps(body) if body is not None else ""
+        self.headers = {}
+        self.content = b""
+
+    def json(self):
+        return self._body
+
+
+class _Session:
+    """Answers (method, url-substring) routes and records every call. Self-
+    contained so the security lab job, which installs only its own
+    requirements, can import this file without the unit suite's helpers."""
+
+    def __init__(self, routes):
+        self.routes, self.calls = list(routes), []
+
+    def request(self, method, url, **kw):
+        self.calls.append((method, url, kw))
+        for m, frag, resp in self.routes:
+            if m == method and frag in url:
+                return resp
+        raise AssertionError(f"unexpected {method} {url}")
+
+
 def _routes():
-    return [("POST", "/v1/uploads", FakeResp(200, TICKET)),
-            ("POST", UPLOAD, FakeResp(204)),
-            ("POST", "/v1/video_upscale", FakeResp(200, {"id": TASK}))]
+    return [("POST", "/v1/uploads", _Resp(200, TICKET)),
+            ("POST", UPLOAD, _Resp(204)),
+            ("POST", "/v1/video_upscale", _Resp(200, {"id": TASK}))]
 
 
 def _probe(avg="60/1", frames=None, packets=None, stream_s=None, format_s=None, r="60/1"):
@@ -76,7 +101,7 @@ class _Upscale(unittest.TestCase):
             seen.append(argv)
             return subprocess.CompletedProcess(argv, 0, json.dumps(probe_json).encode(), b"")
 
-        a = build_adapter("video.runway_upscale", env=ENV, session=RecordingSession(_routes()))
+        a = build_adapter("video.runway_upscale", env=ENV, session=_Session(_routes()))
         req = CapabilityRequest("video_upscale", input_media=(str(src),), upscale_target="4k")
         with mock.patch.object(video.shutil, "which", return_value="/usr/bin/ffprobe"), \
                 mock.patch.object(video.subprocess, "run", side_effect=fake_run):
@@ -104,7 +129,6 @@ class _Upscale(unittest.TestCase):
 class UpscaleFrameCountPins(_Upscale):
     """The two reproductions Sentinel confirmed, as ffprobe reported them."""
 
-    @unittest.expectedFailure  # BR-L-211 open
     def test_br_l_211_a_tail_padded_sample_table_is_refused_before_upload(self):
         # Real 120 fps x264, 240 frames, last stts entry (1, 12 800 000).
         tail_padded = {"streams": [{"codec_type": "video", "avg_frame_rate": "9600/33413", "r_frame_rate": "120/1",
@@ -112,26 +136,21 @@ class UpscaleFrameCountPins(_Upscale):
                        "format": {"duration": "2.000000"}}
         self.assertRefusedBeforeUpload(tail_padded, "for the length it is priced at")
 
-    @unittest.expectedFailure  # BR-L-211 open
     def test_br_l_211_a_shortened_header_is_refused_before_upload(self):
         # 60 fps, 10 s, 600 frames; mvhd/mdhd/tkhd durations divided by 40.
         self.assertRefusedBeforeUpload(_probe("60/1", 600, 600, 0.25, 0.25), "for the length it is priced at")
 
-    @unittest.expectedFailure  # BR-L-211 open
     def test_br_l_211_frames_beyond_the_priced_length_after_an_edit_list_trim_are_refused(self):
         # 60 fps with 660 samples but an edit list that says 10 s: the vendor
         # receives every sample, so 66 a second is what it would bill.
         self.assertRefusedBeforeUpload(_probe("60/1", 660, 660, 10.0, 10.0), "export it again at 60")
 
-    @unittest.expectedFailure  # BR-L-211 open
     def test_br_l_211_no_frame_count_anywhere_is_unknown_not_the_header_rate(self):
         self.assertRefusedBeforeUpload(_probe("30/1", None, None, 2.0, 2.0), "could not be read")
 
-    @unittest.expectedFailure  # BR-L-211 open
     def test_br_l_211_no_length_anywhere_is_unknown(self):
         self.assertRefusedBeforeUpload(_probe("30/1", 60, 60, None, None), "could not be read")
 
-    @unittest.expectedFailure  # BR-L-211 open
     def test_br_l_211_the_probe_counts_packets_and_reads_both_lengths(self):
         _, _, seen = self.submit(_probe("30/1", 60, 60, 2.0, 2.0))
         argv = seen[-1]
@@ -179,17 +198,14 @@ class UpscaleLegitimateClipsStayAccepted(_Upscale):
 
 
 class CountedRateTests(unittest.TestCase):
-    @unittest.expectedFailure  # BR-L-211 open
     def test_the_counted_rate_is_the_larger_of_the_average_and_frames_over_seconds(self):
         self.assertAlmostEqual(ml.counted_rate(*self._split(_probe("9600/33413", 240, 240, 2.0, 2.0))), 120.0)
         self.assertAlmostEqual(ml.counted_rate(*self._split(_probe("60/1", 600, 600, 0.25, 0.25))), 2400.0)
         self.assertAlmostEqual(ml.counted_rate(*self._split(_probe("30/1", 30, 30, 2.0, 2.0))), 30.0)
 
-    @unittest.expectedFailure  # BR-L-211 open
     def test_the_packet_count_is_preferred_to_the_header_sample_count(self):
         self.assertAlmostEqual(ml.counted_rate(*self._split(_probe("1/1", 2, 200, 2.0, 2.0))), 100.0)
 
-    @unittest.expectedFailure  # BR-L-211 open
     def test_unknown_frames_or_seconds_is_none(self):
         self.assertIsNone(ml.counted_rate(*self._split(_probe("30/1", None, None, 2.0, 2.0))))
         self.assertIsNone(ml.counted_rate(*self._split(_probe("30/1", 60, 60, None, None))))
@@ -206,25 +222,21 @@ class IngestFrameCountTests(unittest.TestCase):
             ml.interpret_probe("video/mp4", data)
         self.assertEqual(e.exception.reason, reason)
 
-    @unittest.expectedFailure  # BR-L-211 open
     def test_br_l_211_a_1_per_100000_average_with_36000_frames_is_over_the_budget(self):
         self.assertRefused({"streams": [{"codec_type": "video", "width": 7680, "height": 4320,
                                          "avg_frame_rate": "1/100000", "nb_frames": "36000"}],
                             "format": {"duration": "1200"}}, "too_long")
 
-    @unittest.expectedFailure  # BR-L-211 open
     def test_br_l_211_36000_frames_in_a_one_second_header_is_over_the_budget(self):
         self.assertRefused({"streams": [{"codec_type": "video", "width": 7680, "height": 4320,
                                          "avg_frame_rate": "30/1", "nb_frames": "36000"}],
                             "format": {"duration": "1.0"}}, "too_long")
 
-    @unittest.expectedFailure  # BR-L-211 open
     def test_br_l_211_a_video_with_no_video_packets_is_not_media(self):
         self.assertRefused({"streams": [{"codec_type": "video", "width": 64, "height": 64,
                                          "avg_frame_rate": "30/1", "nb_read_packets": "0"}],
                             "format": {"duration": "5"}}, "not_media")
 
-    @unittest.expectedFailure  # BR-L-211 open
     def test_the_probe_counts_packets(self):
         argv = ml.probe_command("ffprobe", Path("/s/x.upload"), "video/mp4")
         self.assertIn("-count_packets", argv)
@@ -271,7 +283,6 @@ class RealBytesTests(unittest.TestCase):
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=64x64:rate=60:duration=10",
                         "-c:v", "mpeg4", "-an", str(self.clip)], check=True, timeout=120)
 
-    @unittest.expectedFailure  # BR-L-211 open
     def test_br_l_211_a_real_shortened_header_reads_as_its_frames(self):
         short = self.tmp / "short.mp4"
         _shorten_headers(self.clip, short, 40)

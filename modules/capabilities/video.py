@@ -63,6 +63,7 @@ from modules.capabilities.base import (
 from modules.capabilities.modelark import RESULT_HOSTS as MODELARK_RESULT_HOSTS
 from modules.capabilities.modelark import map_code as modelark_code
 from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, checked_polling_url, unconfirmed
+from modules.media_library import counted_rate
 
 logger = logging.getLogger(__name__)
 
@@ -562,8 +563,16 @@ _FPS_DEMUXERS = {".mp4": "mov", ".mov": "mov", ".webm": "matroska", ".mkv": "mat
 
 
 def video_fps(path: str, *, timeout: int = 30) -> Optional[float]:
-    """The first video stream's frame rate as ffprobe reads it, or None when
-    it cannot be read (no ffprobe, not a video, a 0/0 rate). Never a guess."""
+    """The first video stream's frame rate for pricing a per-frame bill, or
+    None when it cannot be read (no ffprobe, not a video, no frame count, no
+    length). Never a guess.
+
+    Counted, not declared (BR-L-211): the larger of the stream's average rate
+    and its packets over the shorter of the file's and the stream's length,
+    one frame forgiven (a length measured first-to-last timestamp is a frame
+    short). The header alone lied both ways: a sample table padded at the tail
+    read 0.287 fps for 120, and a shortened mvhd/mdhd/tkhd read 10 s of 60 fps
+    as 0.25 s, which the database prices as one second."""
     exe = shutil.which("ffprobe")
     if not exe:
         return None
@@ -573,22 +582,19 @@ def video_fps(path: str, *, timeout: int = 30) -> Optional[float]:
     demuxer = _FPS_DEMUXERS.get(Path(str(path)).suffix.lower())
     forced = ["-f", demuxer] if demuxer else []
     try:
-        out = subprocess.run([exe, "-v", "error", "-protocol_whitelist", "file", *forced,
+        out = subprocess.run([exe, "-v", "error", "-protocol_whitelist", "file", *forced, "-count_packets",
                               "-select_streams", "v:0", "-show_entries",
-                              "stream=avg_frame_rate,r_frame_rate", "-of", "json", str(path)],
+                              "stream=avg_frame_rate,nb_frames,nb_read_packets,duration:format=duration",
+                              "-of", "json", str(path)],
                              capture_output=True, timeout=timeout, check=False)
-        stream = (json.loads(out.stdout or b"{}").get("streams") or [{}])[0]
-    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        data = json.loads(out.stdout or b"{}")
+        stream = (data.get("streams") or [{}])[0]
+        fmt = data.get("format") or {}
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError, AttributeError):
         return None
-    for key in ("avg_frame_rate", "r_frame_rate"):
-        num, _, den = str(stream.get(key) or "").partition("/")
-        try:
-            rate = float(num) / float(den or 1)
-        except (ValueError, ZeroDivisionError):
-            continue
-        if rate > 0:
-            return rate
-    return None
+    if not isinstance(stream, dict) or not isinstance(fmt, dict):
+        return None
+    return counted_rate(stream, fmt, slack_frames=1)
 
 
 class RunwayVideoUpscaleAdapter(RunwayAdapter):
@@ -673,8 +679,9 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
             raise AdapterError(E_BAD_REQUEST, "the video's frame rate could not be read, so its upscale "
                                               "cannot be priced; export it again as MP4")
         if fps > self.MAX_FPS + 0.5:
-            raise AdapterError(E_BAD_REQUEST, f"this video runs at {fps:.0f} frames a second; the upscale "
-                                              f"takes up to {self.MAX_FPS:.0f}")
+            raise AdapterError(E_BAD_REQUEST, f"this video runs at {fps:.0f} frames a second for the length it is "
+                                              f"priced at; the upscale takes up to {self.MAX_FPS:.0f}, so export it "
+                                              f"again at {self.MAX_FPS:.0f} frames a second or fewer")
         uri = self._upload(path)
         data = self.post(f"{self.base_url}/v1/video_upscale",
                          {"model": vendor_model, "videoUri": uri, "resolution": request.upscale_target})

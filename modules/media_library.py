@@ -477,7 +477,9 @@ class Probe:
 
 
 def probe_command(exe: str, path: Path, mime: str) -> List[str]:
-    return [exe, "-v", "error", "-protocol_whitelist", "file", "-f", DEMUXER[mime],
+    # -count_packets: the header's rate and length are the uploader's words;
+    # the packets are what a decoder decodes (BR-L-211, ``measured_rate``).
+    return [exe, "-v", "error", "-protocol_whitelist", "file", "-f", DEMUXER[mime], "-count_packets",
             "-print_format", "json", "-show_format", "-show_streams", str(path)]
 
 
@@ -591,7 +593,14 @@ def interpret_probe(sniffed: str, data: Mapping) -> Probe:
         # a video's cap is lower than a still's (BR-L-010).
         w, h = _check_frame(v, width, height, VIDEO_MAX_PIXELS)
         _check_every_picture(streams, VIDEO_MAX_PIXELS)
-        fps = frame_rate(v)
+        frames = frame_count(v)
+        if frames == 0:
+            raise IngestReject("not_media", "the video stream holds no pictures")
+        # The header's rate, raised to the frames the file really holds per
+        # second of its length (BR-L-211): an average read off a padded sample
+        # table or a shortened header cannot shrink the budget. With no count
+        # (a stand-in probe) the header's rate stays advisory, as before.
+        fps = max(frame_rate(v), measured_rate(v, fmt) or 0.0)
         work = decode_work(w, h, fps, duration)
         if work > DECODE_BUDGET_PX:
             raise IngestReject("too_long", f"{w}x{h} at {fps:g} fps for {duration:.0f} s is more than "
@@ -613,11 +622,58 @@ def _rate(v) -> Optional[float]:
     return r if r > 0 else None
 
 
+def frame_count(stream: Mapping) -> Optional[int]:
+    """How many pictures a stream holds: the packets ffprobe counted
+    (``-count_packets``, ``nb_read_packets``), else the container's sample
+    count (``nb_frames``), else None. A counted 0 is 0 (an empty stream); a
+    header 0 is unknown, because a fragmented MP4 writes 0 with samples to come."""
+    packets = _num(stream.get("nb_read_packets"))
+    if packets is not None and packets >= 0:
+        return int(packets)
+    frames = _num(stream.get("nb_frames"))
+    return int(frames) if frames is not None and frames > 0 else None
+
+
+def _shortest_length(stream: Mapping, fmt: Mapping) -> Optional[float]:
+    """The smaller positive of the file's and the stream's length: the one a
+    frame count over it can only overstate. A file whose sound outlasts its
+    picture keeps the picture's length."""
+    lengths = [d for d in (_num(fmt.get("duration")), _num(stream.get("duration"))) if d is not None and d > 0]
+    return min(lengths) if lengths else None
+
+
+def measured_rate(stream: Mapping, fmt: Mapping, *, slack_frames: int = 0) -> Optional[float]:
+    """Frames per second of the length a price or a budget is computed from:
+    ``frame_count`` over the shorter of the two lengths, ``slack_frames``
+    forgiven. None when either is unknown, never a guess (CLAUDE.md #5)."""
+    frames, seconds = frame_count(stream), _shortest_length(stream, fmt)
+    if not frames or seconds is None:
+        return None
+    return max(0, frames - slack_frames) / seconds
+
+
+def counted_rate(stream: Mapping, fmt: Mapping, *, slack_frames: int = 0) -> Optional[float]:
+    """The rate a per-frame bill is checked against (BR-L-211): the larger of
+    the stream's average rate and ``measured_rate``. Neither alone holds: the
+    average is read off a sample table the uploader can pad at the tail, and
+    the length off headers the uploader can shorten, while the frame count is
+    what the vendor bills. ``r_frame_rate`` is not a candidate: a phone's VFR
+    clip reads avg 19 / r 30 for 76 frames in 4 s, and r would refuse it.
+    None when the frames or the length are unknown."""
+    measured = measured_rate(stream, fmt, slack_frames=slack_frames)
+    if measured is None:
+        return None
+    return max(measured, _rate(stream.get("avg_frame_rate")) or 0.0)
+
+
 def frame_rate(stream: Mapping) -> float:
-    """The frame rate a decode budget counts: the stream's average rate (for
-    MP4 / MOV the sample count over the duration), else its base rate, else
-    ASSUMED_FPS when neither is a plausible number. An understated rate only
-    shortens the file's own proxy time limit (``proxy_timeout_s``)."""
+    """The header's frame rate a decode budget starts from: the stream's
+    average rate (for MP4 / MOV the sample count over the duration), else its
+    base rate, else ASSUMED_FPS when neither is a plausible number. The budget
+    then raises it to the frame count over the length (``measured_rate``)
+    when the probe counted one, because an average can be padded down. An
+    understated rate only shortens the file's own proxy time limit
+    (``proxy_timeout_s``)."""
     for key in ("avg_frame_rate", "r_frame_rate"):
         r = _rate(stream.get(key))
         if r is not None and r <= MAX_PLAUSIBLE_FPS:
