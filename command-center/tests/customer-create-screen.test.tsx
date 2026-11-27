@@ -166,7 +166,7 @@ describe("the explore grid under the Create screen (S8 PR 3)", () => {
   it("draws the grid below the composer and the results, and its card opens this channel's Create with the template", async () => {
     const fetchMock = vi.fn(async (url: string) => (String(url).startsWith("/api/templates?") ? json(200, { status: "ok", templates: [tpl] }) : json(404, {})));
     vi.stubGlobal("fetch", fetchMock);
-    render(wrap(<CreateScreen orgId="o1" models={MODELS} explore={{ samples: [], onSale: { t2v: ["veo-3"], t2i: [] } }} />));
+    render(wrap(<CreateScreen orgId="o1" models={MODELS} explore={{ state: "ok", samples: [], onSale: { t2v: ["veo-3"], t2i: [] } }} />));
     const grid = screen.getByTestId("studio-explore");
     // Below the fold: after the results in document order, so nothing above the composer moved.
     expect(screen.getByTestId("gen-canvas").compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

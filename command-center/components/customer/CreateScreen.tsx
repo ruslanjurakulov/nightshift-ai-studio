@@ -29,7 +29,7 @@ import { Director } from "@/components/customer/Director";
 import { IDEA_PARAM, takeIdea } from "@/lib/site/idea-handoff";
 import { attachWords } from "@/lib/creative/attach";
 import { StudioExplore } from "@/components/studio/StudioExplore";
-import type { ExploreSample, OnSale } from "@/lib/creative/explore";
+import type { ExploreData } from "@/lib/creative/explore";
 import "@/components/studio/desk.css";
 import "@/components/customer/customer.css";
 
@@ -90,8 +90,9 @@ export function CreateScreen({
   bottomBar?: boolean;
   /** `?idea=1`: the landing's idea box or the app's start box kept the words in this browser (lib/site/idea-handoff.ts). */
   idea?: boolean;
-  /** Below the fold: the samples on sale here (built on the server, no model names) and the catalogue the formats are kept to; null = none. */
-  explore?: { samples: ExploreSample[]; onSale: OnSale } | null;
+  /** Below the fold: the samples on sale here (built on the server, no model names) and the catalogue the formats are kept to, or
+   *  "unread"; null = no grid. */
+  explore?: ExploreData | null;
 }) {
   const { t, fmt } = useI18n();
   const c = t.customerApp.create;
@@ -356,7 +357,7 @@ export function CreateScreen({
 
       {/* Below the fold, after the composer and the results: samples and ready-made formats, media first; a card only opens this
           channel's Studio form (components/studio/StudioExplore.tsx). */}
-      {explore && <StudioExplore samples={explore.samples} onSale={explore.onSale} />}
+      {explore && <StudioExplore data={explore} />}
     </div>
   );
 }

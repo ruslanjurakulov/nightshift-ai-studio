@@ -11,7 +11,7 @@ import { atLeast } from "@/lib/auth/roles";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
 import { isOperatorOrg } from "@/lib/channel-tokens";
 import { getOrgContext } from "@/lib/orgs-server";
-import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels } from "@/lib/server/creative";
+import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels, readStudioModels } from "@/lib/server/creative";
 import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery, withPreviews, type StudioPrefill } from "@/lib/creative/studio";
@@ -43,12 +43,12 @@ import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
 import { isPlatformOwner } from "@/lib/server/owner-view";
 import { KIND_TOOL, SLUG_RE, cleanLinkPrompt, drawsCreateScreen, isCreateKind } from "@/lib/customer/create";
 import { aiChatEnv, aiChatOpenFor } from "@/lib/brain/flag";
-import { readToolAvailability } from "@/lib/server/tool-availability";
+import { readCatalogStates, readToolAvailability } from "@/lib/server/tool-availability";
 import { startAvailability } from "@/lib/start-box";
 import { SAMPLE_PARAM, resolveSampleSource } from "@/lib/site/sample-source";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
-import { exploreSamples, onSaleCatalog } from "@/lib/creative/explore";
+import { exploreCatalog, exploreSamples, type ExploreData } from "@/lib/creative/explore";
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -227,16 +227,20 @@ export default async function CreatePage({
         })()
       : null;
 
-  // The explore grid under the overview (lib/creative/explore.ts), on both of its screens: the owner's StudioHome and the customer's
-  // Create screen. From the same catalogue the composer gets, less the operator's previews (not on sale, even to the operator).
-  // Static data and the list already read: no extra request, nothing written.
-  const exploreOnSale = desk === "overview" ? onSaleCatalog(models, ["t2v", "t2i", "i2v"]) : null;
-  const exploreData = exploreOnSale
-    ? {
-        samples: exploreSamples(SHOWCASE_ENTRIES, SHOWCASE_FILES, exploreOnSale, locale),
-        onSale: { t2v: exploreOnSale.t2v, t2i: exploreOnSale.t2i },
-      }
-    : null;
+  // The explore grid under the customer's Create screen (lib/creative/explore.ts). Its catalogue is the composer's models filtered the
+  // way the Studio's availability marks filter them (lib/server/tool-availability.ts): priced, open to some organization, no operator
+  // preview, no lock. A registry that could not be read is "unread", never "nothing on sale yet" (rule 5): loadStudioModels answers []
+  // for both, so the cached readStudioModels() is asked which it was (the same request's read, no second query). Nothing is written.
+  const exploreData: ExploreData | null = !createScreen
+    ? null
+    : !genOrgId
+      ? { state: "unread" }
+      : await (async (): Promise<ExploreData> => {
+          const [read, catalog] = await Promise.all([readStudioModels(), readCatalogStates(genOrgId)]);
+          if (read === null) return { state: "unread" };
+          const onSale = exploreCatalog(models, catalog, ["t2v", "t2i", "i2v"]);
+          return { state: "ok", samples: exploreSamples(SHOWCASE_ENTRIES, SHOWCASE_FILES, onSale, locale), onSale: { t2v: onSale.t2v, t2i: onSale.t2i } };
+        })();
 
   // 0192: the 18+ confirmation, asked once of an account with none. Someone who said they are under 18 gets the honest notice
   // instead of the composer (the database refuses their quotes too); an unknown state stops no one.
@@ -285,9 +289,6 @@ export default async function CreatePage({
       )}
       {desk === "overview" && !createScreen && (
         <StudioHome
-          // Below the fold: the samples and formats whose model is on sale to this workspace, decided here from `models` (the
-          // registry as sellable_models() and this organization's locks leave it; no operator preview: it is not on sale).
-          explore={exploreData}
           orgId={genOrgId}
           models={panelModels}
           unavailable={switchedOff}

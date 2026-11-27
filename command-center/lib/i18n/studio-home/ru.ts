@@ -86,7 +86,7 @@ export const studioHomeRu: StudioHomeDictionary = {
     presets: "Пресеты",
   },
   explore: {
-    label: "Обзор",
+    label: "Примеры и форматы",
     samples: "Сделано в Студии",
     trending: "Сейчас в тренде",
     topics: "Видео по темам",
@@ -99,7 +99,7 @@ export const studioHomeRu: StudioHomeDictionary = {
     loading: "Загружаем форматы…",
     error: "Не удалось загрузить форматы.",
     retry: "Повторить",
-    soonTitle: "Примеры",
+    unread: "Сейчас не удалось проверить, что здесь доступно.",
     soon: "Примеры появятся здесь, когда модели станут доступны.",
     soonAction: "Напишите свой запрос выше",
     notEnabled: "Готовые форматы здесь ещё не включены.",

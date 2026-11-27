@@ -86,7 +86,7 @@ export const studioHomeUz: StudioHomeDictionary = {
     presets: "Tayyor andozalar",
   },
   explore: {
-    label: "Koʻrib chiqish",
+    label: "Namunalar va formatlar",
     samples: "Studiyada yaratilgan",
     trending: "Hozir trendda",
     topics: "Mavzular boʻyicha videolar",
@@ -99,7 +99,7 @@ export const studioHomeUz: StudioHomeDictionary = {
     loading: "Formatlar yuklanmoqda…",
     error: "Formatlarni yuklab boʻlmadi.",
     retry: "Qayta urinish",
-    soonTitle: "Namunalar",
+    unread: "Hozir bu yerda nima sotuvda ekanini tekshirib boʻlmadi.",
     soon: "Modellar ishga tushishi bilan namunalar shu yerda paydo boʻladi.",
     soonAction: "Yuqorida oʻz soʻrovingizni yozing",
     notEnabled: "Bu yerda tayyor formatlar hali yoqilmagan.",

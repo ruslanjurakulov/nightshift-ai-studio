@@ -7,13 +7,14 @@
    right then down (a CSS-columns masonry reads down each column instead). The spacer after the last card keeps the last row at
    its natural size instead of stretching two cards across the whole width. */
 
-.sx { display: flex; flex-direction: column; gap: clamp(40px, 28px + 3.3333vw, 72px); min-width: 0; padding-top: 12px; }
+.sx { position: relative; display: flex; flex-direction: column; gap: clamp(40px, 28px + 3.3333vw, 72px); min-width: 0; padding-top: 12px; }
 .sx-row { display: flex; flex-direction: column; gap: clamp(16px, 12px + 1.1111vw, 24px); min-width: 0; }
 .sx-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
-/* The owner's ~48 px section heading (Kling's), bold, on S5's display face: 28 px at 360 wide, 48 px from 1440. */
+/* The owner's ~48 px section heading (Kling's), bold, on S5's display face: 24 px at 360 wide (never above the page's own h1 there),
+   48 px from 1440. */
 .sx-h2 {
   margin: 0; font-family: var(--ds-font-display, var(--font-display)); font-weight: 700;
-  font-size: clamp(1.75rem, 1.3333rem + 1.8519vw, 3rem); line-height: var(--ds-lh-display-lg, 1.08); letter-spacing: var(--ds-ls-display-lg, -0.02em);
+  font-size: clamp(1.5rem, 1.0833rem + 1.8519vw, 3rem); line-height: var(--ds-lh-display-lg, 1.08); letter-spacing: var(--ds-ls-display-lg, -0.02em);
   color: var(--color-fg); text-wrap: balance;
 }
 .sx-h2:focus { outline: none; }
@@ -23,9 +24,12 @@
 /* Templates are mostly 9:16: a taller row, or a vertical card would be a sliver beside a wide sample. */
 .sx-grid:not([data-row="samples"]) { --row-h: 300px; }
 .sx-grid::after { content: ""; flex: 100000 1 0px; }
+/* A row may grow to fill the width, but by a quarter at most: a last row of two vertical cards would otherwise be a screen tall. */
 .sx-card {
-  flex: var(--ar) 1 calc(var(--ar) * var(--row-h)); min-width: 0; max-width: 100%; border-radius: 16px; background: #12151c;
+  flex: var(--ar) 1 calc(var(--ar) * var(--row-h)); min-width: 0; max-width: min(100%, calc(var(--ar) * var(--row-h) * 1.25)); border-radius: 16px;
 }
+/* The dark well under a card's picture (seen while it loads) is for real cards only: a skeleton keeps the theme's own shimmer. */
+.sx-card.mf-card { background: #12151c; }
 .sx-pic { position: relative; width: 100%; overflow: hidden; border-radius: inherit; }
 .sx-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 /* LoopClip's video over its still: one pixel inside it (the still stays the larger picture), faded in once it plays (data-live). */
@@ -48,6 +52,25 @@
 .sx-skel { aspect-ratio: 9 / 16; }
 .sx-state { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; color: var(--color-muted); font-size: var(--ds-fs-body, 1rem); }
 .sx-state p { margin: 0; max-width: var(--ds-measure, 62ch); }
+/* "Nothing to show" and "could not check": one body-size line and its way on, in the grid's place, never a display heading. */
+.sx-quiet { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; color: var(--color-muted); font-size: var(--ds-fs-body, 1rem); line-height: var(--ds-lh-body, 1.6); }
+.sx-quiet p { margin: 0; max-width: var(--ds-measure, 62ch); }
+.sx-quiet:focus { outline: none; }
+.sx-state .btn-quiet { min-height: 44px; }
+/* The pause key for the moving clips (components/site/ClipPause.tsx, WCAG 2.2.2). The site's rule is in site-next.css, which the app
+   does not load: the same key, visually hidden until a keyboard reaches it, then shown at the grid's top right. */
+.sx .nx-clip-pause {
+  position: absolute; z-index: 6; top: 0; right: 0; display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; padding: 0 14px;
+  border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.5); background: rgba(8, 8, 8, 0.8); color: #fff; font-size: 14px; font-weight: 600;
+  white-space: nowrap; cursor: pointer;
+}
+.sx .nx-clip-pause[aria-pressed="true"] { border-color: #ffa940; color: #ffa940; }
+.sx .nx-clip-pause:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
+.sx .nx-clip-pause:not(:focus-visible) {
+  width: 1px; height: 1px; min-width: 0; min-height: 0; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); border: 0;
+}
+@media (prefers-reduced-motion: reduce) { .sx .nx-clip-pause { display: none; } }
+
 .sx-note { margin: 0; font-size: var(--ds-fs-caption, 0.8125rem); line-height: var(--ds-lh-caption, 1.45); color: var(--color-muted); max-width: var(--ds-measure, 62ch); }
 
 /* A narrow card cannot hold 22/16 px (media-card.css's desktop scale): the landing's phone rule, for these grids. Up to 480 px the

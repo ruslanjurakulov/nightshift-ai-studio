@@ -20,6 +20,7 @@ import { cardTitle } from "@/lib/site/card-titles";
 import { cardWords } from "@/lib/site/card-words";
 import { posterSrcSet } from "@/lib/site/renditions";
 import { capabilityFor, type TemplateDto } from "@/lib/templates/trends";
+import { onlyOpenToSome, onlyPriced } from "@/lib/tool-availability";
 
 /** The model ids on sale to this workspace, per tool. Built on the server from the page's catalogue; the browser only reads it. */
 export type OnSale = Readonly<Record<string, readonly string[]>>;
@@ -33,9 +34,38 @@ export function onSaleCatalog(models: readonly StudioModel[], capabilities: read
   return out;
 }
 
-export function isOnSale(onSale: OnSale, capability: string, modelId: string): boolean {
-  return onSale[capability]?.includes(modelId) === true;
+/**
+ * The explore grid's catalogue from the page's models, by the same filtering the Studio's availability marks use
+ * (lib/server/tool-availability.ts readToolAvailability): less any model the price list has no rate for (`catalog`, the Models page's
+ * read; null = prices unread, nothing taken out on a guess) and any model no organization can buy (a plan-tier entitlement). A
+ * sellable model with no price is not on sale: its card would open a form whose quote is refused.
+ */
+export function exploreCatalog(
+  models: readonly StudioModel[],
+  catalog: readonly { id: string; state: string }[] | null,
+  capabilities: readonly string[],
+): OnSale {
+  return onSaleCatalog(onlyOpenToSome(onlyPriced(models, catalog)), capabilities);
 }
+
+/** Own keys only: a capability of `__proto__` or `constructor` (a forged body) is simply not on sale, never a TypeError. */
+export function isOnSale(onSale: OnSale, capability: string, modelId: unknown): boolean {
+  if (typeof capability !== "string" || typeof modelId !== "string" || !Object.hasOwn(onSale, capability)) return false;
+  const list = onSale[capability];
+  return Array.isArray(list) && list.includes(modelId);
+}
+
+/** Nothing on sale here for any tool the grid shows: no sample, and no model a format could use. */
+export function nothingOnSale(samples: readonly unknown[], onSale: OnSale): boolean {
+  return samples.length === 0 && Object.values(onSale).every((ids) => !Array.isArray(ids) || ids.length === 0);
+}
+
+/**
+ * What the page hands the grid: `ok` with the server-built samples and catalogue, or `unread` when the registry could not be read
+ * (readStudioModels() answered null) or there is no organization to read it for. Unread is never drawn as "nothing on sale yet"
+ * (CLAUDE.md rule 5): the grid then says, quietly, that it could not check.
+ */
+export type ExploreData = { state: "ok"; samples: ExploreSample[]; onSale: OnSale } | { state: "unread" };
 
 /** At most this many samples below the fold: the page is the composer's, and every clip in view plays (six at most at once). */
 export const EXPLORE_SAMPLE_LIMIT = 12;
@@ -126,9 +156,33 @@ export function exploreTemplates(templates: readonly TemplateDto[], onSale: OnSa
   const rows: Record<TemplateRow, TemplateDto[]> = { trending: [], topics: [], brand: [] };
   for (const t of templates) {
     const row = templateRow(t);
-    if (!row || t.model_status !== "available" || !t.poster_url) continue;
+    if (!row || t.model_status !== "available" || !isTemplateMedia(t)) continue;
     if (!isOnSale(onSale, capabilityFor(t.kind), t.model_id)) continue;
     rows[row].push(t);
   }
   return rows;
+}
+
+/** A template's box shape from its aspect (0183's CHECK: one of three). */
+export const TEMPLATE_ASPECT: Readonly<Record<string, readonly [number, number]>> = { "16:9": [16, 9], "9:16": [9, 16], "1:1": [1, 1] };
+
+/** The only media addresses the route builds (lib/templates/trends.ts templateMediaUrl): this origin's /templates files. */
+const TEMPLATE_MEDIA = /^\/templates\/[a-z0-9-]+\/(poster\.webp|preview\.mp4)$/;
+
+/**
+ * The route's body is data from the network, not a promise: a poster or preview outside /templates/<slug>/, or an aspect the grid has
+ * no box for, drops the template (Breach I-1: a bad aspect would otherwise throw while drawing the screen).
+ */
+function isTemplateMedia(t: TemplateDto): boolean {
+  if (typeof t.poster_url !== "string" || !TEMPLATE_MEDIA.test(t.poster_url) || !t.poster_url.endsWith("/poster.webp")) return false;
+  if (t.preview_url !== undefined && (typeof t.preview_url !== "string" || !TEMPLATE_MEDIA.test(t.preview_url) || !t.preview_url.endsWith("/preview.mp4"))) return false;
+  return typeof t.aspect === "string" && Object.hasOwn(TEMPLATE_ASPECT, t.aspect);
+}
+
+/**
+ * The route could not say for any template whether its model is on sale (every row "unknown": signed out, the registry unread).
+ * That is "could not check", not "nothing yet".
+ */
+export function templatesUnread(templates: readonly TemplateDto[]): boolean {
+  return templates.length > 0 && templates.every((t) => t.model_status === "unknown");
 }

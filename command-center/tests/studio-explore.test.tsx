@@ -29,7 +29,7 @@ vi.mock("next/link", () => ({
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";
 import { StudioExplore } from "@/components/studio/StudioExplore";
-import { EXPLORE_SAMPLE_LIMIT, exploreSamples, exploreTemplates, onSaleCatalog, templateRow, type OnSale } from "@/lib/creative/explore";
+import { EXPLORE_SAMPLE_LIMIT, exploreCatalog, exploreSamples, exploreTemplates, isOnSale, onSaleCatalog, templateRow, templatesUnread, type OnSale } from "@/lib/creative/explore";
 import { SHOWCASE_ENTRIES, sourceOnlyJobs, type ShowcaseEntry } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { linksSample } from "@/lib/site/showcase-link";
@@ -110,7 +110,7 @@ afterEach(() => {
 function draw(samples = exploreSamples(ON_SALE_ENTRIES, SHOWCASE_FILES, ALL_ON_SALE, "en", NOW), onSale: OnSale = ALL_ON_SALE, locale: "en" | "ru" | "uz" = "en") {
   return render(
     <I18nProvider locale={locale}>
-      <StudioExplore samples={samples} onSale={onSale} />
+      <StudioExplore data={{ state: "ok", samples, onSale }} />
     </I18nProvider>,
   );
 }
@@ -134,7 +134,8 @@ describe("no model name on a card", () => {
       }
       const all = said.join(" \n ");
       for (const n of names) expect(all.toLowerCase(), n).not.toContain(n.toLowerCase());
-      for (const id of ids) expect(all.split(/[\s"']+/), id).not.toContain(id);
+      // Whole ids only (Lens N3): split on anything that cannot be part of an id, so "minimax-h3" inside a word list is still caught.
+      for (const id of ids) expect(all.split(/[^\w.-]+/), id).not.toContain(id);
     }
   });
 
@@ -167,6 +168,39 @@ describe("only what is on sale to this workspace gets a card", () => {
     // The same model on sale for pictures only is not on sale for a clip.
     expect(exploreSamples(ON_SALE_ENTRIES, SHOWCASE_FILES, { t2i: [one.modelId] }, "en", NOW).some((s) => s.id === one.jobId)).toBe(false);
     expect(exploreSamples(ON_SALE_ENTRIES, SHOWCASE_FILES, {}, "en", NOW)).toEqual([]);
+  });
+
+  it("a model that is sellable but has no price in the catalogue gets no card (on sale means priced and buyable)", () => {
+    const e = ON_SALE_ENTRIES.find((x) => x.capability === "t2v" && !sourceOnlyJobs(ON_SALE_ENTRIES).has(x.jobId))!;
+    const models = [model(e.modelId, ["t2v"]), model("tiered", ["t2v"], { entitlement: "models_video:premium" })];
+    const priced = exploreCatalog(models, [{ id: e.modelId, state: "on_sale" }], ["t2v"]);
+    expect(priced.t2v).toEqual([e.modelId]);
+    const unpriced = exploreCatalog(models, [{ id: e.modelId, state: "not_on_sale" }], ["t2v"]);
+    expect(unpriced.t2v).toEqual([]);
+    expect(exploreSamples([e], SHOWCASE_FILES, unpriced, "en", NOW)).toEqual([]);
+    expect(exploreSamples([e], SHOWCASE_FILES, priced, "en", NOW).map((s) => s.id)).toEqual([e.jobId]);
+  });
+
+  it("a forged capability or model id never throws and is never on sale (own keys only)", () => {
+    for (const cap of ["__proto__", "constructor", "toString", "hasOwnProperty"]) expect(isOnSale(ALL_ON_SALE, cap, "minimax-h3")).toBe(false);
+    expect(isOnSale(ALL_ON_SALE, "t2v", ["minimax-h3"])).toBe(false);
+  });
+
+  it("a template whose media is not one of this origin's /templates files, or whose shape has no box, gets no card", () => {
+    const rows = exploreTemplates(
+      [
+        tpl("ok-media"),
+        tpl("off-site", { poster_url: "https://evil.example/poster.webp" }),
+        tpl("proto-rel", { poster_url: "//evil.example/templates/a/poster.webp" }),
+        tpl("climb", { poster_url: "/templates/../api/x/poster.webp" }),
+        tpl("swapped", { poster_url: "/templates/a/preview.mp4" }),
+        tpl("bad-preview", { preview_url: "javascript:alert(1)" }),
+        tpl("bad-aspect", { aspect: "4:3" as TemplateDto["aspect"] }),
+        tpl("proto-aspect", { aspect: "__proto__" as TemplateDto["aspect"] }),
+      ],
+      ALL_ON_SALE,
+    );
+    expect(rows.trending.map((t) => t.slug)).toEqual(["ok-media"]);
   });
 
   it("an operator preview, a locked model, and a model of another tool are not on sale (the catalogue the page builds)", () => {
@@ -318,27 +352,63 @@ describe("the templates read", () => {
     }
   });
 
-  it("nothing on sale here (no sample, no format): one honest line that examples come as models go live, and the way to the box above", async () => {
+  it("nothing on sale here (no sample, no format): one quiet line at once, no heading, no skeleton, and no templates read", () => {
     // Today's case: every shipped sample and every template is an operator preview's, and the strict rule counts none of them.
     const samples = exploreSamples(SHOWCASE_ENTRIES.map((e) => ({ ...e, operatorPreview: true })), SHOWCASE_FILES, ALL_ON_SALE, "en", NOW);
     expect(samples).toEqual([]);
     draw(samples, { t2v: [], t2i: [] });
-    const empty = await screen.findByTestId("explore-empty");
-    expect(within(empty).getByRole("heading", { name: x.soonTitle })).toBeTruthy();
+    const empty = screen.getByTestId("explore-empty");
     expect(empty.textContent).toContain(x.soon);
-    // A way on, not a dead end: the composer at the top of the page (id="prompt" on both screens).
+    // A quiet line, not a 48 px display heading over nothing (Pixel M1).
+    expect(screen.queryAllByRole("heading")).toHaveLength(0);
+    // A way on, not a dead end: the composer at the top of the page.
     expect(within(empty).getByRole("link", { name: x.soonAction }).getAttribute("href")).toBe("#prompt");
-    // No placeholder card, no skeleton left behind, and no "nothing starts until Create" note under no cards.
+    // No placeholder card, no skeleton, no note under no cards, and no request at all (Pixel M2).
     expect(cards()).toHaveLength(0);
     expect(document.querySelector(".sx-skel")).toBeNull();
     expect(screen.queryByText(x.note)).toBeNull();
-    expect(screen.getAllByTestId("explore-empty")).toHaveLength(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("the way on puts the keyboard in the composer's own field, not on the box around it", () => {
+    render(
+      <I18nProvider locale="en">
+        <div id="prompt">
+          <textarea aria-label="prompt" />
+        </div>
+        <StudioExplore data={{ state: "ok", samples: [], onSale: {} }} />
+      </I18nProvider>,
+    );
+    fireEvent.click(screen.getByTestId("explore-write-own"));
+    expect(document.activeElement?.tagName).toBe("TEXTAREA");
   });
 
   it("an empty template list and no samples is the same one line", async () => {
     templatesResponse = async () => new Response(JSON.stringify({ status: "ok", templates: [] }), { status: 200 });
     draw([]);
     expect((await screen.findByTestId("explore-empty")).textContent).toContain(x.soon);
+  });
+
+  it("a registry the server could not read is 'could not check', never 'examples appear as models go live' (rule 5)", () => {
+    render(
+      <I18nProvider locale="en">
+        <StudioExplore data={{ state: "unread" }} />
+      </I18nProvider>,
+    );
+    expect(screen.getByTestId("explore-unread").textContent).toContain(x.unread);
+    expect(document.body.textContent).not.toContain(x.soon);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("templates whose availability the route could not read (every row 'unknown') read as 'could not check', not 'soon'", async () => {
+    const unknown = TEMPLATES.map((t) => ({ ...t, model_status: "unknown" as const, model_available: false }));
+    expect(templatesUnread(unknown)).toBe(true);
+    expect(templatesUnread([])).toBe(false);
+    templatesResponse = async () => new Response(JSON.stringify({ status: "ok", templates: unknown }), { status: 200 });
+    draw([]);
+    expect((await screen.findByTestId("explore-unread")).textContent).toContain(x.unread);
+    expect(document.body.textContent).not.toContain(x.soon);
+    expect(cards()).toHaveLength(0);
   });
 
   it("samples on sale but no format: the samples show and no format row or empty line is drawn", async () => {
@@ -350,16 +420,43 @@ describe("the templates read", () => {
     expect(cards().every((c) => c.dataset.explore === "sample")).toBe(true);
   });
 
-  it("not switched on, and a session that ended, each say so with a way on", async () => {
+  it("Try again keeps the keyboard's place (the formats heading through the reload), then hands it to the first row", async () => {
+    let fail = true;
+    templatesResponse = async () => (fail ? new Response("{}", { status: 502 }) : new Response(JSON.stringify({ status: "ok", templates: TEMPLATES }), { status: 200 }));
+    draw([]);
+    const retry = await screen.findByTestId("explore-retry");
+    const heading = screen.getByRole("heading", { name: x.formats });
+    fail = false;
+    retry.focus();
+    fireEvent.click(retry);
+    expect(document.activeElement).toBe(heading);
+    expect(document.activeElement).not.toBe(document.body);
+    // The same element through the loading, not a new one.
+    expect(screen.getByTestId("explore-loading").contains(heading)).toBe(true);
+    const first = await screen.findByRole("heading", { name: x.trending });
+    await waitFor(() => expect(document.activeElement).toBe(first));
+  });
+
+  it("not switched on leads to the composer; a session that ended leads to sign-in and back here", async () => {
     templatesResponse = async () => new Response(JSON.stringify({ error: "not_enabled" }), { status: 503 });
     draw([]);
-    expect((await screen.findByTestId("explore-not_enabled")).textContent).toContain(x.notEnabled);
+    const off = await screen.findByTestId("explore-not_enabled");
+    expect(off.textContent).toContain(x.notEnabled);
+    expect(within(off).getByRole("link", { name: x.soonAction }).getAttribute("href")).toBe("#prompt");
     cleanup();
     templatesResponse = async () => new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
     draw([]);
     const out = await screen.findByTestId("explore-signed_out");
     expect(out.textContent).toContain(x.signedOut);
-    expect(within(out).getByRole("link", { name: x.signIn })).toBeTruthy();
+    const signIn = within(out).getByRole("link", { name: x.signIn });
+    expect(signIn.getAttribute("href")).toBe("/login?next=%2Fmy-channel%2Fcreate");
+    expect(signIn.className).toContain("btn-quiet");
+  });
+
+  it("with a moving clip on the grid, the keyboard has the page's pause key (WCAG 2.2.2)", async () => {
+    draw();
+    await waitFor(() => expect(document.querySelector('[data-explore="template"]')).not.toBeNull());
+    expect(screen.getByRole("button", { name: dictionaries.en.site.fx.pause })).toBeTruthy();
   });
 
   it("a row with nothing to show is not drawn (the text pictures have no row; no heading over nothing)", async () => {

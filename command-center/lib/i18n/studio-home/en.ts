@@ -105,7 +105,7 @@ export const studioHomeEn = {
    * Studio form; nothing is priced or started until Create is pressed there.
    */
   explore: {
-    label: "Explore",
+    label: "Examples and formats",
     samples: "Made in the Studio",
     trending: "Trending now",
     topics: "Videos by topic",
@@ -120,8 +120,9 @@ export const studioHomeEn = {
     loading: "Loading formats…",
     error: "Couldn't load the formats.",
     retry: "Try again",
-    /** Nothing on sale here has a sample or a format yet (the strict rule: no operator preview, no placeholder). */
-    soonTitle: "Examples",
+    /** The registry or the templates route could not say what is on sale (rule 5: never read as "nothing yet"). */
+    unread: "We couldn't check what is on sale here right now.",
+    /** Nothing on sale here has a sample or a format yet (the strict rule: no operator preview, no placeholder); one quiet line. */
     soon: "Examples appear here as models go live.",
     soonAction: "Write your own prompt above",
     notEnabled: "Ready-made formats are not switched on here yet.",
