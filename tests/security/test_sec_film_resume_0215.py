@@ -424,7 +424,9 @@ RETRYABLE = {"assembly_crashed", "render_failed", "render_timed_out", "render_de
 NOT_RETRYABLE = ["review_copy_too_large", "review_copy_missing", "missing_take", "take_failed", "asset_unavailable",
                  "continuity_broken", "aspect_mismatch", "too_many_audio_clips", "film_too_long", "narration_segments_missing",
                  "caption_overlap", "scene_not_shot", "narration_missing", "film_unavailable", "assembly_not_enabled",
-                 "assembly_failed", "deadline", None]
+                 "cancelled", "takes_failed", None]
+# The settle reasons that replace the assembly's own word (the sweep, the last lease, the worker's generic one): an unknown cause.
+WORD_LOST = {"deadline", "worker_lost", "assembly_failed"}
 
 
 def assembly_failed(db, o, word="render_failed"):
@@ -444,10 +446,10 @@ def rerun(db, who, fid, quote_id, key=None):
     return db.one("authenticated", who, "select public.rerun_film_assembly(%s::uuid, %s, %s)", [fid, quote_id, key or db.key()])
 
 
-def test_the_retryable_words_are_exactly_s4s_list(db):
+def test_the_retryable_words_are_exactly_s4s_list_and_the_three_lost_words(db):
     got = {w for (w,) in db.su("select w from unnest(%s::text[]) w where public.film_assembly_retryable(w)",
-                                [sorted(RETRYABLE) + [w for w in NOT_RETRYABLE if w]])}
-    assert got == RETRYABLE
+                                [sorted(RETRYABLE | WORD_LOST) + [w for w in NOT_RETRYABLE if w]])}
+    assert got == RETRYABLE | WORD_LOST
     assert db.su("select public.film_assembly_retryable(null)")[0][0] is False
 
 
@@ -471,7 +473,7 @@ def test_a_failed_assembly_is_made_again_for_its_line_only_and_no_take_is_charge
 TOTAL_TAKES = Decimal(44)   # 49 less the assembly, which failed at 0
 
 
-@pytest.mark.parametrize("word", ["continuity_broken", "review_copy_too_large", "assembly_failed"])
+@pytest.mark.parametrize("word", ["continuity_broken", "review_copy_too_large", "missing_take"])
 def test_a_failure_the_same_takes_cannot_cure_is_not_made_again(db, a, word):
     fid, _seg = assembly_failed(db, a, word)
     q = rquote(db, a.admin, fid)
@@ -481,6 +483,98 @@ def test_a_failure_the_same_takes_cannot_cure_is_not_made_again(db, a, word):
         code, w, detail = err(lambda: call(db, a.admin, fid, q["quote_id"]))
         assert (code, w, detail) == ("NS409", "assembly_not_retryable", f"word={word}")
     assert db.su("select count(*) from public.film_segments where film_id = %s", [fid])[0][0] == 1
+
+
+def assembly_lost(db, o, how):
+    """Every take made; the assembly ran, and its own word never reached the settle: the sweep past the deadline and grace
+    (deadline), the claim after the last lease (worker_lost), or the worker's generic word after recording the failure."""
+    fid = db.film(o)
+    seg = db.quoted_start(o, fid)
+    assert db.claim()["id"] == seg["id"]
+    db.finish_all(o, seg["id"])
+    db.svc("select public.film_begin_assembly(%s, 'w-1')", [seg["id"]])
+    if how == "deadline":
+        db.su("update public.film_segments set deadline_at = now() - interval '3 hours' where id = %s", [seg["id"]])
+        assert db.svc("select public.film_expire_segments()") == 1
+    elif how == "worker_lost":
+        db.su("update public.film_segments set heartbeat_at = now() - interval '1 hour', attempts = max_attempts where id = %s",
+              [seg["id"]])
+        assert db.claim("w-2") is None
+    else:
+        db.svc("select public.film_record_assembly(%s, 'w-1', false, null)", [seg["id"]])
+        db.settle(seg["id"], "assembly_failed")
+    assert db.film_row(fid) == ("paused", how)
+    assert db.su("select assembly_status from public.film_segments where id = %s", [seg["id"]])[0][0] == "failed"
+    return fid, seg
+
+
+@pytest.mark.parametrize("how", sorted(WORD_LOST))
+def test_a_failed_assembly_whose_word_was_lost_may_be_made_again(db, a, how):
+    """M2: the takes are fully paid; with the word replaced by the sweep, the last lease or the generic one, the cause is unknown,
+    never proven deterministic, and a failed assembly is charged 0: refusing the re-run would strand them for good."""
+    fid, _seg = assembly_lost(db, a, how)
+    q = rquote(db, a.admin, fid)
+    assert q["rerun"] is True and q["previous_failure"] == how and q["assembly_retryable"] is True and q["startable"] is True
+    out = rerun(db, a.admin, fid, q["quote_id"])
+    assert out["ok"] is True and out["rerun"] is True and Decimal(out["confirmed_credits"]) == 5
+    assert db.su("select detail ->> 'previous_failure' from public.film_events where film_id = %s and event = 'assembly_rerun'",
+                 [fid])[0][0] == how
+    assert Decimal(finish(db, a, out["id"])["captured_credits"]) == 5 and db.film_row(fid) == ("ready", None)
+
+
+def test_an_assembly_recorded_completed_is_a_ready_film_even_when_the_sweep_settles_it_at_the_deadline(db, a):
+    """M3: the assembly completed, the worker died before its settle, and the sweep settles past the deadline and grace. Before 0215
+    the film was left paused (deadline) with nothing to resume; it is ready, and its price is captured once."""
+    fid = db.film(a)
+    seg = db.quoted_start(a, fid)
+    db.claim()
+    db.finish_all(a, seg["id"])
+    db.svc("select public.film_begin_assembly(%s, 'w-1')", [seg["id"]])
+    db.svc("select public.film_record_assembly(%s, 'w-1', true, %s::uuid)",
+           [seg["id"], db.asset(a.org, "video", "video/mp4", duration=18)])
+    db.su("update public.film_segments set deadline_at = now() - interval '3 hours' where id = %s", [seg["id"]])
+    assert db.svc("select public.film_expire_segments()") == 1
+    assert db.film_row(fid) == ("ready", None)
+    assert db.segment(seg["id"])[:3] == ("settled", Decimal(49), "completed")
+    assert db.ledger(a.org, "capture") == [Decimal(-49)]
+    assert err(lambda: rquote(db, a.admin, fid))[:2] == ("NS409", "film_not_resumable")
+
+
+def test_a_resume_of_a_resume_says_what_each_carried_take_was_charged_by_the_take_that_was_made(db, a):
+    """Rule 5: a carried copy is charged 0, and the quote must not read that 0 as what the take cost: it follows the copy to the
+    take that was made."""
+    fid, _seg = paused(db, a)
+    out = resumed(db, a, fid)
+    assert db.claim()["id"] == out["id"]
+    clip = [r for r in db.takes(out["id"]) if r[4] == "planned"][0][0]
+    db.begin(clip)
+    retry = db.fail(clip, "provider_error")["retry_take_id"]
+    db.begin(retry)
+    db.fail(retry, "provider_error")
+    db.settle(out["id"], "takes_failed")
+    assert db.film_row(fid) == ("paused", "takes_failed")
+    q = rquote(db, a.admin, fid)
+    assert q["resumed_from"] == out["id"]
+    charged = {c["line"] + str(c["position"]): Decimal(str(c["charged_earlier"])) for c in q["carried"]}
+    assert charged == {"keyframe0": Decimal(3), "clip0": Decimal(20), "narrationNone": Decimal(1)}, q["carried"]
+
+
+def test_the_carried_files_are_locked_from_the_check_to_the_copy(db, a):
+    """L3: between the carried check and the copies, no carried file can be soft-deleted: start_film_resume holds them FOR SHARE
+    to its commit, so a delete waits (here: times out) instead of landing in the window."""
+    fid, seg = paused(db, a)
+    q = rquote(db, a.admin, fid)
+    kf = db.su("select result_asset_id from public.film_takes where segment_id = %s and kind = 'keyframe'", [seg["id"]])[0][0]
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute("select set_config('request.jwt.claims', %s, true)", [json.dumps({"role": "authenticated", "sub": a.admin})])
+        c.execute("set local role authenticated")
+        assert c.execute("select public.start_film_resume(%s::uuid, %s, %s)", [fid, q["quote_id"], db.key()]).fetchone()[0]["ok"]
+        with psycopg.connect(db.dsn, autocommit=False) as d:
+            d.execute("set local lock_timeout = '300ms'")
+            with pytest.raises(psycopg.errors.LockNotAvailable):
+                d.execute("update public.media_assets set deleted_at = now() where id = %s", [kf])
+            d.rollback()
+        c.rollback()
 
 
 def test_a_rerun_of_a_film_whose_takes_did_not_all_complete_is_not_an_assembly_failure(db, a):
@@ -583,6 +677,40 @@ def test_a_carried_take_that_changed_since_the_quote_is_refused_film_changed(db,
     assert err(lambda: resume(db, a.admin, fid, q["quote_id"]))[:2] == ("NS409", "film_changed")
 
 
+# ── who may spend: is_org_spender (the owner's decision, 22 Nov) ─────────────
+
+def spender(db, uid, org, role):
+    """is_org_spender as the database asks it inside a spend call: under the caller's own claims (it is no API role's to call)."""
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute("select set_config('request.jwt.claims', %s, true)",
+                  [json.dumps({"role": "authenticated", **({"sub": uid} if uid else {})})])
+        out = c.execute("select public.is_org_spender(%s::uuid, %s)", [org, role]).fetchone()[0]
+        c.rollback()
+        return out
+
+
+def staff_user(db, role):
+    u = str(uuid.uuid4())
+    email = f"spender-{role}-{u[:8]}@money.lab"
+    db.su("insert into auth.users (id, email) values (%s, %s)", [u, email])
+    db.su("insert into public.app_members (user_id, email, role) values (%s, %s, %s)", [u, email, role])
+    return u
+
+
+def test_is_org_spender_is_a_seat_of_the_role_in_org_members_or_platform_staff_in_the_exempt_organization_only(db, a, b):
+    exempt = "00000000-0000-0000-0000-000000000001"
+    staff = staff_user(db, "admin")
+    assert spender(db, a.owner, a.org, "admin") is True and spender(db, a.admin, a.org, "admin") is True
+    assert spender(db, a.editor, a.org, "admin") is False and spender(db, a.editor, a.org, "editor") is True
+    assert spender(db, a.viewer, a.org, "editor") is False
+    assert spender(db, b.admin, a.org, "admin") is False          # another organization's admin
+    assert spender(db, staff, a.org, "admin") is False            # platform staff with no seat: reads, never spends
+    assert spender(db, staff, exempt, "admin") is True            # the exempt organization's credits are the platform's own
+    assert spender(db, a.admin, exempt, "admin") is False
+    assert spender(db, None, a.org, "admin") is False and spender(db, a.admin, None, "admin") is False
+    assert spender(db, a.admin, a.org, "superuser") is False      # an unknown role is never a seat
+
+
 # ── another organization, anon, the service role ─────────────────────────────
 
 def test_another_organizations_film_reads_as_a_missing_one(db, a, b):
@@ -605,6 +733,7 @@ def test_neither_the_anon_key_nor_the_service_role_reaches_a_resume(db, a, role)
                  ("select public.film_resume_precheck(f, null) from public.films f where id = %s", [fid]),
                  ("select public.film_resume_done(t) from public.film_takes t where film_id = %s", [fid]),
                  ("select public.rerun_film_assembly(%s::uuid, 'fq-2-x', 'service-key-02')", [fid]),
+                 ("select public.is_org_spender(%s::uuid, 'admin')", [a.org]),
                  ("select public.film_assembly_retryable('render_failed')", [])):
         with pytest.raises(psycopg.Error) as e:
             db.act(role, None, q, p)
@@ -766,7 +895,9 @@ def test_the_rollback_refuses_while_a_resume_is_open_then_puts_the_earlier_bodie
                          ("public.archive_film(uuid)", "9ca4e793fd81bbd4a0aecdebd59d6dc6"),
                          ("public.start_film(uuid, text, text)", "7971355d754165affaf3e08904b4b078"),
                          ("public.film_claim_segment(text, interval)", "40db385bb4e3893e1085ee38dcd6f49b"),
-                         ("public.claim_creative_job(text, interval)", "3ca4da96aabe145b34a0275ed4d1c841")):
+                         ("public.claim_creative_job(text, interval)", "3ca4da96aabe145b34a0275ed4d1c841"),
+                         ("public.film_settle_locked(uuid, uuid, text)", "7caa68e2b6698c81e34c4f965950adf9"),
+                         ("public.quote_film(uuid, integer)", "99d01240ed2df7fb002f674df8891608")):
             assert md5_of(c, sig) == was, sig
         assert c.execute("select to_regprocedure('public.start_film_resume(uuid, text, text)')").fetchone()[0] is None
         # The record stays: the resumed segment, its carried takes, and the check that allows them (a resume row exists).

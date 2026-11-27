@@ -91,7 +91,8 @@ limited to the start call and its result handling, and S1 is told first.
 2. `claude/nsai-s2-sweep`: G2;
 3. `claude/nsai-s2-alerts`: G3, G4;
 4. `claude/nsai-s2-stop-unassemblable`: G5, which flips the pinned e2e assertion to a failing-then-passing regression;
-5. `claude/nsai-s2-archive-resume`: G1, archive and resume (0215), plus the worker-id leak S3 found;
+5. `claude/nsai-s2-archive-resume`: G1, archive and resume (0215), the assembly re-run, the member-only spend rule, and the part of the worker-id leak S3 found that
+   0215 can close (BR-0036-01/02 and BR-0215-01 stay open in the ledger);
 6. `claude/nsai-s2-create-button`: the Brain's start states;
 7. `docs/studio/S2_LIVE_TEST.md`: the runbook for the owner-approved single paid test film (Atlas runs it; S2 never spends).
 

@@ -139,7 +139,9 @@ editor changes it, with `set_film_studio_enabled(true|false)`, and every change 
 **Switch-on gates.** `film_studio_enabled` stays off until all of these hold:
 
 - archive and resume exist for `paused` and `cancelled` projects, so no project a person paid into is left without a way forward
-  (**met by 0215**: "Resume", below. A cancelled project is archived, not resumed);
+  (**met by 0215**: "Resume", below. A cancelled project is archived, not resumed). 0215 also keeps the film worker's id out of the
+  history members read (`film_read`) and out of new claim events; `creative_jobs.worker_id` and rows written before 0215 stay open in
+  the security ledger (BR-0036-01/02), and `worker_ref` is an unsalted md5 (BR-0215-01, info);
 - P3 runs `film_expire_segments` at least every 15 minutes, so a segment past its deadline and grace settles while its hold is open;
 - P3 alerts on every `segment_settled` event with `not_captured` (charges a hold could no longer pay), and on every
   `segment_skipped` event (a segment the claim or the sweep could not touch).
@@ -303,9 +305,18 @@ can go on, paying only for what it has not made yet. Contract approved by the co
   made take's file was deleted, then `start_film_resume` as it is (the replay, the lock, the hold of the assembly line only), audited
   as `assembly_rerun` with the previous failure word. The word is the segment's `settle_reason` (the worker settles a failed
   assembly with the assembly's own reason). Only S4's retryable words are made again (`film_assembly_retryable`: assembly_crashed,
-  render_failed, render_timed_out, render_degraded, store_failed, disk_low, output_mismatch, captions_failed, captions_unavailable);
-  any other (a film_timeline refusal, a review copy, narration_missing, film_unavailable, assembly_not_enabled, the worker's generic
-  assembly_failed, a deadline) is `assembly_not_retryable` with the word, and the quote lists it in `blocked_by`.
+  render_failed, render_timed_out, render_degraded, store_failed, disk_low, output_mismatch, captions_failed, captions_unavailable),
+  and a word that was lost (the segment settled `deadline` by the sweep, `worker_lost` after its last lease, or the worker's generic
+  `assembly_failed`: the cause is unknown, and a failed assembly is charged 0); any other (a film_timeline refusal, a review copy,
+  narration_missing, film_unavailable, assembly_not_enabled) is `assembly_not_retryable` with the word, and the quote lists it in
+  `blocked_by`.
+- **The cap is the whole film's.** `max_credits_per_film` is compared with what the film's segments captured plus the resume total.
+- **Only a member spends** (the owner's decision, 22 Nov). Starting, resuming or re-running a film on an organization's credits
+  needs an owner or admin seat in `org_members`; a platform owner or admin who is not a member reads the quotes (they hold nothing,
+  and say `not_a_member` in `blocked_by`) and is refused `NS400 not_a_member` with the remedy, before anything is counted. In the
+  exempt organization the credits are the platform's own, and its platform owner or admin may, as before.
+- **A made film is ready.** An assembly recorded completed settles the film `ready`, whatever settles its segment (the sweep's
+  deadline included); a resume cancelled before it made anything new goes back to `paused`, never `cancelled`.
 - **What was carried must not move.** The resume quote stores each carried take with its result and last frame (`film_quotes.carried`);
   the start refuses `film_changed`, before anything is counted, when any of them changed or its file was deleted since the quote.
 - **The worker is unchanged.** It skips the completed takes, makes the rest, assembles, and settles; 0171 captures the new segment's

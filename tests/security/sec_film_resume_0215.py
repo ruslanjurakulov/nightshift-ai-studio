@@ -23,6 +23,8 @@ def extend(tables: dict, functions: dict) -> None:
         "rerun_film_assembly": USER,
         # Internal: the retryable assembly failure words, read by the quote and the start.
         "film_assembly_retryable": SERVICE,
+        # Internal and standalone (0226 reuses it): a seat in org_members of the role, or platform staff in the exempt organization.
+        "is_org_spender": SERVICE,
         # Internal: called only inside the two above.
         "film_resume_price": SERVICE,
         "film_resume_precheck": SERVICE,

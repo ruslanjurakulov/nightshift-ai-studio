@@ -2446,13 +2446,14 @@ video is cross-posted.
 - **Requires** 0029 and 0112. The body is replaced only if it is 0029's or 0205's (md5 guard).
 - **Undo.** `docs/sql/rollback_0205_publish_refusal_gate_verdict.sql` puts 0029's body back exactly.
 
-## Film Studio: archive and resume a project that stopped, and the worker's id out of members' reads (0215)
+## Film Studio: archive and resume a project that stopped, re-run a failed assembly, and only a member spends (0215)
 
 0215 (`0215_film_archive_resume.sql`, provisional number) closes switch-on gate G1 (`docs/FILM_STUDIO.md`, "Resume";
 `docs/studio/S2_GAPS.md`). Before it, a film that paused (something was charged and the run stopped short) or was cancelled after a
 charge could neither be archived (0166's `archive_film` takes draft / planned only) nor go on (`start_film` takes draft / planned
-only). It also closes a low-severity leak S3 found: the film worker's id (by default the host name and process id) reached every
-member through `segment_claimed` events.
+only). It also narrows a low-severity leak S3 found (the film worker's id, by default the host name and process id, in
+`segment_claimed` events): `film_read` no longer hands it to a member and new claim events record a reference instead. It does
+not close the leak entirely (below: BR-0036-01/02 and BR-0215-01 are open in the security ledger).
 
 - **Archive.** `archive_film` (0166's body, one hunk) also takes a `paused` or `cancelled` film, editors and above as before. It is
   refused while a segment of the film is open (`NS409 segment_open`) or a refund waits to collect from one of its holds
@@ -2467,17 +2468,30 @@ member through `segment_claimed` events.
   take whose file was deleted since is not carried; its line is priced and made again (`film_resume_done`). New
   words: `film_not_resumable`, `nothing_to_resume` (NS409). A cancelled film is not resumable (0171 keeps `cancelled` only for a
   cancel after a charge, which `start_film` never restarts); archive it.
+- **The cap is the whole film's.** `max_credits_per_film` is asked of what the film's segments already captured plus the resume
+  total, in the start and in the quote's `blocked_by` (Breach hole 1).
+- **Settling** (0198's `film_settle_locked`, two marked hunks): a segment whose assembly is recorded completed settles `completed`
+  (the film `ready`) whatever reason reaches it, the sweep's deadline included; a resume segment that captured 0 and made nothing new
+  puts the film back to `paused` (after a cancel, with the earlier pause reason), never `cancelled` (Breach hole 2).
+- **Only a member spends** (the owner's decision, 22 Nov): `start_film`, `start_film_resume` and `rerun_film_assembly` need an owner
+  or admin seat in `org_members` (`is_org_spender(org, role)`, standalone so later spend paths reuse it), never only 0043's `accessible_org_ids`; a platform owner or admin who is not
+  one gets `NS400 not_a_member` ("ask the workspace's owner to add you as a member") with who may call, before anything is counted.
+  `quote_film` (0198's body, one hunk) and `quote_film_resume` still answer them (no hold) and say `not_a_member` in `blocked_by`.
+  The exempt organization's credits are the platform's own: its platform owner or admin starts and resumes there as before.
 - **A failed assembly, made again** (agreed with the coordinator; no separate migration): `rerun_film_assembly(film, quote_id,
   idempotency_key)` for a film whose every take is made and whose assembly failed with one of S4's retryable words
-  (`film_assembly_retryable`); `not_assembly_failure`, `assembly_not_retryable` (with the word), `film_changed`; the event is
+  (`film_assembly_retryable`), or whose word was lost (the settle reason is `deadline`, `worker_lost` or `assembly_failed`:
+  an unknown cause, re-run at the cost of the assembly line only); `not_assembly_failure`, `assembly_not_retryable` (with the word), `film_changed`; the event is
   `assembly_rerun`. A resume quote also stores what it carries (`film_quotes.carried`), and the start refuses `film_changed` when
   any of it moved since.
 - **The worker** is unchanged: the carried takes are completed, so it makes only what is left and assembles; 0171 settles the new
   segment and captures at most its hold. A resume that makes nothing new leaves the film paused (never draft).
-- **The leak.** `film_claim_segment` and `claim_creative_job` (0198's bodies, one hunk each) record `worker_ref` (the first 12 hex
-  of md5 of the worker id) instead of the id; `film_read` (0166's, one hunk) drops `detail.worker` from every event a member reads
-  (`film_json`, `save_film`, `archive_film`), old rows included; a `start_film` replay no longer answers `worker_id`.
-- **Not closed here (reported):** 0036 grants the whole `creative_jobs` table to members, so `creative_jobs.worker_id` (the
+- **The leak, what 0215 closes.** `film_claim_segment` and `claim_creative_job` (0198's bodies, one hunk each) record `worker_ref`
+  (the first 12 hex of md5 of the worker id) instead of the id in every event written from now on; `film_read` (0166's, one hunk)
+  drops `detail.worker` from every event a member reads through `film_json`, `save_film` and `archive_film`, old rows included; a
+  `start_film` replay no longer answers `worker_id`.
+- **The leak, what stays open** (in the security ledger, each with its own fix): `worker_ref` is an unsalted md5, so a member who
+  guesses the host name can recover the id (BR-0215-01, info; pinned as a strict xfail). And BR-0036-01/02: 0036 grants the whole `creative_jobs` table to members, so `creative_jobs.worker_id` (the
   creative worker's and, for a film take's job, the film worker's id) is still readable by a member's direct select, and so is
   `detail.worker` in `film_events` / `creative_job_events` rows written before 0215 (both tables are append-only). The app reads
   neither (`lib/creative/operations.ts` `JOB_COLUMNS` names no worker). To redact the old rows, the owner may run once, as the table
@@ -2505,6 +2519,6 @@ member through `segment_claimed` events.
   guard); 0166's and 0198's replays and rollbacks refuse while 0215 is on (take it out first).
 - **Browser routes** for archive of a paused film (the existing `POST /api/films/{id}/archive` already calls `archive_film`) and for
   the two resume calls are a follow-up; no UI changes here.
-- **Undo.** `docs/sql/rollback_0215_film_archive_resume.sql` (owner-applied): the five earlier bodies back, the eight functions
+- **Undo.** `docs/sql/rollback_0215_film_archive_resume.sql` (owner-applied): the seven earlier bodies back, the nine functions
   dropped; the columns and record checks kept, 0171's state check back only when no segment ever resumed. Refused while a resume
   segment is open.
