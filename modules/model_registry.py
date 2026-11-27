@@ -411,8 +411,9 @@ class ModelEntry:
         # An expand is asked by its shape, and a relight by its look when the
         # probe names one (the database sends exactly one of look / prompt).
         # A video edit and a character swap are asked by their words; the other video tools take none.
+        # A picture upscale takes none either: Ideogram's (Topaz Standard V2, the one wired) refuses a prompt.
         wordless = (speech or (cap in VIDEO_INPUT and cap not in (VIDEO_EDIT, VIDEO_CHARACTER_SWAP)) or cap == DESCRIBE or cap == EXPAND
-                    or (cap == RELIGHT and p.get("look")))
+                    or cap == UPSCALE or (cap == RELIGHT and p.get("look")))
         return CapabilityRequest(capability=cap, prompt="" if wordless else p["prompt"],
                                  look=p.get("look"),
                                  aspect_ratio=p.get("aspect_ratio"), resolution=p.get("resolution"),

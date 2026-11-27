@@ -6,8 +6,8 @@ a library picture as a generation prompt (``describe``, migration 0055).
 Background removal (``remove_bg``) has no adapter: none of the vendors wired
 here documents a background-removal endpoint, so no registry model lists it
 and the creative worker answers ``capability_not_supported`` (never a fake
-result). The same holds for a 4x upscale: Ideogram's documented upscale
-enhances "up to 2X", so its registry entry offers factor 2 only.
+result). The same holds for a 4x upscale: Ideogram's v2 upscale documents x2, x4
+and x8, but only x2 is wired and offered.
 
 Imagen is not here: Google shut Imagen down on the Gemini API (2026-08-17);
 it is still sold on Vertex AI, which needs its own adapter (OAuth, another host).
@@ -21,7 +21,6 @@ call with the owner's key (migration 0035 refuses ``beta``/``ga`` otherwise).
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -535,53 +534,95 @@ class IdeogramV45Adapter(_IdeogramV2):
         return self._image(data, vendor_model)
 
 
-class IdeogramUpscaleAdapter(IdeogramAdapter):
-    """``POST https://api.ideogram.ai/upscale`` — multipart: ``image_request``
-    (a JSON object as a form field: optional ``prompt``) and ``image_file``
-    (JPEG / WebP / PNG, at most 10 MB); header ``Api-Key``; answers
-    ``data[0].url`` like the generate endpoints. Ideogram documents it as
-    enhancing "up to 2X", so only factor 2 is offered; the resemblance and
-    detail sliders keep the vendor's defaults (not sent)."""
+class IdeogramUpscaleAdapter(_IdeogramV2):
+    """Ideogram's v2 upscale: ``POST https://api.ideogram.ai/v2/image/upscale/{model}``, header ``Api-Key``, a multipart
+    form with ``image`` (the file) and ``upscale_factor`` (``x2`` | ``x4`` | ``x8``); answered synchronously with
+    ``data[0].url`` and ``data[0].is_image_safe`` (developer.ideogram.ai/v2/api-reference/images/upscale.md and
+    .../upscale/topaz-standard-2.md, read 2026-11-27). It used to call ``POST /upscale``, which the docs now call
+    "Upscale (legacy)" and which answered a live probe on 2026-11-27 with HTTP 400 "The selected model version is no
+    longer supported".
+
+    The model is the registry's vendor_model, ``topaz-standard-2``, never ``auto``: the vendor says what ``auto`` picks
+    "may change over time", which would swap the model under a price without anyone deciding it (CLAUDE.md #4).
+    ``upscale_factor`` is ALWAYS sent and is only ``x2``: it is the one factor offered, and left out the vendor's default
+    would decide the output size, which is what the vendor bills by (per output megapixel). Topaz Standard V2 takes no
+    prompt, so a request with words is refused, not sent with them silently dropped."""
 
     key = "image.ideogram_upscale"
     capabilities = (UPSCALE,)
+    NAME = "Ideogram Upscale"
+    VENDOR_MODEL = "topaz-standard-2"
+    #: The v2 pages allow 50 MB; we keep the legacy endpoint's 10 MB on purpose: the file goes up in one synchronous
+    #: request, and a larger source only makes a larger (per-megapixel billed) output.
     MAX_BYTES = 10 * 1024 * 1024
+    #: Documented: a 400 when the output would exceed 8192 px on either side. Checked before anything is sent.
+    MAX_OUTPUT_SIDE = 8192
+    #: Our factor -> the vendor's ``upscale_factor``. Only 2 is offered (registry ``upscale_factors``).
+    FACTORS = {2: "x2"}
     _TYPES = {"image/png", "image/jpeg", "image/webp"}
 
-    def problems(self, request: CapabilityRequest, entry) -> List[str]:
-        out = super().problems(request, entry)
-        if request.scale not in (None, 2):
+    @staticmethod
+    def _pixels(path: Path) -> Optional[Tuple[int, int]]:
+        """(width, height) from the file's header, or None when it cannot be read. Never a guess (CLAUDE.md #5)."""
+        from PIL import Image  # noqa: PLC0415 - only an upscale reads a source's size
+
+        try:
+            with Image.open(path) as im:
+                return int(im.size[0]), int(im.size[1])
+        except Exception:  # noqa: BLE001 - truncated, a bomb, not an image: all "cannot be read"
+            return None
+
+    def _refusals(self, request: CapabilityRequest) -> List[str]:
+        out: List[str] = []
+        factor = 2 if request.scale is None else request.scale
+        if factor not in self.FACTORS:
             out.append("Ideogram upscales 2x only")
+        if (request.prompt or "").strip():
+            out.append("Ideogram's upscale (Topaz Standard V2) takes no prompt: clear the words and upscale again")
         for p in request.input_images[:1]:
             path = Path(str(p))
             if is_url(str(p)):
                 out.append("Ideogram takes the image as an uploaded file, not an https URL")
             elif image_mime(str(path)) not in self._TYPES or path.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
                 out.append("Ideogram upscales JPEG, PNG or WebP images")
-            elif path.is_file() and path.stat().st_size > self.MAX_BYTES:
-                out.append("Ideogram upscales images of at most 10 MB")
+            elif path.is_file():
+                if path.stat().st_size > self.MAX_BYTES:
+                    out.append("Ideogram upscales images of at most 10 MB")
+                    continue
+                size = self._pixels(path)
+                if size is None:
+                    out.append("the image's size could not be read, so its upscale cannot be checked; "
+                               "export it again as PNG or JPEG")
+                elif factor in self.FACTORS and max(size) * factor > self.MAX_OUTPUT_SIDE:
+                    out.append(f"this image is {size[0]}x{size[1]}; a {factor}x upscale must stay within "
+                               f"{self.MAX_OUTPUT_SIDE} px a side, so use one at most "
+                               f"{self.MAX_OUTPUT_SIDE // factor} px on each side")
+        return out
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        out.extend(p for p in self._refusals(request) if p not in out)
         return out
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
         self.require_key()
-        if not request.input_images:
-            raise AdapterError(E_BAD_REQUEST, "upscale needs an input image")
-        if is_url(str(request.input_images[0])):
-            raise AdapterError(E_BAD_REQUEST, "Ideogram takes the image as an uploaded file, not a URL")
+        bad = self._refusals(request)
+        if len(request.input_images) != 1:
+            bad.append("upscale needs one input image")
+        elif not Path(str(request.input_images[0])).is_file():
+            bad.append("the image to upscale is not on this machine")
+        if vendor_model != self.VENDOR_MODEL:
+            bad.append(f"{vendor_model!r} is not the Ideogram upscale model this adapter is wired for")
+        if bad or request.capability != UPSCALE:
+            # Nothing has been sent: a refusal, not a lost answer.
+            raise AdapterError(E_BAD_REQUEST, "; ".join(bad) or "Ideogram Upscale is wired for upscale only",
+                               not_accepted=True)
         path = Path(str(request.input_images[0]))
-        image_request: Dict[str, str] = {}
-        if (request.prompt or "").strip():
-            image_request["prompt"] = request.prompt.strip()
-        form = {"image_request": (None, json.dumps(image_request)),
-                "image_file": (path.name, path.read_bytes(), image_mime(str(path)))}
-        data = self._call("POST", f"{self.base_url}/upscale", files=form, what="upscale")
-        first = dig(data, "data", 0) or {}
-        if first.get("is_image_safe") is False:
-            raise AdapterError(E_POLICY, "the vendor marked the image unsafe")
-        if not first.get("url"):
-            raise AdapterError(E_BAD_RESPONSE, "no image in the response")
-        return ProviderTask(self.key, vendor_model, None,
-                            outputs=[Output("image/png", url=str(first["url"]))])
+        form = {"image": (path.name, path.read_bytes(), image_mime(str(path))),
+                "upscale_factor": (None, self.FACTORS[2 if request.scale is None else request.scale])}
+        data = self._call("POST", f"{self.base_url}/v2/image/upscale/{self.VENDOR_MODEL}", files=form,
+                          what="upscale")
+        return self._image(data, vendor_model)
 
 
 #: Seedream: the pixel size each (vendor model, image size, aspect ratio) is sent as. The
