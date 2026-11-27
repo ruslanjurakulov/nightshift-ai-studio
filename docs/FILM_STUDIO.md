@@ -144,7 +144,16 @@ editor changes it, with `set_film_studio_enabled(true|false)`, and every change 
   the security ledger (BR-0036-01/02), and `worker_ref` is an unsalted md5 (BR-0215-01, info);
 - P3 runs `film_expire_segments` at least every 15 minutes, so a segment past its deadline and grace settles while its hold is open;
 - P3 alerts on every `segment_settled` event with `not_captured` (charges a hold could no longer pay), and on every
-  `segment_skipped` event (a segment the claim or the sweep could not touch).
+  `segment_skipped` event (a segment the claim or the sweep could not touch). **Built, not live** (`claude/nsai-s2-alerts`):
+  the operator alert engine's `film` kind (`modules/operator_bot/alerts.py`, every 10 minutes by `operator_alerts.yml`, every
+  5 on the server) sends a **critical** alert per `segment_settled` event whose `detail.not_captured` > 0 (the amount, the
+  org's and the film's short ids), and a warning per `segment_skipped` event and per `security_events` row of kind
+  `film.segment_skipped` (0171's fallback in `film_record_skip`), with the call and the SQLSTATE; each once, keyed on the
+  event id. It also warns on a segment `queued` 15 minutes with no claim or `running`/`draining` with a heartbeat older than
+  20 minutes, and raises a critical alert when `film_sweep_status()` (0212) says `overdue: true` (null, never recorded, is no
+  alert and reads "never recorded" in `/health`). The film worker reports `worker_status` (kind `other`, id `film-…`), so the
+  "worker lost" alert covers it. Live once the bot runs against a database with 0212 applied (docs/operator-bot.md,
+  "Film Studio").
 
 The Command Center's own switch, `NIGHTSHIFT_FILM_STUDIO`, is separate: it shows the screens, and turns no money on.
 

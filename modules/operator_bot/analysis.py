@@ -91,6 +91,102 @@ def classify_workers(rows, now: datetime) -> list[dict]:
     return out
 
 
+#: A queued film segment nobody claimed for this long: the film worker is not claiming (off, refusing to start, or
+#: gone). A customer's credits are on hold the whole time.
+FILM_QUEUED_STUCK = timedelta(minutes=15)
+#: A running / draining segment whose lease heartbeat is this old: its worker is gone. 0171 hands a stale lease to
+#: the next claim, but only a running worker claims, so past this a person should look.
+FILM_LEASE_STUCK = timedelta(minutes=20)
+_SQLSTATE = re.compile(r"[0-9A-Z]{5}")
+#: The calls 0171's film_record_skip names.
+FILM_SKIP_CALLS = ("claim", "sweep")
+
+
+def film_stuck_segments(rows, now: datetime) -> list[dict]:
+    """Open film segments that are stuck: ``{**row, "why": "queued"|"lease", "since": datetime}``.
+
+    queued = no claim (``claimed_at`` empty) for FILM_QUEUED_STUCK since it was created; lease = running or draining
+    with a heartbeat older than FILM_LEASE_STUCK. A running segment with no heartbeat at all is judged by its claim:
+    an unknown heartbeat is not a fresh one. A row with no usable time is never called stuck (we cannot tell)."""
+    out = []
+    for r in rows or []:
+        status = r.get("status")
+        if status == "queued" and not r.get("claimed_at"):
+            since = parse_ts(r.get("created_at"))
+            if since is not None and now - since > FILM_QUEUED_STUCK:
+                out.append({**r, "why": "queued", "since": since})
+        elif status in ("running", "draining"):
+            since = parse_ts(r.get("heartbeat_at")) or parse_ts(r.get("claimed_at"))
+            if since is not None and now - since > FILM_LEASE_STUCK:
+                out.append({**r, "why": "lease", "since": since})
+    return out
+
+
+def film_not_captured(row) -> Optional[float]:
+    """The credits a settle could not capture, when the event says a positive number; None otherwise (missing,
+    zero, negative or not a number is not an alert)."""
+    v = _num(row.get("not_captured") if isinstance(row, dict) else None)
+    return v if v is not None and v > 0 else None
+
+
+def film_sqlstate(value) -> str:
+    """A SQLSTATE as printed in an alert: five characters of the closed alphabet, else ``?``."""
+    text = str(value or "")
+    return text if _SQLSTATE.fullmatch(text) else "?"
+
+
+def film_skip_call(value) -> str:
+    return value if value in FILM_SKIP_CALLS else "?"
+
+
+def film_sweep_state(data) -> dict:
+    """0212's ``film_sweep_status()`` answer, read defensively (the function is still being revised): ``overdue`` is
+    True, False or None (never recorded, or a key this reader does not find: unknown, NEVER fine), plus the newest
+    completed sweep, the open segment count and the overdue line, each None when absent."""
+    d = data if isinstance(data, dict) else {}
+    raw = d.get("overdue")
+    overdue = raw if isinstance(raw, bool) else None
+    newest = parse_ts(d.get("last_at"))
+    if newest is None:
+        runners = d.get("runners") if isinstance(d.get("runners"), dict) else {}
+        stamps = [parse_ts(r.get("last_at")) for r in runners.values() if isinstance(r, dict)]
+        stamps = [s for s in stamps if s is not None]
+        newest = max(stamps) if stamps else None
+    open_n = _num(d.get("open_segments"))
+    after = _num(d.get("overdue_after_minutes"))
+    stuck = _num(d.get("stuck_segments"))
+    oldest = _num(d.get("oldest_stuck_minutes"))
+    # "answered": the function said null itself (never recorded), as opposed to a shape without the key.
+    return {"overdue": overdue, "answered": "overdue" in d and (raw is None or overdue is not None),
+            "last_at": newest, "open": None if open_n is None else int(open_n),
+            "after_min": None if after is None else int(after),
+            # Segments 0171's sweep rules could already have settled, and for how long the oldest has waited.
+            "stuck": None if stuck is None else int(stuck), "oldest_stuck_min": None if oldest is None else int(oldest)}
+
+
+def worker_role(row) -> str:
+    """Which worker a worker_status row speaks for, for "is another one of these alive?".
+
+    Kind ``other`` is shared by unrelated workers (the e-mail worker ``email-…``, the film worker ``film-…``, the
+    deploy probe), so for it the id's prefix says which: a fresh e-mail worker must not hide a silent film worker, nor
+    the other way round. Every other kind is one role, whatever the container id."""
+    kind = str(row.get("kind") or "")
+    if kind != "other":
+        return kind
+    return "other:" + str(row.get("worker_id") or "").split("-", 1)[0]
+
+
+_FILM_PID = re.compile(r"^(film-.+)-\d+$")
+
+
+def worker_self(row) -> tuple:
+    """Which single worker a row is, for "did THIS worker later say it stopped?": its kind and id, except the film
+    worker (``film-<host>-<pid>``), whose pid changes on every restart: for it, the host (``film-<host>``)."""
+    kind, wid = str(row.get("kind") or ""), str(row.get("worker_id") or "")
+    m = _FILM_PID.match(wid) if kind == "other" else None
+    return (kind, m.group(1) if m else wid)
+
+
 def balance_flags(rows, low_credits: float) -> list[dict]:
     """Balance rows with ``low`` set. Only ElevenLabs has a threshold (the one
     modules/provider_balance already uses); every other provider is never
