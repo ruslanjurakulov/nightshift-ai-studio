@@ -22,7 +22,7 @@ import { Landing } from "@/components/landing/Landing";
 import type { MoneyAnchor } from "@/lib/landing";
 import { IDEA_NEXT } from "@/lib/site/idea-handoff";
 import { WELCOME_CREDITS } from "@/lib/pricing";
-import { publicNavLinks } from "@/components/legal/PublicShell";
+import { publicNav } from "@/lib/public-nav";
 
 afterEach(cleanup);
 
@@ -55,8 +55,12 @@ describe("landing hero → the idea box, and #how from the page's nav", () => {
     const t = dictionaries[locale];
     // No link at all: the idea box's own key is the first screen's one call to action, as the reference's one bar is.
     expect(hero.querySelectorAll("a")).toHaveLength(0);
-    // "How it works" is still one click from the first screen: the header every public page carries leads there.
-    expect(publicNavLinks(t).find((l) => l.href === "/#how")?.label).toBe(t.site.nav.how);
+    // "How it works" is still reachable from the first screen: the header every public page carries leads there (since the
+    // mega-menu, from the Studio panel; lib/public-nav.ts is the header's one source).
+    const items: { href: string; label: string }[] = publicNav(t, { devPages: false }).flatMap((e): { href: string; label: string }[] =>
+      e.kind === "link" ? [e] : e.columns.flatMap((c) => c.links),
+    );
+    expect(items.find((l) => l.href === "/#how")?.label).toBe(t.site.nav.how);
     // The box is a GET form to sign-up with the Studio as `next`; its field has no name, so the words never enter an address.
     const form = hero.querySelector("form") as HTMLFormElement;
     expect(form.getAttribute("action")).toBe("/signup");

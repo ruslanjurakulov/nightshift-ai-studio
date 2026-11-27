@@ -535,9 +535,12 @@ describe.each(LOCALES)("4 one clear call to action and 16 FAQ (%s)", (locale) =>
     const html = await htmlOf(module, props, locale);
     const start = dictionaries[locale].site.nav.start;
     const header = html.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
-    const keys = [...header.matchAll(/<a [^>]*class="[^"]*\bst-key\b[^"]*"[^>]*>/g)];
+    const all = [...header.matchAll(/<a [^>]*class="[^"]*\bst-key\b[^"]*"[^>]*>/g)];
+    // The phone sheet (components/legal/PublicMenu.tsx) covers the bar when open and repeats that one key at its foot.
+    const keys = all.filter((k) => !k[0].includes("data-sheet-key"));
     expect(keys, "primary buttons in the header").toHaveLength(1);
     expect(keys[0][0]).toContain('href="/signup"');
+    expect(all.filter((k) => k[0].includes("data-sheet-key")).map((k) => /href="([^"]*)"/.exec(k[0])?.[1])).toEqual(["/signup"]);
     expect(header).toContain(start);
   }, 60_000);
 

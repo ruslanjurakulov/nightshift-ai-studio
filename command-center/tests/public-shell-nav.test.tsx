@@ -19,7 +19,11 @@ vi.mock("next/link", () => ({
 import { dictionaries } from "@/lib/i18n";
 import { publicDictionary } from "@/lib/i18n/public";
 import { PublicI18nProvider } from "@/lib/i18n/public-context";
-import { PublicShell, publicNavLinks } from "@/components/legal/PublicShell";
+import { PublicShell } from "@/components/legal/PublicShell";
+import { navHrefs, publicNav } from "@/lib/public-nav";
+
+/** The bar's items in order: a plain link by its href, a panel trigger by its group. */
+const barKeys = (t: (typeof dictionaries)["en"]) => publicNav(t, { devPages: false }).map((e) => (e.kind === "link" ? e.href : e.id));
 
 afterEach(cleanup);
 
@@ -49,7 +53,10 @@ function renderShell(locale: "en" | "ru" | "uz") {
 // From 768px the links, language, theme, Sign in and Start free are all in the bar (the layout is CSS:
 // tests/public-header-fit.test.ts). Below 768px the bar is the wordmark, Start free and a menu button, and the same
 // destinations open in a sheet (components/legal/PublicMenu.tsx): at 390px the wrapped rows were 209px of the screen.
-const bar = (header: HTMLElement) => [...header.querySelectorAll<HTMLElement>("a[href], button")].filter((el) => !el.closest(".st-menu-root"));
+// The panels' links (.st-mm) are reached through their triggers, and the sheet's (.st-menu-root) through the menu button.
+const bar = (header: HTMLElement) => [...header.querySelectorAll<HTMLElement>("a[href], button")].filter((el) => !el.closest(".st-menu-root, .st-mm"));
+/** What a collapsed section hides is in the page but not reachable. */
+const reachable = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>("a[href], button")].filter((el) => !el.closest("[hidden]"));
 
 describe("the public header", () => {
   for (const locale of ["en", "ru", "uz"] as const) {
@@ -59,13 +66,13 @@ describe("the public header", () => {
       const header = document.querySelector("header.st-header") as HTMLElement;
 
       const nav = within(header).getByRole("navigation", { name: t.landing.nav.label });
-      const links = publicNavLinks(t);
-      expect([...nav.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual(links.map((l) => l.href));
+      const keys = barKeys(t);
+      expect([...nav.querySelectorAll(":scope > a, :scope > button")].map((el) => el.getAttribute("href") ?? el.getAttribute("data-mm"))).toEqual(keys);
 
       // Tab order: wordmark, the links, language, theme, (view switch), Sign in, Start free, and the menu button last.
-      const order = bar(header).map((el) => el.getAttribute("href") ?? el.getAttribute("data-view-toggle") ?? el.getAttribute("aria-label") ?? "");
+      const order = bar(header).map((el) => el.getAttribute("href") ?? el.getAttribute("data-mm") ?? el.getAttribute("data-view-toggle") ?? el.getAttribute("aria-label") ?? "");
       expect(order[0]).toBe("/");
-      expect(order.slice(1, 1 + links.length)).toEqual(links.map((l) => l.href));
+      expect(order.slice(1, 1 + keys.length)).toEqual(keys);
       expect(order.slice(-3)).toEqual(["/login", "/signup", t.site.nav.menu]);
       expect(within(header).getByRole("button", { name: t.common.language })).toBeTruthy();
       expect(within(header).getByRole("button", { name: new RegExp(`^${t.common.theme}`) })).toBeTruthy();
@@ -83,11 +90,12 @@ describe("the public header", () => {
       expect(sheet.getAttribute("role")).toBe("dialog");
       expect(sheet.getAttribute("aria-modal")).toBe("true");
       expect(sheet.closest(".st-menu-root")?.hasAttribute("hidden")).toBe(true);
-      const links = publicNavLinks(t);
-      expect([...sheet.querySelectorAll("nav a")].map((a) => a.getAttribute("href"))).toEqual(links.map((l) => l.href));
+      // The same destinations as the bar's panels, in the same order (lib/public-nav.ts is the one source).
+      expect([...sheet.querySelectorAll("nav a")].map((a) => a.getAttribute("href"))).toEqual(navHrefs(publicNav(t, { devPages: false })));
       expect(sheet.querySelector('a[href="/login"]')?.textContent).toBe(t.site.nav.signIn);
-      // One key in the header: Start free stays in the bar, the sheet's Sign in is not a second one.
-      expect(header.querySelectorAll("a.st-key")).toHaveLength(1);
+      // One key in the bar (Start free), and one pinned to the sheet's foot; Sign in is not a key.
+      expect(bar(header).filter((el) => el.matches("a.st-key"))).toHaveLength(1);
+      expect([...sheet.querySelectorAll(".st-menu-foot a.st-key")].map((a) => a.getAttribute("href"))).toEqual(["/signup"]);
     });
   }
 
@@ -102,7 +110,7 @@ describe("the public header", () => {
     expect(document.activeElement).toBe(within(sheet).getByRole("button", { name: "Close menu" }));
     expect(document.documentElement.style.overflow).toBe("hidden");
 
-    const items = [...sheet.querySelectorAll<HTMLElement>("a[href], button")];
+    const items = reachable(sheet);
     // Tab on the last item wraps to the first, Shift+Tab on the first to the last.
     items.at(-1)!.focus();
     fireEvent.keyDown(sheet, { key: "Tab" });
@@ -125,6 +133,7 @@ describe("the public header", () => {
     expect(button.getAttribute("aria-expanded")).toBe("false");
     expect(document.activeElement).toBe(button);
     fireEvent.click(button);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Menu" })).getByRole("button", { name: "Studio" }));
     fireEvent.click(within(screen.getByRole("dialog", { name: "Menu" })).getByRole("link", { name: "How it works" }));
     expect(button.getAttribute("aria-expanded")).toBe("false");
   });
@@ -175,7 +184,7 @@ describe("the phone header, reviewed", () => {
     const button = document.querySelector<HTMLButtonElement>(".st-menu-btn")!;
     fireEvent.click(button);
     const sheet = screen.getByRole("dialog", { name: "Menu" });
-    const items = () => [...sheet.querySelectorAll<HTMLElement>("a[href], button")];
+    const items = () => reachable(sheet);
 
     const lang = within(sheet).getByRole("button", { name: dictionaries.en.common.language });
     fireEvent.click(lang);
