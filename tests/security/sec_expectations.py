@@ -840,6 +840,11 @@ import sec_voice_language_0214  # noqa: E402
 
 sec_voice_language_0214.extend(TABLES, FUNCTIONS)
 
+# Migration 0211 (one storyboard plan at a time per Nightshift AI conversation): tests/security/sec_ai_chat_plan_0211.py
+import sec_ai_chat_plan_0211  # noqa: E402
+
+sec_ai_chat_plan_0211.extend(TABLES, FUNCTIONS)
+
 # Migration 0212 (the recorded film sweep: one row per runner, film_sweep and film_sweep_status for the service role only):
 # tests/security/sec_film_sweep_0212.py
 import sec_film_sweep_0212  # noqa: E402

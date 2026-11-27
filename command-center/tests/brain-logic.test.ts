@@ -23,7 +23,7 @@ const scen = (o: Record<string, unknown> = {}) => ({
   characters: [{ id: "c1", name: "Aziz", description: "a guard", image_prompt: "young guard, sand" }],
   locations: [{ id: "l1", name: "Dune", description: "red dunes", image_prompt: "dunes" }],
   props: [{ id: "p1", name: "Sword", description: "curved" }],
-  chapters: [{ id: "ch1", title: "Ambush", start_s: 0, beats: [{ at_s: 0, text: "Riders appear" }] }],
+  chapters: [{ id: "ch1", title: "Ambush", start_s: 0, seconds: 60, beats: [{ at_s: 0, text: "Riders appear" }] }],
   scenes: [
     { title: "One", duration_s: 30, visual_prompt: "riders on dunes", character_ids: ["c1", "ghost"], location_id: "l1", prop_ids: ["p1"],
       dialogue: [{ character_id: "c1", line: "Hold the line!" }, { character_id: "ghost", line: "boo" }] },
@@ -80,11 +80,16 @@ describe("the server decides what is asked, in order, kind first", () => {
 });
 
 describe("a scenario becomes BRIEF parts, checked", () => {
-  it("references are kept only to things that exist, and a film's scenes stay within 3–30 s", () => {
-    const s = readScenario(scen({ scenes: [{ title: "x", duration_s: 99, visual_prompt: "v", character_ids: ["c1", "nope"] }] }), SHORT)!;
+  it("references are kept only to things that exist; a 99 s scene is never cut to 30 s, its storyboard is dropped (G1)", () => {
+    const s = readScenario(scen({ scenes: [{ title: "x", duration_s: 30, visual_prompt: "v", character_ids: ["c1", "nope"] },
+                                           { title: "y", duration_s: 30, visual_prompt: "w" }] }), SHORT)!;
     expect(s.scenes[0].duration_s).toBe(30);
     expect(s.scenes[0].character_ids).toEqual(["c1"]);
     expect(s.scenes[0].keyframe_model).toBeNull(); // the model never picks a model
+    // Stored before the plan step with a scene no film takes: the outline stays (its chapters add up), its scenes are not used.
+    const cut = readScenario(scen({ scenes: [{ title: "x", duration_s: 99, visual_prompt: "v" }] }), SHORT)!;
+    expect(cut.scenes).toEqual([]);
+    expect(cut.target_seconds).toBe(60);
   });
 
   it("dialogue is kept only for known characters, and becomes words the video model speaks", () => {

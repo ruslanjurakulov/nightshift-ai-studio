@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fakePlanLease } from "./helpers/fakePlanLease";
+/** 0211's plan lease, as the database keeps it (tests/helpers/fakePlanLease.ts). */
+const lease = fakePlanLease();
 
 /**
  * /api/brain/turn's order is its safety: flag → person → conversation → the owner's model → the database's caps → the vendor → the
@@ -46,6 +49,8 @@ const client = {
   from: (t: string) => table(t),
   rpc: async (fn: string, args: unknown) => {
     rpc(fn, args);
+    const leased = lease.rpc(fn, args as Record<string, unknown>);
+    if (leased) return leased;
     if (fn === "sellable_models") return { data: state.onSale.map((id) => ({ id })), error: null };
     if (fn === "ai_chat_reserve_turn") return state.reserve;
     // The owner's model reaches the server only as a reference (0199): never the id a member could read.
@@ -83,6 +88,7 @@ const turn = () => post({ action: "turn", session: SESSION, text: "a video like 
 const called = (fn: string) => rpc.mock.calls.filter((c) => c[0] === fn);
 
 beforeEach(() => {
+  lease.reset();
   rpc.mockReset();
   llm.mockReset();
   process.env.NIGHTSHIFT_AI_CHAT = "orgs";
@@ -230,9 +236,14 @@ describe("/api/brain/turn", () => {
     state.session = { ...state.session!, slots: FULL_SHORT, step: "proposing" };
     state.payload = { scenarios: [scen(), scen()] };
     await post({ action: "choose", session: SESSION, index: 1 });
-    const args = called("create_film_draft")[0][1] as Record<string, unknown>;
-    expect(args.p_source_kind).toBe("script");
-    expect(String(args.p_idempotency_key)).toMatch(/^brain-[0-9a-f-]+-\d+-1$/);
+    await post({ action: "choose", session: SESSION, index: 0 });
+    const [one, zero] = called("create_film_draft").map((c) => c[1] as Record<string, unknown>);
+    expect(one.p_source_kind).toBe("script");
+    // A hash of the conversation, the proposal and the scenario: one key per choice, and none that names the conversation (Breach
+    // BR-S1-04: every viewer of the workspace reads films.idempotency_key).
+    expect(String(one.p_idempotency_key)).toMatch(/^brain-[0-9a-f]{40}$/);
+    expect(String(one.p_idempotency_key)).not.toContain(SESSION.slice(0, 8));
+    expect(one.p_idempotency_key).not.toBe(zero.p_idempotency_key);
   });
 
   it("a chosen plan that hits the safety floor is refused before anything is drafted or priced", async () => {

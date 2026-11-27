@@ -134,10 +134,18 @@ describe("an i2v sample's link carries its words, its sample and its model", () 
     expect(u.searchParams.get(SAMPLE_PARAM)).toBe(RESOLVABLE[0].jobId);
   });
 
-  it("the two animations whose starting picture does not ship get no reference; the four that do, get theirs", () => {
-    expect(RESOLVABLE.length).toBe(4);
+  // Data-driven, so an export that ships a missing starting frame (#942, #943) flips its animation without editing this test: an
+  // animation carries `sample=` exactly when its starting picture ships. The four that shipped first must keep theirs.
+  it("an animation whose starting picture does not ship gets no reference; one whose picture ships gets its own", () => {
+    for (const id of ["e35f41fb", "fc1fad12", "ab7cc0e2", "dcb96246"]) expect(RESOLVABLE.some((e) => e.jobId.startsWith(id)), id).toBe(true);
+    expect(RESOLVABLE.length + I2V.filter((e) => !shipsSource(e)).length).toBe(I2V.length);
+    for (const e of RESOLVABLE) {
+      for (const href of [tryHref(e, true, NOW, DATA)!, tryHref(e, false, NOW, DATA)!]) {
+        const u = href.startsWith("/signup") ? followSignup(href) : new URL(href, ORIGIN);
+        expect(u.searchParams.get(SAMPLE_PARAM), e.jobId).toBe(e.jobId);
+      }
+    }
     const unshipped = I2V.filter((e) => !shipsSource(e)).map((e) => e.jobId).sort();
-    expect(unshipped).toEqual(["49af4517-9ebf-44d9-80ed-f652cea6e071", "cf2af7b1-5433-4661-979b-f65f3f8a4dbf"]);
     for (const id of unshipped) {
       const e = I2V.find((x) => x.jobId === id)!;
       for (const href of [tryHref(e, true, NOW, DATA)!, tryHref(e, false, NOW, DATA)!]) {
@@ -458,9 +466,15 @@ describe("the sample picture's words, in en, ru and uz", () => {
 });
 
 describe("a starting frame is not its own sample (Atlas/owner decision 22 Nov)", () => {
-  const FRAMES = ["e3da9148-f2f8-443e-95b1-8ed36ef3dea4", "f17146fd-054c-4970-9dac-f7a0dc929bd6", "1504b313-3a3c-4e78-bfda-5bca3ef7f3da"];
+  // The frames that shipped with #941, plus any starting frame exported since (#942, #943): every picture entry an i2v entry
+  // was animated from. Derived here independently of sourceOnlyJobs, so an export never has to edit this list.
+  const FIRST_FRAMES = ["e3da9148-f2f8-443e-95b1-8ed36ef3dea4", "f17146fd-054c-4970-9dac-f7a0dc929bd6", "1504b313-3a3c-4e78-bfda-5bca3ef7f3da"];
+  const FRAMES = SHOWCASE_ENTRIES.filter(
+    (p) => p.kind === "image" && SHOWCASE_ENTRIES.some((c) => c.capability === "i2v" && c.input.kind === "operator_job" && c.input.jobId === p.jobId),
+  ).map((p) => p.jobId);
 
   it("derived from the data: every picture an i2v sample was animated from, and nothing else", () => {
+    for (const j of FIRST_FRAMES) expect(FRAMES, j).toContain(j);
     expect([...sourceOnlyJobs(SHOWCASE_ENTRIES)].sort()).toEqual([...FRAMES].sort());
     // A future export's source is hidden without anyone listing it.
     const pic = { ...T2I, jobId: "77777777-7777-4777-8777-777777777777" };
