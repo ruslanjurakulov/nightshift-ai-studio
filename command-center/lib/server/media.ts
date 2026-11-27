@@ -257,6 +257,12 @@ export interface LibraryReadOptions {
   folder?: string | null;
   /** Only files whose name contains this (case-insensitive, on the server). */
   query?: string | null;
+  /**
+   * Only the files and uploads this user made (media_assets / media_uploads `created_by`, on the server), each asset then marked
+   * `createdBy`. A sample's copy is found again this way (lib/creative/sample-preload.ts): a co-member's file of the same name is
+   * never taken for "your" copy.
+   */
+  createdBy?: string | null;
 }
 
 /** "This column does not exist": 0049 is not applied, so read the library as before it. */
@@ -269,6 +275,7 @@ export async function loadMediaLibrary(orgId: string, opts: LibraryReadOptions =
   const host = { media: mediaDir() !== null, staging: mediaStagingDir() !== null, signing: secret !== null };
   const folder = parseMediaId(opts.folder ?? null);
   const query = cleanSearch(opts.query);
+  const mine = parseMediaId(opts.createdBy ?? null);
   const empty: MediaLibraryData = {
     available: false,
     host,
@@ -287,16 +294,18 @@ export async function loadMediaLibrary(orgId: string, opts: LibraryReadOptions =
     let q = supabase.from("media_assets").select(withFolders ? MEDIA_ASSET_FOLDER_COLUMNS : MEDIA_ASSET_COLUMNS).eq("org_id", orgId);
     if (withFolders && folder) q = q.eq("folder_id", folder);
     if (query) q = q.ilike("original_name", ilikeContains(query));
+    if (mine) q = q.eq("created_by", mine);
     return q.order("created_at", { ascending: false }).limit(LIBRARY_PAGE);
   };
-  const readUploads = (withFolders: boolean) =>
-    supabase
+  const readUploads = (withFolders: boolean) => {
+    let q = supabase
       .from("media_uploads")
       .select(withFolders ? MEDIA_UPLOAD_FOLDER_COLUMNS : MEDIA_UPLOAD_COLUMNS)
       .eq("org_id", orgId)
-      .neq("status", "ingested")
-      .order("created_at", { ascending: false })
-      .limit(20);
+      .neq("status", "ingested");
+    if (mine) q = q.eq("created_by", mine);
+    return q.order("created_at", { ascending: false }).limit(20);
+  };
   try {
     const [first, firstUploads, quota, settings, pipeline, folders, dismissed] = await Promise.all([
       readAssets(true),
@@ -331,7 +340,8 @@ export async function loadMediaLibrary(orgId: string, opts: LibraryReadOptions =
     return {
       available: true,
       host,
-      assets: rows.map((a) => withUrls(a, secret, served)),
+      // Filtered on created_by by the database above, so the mark is what the row says.
+      assets: rows.map((a) => ({ ...withUrls(a, secret, served), ...(mine ? { createdBy: mine } : {}) })),
       uploads: withoutDismissed(coerceUploads(uploads.data), dismissed),
       quota: {
         usedBytes: n(q?.used_bytes) ?? 0,

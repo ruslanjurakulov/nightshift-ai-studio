@@ -5,7 +5,7 @@ import { PROMPT_TOOLS, promptHref, type PromptTool } from "@/lib/site/prompt-lin
 import { SHOWCASE_ENTRIES, modelLeftOut, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { beforeAfterPairs, carouselOrder, slideTitle, type SampleSlide } from "@/lib/site/carousel";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
-import { showcaseItems } from "@/components/site/ShowcaseGallery";
+import { showcaseItems, showcaseItemsWithSources } from "@/components/site/ShowcaseGallery";
 import { landingExcludedJobs } from "@/components/site/slots";
 import { ShowcaseCarousel } from "@/components/site/ShowcaseCarousel";
 import { BeforeAfter } from "@/components/site/BeforeAfter";
@@ -69,9 +69,15 @@ function slide(it: Item, c: ReturnType<typeof siteCarouselCopy>["carousel"], tit
  * The samples whose files are here, less the ones the page shows elsewhere or not at all (`exclude`), and less the effects'
  * previews: the Effects section shows each of those as its effect's result, so none of these pieces shows it again.
  */
-function items(entries: readonly ShowcaseEntry[], files: Readonly<Record<string, ShowcaseFiles>>, exclude: readonly string[]): Item[] {
+function items(
+  entries: readonly ShowcaseEntry[],
+  files: Readonly<Record<string, ShowcaseFiles>>,
+  exclude: readonly string[],
+  // Picture → video shows a starting frame beside its clip, which is where it belongs; every other piece leaves it out.
+  withSources = false,
+): Item[] {
   const previews = effectPreviewJobs();
-  return showcaseItems(entries, files).filter(({ e }) => !exclude.includes(e.jobId) && !previews.includes(e.jobId));
+  return (withSources ? showcaseItemsWithSources : showcaseItems)(entries, files).filter(({ e }) => !exclude.includes(e.jobId) && !previews.includes(e.jobId));
 }
 
 /** The ticker's samples: wide (its box is 16:9) text-to-video clips with words. */
@@ -188,7 +194,7 @@ function landingSplit(exclude: readonly string[], entries: readonly ShowcaseEntr
     .map(({ e }) => e.jobId)
     .filter((j) => grid.has(j));
   const rest = [...exclude, ...gallery];
-  const pairs = beforeAfterPairs(items(entries, files, rest));
+  const pairs = beforeAfterPairs(items(entries, files, rest, true));
   const pairJobs = pairs.flatMap(({ clip, picture }) => [clip.e.jobId, picture.e.jobId]);
   const ticker = tickerItems(items(entries, files, [...rest, ...pairJobs])).map(({ e }) => e.jobId);
   return { pairs, ticker, sections: [...pairJobs, ...ticker], gallery };
@@ -237,7 +243,7 @@ type Props = {
 export function SampleCarousel({ t, locale, signedIn = false, entries = SHOWCASE_ENTRIES, files = SHOWCASE_FILES, now = new Date(), exclude = landingExcludedJobs() }: Props) {
   const split = landingSplit(exclude, entries, files);
   // Every pair as well, not only the split's: picture → video shows each pair whole, one side of it in the grid or not.
-  const pairJobs = beforeAfterPairs(items(entries, files, exclude)).flatMap(({ clip, picture }) => [clip.e.jobId, picture.e.jobId]);
+  const pairJobs = beforeAfterPairs(items(entries, files, exclude, true)).flatMap(({ clip, picture }) => [clip.e.jobId, picture.e.jobId]);
   const elsewhere = [...exclude, ...split.sections, ...split.gallery, ...pairJobs];
   const slides = carouselOrder(items(entries, files, elsewhere).map(slideMaker(t, locale, signedIn, now)));
   if (slides.length === 0) return null;
@@ -263,7 +269,7 @@ export function SampleCarousel({ t, locale, signedIn = false, entries = SHOWCASE
 
 /** Picture → video, for every clip made from another sample's picture (a pair with either side left out is not shown). */
 export function SampleCompare({ t, locale, signedIn = false, entries = SHOWCASE_ENTRIES, files = SHOWCASE_FILES, now = new Date(), exclude = landingExcludedJobs() }: Props) {
-  const pairs = beforeAfterPairs(items(entries, files, exclude));
+  const pairs = beforeAfterPairs(items(entries, files, exclude, true));
   if (pairs.length === 0) return null;
   const c = siteCarouselCopy(locale).compare;
   const g = t.site.gallery;

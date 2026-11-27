@@ -284,6 +284,8 @@ export interface LibraryAsset extends MediaAsset {
   /** Signed, short-lived; null when this host cannot serve it. */
   thumbUrl: string | null;
   viewUrl: string | null;
+  /** Set only on a `?mine=1` read (the database filtered on created_by): the signed-in user who made it. */
+  createdBy?: string;
 }
 
 /**
