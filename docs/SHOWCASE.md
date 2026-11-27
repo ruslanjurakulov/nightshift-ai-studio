@@ -58,6 +58,10 @@ hero: { ai: "9a52ebf1-bbe3-473c-b77c-7553bc18e0d8", id: "cloud", clip: "cloud" }
 3. GitHub → **Actions** → **Showcase asset** → **Run workflow** → paste the id (slot, caption and the three card lines are optional) → Run.
 4. The run opens a **draft pull request** named "Showcase: sample from Studio job …". Its description lists the model, the
    input's provenance, the prompt and the recorded cost (or "unknown"). Watch the clip in the PR's files.
+   **In this repository the run cannot open the PR itself** ("Allow GitHub Actions to create and approve pull requests" is off):
+   the branch `showcase/<job id>` is pushed and the PR step fails. Open the PR from that branch by hand (27 Nov: #942, #943).
+   Since #935 every entry also needs a hand-written title in `command-center/lib/site/card-titles.ts` (en/ru/uz, at most 32
+   characters), even a starting frame the grids hide, or the PR's tests fail: add it to the PR before merging.
 5. Checks do not start by themselves on a PR the workflow opened: close and reopen it to run them. Then merge it. The sample is
    on the site after the next deploy.
 

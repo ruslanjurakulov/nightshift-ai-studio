@@ -84,7 +84,8 @@ export interface PublicSpec {
   relightLooks: RelightLook[];
   /** Shapes the model reframes a video to (0100); empty unless it can. */
   reframeAspects: ExpandAspect[];
-  /** Languages the model dubs into (0050); empty unless it can dub. */
+  /** Languages the model dubs into (0050), transcribes (0072), or, for a voice model, speaks of the three checked (uz, ru, en;
+   *  modules/tts_languages, read by 0214): that list is not everything it speaks. Empty for every other model. */
   languages: string[];
   /** Sizes the model upscales a video to (0052); empty unless it can. */
   upscaleTargets: UpscaleTarget[];
