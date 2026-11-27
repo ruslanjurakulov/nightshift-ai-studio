@@ -18,6 +18,7 @@
  * Nightshift AI panel stacked above it: its last key in the band a phone's dock rides in, and its Send key at 390×500 with the
  * chat box focused (the panel's read is answered as ready by a route in this script; nothing is sent). Run with --locales en,ru,uz
  * to check the long Russian and Uzbek labels never push the page sideways.
+ * The library-docked scene requires the AI panel and checks the canvas dock's primary key at 1280px and 1440px.
  *
  * Fails (exit 1) on horizontal overflow, a page error, a covered panel key, or a scene whose landmark is missing. Reads and
  * screenshots only; spends nothing (the fake refuses every write). Not part of the product.
@@ -150,12 +151,14 @@ const SCENES = [
   { name: "palette", layout: CHAIN, state: "canvas", palette: true, check: "[data-testid=canvas-palette]" },
   // The Library and the inspector both open: the board must stay usable between them.
   { name: "both", layout: CHAIN, state: "canvas", open: "clip", library: true, check: "[data-testid=canvas-library]" },
+  { name: "library-docked", layout: ONE_IMAGE, state: "canvas", library: true, dockedAi: true, check: "[data-testid=canvas-library]" },
 ];
 const ONLY = arg("scenes", null);
 if (ONLY === "ux") SCENES.splice(0, SCENES.length, { name: "first-run", layout: null, state: "canvas", check: "[data-testid=canvas-first-run]" }, ...UX);
 const VIEWS = [
   { width: 1440, height: 900, theme: "dark" },
   { width: 1440, height: 900, theme: "light" },
+  { width: 1280, height: 900, theme: "dark", only: "library-docked" },
   { width: 768, height: 1024, theme: "dark" },
   { width: 390, height: 844, theme: "dark" },
 ];
@@ -261,8 +264,9 @@ const lines = [];
 for (const loc of LOCALES)
   for (const v of VIEWS)
     for (const s of SCENES) {
+      if (v.only && v.only !== s.name) continue;
       // The full grid only in English and dark at 1440; the rest takes the scenes the brief names.
-      if ((loc !== "en" || v.theme !== "dark") && !["first-run", "chain", "inspector", "error"].includes(s.name)) continue;
+      if (!s.dockedAi && (loc !== "en" || v.theme !== "dark") && !["first-run", "chain", "inspector", "error"].includes(s.name)) continue;
       if (ONLY === "ux" && (loc !== "en" || v.theme !== "dark" || v.width === 768)) continue;
       if (s.desktop && v.width < 1000) continue;
       if (s.phone && v.width >= 600) continue;
@@ -331,6 +335,21 @@ for (const loc of LOCALES)
         })(),
       }), s.check);
       const name = `${s.name}-${v.width}-${v.theme}-${loc}.png`;
+      if (s.dockedAi) {
+        const failure = await page.evaluate(() => {
+          const panel = document.querySelector(".ns-ai-dock[data-testid=nightshift-ai-panel]");
+          if (!panel?.getClientRects().length || getComputedStyle(panel).position !== "sticky") return "Nightshift AI panel is not docked";
+          const key = document.querySelector(".cv-dockwrap[data-drawer] .cv-deck [data-testid=dock-quote]");
+          if (!key) return "primary key missing from the Library-open dock";
+          const r = key.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          if (r.left < 0 || r.right > window.innerWidth || !hit || !key.contains(hit)) {
+            return `primary key is outside the viewport or covered (x=${r.left}–${r.right}, hit=${hit?.tagName ?? "nothing"})`;
+          }
+          return null;
+        });
+        if (failure) bad.push(`${name}: ${failure}`);
+      }
       await page.screenshot({ path: path.join(OUT, name), fullPage: false });
       lines.push(`${name}  overflow=${m.overflow}  landmark=${m.landmark}  form=${m.panel}  sheet=${JSON.stringify(m.sheet)}  ${m.nodes.join(" ")}`);
       if (m.dockCovers) bad.push(`${name}: the flow's dock covers the last card`);
