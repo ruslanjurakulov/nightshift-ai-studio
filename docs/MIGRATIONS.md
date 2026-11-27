@@ -2489,6 +2489,70 @@ list off sale, and every model priced by size carries a terms gate). Post-event:
 - **Not covered.** The queue worker does not re-check availability before it submits a job (a follow-up). None can be queued on
   this model today, because it is terms-gated and not a preview; the file names any job that is not finished.
 - **Tests.** `tests/test_retire_omni_1_1_migration.py`, `tests/security/test_sec_retire_omni_1_1.py`.
+## Film Studio: the sweep runs without the worker, and every run is recorded (0212)
+
+0212 (`0212_film_sweep.sql`, provisional number; `docs/studio/S2_GAPS.md` also pencils 0212 in for the archive branch, and
+whichever merges second renumbers) closes switch-on gate G2 (`docs/FILM_STUDIO.md`). Before it, 0171's `film_expire_segments` ran
+only on a thread of `tools/film_worker.py`: no worker, no sweep, and no record that one ever ran. It changes no existing function,
+table or grant; `film_expire_segments` is called, never replaced. It spends nothing.
+
+- **The record.** `film_sweep_runs`: one row per runner (`pg_cron`, `server`, `worker`, and `actions`, which nothing schedules any
+  more); `last_at` / `last_settled` for the last completed sweep, `last_error` / `last_error_at` (a SQLSTATE only, never a
+  message) for the last failed one. RLS on, no policy; no API role writes it, the service role reads it.
+- **The sweep.** `film_sweep(runner)` (service role only): `film_expire_segments()`, then the record. `{ok:true, settled, at}`, or
+  `{ok:false, error, at}` when the sweep itself failed. It answers instead of raising because a raise would roll the record of the
+  failure back with it; every caller treats `ok:false` as a failure. An unknown runner is refused (22023 `unknown_runner`).
+- **What is not recorded.** PL/pgSQL's `when others` does not catch `query_canceled` (57014: a statement timeout, PostgREST's
+  included) or `assert_failure`. Such a call raises and records nothing: the service logs it, pg_cron marks the run failed, and
+  `overdue` trips once the last completed sweep is older than the line. `last_at` is "the last sweep that completed", not "every
+  attempt". A bounded per-pass sweep is the follow-up G2b (`docs/studio/S2_GAPS.md`), open.
+- **The measurement.** `film_sweep_status()` (service role only; counts and times, never an id):
+  `{runners: {worker|actions|pg_cron|server: {last_at, last_settled, last_error, last_error_at} | null}, last_at, open_segments,
+  stuck_segments, oldest_stuck_minutes, overdue_after_minutes: 30, overdue, at}`. `stuck_segments` counts open segments already
+  past 0171's settle point, from 0171's own `film_money_limits()` (a hold no longer open, queued past `unclaimed_hours`, past
+  deadline + `grace_hours`); a sweep that "completes" while 0171 skips such a segment is not a settled segment (Breach on 0212).
+  `overdue` is true when a segment has been stuck longer than the line, or one is open and no runner completed a sweep within it;
+  **null when nothing was ever recorded and nothing is stuck** (unknown is not fine); false otherwise. The line (30 minutes) is
+  declared once in the function and returned as `overdue_after_minutes`.
+- **Who sweeps.** Any one is enough, several at once are safe (the sweep takes rows `for update skip locked`; lab test: two at the
+  same moment settle a segment once):
+  - **pg_cron, the primary**: job `nightshift-film-sweep`, every 5 minutes, runner `pg_cron`, where pg_cron is installed
+    (unscheduled first, so a replay leaves one). With pg_cron present a schedule that did not land fails the file, and the end
+    state asserts the job;
+  - **the film-sweep service, the fallback**: `deploy/docker-compose.yml` service `film-sweep` (the worker image,
+    `tools/film_sweep.py --loop`, a pass every 300 s, runner `server`, stops on SIGTERM), the service key from the worker env
+    file. Switched by `NIGHTSHIFT_FILM_SWEEP=on` (a repository variable that rides in the worker section, so it needs
+    `NIGHTSHIFT_WORKER=on`), **independent of `NIGHTSHIFT_FILM_WORKER`**: the sweep runs with the film worker off;
+  - the film worker's own thread (runner `worker`), while it runs.
+- **Actions does not sweep.** A 10-minute schedule would cost about 4,300 runner-minutes a month on a private repository.
+  `.github/workflows/film_sweep_watchdog.yml` runs `tools/film_sweep.py --check` at minute 17 of every hour and only READS
+  `film_sweep_status()`: red with `::error::` (stuck_segments, oldest_stuck_minutes) when `overdue` is true or the status cannot be
+  read; green with a `::notice::` when it is false or unknown; one neutral `::notice title=0212 not applied::` before 0212 is
+  applied; a `::warning::` when its secrets are unset.
+- **pg_cron and a failed sweep.** pg_cron marks a run succeeded whenever its command returns, and `film_sweep` returns `ok:false`,
+  so the job's command raises on it (`'film_sweep failed with SQLSTATE <code>'` cast to integer): the run shows as failed in
+  `cron.job_run_details` with the SQLSTATE in its message. The raise rolls back `film_sweep`'s own `last_error` row, so for the
+  `pg_cron` runner the failure is read from `cron.job_run_details`.
+- **pg_cron is not installed on the live project**, so applying 0212 there prints a NOTICE that says so and creates no job. To turn
+  the primary schedule on, the owner enables pg_cron in the Supabase dashboard (**Database -> Extensions -> pg_cron**), then
+  applies 0212 again, or runs this once in the SQL editor (the same command 0212 schedules; a bare `film_sweep('pg_cron')` would
+  let pg_cron mark a failed sweep succeeded):
+  `select cron.schedule('nightshift-film-sweep', '*/5 * * * *', 'select case when (r ->> ''ok'')::boolean then 1 else (''film_sweep failed with SQLSTATE '' || coalesce(r ->> ''error'', ''none''))::integer end from (select public.film_sweep(''pg_cron'') as r) s');`
+- **Owner steps.** Apply 0212. Then either enable pg_cron as above, or set the repository variable `NIGHTSHIFT_FILM_SWEEP=on`
+  (with `NIGHTSHIFT_WORKER=on`) and deploy, or both. Within about 5 minutes `select public.film_sweep_status();` shows `pg_cron` or
+  `server` with a `last_at`. The watchdog uses the `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` Actions secrets that
+  operator_alerts.yml already uses.
+- **Without it.** The watchdog says "0212 not applied" and stays green; the film-sweep service logs that 0212 is missing on every
+  pass and sweeps nothing (it never sweeps unrecorded); the worker calls `film_expire_segments` directly, unrecorded, and says so
+  once.
+- **Is it working?** The verify block at the bottom of the file, then `select public.film_sweep_status();` and, if pg_cron is on,
+  `select jobname, schedule, command from cron.job where jobname = 'nightshift-film-sweep';`.
+- **Undo.** `docs/sql/rollback_0212_film_sweep.sql` (owner-applied): unschedules the job, drops the two functions and the table
+  (the record is lost; no money is), and leaves `film_expire_segments`. Refused while either body is not 0212's; if pg_cron's
+  unschedule fails it fails too and changes nothing (no job is left calling a dropped function). 0212 also refuses to apply over a
+  `film_sweep_runs` of another shape (columns, the SQLSTATE check, the runner check). Set `NIGHTSHIFT_FILM_SWEEP` off first, or
+  the service logs a missing function every 5 minutes; the watchdog goes back to "0212 not applied".
+
 
 ## Owner model terms acceptance (0227)
 

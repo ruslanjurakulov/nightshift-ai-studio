@@ -105,7 +105,7 @@
     height: 50px;
     margin-right: 33px;
     border-radius: 25px;
-    background: #1b1f2a center / cover no-repeat;
+    background: #0f1115 center / cover no-repeat;
   }
   /* The hero's clip, copied frame by frame (HeroThumb.tsx): over the still, shown only while the hero's own clip is shown, and
      faded in with the hero's own timing so the two change together. Absolute: the box keeps its size with or without it. */
@@ -189,6 +189,9 @@
   /* The pause switch, where the reference keeps its sound key: the bottom right corner. Visually hidden until a keyboard focuses it
      (owner, 2026-11-13: no visible pause word or icon; site-next.css), and then it shows there, clear of the bar. */
   .hm-hero .nx-motion { position: absolute; top: auto; right: var(--hm-gutter); bottom: 60px; }
+  /* The hero clip's sound key (components/site/SoundToggle.tsx), stacked above the pause switch's 44 px corner so the two never
+     overlap, and clear of the "AI" badge bottom left. Drawn only for a clip with sound, while it plays. */
+  .hm-hero .hm-hero-sound { right: var(--hm-gutter); bottom: 112px; }
 
   .hm-badge {
     display: inline-flex;
@@ -198,7 +201,8 @@
     border: 1px solid rgb(255 255 255 / 0.35);
     background: rgb(10 11 14 / 0.72);
     color: #e6eefc;
-    font-size: 0.75rem;
+    /* 13px like every other AI badge on the page (S5 Pixel on #889: this one alone was 12). */
+    font-size: 0.8125rem;
     font-weight: 600;
     line-height: 1.25;
     /* "Sunʼiy intellekt yaratgan" is wider than a phone's reel card: it wraps rather than being cut. */
