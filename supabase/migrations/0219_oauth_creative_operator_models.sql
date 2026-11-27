@@ -54,7 +54,7 @@
 --   registry sync). Nothing here publishes anything: a generation's files stay private in the workspace's library.
 --
 -- NUMBER. 0219, assigned by the S9 lead (renumbered from 0218, which is creative_price's). Needs 0191 and 0192 (the bodies it
---   replaces); replaces nothing 0218 replaces and names nothing of 0193-0218.
+--   replaces) and 0218 (applied before it; the guard below reads its marker); replaces nothing 0208 or 0218 replaces.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only):
 --   select p.oid::regprocedure, md5(regexp_replace(prosrc, '\s+', ' ', 'g')) from pg_proc p
@@ -81,6 +81,13 @@ begin
   end if;
   if to_regprocedure('public.adult_attestation_gate(uuid, text)') is null then
     raise exception '0219 needs 0192_adult_attestation.sql: apply it first';
+  end if;
+  -- 0218 (creative_price refuses an over-long prompt, a negative prompt the model does not take, and a seed) applies first: the
+  -- operator route quotes through creative_price, and the apply order is 0208 -> 0218 -> 0219. Its marker is its own refusal word.
+  if to_regprocedure('public.creative_price(uuid, text, text, jsonb)') is null
+     or (select position('seed_not_supported' in p.prosrc) from pg_proc p
+          where p.oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')) = 0 then
+    raise exception '0219 needs 0218_creative_prompt_limits.sql: apply it first';
   end if;
   if to_regprocedure('public.credits_exempt(uuid)') is null or to_regprocedure('public.default_org_id()') is null then
     raise exception '0219 needs 0018 and 0020 (the operator''s organization and credits_exempt): apply them first';

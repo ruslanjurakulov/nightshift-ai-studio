@@ -2446,6 +2446,50 @@ video is cross-posted.
 - **Requires** 0029 and 0112. The body is replaced only if it is 0029's or 0205's (md5 guard).
 - **Undo.** `docs/sql/rollback_0205_publish_refusal_gate_verdict.sql` puts 0029's body back exactly.
 
+## The database's own country gate, and the price by picture size (0208, provisional)
+
+0208 (`0208_geo_gate_and_image_size_price.sql`) changes no answer for a model on sale today (0142 keeps every model with a country
+list off sale, and every model priced by size carries a terms gate). Post-event: it prepares Google's models, it does not open them.
+
+- **Country gate.** `creative_jobs_geo_gate` (BEFORE INSERT OR UPDATE OF routed_model on `creative_jobs`): a job on a model whose
+  `spec.blocked_countries` is not empty needs a country the web server signed for this person in the last seconds
+  (`x-nightshift-geo`, an HMAC-SHA256 checked by `geo_claim_country()` against the Vault secret `nightshift_geo_claim_key`);
+  none = NS400 `country_unverified`, a listed country = NS400 `country_blocked`. Neither function is callable by an API role.
+- **Before it is useful:** `select vault.create_secret('<value>', 'nightshift_geo_claim_key');` once, and the same value as
+  `NIGHTSHIFT_GEO_CLAIM_KEY` in the web's environment (32+ characters). Until then every job on a gated model is refused.
+- **Price by picture size.** `creative_params_problem` accepts `image_size` (t2i, edit; 512 / 1K / 2K / 4K); `creative_price`
+  prices a model whose `pricing.variants.by` is `image_size` by `<credit_unit>_<size>`, refuses one with no size, a size it does not
+  list, or a size on a model not priced by size, and names the size in the quote. A size without a row is `unpriced`.
+- **Replaces** 0156's `creative_params_problem` and 0159's `creative_price` (md5 guards). The lab's `take_off_0159` takes 0208 off first.
+- **Also replaces** 0126's `creative_regions_problem` (a region edit may name `image_size`, so a model sold by size can run one; the
+  web's region editor sends the model's smallest listed size) and 0196's `reroute_creative_job` (a failover candidate the country gate
+  refuses is skipped; before, the gate's NS400 aborted the whole failover). Both md5-guarded; the rollback puts each back only where
+  it is 0208's body, and the lab's `take_off_0196` takes 0208 off first.
+- **Before it is useful, in order:** the registry sync (`python tools/probe_models.py --sync`; 0208 raises a NOTICE while any
+  `provider = 'google'` row has no `blocked_countries`), the Vault key, then the web's key.
+- Lab: `tests/security/test_sec_geo_gate_0208.py`; pins: `tests/test_geo_gate_image_size_migration.py`. Rollback:
+  `docs/sql/rollback_0208_geo_gate_and_image_size_price.sql`. Docs: `docs/GEO_BLOCK.md`.
+
+## Retire gemini-omni-1.1-flash (0222)
+
+0222 (`0222_retire_gemini_omni_1_1.sql`, number from Atlas, stream S10) sets `model_registry.availability = 'disabled'` for
+`gemini-omni-1.1-flash`. It writes nothing else.
+
+- **Why.** Google's deprecations page (read 2026-11-22; S10's `docs/studio/S10_GOOGLE_MODELS.md`, PR #917) says this endpoint is routed to
+  `gemini-omni-1.2-flash` from 2026-12-03 and billed at 1.2's rates. Selling "Omni 1.1" after that would be a substitute the vendor
+  makes silently (CLAUDE.md rule 4).
+- **Why not just the shutdown date.** The registry's `shutdown.on` (2026-12-03) already stops the sale that day (0125). But the
+  schema keeps it the vendor's date, never ours. `disabled` is the state nothing automatic undoes: every open migration refuses
+  to touch it, the registry sync skips it, `sellable_models` and `creative_price` never offer it, and an operator preview needs
+  `hidden`. A person can still move it: the owner's rollback, or a platform admin on the model board (audited as
+  `model.availability`). Neither can sell it while its `terms_gate` is set.
+- **Not added.** `gemini-omni-1.2-flash` waits for the owner's terms decisions and a real probe.
+- **Before the sync.** A missing row is only a NOTICE; apply the file again after the registry sync.
+- **Undo.** `docs/sql/rollback_0222_retire_gemini_omni_1_1.sql` (owner-applied) sets the row back to `hidden`. That is still not sold.
+- **Not covered.** The queue worker does not re-check availability before it submits a job (a follow-up). None can be queued on
+  this model today, because it is terms-gated and not a preview; the file names any job that is not finished.
+- **Tests.** `tests/test_retire_omni_1_1_migration.py`, `tests/security/test_sec_retire_omni_1_1.py`.
+
 ## The operator's own assistant may use the Studio's web models; no ByteDance model for any assistant (0219)
 
 0219 (`0219_oauth_creative_operator_models.sql`) lets a connected assistant (0191) in the operator's own workspace generate with the
@@ -2480,8 +2524,8 @@ models the Studio sells on the web, for first-party marketing samples made by th
 - **Without it.** Everything works as under 0192; the operator's assistant sees only the models switched on for assistants.
 - **Replay.** `create or replace` plus `if not exists`: a replay changes nothing. Replaying 0191 or 0192 over it is refused by 0192's
   guard (or, for 0191, silently restores 0191's create): apply this file's rollback first, re-run, then 0219 again.
-- **Number.** 0219, assigned by the S9 lead (renumbered from 0218, which is creative_price's). Needs 0191 and 0192; replaces
-  nothing 0218 replaces.
+- **Number.** 0219, assigned by the S9 lead. Apply order 0208 -> 0218 -> 0219 -> 0224. Needs 0191, 0192 and 0218 (its guard reads
+  0218's `seed_not_supported` in `creative_price`); replaces nothing 0208 or 0218 replaces.
 - **Undo.** `docs/sql/rollback_0219_oauth_creative_operator_models.sql` (owner-applied): refuses a door that is not 0219's, puts
   0192's two and 0191's create back verbatim, drops the three helpers, keeps the exposure columns (the record). An open operator
   quote is then refused at create by 0191's judgement.
