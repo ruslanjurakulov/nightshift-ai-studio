@@ -85,9 +85,26 @@ export function blockedCountriesOf(model: string, map: BlockedMap = BLOCKED_COUN
   return Object.prototype.hasOwnProperty.call(map, model) ? map[model] : [];
 }
 
-/** True only for a known country on the model's list. */
+/**
+ * A code a country can be read as: ISO 3166-1 alpha-2, plus Google's Kosovo (XK). BR-S6-03: anything else (DB-IP placeholders such
+ * as EU or AP, a typo in a refreshed table) is neither on a deny-list nor on Google's list, so it is read as UNKNOWN, never as a
+ * country that happens to be allowed.
+ */
+export const KNOWN_COUNTRY_CODES: ReadonlySet<string> = new Set([...ISO_3166_ALPHA2, "XK"]);
+
+export function isKnownCountry(code: string | null | undefined): code is string {
+  return typeof code === "string" && KNOWN_COUNTRY_CODES.has(code);
+}
+
+/**
+ * True only for a known country where the model is not offered. For an allow-list vendor (REFUSE_UNKNOWN_COUNTRY, BR-S6-03) that is
+ * "not on GOOGLE_AVAILABLE_REGIONS", the vendor's own list, never "on the deny-list derived from it": a code outside both sets is
+ * then blocked, not allowed by default. Every other model keeps its deny-list.
+ */
 export function isBlockedIn(model: string, country: string | null, map: BlockedMap = BLOCKED_COUNTRIES): boolean {
-  return country !== null && blockedCountriesOf(model, map).includes(country);
+  if (country === null) return false;
+  if (refusesUnknownCountry(model)) return !GOOGLE_AVAILABLE_REGIONS.includes(country);
+  return blockedCountriesOf(model, map).includes(country);
 }
 
 /**

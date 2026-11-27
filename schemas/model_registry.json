@@ -7036,7 +7036,8 @@
         "SynthID: 'All generated audio includes a SynthID audio watermark', no opt-out; disclosed in the legal text now and in any music UI, by the owner's decision (no disclosure duty is documented).",
         "Ownership: 'Google won't claim ownership over that content'; 'Google may generate the same or similar content for others' (not exclusive). Paid-tier content is not used to improve Google's products.",
         "Requests are sent store=false (synchronous). UNVERIFIED until a paid probe: Russian and Uzbek vocals (no official 3.5 list), what one 'song' is and its longest length, rate limits, latency, error codes, billing of a block.",
-        "Gate stays open until the owner signs the legal text (privacy, terms, SynthID) and a paid probe passes. No credit price may be added before that."
+        "Gate stays open until the owner signs the legal text (privacy, terms, SynthID) and a paid probe passes. No credit price may be added before that.",
+        "NOT ON SALE until a vocal-activity check on the returned MP3 exists (its own measurement PR first, rule 8). Today instrumental-only rests on a prompt shape check and a check of Google's returned lyrics text (BR-S6-01/02)."
       ],
       "attribution": null,
       "api_exposure": "web_only",

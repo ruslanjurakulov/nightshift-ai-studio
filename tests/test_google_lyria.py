@@ -309,10 +309,10 @@ class DecodeTests(VendorCase):
 
 
 class SafetyBlockTests(VendorCase):
-    def assertBlocked(self, e: AdapterError):
+    def assertBlocked(self, e: AdapterError, *, completed: bool = False):
         self.assertEqual(e.code, E_POLICY)
         self.assertFalse(e.retryable)
-        self.assertTrue(e.message.startswith(BILLING_UNKNOWN), e.message)
+        self.assertTrue(e.message.startswith(AFTER_COMPLETION if completed else BILLING_UNKNOWN), e.message)
         self.assertIn(LYRIA_POLICY_REMEDY, e.message)
         self.assertIn("remove any artist's name or voice and any real song's lyrics", e.message)
 
@@ -328,10 +328,33 @@ class SafetyBlockTests(VendorCase):
             with self.subTest(msg=msg):
                 self.assertBlocked(self.blocked(Resp(400, {"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": msg}})))
 
-    def test_a_failed_interaction_or_a_finished_one_without_audio_that_says_so_is_policy(self):
+    def test_a_failed_interaction_that_says_so_is_policy_and_a_completed_block_keeps_the_spend_note(self):
         self.assertBlocked(self.blocked(Resp(200, {"id": "x", "status": "failed",
                                                    "error": {"message": "Blocked: recitation of copyrighted lyrics"}})))
-        self.assertBlocked(self.blocked(Resp(200, song(data=False, text="This request was blocked by our safety filters."))))
+        # A structured block reason on a completed answer: policy, and the call may have been billed.
+        self.assertBlocked(self.blocked(Resp(200, song(data=False, text=None, finish_reason="RECITATION"))), completed=True)
+
+    def test_br_l_207_text_the_model_wrote_is_never_read_as_a_block(self):
+        # BR-L-207: "blocked", "harmonies" or "artist" in the model's own words are its words, not Google's verdict. A completed
+        # answer without audio is a bad response with the after-completion note, never a policy remedy.
+        for text in ("This request was blocked by our safety filters.", "rich vocal harmonies over a soft pad",
+                     "in the style of an artist"):
+            with self.subTest(text=text):
+                e = self.blocked(Resp(200, song(data=False, text=text)))
+                self.assertEqual(e.code, E_BAD_RESPONSE)
+                self.assertTrue(e.message.startswith(AFTER_COMPLETION), e.message)
+                self.assertNotIn(LYRIA_POLICY_REMEDY, e.message)
+
+    def test_br_l_207_harmonies_in_googles_error_text_is_not_harm(self):
+        e = self.blocked(Resp(200, {"id": "x", "status": "failed", "error": {"message": "the harmonies track could not be mixed"}}))
+        self.assertNotEqual(e.code, E_POLICY)
+        self.assertNotIn(LYRIA_POLICY_REMEDY, e.message)
+
+    def test_br_l_207_a_400_naming_an_artist_id_field_is_a_bad_request_not_an_artist_voice(self):
+        e = self.blocked(Resp(400, {"error": {"code": 400, "status": "INVALID_ARGUMENT",
+                                              "message": 'Invalid JSON payload received. Unknown name "artist_id": Cannot find field.'}}))
+        self.assertEqual(e.code, E_BAD_REQUEST)
+        self.assertNotIn(LYRIA_POLICY_REMEDY, e.message)
 
     def test_a_400_that_is_not_about_content_stays_a_bad_request(self):
         e = self.blocked(Resp(400, {"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": "Unknown field: foo"}}))

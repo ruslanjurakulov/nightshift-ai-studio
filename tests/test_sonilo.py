@@ -333,6 +333,16 @@ class SubmitTests(Case):
         self.vendor.on("POST", T2M, Resp(202, ACCEPTED))
         self.vendor.on("POST", V2M, Resp(202, ACCEPTED))
 
+    def test_br_l_209_a_sung_language_is_refused_not_ignored(self):
+        # The bridge passes a music job's language (for Lyria); Sonilo has no such field, so it is refused before any call.
+        with self.assertRaises(AdapterError) as cm:
+            self.adapter().submit(req(text_language="ru"), "text-to-music")
+        self.assertTrue(cm.exception.not_accepted)
+        self.assertIn("no language setting", cm.exception.message)
+        self.assertEqual(self.vendor.requests, [])
+        entry = reg.load()["sonilo-music"]
+        self.assertTrue(any("no language setting" in p for p in self.adapter().problems(req(text_language="uz"), entry)))
+
     def test_a_track_is_asked_for_as_an_async_mp3_of_one_variant_with_the_duration_given(self):
         task = self.adapter().submit(req(duration_s=45), "text-to-music")
         self.assertEqual((task.adapter, task.vendor_model, task.task_id), ("audio.sonilo", "text-to-music", TID))

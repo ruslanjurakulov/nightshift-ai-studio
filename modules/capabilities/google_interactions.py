@@ -39,7 +39,9 @@ stay unsellable until then.
 from __future__ import annotations
 
 import base64
+import json
 import re
+import unicodedata
 from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import urlsplit
@@ -81,7 +83,40 @@ BILLING_UNKNOWN = ("BILLING UNKNOWN: the Google pages read do not say whether a 
 
 #: An interaction id goes into a URL path: no dot segment (``..``), no ``:`` (``a:cancel`` would be another endpoint), no ``/``.
 _ID = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,199}$")
-_POLICY_WORDS = ("safety", "blocked", "prohibited", "policy", "violat", "harm")
+#: BR-L-207: a content refusal is read from Google's structured fields first (``_structured_block``), and only then from these
+#: whole-word phrases in GOOGLE'S OWN error text. A substring test read "harmonies" as harm and a field named "artist_id" as an
+#: artist's voice, which sent the person to the wrong remedy (rule 6). Text the MODEL wrote (lyrics, a description) is never read for
+#: them: it is the model's words, not Google's verdict.
+_POLICY_PHRASES = re.compile(r"\b(safety|policy|prohibited|blocked|violat(e|es|ed|ion|ions|ing)|harm(ful)?|copyright(ed)?|"
+                             r"recitation)\b|\bartists?'?s? voices?\b", re.IGNORECASE)
+#: The block reasons Google's generative APIs name in a structured field (promptFeedback.blockReason and finishReason in
+#: generateContent; the Interactions shape of a block is UNVERIFIED, so the same names are looked for in its error and metadata).
+_BLOCK_REASONS = frozenset({"SAFETY", "RECITATION", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "IMAGE_SAFETY"})
+_BLOCK_KEYS = frozenset({"block_reason", "blockreason", "finish_reason", "finishreason", "reason"})
+#: Parts of an answer that hold what the model or the person wrote: never searched for a block.
+_CONTENT_KEYS = frozenset({"steps", "input", "output_audio", "outputs", "content"})
+
+
+def _structured_block(obj, depth: int = 0) -> Optional[str]:
+    """The first block reason in a structured field of ``obj`` (an error or an answer's metadata), or None. Model content is skipped."""
+    if depth > 4:
+        return None
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            key = str(k).lower()
+            if key in _CONTENT_KEYS:
+                continue
+            if key in _BLOCK_KEYS and isinstance(v, str) and v.strip().upper() in _BLOCK_REASONS:
+                return v.strip().upper()
+            found = _structured_block(v, depth + 1)
+            if found:
+                return found
+    elif isinstance(obj, list):
+        for v in obj[:20]:
+            found = _structured_block(v, depth + 1)
+            if found:
+                return found
+    return None
 _QUOTA_WORDS = ("billing", "paid tier", "free tier", "quota", "credit", "payment", "spending")
 _REGION_WORDS = ("location", "region", "country", "territory")
 #: Google answers a wrong key with HTTP 400 ``INVALID_ARGUMENT`` ("API key not valid"), not 401: the opposite
@@ -172,7 +207,9 @@ class _InteractionsBase(SafeResultMixin, HttpAdapter):
                 return E_AUTH
         if name == "PERMISSION_DENIED" and any(w in low for w in _QUOTA_WORDS):
             return E_QUOTA
-        if name in ("INVALID_ARGUMENT", "FAILED_PRECONDITION") and any(w in low for w in _POLICY_WORDS):
+        if _structured_block(err):
+            return E_POLICY
+        if name in ("INVALID_ARGUMENT", "FAILED_PRECONDITION", "") and _POLICY_PHRASES.search(low):
             return E_POLICY
         return None
 
@@ -216,7 +253,7 @@ class _InteractionsBase(SafeResultMixin, HttpAdapter):
         err = data.get("error") if isinstance(data.get("error"), dict) else {}
         text = self.message(err.get("message") or err.get("status") or f"the vendor reported the job {data.get('status')}")
         low = text.lower()
-        if any(w in low for w in _POLICY_WORDS):
+        if _structured_block(err) or _structured_block({k: v for k, v in data.items() if k != "error"}) or _POLICY_PHRASES.search(text):
             return PollResult(FAILED, error=_refused(text))
         code = E_QUOTA if any(w in low for w in _QUOTA_WORDS) else E_UNAVAILABLE
         return PollResult(FAILED, error=AdapterError(code, f"{BILLING_UNKNOWN}. {text}"))
@@ -493,10 +530,73 @@ LYRIA_POLICY_REMEDY = ("Google's safety filter blocked this prompt: remove any a
                        "then try again")
 #: The instruction Google's page gives for a song without singing: there is no field for it, it is written in the prompt.
 LYRIA_INSTRUMENTAL = "Instrumental only, no vocals."
-#: Lyric sections ("Lyrics are written with [Verse] and [Chorus] tags"): a prompt carrying them asks for singing.
-_LYRIC_TAGS = re.compile(r"\[\s*(verse|chorus|pre-chorus|hook|lyrics?)\b", re.IGNORECASE)
-#: Words of a Lyria block that the generic safety words miss: the two kinds the music page names.
-_LYRIA_BLOCK_WORDS = ("copyright", "artist", "recitation")
+#: BR-S6-01: a lyric section is recognised by its SHAPE, never by a list of words (the vocabulary is open, in every language, and the
+#: reader is a language model). After ``_fold``: a line that starts with a bracketed label of any bracket kind, or with "Word N:".
+_OPEN, _CLOSE = "[({<\u3010\u3014\u3016\u3018\u301a\u27e6\u27e8\u300a\u300c\u300e", "])}>\u3011\u3015\u3017\u3019\u301b\u27e7\u27e9\u300b\u300d\u300f"
+_BRACKET_LABEL = re.compile(rf"^\s*[{re.escape(_OPEN)}][^{re.escape(_CLOSE)}\n]{{0,80}}[{re.escape(_CLOSE)}]")
+_WORD_N_LABEL = re.compile(r"^\s*[^\W\d_]+(?:[ -][^\W\d_]+)?\s*\d+\s*[:.)-]")
+#: Characters that render as nothing and split a word for a reader that does not ignore them (a zero-width space in [Ver​se]).
+_INVISIBLE = re.compile("[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e"
+                        "\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0]")
+#: The common Cyrillic and Greek look-alikes of Latin letters ([Vеrse] with a Cyrillic е), folded to Latin before any check.
+_CONFUSABLES = str.maketrans("аеорсухіјѕԁԛԝАВЕКМНОРСТУХІЈЅαβεικνορτυχΑΒΕΖΗΙΚΜΝΟΡΤΥΧ",
+                             "aeopcyxijsdqwABEKMHOPCTYXIJSabeiknoptuxABEZHIKMNOPTYX")
+#: What an instrumental answer's text may say and still be instrumental.
+_NOT_SUNG = re.compile(r"^(instrumental( only)?|instrumental music|no vocals|instrumental only,? no vocals|\(?instrumental\)?)$",
+                       re.IGNORECASE)
+
+
+def _fold(text: str) -> str:
+    """NFKC (fullwidth ［Verse］ becomes [Verse]), invisible characters removed, look-alike letters folded to Latin."""
+    return _INVISIBLE.sub("", unicodedata.normalize("NFKC", text or "")).translate(_CONFUSABLES)
+
+
+def _section_label_line(prompt: str) -> Optional[int]:
+    """The 1-based number of the first line that starts with a section label, or None."""
+    for n, line in enumerate(_fold(prompt).splitlines(), 1):
+        if _BRACKET_LABEL.match(line) or _WORD_N_LABEL.match(line):
+            return n
+    return None
+
+
+def _strip_labels(line: str) -> str:
+    out = _BRACKET_LABEL.sub("", line)
+    while out != line:
+        line, out = out, _BRACKET_LABEL.sub("", out)
+    out = _WORD_N_LABEL.sub("", out)
+    return out.strip(" \t-\u2013\u2014:.,;!?\"'*_")
+
+
+def returned_singing(text: str) -> bool:
+    """BR-S6-01/02, the OUTPUT check: True when the lyrics or structure text Google returned beside the audio carries a sung line.
+    Fails closed on purpose: a JSON structure passes only when no lyrics field holds words; plain text passes only when every line,
+    once its section and timing labels are removed, is empty or says "instrumental". What an instrumental answer's text really looks
+    like is UNVERIFIED until a paid probe; a prose description is refused rather than guessed at."""
+    folded = _fold(text).strip()
+    if not folded:
+        return False
+    try:
+        doc = json.loads(folded)
+    except ValueError:
+        doc = None
+    if isinstance(doc, (dict, list)):
+        def sung(obj, under_lyrics=False, depth=0) -> bool:
+            if depth > 8:
+                return True
+            if isinstance(obj, dict):
+                return any(sung(v, under_lyrics or bool(re.search(r"lyric|vocal|sung|words|lines", str(k), re.IGNORECASE)), depth + 1)
+                           for k, v in obj.items())
+            if isinstance(obj, list):
+                return any(sung(v, under_lyrics, depth + 1) for v in obj)
+            if isinstance(obj, str) and under_lyrics:
+                return any(_strip_labels(ln) and not _NOT_SUNG.match(_strip_labels(ln)) for ln in obj.splitlines())
+            return False
+        return sung(doc)
+    for line in folded.splitlines():
+        rest = _strip_labels(line)
+        if rest and not _NOT_SUNG.match(rest) and any(ch.isalpha() for ch in rest):
+            return True
+    return False
 #: The media types an MP3 is answered under (``audio/mp3`` is not registered, but is what several Google samples print).
 _MP3_TYPES = ("audio/mpeg", "audio/mp3")
 #: The standard base64 alphabet, padding only at the end. A lenient decode drops characters it does not know, so a string with
@@ -522,18 +622,28 @@ class GoogleLyriaAdapter(_InteractionsBase):
 
     LANGUAGE. "Lyria 3.5 generates lyrics in the language of your prompt", and no list of sung languages exists for 3.5 (the only
     official list, for Vertex Lyria 3, has neither Russian nor Uzbek). Only a language a real call has proven is sung:
-    ``SPECS[...]["vocal_languages"]``, EMPTY until a probe. So today every song is instrumental: the request may not name a
-    language, a prompt with lyric sections ([Verse], [Chorus]) is refused, and Google's own instruction for a song without singing
-    is put at the end of the prompt. Whether Lyria honours it every time is UNVERIFIED until the probe (``vocals_requested`` in the
-    provenance records what was asked, never what was heard).
+    ``SPECS[...]["vocal_languages"]``, EMPTY until a probe. So today every song is instrumental, held in three layers:
+      1. before the call, a COURTESY refusal by shape (rule 6, BR-S6-01): the request may not name a language, and a prompt with
+         a line that starts with a bracketed label of any bracket kind or with "Word N:" is refused, after NFKC, invisible
+         characters removed and look-alike letters folded (``_section_label_line``). A deny-list of words cannot be sound (the
+         vocabulary is open and the reader is a language model), so this is never the guarantee;
+      2. Google's own instruction for a song without singing is put at the end of the prompt (whether Lyria honours it is
+         UNVERIFIED);
+      3. the OUTPUT check (BR-S6-02): the lyrics or structure text Google returns beside the audio is read (``returned_singing``),
+         and a song with sung lines fails as an after-completion bad response, never accepted and never retried elsewhere.
+    NOT YET BUILT, and a condition of sale: a vocal-activity measurement on the MP3 itself (the text can be absent or wrong). It
+    needs a measurement PR first (rule 8). Lyria cannot go on sale until it exists. ``vocals_requested`` in the provenance records
+    what was asked, never what was heard.
 
     THE ANSWER. Base64 audio in a ``model_output`` step's ``audio`` content (the last one, which is what ``output_audio`` names), or
     a top-level ``output_audio`` block. Decoded strictly (the base64 alphabet only) and capped BEFORE decoding; missing, empty,
     not base64 or not MP3 fails closed. The lyrics or structure text Google sends beside it is not kept.
 
-    SAFETY BLOCK. Any refusal for content (an HTTP 4xx naming safety, policy, copyright or an artist; a failed interaction saying
-    so; a finished answer with no audio and such words) is ``policy`` with ``LYRIA_POLICY_REMEDY``: never retried, never moved to
-    another model.
+    SAFETY BLOCK (BR-L-207). A refusal for content is read from Google's structured fields (a block or finish reason such as
+    SAFETY or RECITATION, ``_structured_block``), else from whole-word phrases in GOOGLE'S error text (``_POLICY_PHRASES``: never a
+    substring, so "harmonies" is not harm and a field named artist_id is not an artist's voice). Text the model wrote is never read
+    for it. A block is ``policy`` with ``LYRIA_POLICY_REMEDY``: never retried, never moved to another model. Anything wrong with a
+    COMPLETED answer carries the after-completion spend note.
 
     PROVENANCE. ``output_provenance``: every Lyria file carries Google's SynthID audio watermark ("All generated audio includes a
     SynthID audio watermark", no opt-out), so the library row says ``synthid: true`` and the vendor model.
@@ -551,14 +661,6 @@ class GoogleLyriaAdapter(_InteractionsBase):
     max_inline_bytes = 32 * 1024 * 1024
     SPECS = {"lyria-3.5": {"vocal_languages": ()}}
 
-    def vendor_error_code(self, status: int, text: str) -> Optional[str]:
-        code = super().vendor_error_code(status, text)
-        if code is None and 400 <= status < 500 and status not in (401, 402, 403, 404, 429):
-            low = (text or "").lower()
-            if any(w in low for w in _LYRIA_BLOCK_WORDS):
-                return E_POLICY
-        return code
-
     @staticmethod
     def _blocked(text: str, *, http_status=None, not_accepted: bool = False) -> AdapterError:
         return AdapterError(E_POLICY, f"{BILLING_UNKNOWN}. {LYRIA_POLICY_REMEDY}. Google said: {text}"[:500],
@@ -573,8 +675,11 @@ class GoogleLyriaAdapter(_InteractionsBase):
         if request.text_language is not None and request.text_language not in sung:
             out.append(f"{vendor_model} is not offered for vocals in {request.text_language}: no real call has proven that language "
                        f"yet ({'only instrumental music is offered' if not sung else 'proven: ' + ', '.join(sung)})")
-        if request.text_language is None and _LYRIC_TAGS.search(request.prompt or ""):
-            out.append("the prompt has lyric sections ([Verse], [Chorus]): sung music is not offered yet, only instrumental music")
+        line = _section_label_line(request.prompt or "") if request.text_language is None else None
+        if line is not None:
+            # A courtesy refusal before anything is spent (rule 6). It is not the guarantee: the output check is (returned_singing).
+            out.append(f"line {line} of the prompt starts with a section label ([Verse], (Chorus), 'Verse 1:' or the like): only "
+                       f"instrumental music is offered, so lyric sections are not sent; describe the music in plain words")
         if request.duration_s is not None:
             out.append(f"{vendor_model} has no duration setting (the length is steered in the prompt): a duration is refused, not ignored")
         if request.negative_prompt:
@@ -622,11 +727,12 @@ class GoogleLyriaAdapter(_InteractionsBase):
                 said = e.message[len(BILLING_UNKNOWN) + 2:] if e.message.startswith(BILLING_UNKNOWN) else e.message
                 raise self._blocked(said, http_status=e.http_status, not_accepted=e.not_accepted) from None
             raise
-        return ProviderTask(self.key, vendor_model, None, outputs=self._song(data).outputs)
+        return ProviderTask(self.key, vendor_model, None,
+                            outputs=self._song(data, instrumental=request.text_language is None).outputs)
 
-    def _song(self, data: dict) -> PollResult:
+    def _song(self, data: dict, *, instrumental: bool = True) -> PollResult:
         try:
-            return self._song_of(data)
+            return self._song_of(data, instrumental=instrumental)
         except AdapterError:
             raise
         except Exception:     # an odd shape nobody planned for: the call went through, so it may have billed
@@ -639,23 +745,29 @@ class GoogleLyriaAdapter(_InteractionsBase):
         top = data.get("output_audio")
         return top if isinstance(top, dict) else None
 
-    def _song_of(self, data: dict) -> PollResult:
+    def _song_of(self, data: dict, *, instrumental: bool = True) -> PollResult:
         status = str(data.get("status") or "").lower()
         if status in _TERMINAL_FAILED:
-            err = data.get("error") if isinstance(data.get("error"), dict) else {}
-            said = self.message(err.get("message") or err.get("status") or f"the interaction ended {status}")
-            if any(w in said.lower() for w in (*_POLICY_WORDS, *_LYRIA_BLOCK_WORDS)):
+            err = self._failure(data).error
+            if err.code == E_POLICY:
+                said = err.message[len(BILLING_UNKNOWN) + 2:] if err.message.startswith(BILLING_UNKNOWN) else err.message
                 raise self._blocked(said)
-            raise self._failure(data).error
+            raise err
+        if status != "completed":
+            # Asked synchronously and answered with something unfinished: the call may be running and billing.
+            raise unconfirmed(f"the answer is not a finished interaction (status {self.message(status) or 'missing'})")
+        # From here the interaction is COMPLETED, so it may have been billed: every refusal carries the after-completion note.
         block = self._audio_block(data)
         raw = block.get("data") if block else None
         if not isinstance(raw, str) or not raw:
-            said = self.message(self._text(data))[:160]
-            if any(w in said.lower() for w in (*_POLICY_WORDS, *_LYRIA_BLOCK_WORDS)):
-                raise self._blocked(said)
-            if status != "completed":
-                raise unconfirmed(f"the answer is not a finished interaction (status {self.message(status) or 'missing'})")
-            raise after_completion(AdapterError(E_BAD_RESPONSE, "completed without audio" + (f" (the model said: {said})" if said else "")))
+            reason = _structured_block({k: v for k, v in data.items()})
+            if reason:
+                raise after_completion(self._blocked(f"block reason {reason}"))
+            raise after_completion(AdapterError(E_BAD_RESPONSE, "completed without audio"))
+        if instrumental and returned_singing(self._text(data)):
+            # BR-S6-02: whatever the prompt said, a song that came back with sung lines is not what was offered (rule 4). Never
+            # accepted, never retried on another model.
+            raise after_completion(AdapterError(E_BAD_RESPONSE, "Google returned singing; only instrumental music is offered"))
         mime = str(block.get("mime_type") or "audio/mpeg").split(";", 1)[0].strip().lower()
         if mime not in _MP3_TYPES:
             raise after_completion(AdapterError(E_BAD_RESPONSE, f"the audio is {self.message(mime)!r}; MP3 was asked for"))

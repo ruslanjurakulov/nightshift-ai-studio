@@ -18,6 +18,7 @@ import { parseGeoTable } from "@/lib/geo/table";
 import { CLIENT_IP_HEADER } from "@/lib/geo/client-ip";
 import { GOOGLE_BLOCKED, GOOGLE_MODELS, isBlockedIn, refusesUnknownCountry, withoutBlocked } from "@/lib/geo/blocked";
 import { geoRefusal } from "@/lib/server/geo";
+import { signGeoClaim } from "@/lib/server/geo-claim";
 import { adultLock } from "@/lib/age";
 import { discoverySpec } from "@/lib/models-discovery";
 import { LEGAL_TEXTS } from "@/lib/legal-docs";
@@ -48,6 +49,15 @@ describe("Lyria: the end user's country (Google's available regions)", () => {
     expect(isBlockedIn(LYRIA, "UZ")).toBe(false);
   });
 
+  it("BR-S6-03: a code that is not a country is never allowed, and never signed for the database", () => {
+    for (const code of ["EU", "AP", "QQ"]) {
+      expect(isBlockedIn(LYRIA, code)).toBe(true);
+      expect(() => signGeoClaim(code, "00000000-0000-4000-8000-000000000001", 1_800_000_000, "k".repeat(40))).toThrow();
+    }
+    expect(signGeoClaim("UZ", "00000000-0000-4000-8000-000000000001", 1_800_000_000, "k".repeat(40))).toMatch(/^v1[.]UZ[.]/);
+    expect(signGeoClaim("XK", "00000000-0000-4000-8000-000000000001", 1_800_000_000, "k".repeat(40))).toMatch(/^v1[.]XK[.]/);
+  });
+
   it("is hidden from the picker when the country is unknown", () => {
     expect(withoutBlocked([{ id: LYRIA }], null)).toEqual([]);
     expect(withoutBlocked([{ id: LYRIA }], "RU")).toEqual([]);
@@ -76,16 +86,19 @@ const strings = (b: LegalBlock): string[] =>
 
 describe("Lyria: the legal text for the owner's review", () => {
   const words = {
-    en: { privacy: ["Lyria", "Gemini API", "fifty-five (55) days", "delete the request at Google", "SynthID audio watermark"], terms: ["Lyria", "artist’s voice", "lyrics of an existing song", "SynthID"] },
-    ru: { privacy: ["Lyria", "Gemini API", "пятидесяти пяти (55) дней", "удалим запрос у Google", "водяной знак Google SynthID"], terms: ["Lyria", "голосу конкретного исполнителя", "текст существующей песни", "SynthID"] },
-    uz: { privacy: ["Lyria", "Gemini API", "ellik besh (55) kunlik", "Google’dan oʻchiramiz", "SynthID audio suv belgisi"], terms: ["Lyria", "ijrochining ovoziga", "mavjud qoʻshiq matnini", "SynthID"] },
+    en: { privacy: ["Lyria", "Gemini API", "fifty-five (55) days", "SynthID audio watermark"], terms: ["Lyria", "artist’s voice", "lyrics of an existing song", "SynthID"] },
+    ru: { privacy: ["Lyria", "Gemini API", "пятидесяти пяти (55) дней", "водяной знак Google SynthID"], terms: ["Lyria", "голосу конкретного исполнителя", "текст существующей песни", "SynthID"] },
+    uz: { privacy: ["Lyria", "Gemini API", "ellik besh (55) kunlik", "SynthID audio suv belgisi"], terms: ["Lyria", "ijrochining ovoziga", "mavjud qoʻshiq matnini", "SynthID"] },
   } as const;
 
-  it.each(["en", "ru", "uz"] as const)("%s: privacy says what is sent, how long it is kept and that it is deleted; terms pass on the policy", (locale) => {
+  it.each(["en", "ru", "uz"] as const)("%s: privacy says what is sent and how long Google keeps it, and promises no deletion; terms pass on the policy", (locale) => {
     const privacy = LEGAL_TEXTS[locale].privacy.sections.find((s) => s.id === "processors")!.body.flatMap(strings).join(" ");
     const terms = LEGAL_TEXTS[locale].terms.sections.find((s) => s.id === "third-parties")!.body.flatMap(strings).join(" ");
     for (const w of words[locale].privacy) expect(privacy, w).toContain(w);
     for (const w of words[locale].terms) expect(terms, w).toContain(w);
+    // BR-L-210: no stored path exists, so the text promises no deletion at Google.
+    const lyria = privacy.slice(privacy.indexOf("Lyria"));
+    expect(lyria.slice(0, 1200)).not.toMatch(/delete|удалим|oʻchiramiz/);
     // Terms 7 already binds Google's models to the Prohibited Use Policy; the Lyria rule sits under that sentence.
     expect(terms).toContain("https://policies.google.com/terms/generative-ai/use-policy");
   });

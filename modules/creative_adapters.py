@@ -261,6 +261,8 @@ class RegistryAdapter:
         if result.state == FAILED:
             err = result.error or AdapterError("bad_response", "the provider failed the task without a reason")
             return ProviderPoll(JOB_FAILED, error_code=err.code, error=err.message)
+        # Asked before anything is stored, so an adapter bug (a non-mapping) fails before the held outputs are dropped.
+        provenance = self.provenance(request)
         # A failed download raises (retried by the worker with the same task);
         # held synchronous outputs are dropped only once they are on disk.
         files = self.adapter.fetch(result, out_dir, stem="output")
@@ -268,7 +270,7 @@ class RegistryAdapter:
             with self._lock:
                 self._held.pop(task_id, None)
         return ProviderPoll(JOB_SUCCEEDED, files=list(files), usage=self.usage(request, len(files)),
-                            provenance=self.provenance(request))
+                            provenance=provenance)
 
     def provenance(self, request: GenerationRequest) -> Dict[str, object]:
         """What the adapter says every file of this job carries (Lyria: Google's SynthID watermark), for the library row. {} for an
@@ -277,7 +279,10 @@ class RegistryAdapter:
         if not callable(say):
             return {}
         out = say(capability_request(request), self._vendor_model(request.capability))
-        return dict(out) if isinstance(out, dict) else {}
+        if not isinstance(out, dict):
+            # BR-L-208: an adapter that says something other than a mapping has a bug; hiding it would drop a watermark silently.
+            raise CreativeAdapterError("bad_response", f"{self.adapter.key} stated its output provenance as {type(out).__name__}, not a mapping")
+        return dict(out)
 
     def usage(self, request: GenerationRequest, n_files: int) -> ProviderUsage:
         """What the provider charged in its own unit (0037). USD stays None:
