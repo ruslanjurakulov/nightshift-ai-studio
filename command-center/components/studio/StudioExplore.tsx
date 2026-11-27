@@ -24,6 +24,7 @@ import { ClipPause } from "@/components/site/ClipPause";
 import { TapReveal } from "@/components/site/TapReveal";
 import { AiMark } from "@/components/site/AiMark";
 import { focusPrompt } from "@/components/shell/SkipLink";
+import { LOGIN_PATH } from "@/lib/public-paths";
 import "@/components/site/media-card.css";
 import "@/components/studio/studio-explore.css";
 
@@ -41,13 +42,16 @@ import "@/components/studio/studio-explore.css";
  * failed (with a retry that keeps the keyboard's place), not switched on and session ended each say so. A row with nothing to show
  * is not drawn, never filled with placeholders.
  *
- * Moving clips stop with the page's pause key (ClipPause, shown to the keyboard when a clip is here), a tap on a clip, reduced motion
- * (no clip at all) or Save-Data (components/site/LoopClip.tsx).
+ * Moving clips stop with the page's pause key (ClipPause, shown when a keyboard reaches it while a clip is here), and do not play
+ * at all under reduced motion or Save-Data, or while off screen (components/site/LoopClip.tsx). There is no tap-to-pause here: the
+ * card's link covers the clip, so a tap opens or reveals the card instead (the clip boxes carry no data-clip on purpose).
  */
 export function StudioExplore({ data }: { data: ExploreData }) {
   const { t } = useI18n();
   const x = t.studioHome.explore;
-  if (data.state === "unread") return <Quiet testId="explore-unread" line={x.unread} />;
+  // Unread on the server (the registry or the price list could not be read): no retry from here would read it again, so the way on
+  // is the composer.
+  if (data.state === "unread") return <Quiet testId="explore-unread" line={x.unread} action={<WriteOwn />} />;
   // Nothing on sale for any tool here: said at once; reading the templates could only end in the same line.
   if (nothingOnSale(data.samples, data.onSale)) return <Soon />;
   return <ExploreGrid samples={data.samples} onSale={data.onSale} />;
@@ -100,13 +104,39 @@ function ExploreGrid({ samples, onSale }: { samples: readonly ExploreSample[]; o
   const unread = state.phase === "ok" && templatesUnread(state.templates);
 
   useEffect(() => {
+    // A retry pressed where its key then goes away (the unread line replaced by the loading section): the heading keeps the place.
+    if (retried.current && state.phase === "loading" && document.activeElement === document.body) formatsRef.current?.focus();
     if (!retried.current || state.phase !== "ok") return;
     retried.current = false;
     (firstRowRef.current ?? quietRef.current)?.focus();
   }, [state]);
 
+  // The route answered, but could not say for any template whether its model is on sale: "could not load", with a retry (it may
+  // answer next time) and the composer.
+  const retryKey = (
+    <button
+      type="button"
+      className="btn-quiet tap"
+      onClick={() => {
+        retried.current = true;
+        retry();
+        // The key goes away with the line it answers: the heading keeps the place (it stays through the loading).
+        formatsRef.current?.focus();
+      }}
+      data-testid="explore-retry"
+    >
+      {x.retry}
+    </button>
+  );
+  const unreadAction = (
+    <>
+      {retryKey}
+      <WriteOwn />
+    </>
+  );
+
   if (state.phase === "ok" && shownRows.length === 0 && samples.length === 0) {
-    return unread ? <Quiet testId="explore-unread" line={x.unread} focusRef={quietRef} /> : <Soon focusRef={quietRef} />;
+    return unread ? <Quiet testId="explore-unread" line={x.unread} action={unreadAction} focusRef={quietRef} /> : <Soon focusRef={quietRef} />;
   }
 
   const sampleCards = samples.map((s) => (
@@ -190,19 +220,7 @@ function ExploreGrid({ samples, onSale }: { samples: readonly ExploreSample[]; o
       body = (
         <div className="sx-state" role="alert">
           <p>{x.error}</p>
-          <button
-            type="button"
-            className="btn-quiet tap"
-            onClick={() => {
-              retried.current = true;
-              retry();
-              // The key goes away with the error it answers: the heading keeps the place (it stays through the loading).
-              formatsRef.current?.focus();
-            }}
-            data-testid="explore-retry"
-          >
-            {x.retry}
-          </button>
+          {retryKey}
         </div>
       );
     } else if (state.phase === "not_enabled") {
@@ -216,7 +234,7 @@ function ExploreGrid({ samples, onSale }: { samples: readonly ExploreSample[]; o
       body = (
         <div className="sx-state">
           <p>{x.signedOut}</p>
-          <a className="btn-quiet tap" href={`/login?next=${encodeURIComponent(here)}`} data-testid="explore-sign-in">
+          <a className="btn-quiet tap" href={`${LOGIN_PATH}?next=${encodeURIComponent(here)}`} data-testid="explore-sign-in">
             {x.signIn}
           </a>
         </div>
@@ -228,13 +246,24 @@ function ExploreGrid({ samples, onSale }: { samples: readonly ExploreSample[]; o
         {body}
       </section>
     );
+  } else if (unread && shownRows.length === 0) {
+    // Samples to show, and the formats unreadable: said in the formats' place, not dropped as if there were none (rule 5).
+    formats = (
+      <section key="formats" className="sx-row" aria-labelledby={`${uid}-formats`} data-testid="explore-unread">
+        {head(`${uid}-formats`, x.formats, false, formatsRef)}
+        <div className="sx-state">
+          <p>{x.unread}</p>
+          {unreadAction}
+        </div>
+      </section>
+    );
   }
 
   const hasClip = samples.some((s) => s.clip) || (rows !== null && shownRows.some((r) => rows[r].some((tpl) => tpl.preview_url)));
   const hasCards = samples.length > 0 || shownRows.length > 0;
   return (
     <div role="group" aria-label={x.label} className="sx" data-testid="studio-explore">
-      {/* WCAG 2.2.2: the keyboard's way to stop every moving clip here (shown when focused; a tap on a clip does the same). */}
+      {/* WCAG 2.2.2: the keyboard's way to stop every moving clip here, first in the grid and shown above the rows only while focused. */}
       {hasClip && <ClipPause label={t.site.fx.pause} />}
       {samples.length > 0 && (
         <section className="sx-row" aria-labelledby={`${uid}-samples`} data-row="samples">

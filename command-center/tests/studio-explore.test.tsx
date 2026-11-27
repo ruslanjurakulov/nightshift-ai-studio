@@ -29,7 +29,7 @@ vi.mock("next/link", () => ({
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";
 import { StudioExplore } from "@/components/studio/StudioExplore";
-import { EXPLORE_SAMPLE_LIMIT, exploreCatalog, exploreSamples, exploreTemplates, isOnSale, onSaleCatalog, templateRow, templatesUnread, type OnSale } from "@/lib/creative/explore";
+import { EXPLORE_SAMPLE_LIMIT, buildExploreData, exploreCatalog, exploreSamples, exploreTemplates, isOnSale, onSaleCatalog, templateRow, templatesUnread, type OnSale } from "@/lib/creative/explore";
 import { SHOWCASE_ENTRIES, sourceOnlyJobs, type ShowcaseEntry } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { linksSample } from "@/lib/site/showcase-link";
@@ -134,8 +134,11 @@ describe("no model name on a card", () => {
       }
       const all = said.join(" \n ");
       for (const n of names) expect(all.toLowerCase(), n).not.toContain(n.toLowerCase());
-      // Whole ids only (Lens N3): split on anything that cannot be part of an id, so "minimax-h3" inside a word list is still caught.
-      for (const id of ids) expect(all.split(/[^\w.-]+/), id).not.toContain(id);
+      // An id as a whole word, also at the end of a sentence ("… veo-3."), but not as part of a longer id ("veo-3.1").
+      for (const id of ids) {
+        const esc = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        expect(new RegExp(`(?<![\\w.-])${esc}(?![\\w-]|\\.\\w)`).test(all), id).toBe(false);
+      }
     }
   });
 
@@ -389,26 +392,64 @@ describe("the templates read", () => {
     expect((await screen.findByTestId("explore-empty")).textContent).toContain(x.soon);
   });
 
-  it("a registry the server could not read is 'could not check', never 'examples appear as models go live' (rule 5)", () => {
+  it("a registry or a price list the server could not read is 'unread', with the composer as the way on, never the 'soon' line", () => {
+    const e = ON_SALE_ENTRIES.find((x) => x.capability === "t2v" && !sourceOnlyJobs(ON_SALE_ENTRIES).has(x.jobId))!;
+    const models = [model(e.modelId, ["t2v"])];
+    const base = { models, entries: ON_SALE_ENTRIES, files: SHOWCASE_FILES, locale: "en" as const, now: NOW };
+    // Prices unread: onlyPriced would keep every model on a guess, so no card is drawn at all.
+    expect(buildExploreData({ ...base, registryRead: true, catalog: null })).toEqual({ state: "unread" });
+    expect(buildExploreData({ ...base, registryRead: false, catalog: [{ id: e.modelId, state: "on_sale" }] })).toEqual({ state: "unread" });
+    const ok = buildExploreData({ ...base, registryRead: true, catalog: [{ id: e.modelId, state: "on_sale" }] });
+    expect(ok.state === "ok" && ok.samples.some((s) => s.id === e.jobId)).toBe(true);
     render(
       <I18nProvider locale="en">
-        <StudioExplore data={{ state: "unread" }} />
+        <StudioExplore data={buildExploreData({ ...base, registryRead: true, catalog: null })} />
       </I18nProvider>,
     );
-    expect(screen.getByTestId("explore-unread").textContent).toContain(x.unread);
+    const line = screen.getByTestId("explore-unread");
+    expect(line.textContent).toContain(x.unread);
+    expect(within(line).getByRole("link", { name: x.soonAction }).getAttribute("href")).toBe("#prompt");
+    expect(cards()).toHaveLength(0);
     expect(document.body.textContent).not.toContain(x.soon);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("templates whose availability the route could not read (every row 'unknown') read as 'could not check', not 'soon'", async () => {
+  it("templates the route could not read (every row 'unknown') say 'couldn't load', with Try again and the composer", async () => {
     const unknown = TEMPLATES.map((t) => ({ ...t, model_status: "unknown" as const, model_available: false }));
     expect(templatesUnread(unknown)).toBe(true);
     expect(templatesUnread([])).toBe(false);
-    templatesResponse = async () => new Response(JSON.stringify({ status: "ok", templates: unknown }), { status: 200 });
+    let answer: TemplateDto[] = unknown;
+    templatesResponse = async () => new Response(JSON.stringify({ status: "ok", templates: answer }), { status: 200 });
     draw([]);
-    expect((await screen.findByTestId("explore-unread")).textContent).toContain(x.unread);
+    const line = await screen.findByTestId("explore-unread");
+    expect(line.textContent).toContain(x.unread);
     expect(document.body.textContent).not.toContain(x.soon);
     expect(cards()).toHaveLength(0);
+    expect(within(line).getByRole("link", { name: x.soonAction })).toBeTruthy();
+    answer = TEMPLATES;
+    fireEvent.click(within(line).getByTestId("explore-retry"));
+    await screen.findByRole("heading", { name: x.trending });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+  });
+
+  it("samples on sale and every template unknown: the formats say 'couldn't load' in their place, not nothing", async () => {
+    const unknown = TEMPLATES.map((t) => ({ ...t, model_status: "unknown" as const, model_available: false }));
+    templatesResponse = async () => new Response(JSON.stringify({ status: "ok", templates: unknown }), { status: 200 });
+    draw();
+    const line = await screen.findByTestId("explore-unread");
+    expect(screen.getByRole("heading", { name: x.samples })).toBeTruthy();
+    expect(within(line).getByRole("heading", { name: x.formats })).toBeTruthy();
+    expect(line.textContent).toContain(x.unread);
+    expect(within(line).getByTestId("explore-retry")).toBeTruthy();
+  });
+
+  it("a template whose words are not text is dropped, never drawn as '[object Object]'", () => {
+    const rows = exploreTemplates(
+      [tpl("ok-words"), tpl("obj-title", { title: {} as unknown as string }), tpl("num-desc", { description: 7 as unknown as string })],
+      ALL_ON_SALE,
+    );
+    expect(rows.trending.map((t) => t.slug)).toEqual(["ok-words"]);
   });
 
   it("samples on sale but no format: the samples show and no format row or empty line is drawn", async () => {

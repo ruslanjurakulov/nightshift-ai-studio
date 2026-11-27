@@ -58,16 +58,17 @@
 .sx-quiet:focus { outline: none; }
 .sx-state .btn-quiet { min-height: 44px; }
 /* The pause key for the moving clips (components/site/ClipPause.tsx, WCAG 2.2.2). The site's rule is in site-next.css, which the app
-   does not load: the same key, visually hidden until a keyboard reaches it, then shown at the grid's top right. */
+   does not load. Visually hidden until a keyboard reaches it; then it takes its own line at the top of the grid, above the first
+   row's heading, so it never covers that row's "All trends" link (Pixel, round 3). */
 .sx .nx-clip-pause {
-  position: absolute; z-index: 6; top: 0; right: 0; display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; padding: 0 14px;
+  position: relative; z-index: 6; align-self: flex-end; display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; padding: 0 14px;
   border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.5); background: rgba(8, 8, 8, 0.8); color: #fff; font-size: 14px; font-weight: 600;
   white-space: nowrap; cursor: pointer;
 }
 .sx .nx-clip-pause[aria-pressed="true"] { border-color: #ffa940; color: #ffa940; }
 .sx .nx-clip-pause:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
 .sx .nx-clip-pause:not(:focus-visible) {
-  width: 1px; height: 1px; min-width: 0; min-height: 0; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); border: 0;
+  position: absolute; width: 1px; height: 1px; min-width: 0; min-height: 0; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); border: 0;
 }
 @media (prefers-reduced-motion: reduce) { .sx .nx-clip-pause { display: none; } }
 

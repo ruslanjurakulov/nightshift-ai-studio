@@ -130,6 +130,25 @@ export function exploreSamples(
   return out;
 }
 
+/**
+ * The page's answer for the grid, decided on the server: "unread" when the registry (`registryRead` false: readStudioModels() said
+ * null) or the price list (`catalog` null: readCatalogStates could not read it) could not be read, since a guess either way would be
+ * a card for something unbuyable or a "nothing yet" that is not known (rule 5); else the samples and catalogue on sale here.
+ */
+export function buildExploreData(p: {
+  registryRead: boolean;
+  models: readonly StudioModel[];
+  catalog: readonly { id: string; state: string }[] | null;
+  entries: readonly ShowcaseEntry[];
+  files: Readonly<Record<string, ShowcaseFiles>>;
+  locale: Locale;
+  now?: Date;
+}): ExploreData {
+  if (!p.registryRead || p.catalog === null) return { state: "unread" };
+  const onSale = exploreCatalog(p.models, p.catalog, ["t2v", "t2i", "i2v"]);
+  return { state: "ok", samples: exploreSamples(p.entries, p.files, onSale, p.locale, p.now), onSale: { t2v: onSale.t2v, t2i: onSale.t2i } };
+}
+
 /** The template rows: what is trending, videos by topic, and the business pictures as brand-style variants. */
 export const TEMPLATE_ROWS = ["trending", "topics", "brand"] as const;
 export type TemplateRow = (typeof TEMPLATE_ROWS)[number];
@@ -157,6 +176,8 @@ export function exploreTemplates(templates: readonly TemplateDto[], onSale: OnSa
   for (const t of templates) {
     const row = templateRow(t);
     if (!row || t.model_status !== "available" || !isTemplateMedia(t)) continue;
+    // Words the card draws as text: anything but a string (a forged body) drops the template rather than draw "[object Object]".
+    if (typeof t.title !== "string" || typeof t.description !== "string" || typeof t.slug !== "string") continue;
     if (!isOnSale(onSale, capabilityFor(t.kind), t.model_id)) continue;
     rows[row].push(t);
   }

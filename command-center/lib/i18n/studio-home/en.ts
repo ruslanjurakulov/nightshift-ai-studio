@@ -121,9 +121,9 @@ export const studioHomeEn = {
     error: "Couldn't load the formats.",
     retry: "Try again",
     /** The registry or the templates route could not say what is on sale (rule 5: never read as "nothing yet"). */
-    unread: "We couldn't check what is on sale here right now.",
-    /** Nothing on sale here has a sample or a format yet (the strict rule: no operator preview, no placeholder); one quiet line. */
-    soon: "Examples appear here as models go live.",
+    unread: "We couldn't load the examples right now.",
+    /** No sample or format to show: true whether nothing is live yet or this workspace cannot buy it yet (a first purchase, an age check). */
+    soon: "No examples to show here yet.",
     soonAction: "Write your own prompt above",
     notEnabled: "Ready-made formats are not switched on here yet.",
     signedOut: "Your session ended. Sign in again to see the formats.",
