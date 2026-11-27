@@ -65,12 +65,15 @@ export function CreditPricesEditor({
   canEdit,
   rpc,
   ledgerUnits = [],
+  unitMeanings,
 }: {
   prices: CreditPrice[];
   canEdit: boolean;
   rpc?: { maxRatio: number | null };
   /** The cost ledger's units to suggest (lib/server/ledger-units.ts), from the server: they name vendors, so no chunk holds them. */
   ledgerUnits?: readonly string[];
+  /** The ledger units' meanings, built on the server (lib/server/ledger-units.ts ledgerUnitMeanings). */
+  unitMeanings?: Readonly<Record<string, string>>;
 }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -87,7 +90,7 @@ export function CreditPricesEditor({
 
   /** What the owner calls a price: its plain meaning when there is one, else the code. */
   function nameOf(u: string) {
-    return unitMeaning(u, t.credits.unitMeaning) ?? u;
+    return unitMeaning(u, t.credits.unitMeaning, unitMeanings) ?? u;
   }
 
   async function save() {
@@ -315,7 +318,7 @@ export function CreditPricesEditor({
           {/* Phone: one row per price, every value in view — no sideways scroll. */}
           <ul className="flex flex-col md:hidden" aria-label={t.credits.pricesTitle}>
             {prices.map((p) => {
-              const meaning = unitMeaning(p.unit, t.credits.unitMeaning);
+              const meaning = unitMeaning(p.unit, t.credits.unitMeaning, unitMeanings);
               return (
                 <li key={p.unit} className="flex flex-col gap-2 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-0">
                   <div className="min-w-0">
@@ -388,7 +391,7 @@ export function CreditPricesEditor({
               </thead>
               <tbody>
                 {prices.map((p) => {
-                  const meaning = unitMeaning(p.unit, t.credits.unitMeaning);
+                  const meaning = unitMeaning(p.unit, t.credits.unitMeaning, unitMeanings);
                   return (
                     <tr key={p.unit} className="border-t border-[var(--color-border)] align-top">
                       <td className="py-2 pr-3">

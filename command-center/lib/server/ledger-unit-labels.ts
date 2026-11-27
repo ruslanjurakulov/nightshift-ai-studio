@@ -1,6 +1,7 @@
 import "server-only";
 import type { Locale } from "@/lib/i18n/core";
-import { VENDOR_NAMED_LEDGER_UNITS, type VendorNamedLedgerUnit } from "@/lib/server/ledger-units";
+import type { UnitMeaningText } from "@/lib/creditUnits";
+import { LEDGER_UNITS, VENDOR_NAMED_LEDGER_UNITS, type LedgerUnit, type VendorNamedLedgerUnit } from "@/lib/server/ledger-units";
 
 /**
  * The words for the ledger units whose names carry a vendor (gemini_input_tokens, pexels_requests, ...), in en/ru/uz.
@@ -39,5 +40,25 @@ export function ledgerUnitLabels(locale: Locale, form: keyof Labels): UnitLabels
     const v = table[u];
     if (v) out[u] = v;
   }
+  return out;
+}
+
+/** What each ledger unit means, in the price editor's words (t.credits.unitMeaning): the rows lib/creditUnits.ts FIXED had. */
+const LEDGER_MEANING: Record<LedgerUnit, keyof UnitMeaningText> = {
+  gemini_input_tokens: "tokens",
+  gemini_output_tokens: "tokens",
+  tts_characters: "characters",
+  render_seconds: "renderSeconds",
+  pexels_requests: "requests",
+  upload_bytes: "bytes",
+  video_gen_clips: "generatedClips",
+  image_generations: "generatedImages",
+  vision_calls: "calls",
+};
+
+/** unit -> its meaning in the page's language, for the price editor and the price history (props; unitMeaning `known`). */
+export function ledgerUnitMeanings(t: UnitMeaningText): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const u of LEDGER_UNITS) out[u] = t[LEDGER_MEANING[u]] as string;
   return out;
 }

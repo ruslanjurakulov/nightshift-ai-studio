@@ -53,22 +53,20 @@ const FIXED: Record<string, keyof UnitMeaningText> = {
 };
 
 /**
- * The cost ledger's units (lib/server/ledger-units.ts), glossed by their measure word. Not a table keyed by unit: this file
- * is in the Credits page chunk, and several unit names carry the vendor we meter (gemini_input_tokens, pexels_requests),
- * which no browser chunk may hold (scripts/vendor-bundle-check.mjs). Every ledger unit ends in one of these words and reads
- * exactly as its own table row did; the measure word is what the name says, so no other meaning is read into it.
+ * A unit glossed by its last word, only where that word's gloss is true of ANY unit ending in it ("per token", "per request",
+ * "per call"). The cost ledger's own units are not a table here: this file is in the Credits page chunk, and several of
+ * their names carry the vendor we meter (gemini_input_tokens, pexels_requests), which no browser chunk may hold
+ * (scripts/vendor-bundle-check.mjs). Their exact meanings ("per second of rendering", "per narrated character") are built
+ * on the server (lib/server/ledger-units.ts ledgerUnitMeanings) and handed in as `known`. A last word whose meaning depends
+ * on what is measured (_seconds, _characters, _bytes, _clips, _generations) settles nothing, so such a unit an operator
+ * types gets no gloss (rule 5: never a guessed meaning).
  */
-const LEDGER_MEASURES: Record<string, keyof UnitMeaningText> = {
+const GENERIC_MEASURES: Record<string, keyof UnitMeaningText> = {
   tokens: "tokens",
-  characters: "characters",
-  seconds: "renderSeconds",
   requests: "requests",
-  bytes: "bytes",
-  clips: "generatedClips",
-  generations: "generatedImages",
   calls: "calls",
 };
-const LEDGER_UNIT = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*_(tokens|characters|seconds|requests|bytes|clips|generations|calls)$/;
+const GENERIC_UNIT = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*_(tokens|requests|calls)$/;
 
 const MEASURES: Record<string, "perSecond" | "perImage" | "perCharacter" | "perRequest"> = {
   second: "perSecond",
@@ -105,7 +103,8 @@ function variantText(tokens: string[], t: UnitMeaningText): string[] | null {
  *   model_wan_2_7_second_720p        → "per second, at 720p"
  *   model_openai_gpt_image_2_image   → "per image"
  */
-export function unitMeaning(unit: string, t: UnitMeaningText): string | null {
+export function unitMeaning(unit: string, t: UnitMeaningText, known?: Readonly<Record<string, string>>): string | null {
+  if (known && Object.hasOwn(known, unit)) return known[unit];
   const fixed = FIXED[unit];
   if (fixed) return t[fixed] as string;
 
@@ -114,9 +113,9 @@ export function unitMeaning(unit: string, t: UnitMeaningText): string | null {
 
   if (/^scene_regenerate_clip_[a-z0-9]+$/.test(unit)) return t.sceneRegenerateClip;
 
-  // A ledger unit (never a registry unit: those start with model_ and end in a singular measure word).
-  const ledger = unit.startsWith("model_") ? null : LEDGER_UNIT.exec(unit);
-  if (ledger) return t[LEDGER_MEASURES[ledger[1]]] as string;
+  // Never a registry unit: those start with model_ and end in a singular measure word.
+  const generic = unit.startsWith("model_") ? null : GENERIC_UNIT.exec(unit);
+  if (generic) return t[GENERIC_MEASURES[generic[1]]] as string;
 
   if (unit.startsWith("model_")) {
     const tokens = unit.split("_");

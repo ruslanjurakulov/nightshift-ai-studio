@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { unitMeaning, type UnitMeaningText } from "@/lib/creditUnits";
+import { ledgerUnitMeanings } from "@/lib/server/ledger-unit-labels";
 
 /**
  * Breach, PR #956: the PR moved the cost ledger's unit list (gemini_input_tokens, pexels_requests, ...) to
@@ -79,6 +80,10 @@ describe("breach #956: the ledger's vendor-named units in the price editor's cli
   it("a ledger unit is still glossed after the fix (by its measure word, not a vendor-keyed table)", () => {
     expect(unitMeaning("gemini_input_tokens", GLOSS)).toBe("tokens");
     expect(unitMeaning("pexels_requests", GLOSS)).toBe("requests");
-    expect(unitMeaning("tts_characters", GLOSS)).toBe("characters");
+    // Amended after Lens's recheck (rule 5): "characters" reads "per narrated character", which is not true of every
+    // *_characters unit, so the browser no longer reads it off the last word. Its exact meaning comes from the server
+    // (lib/server/ledger-unit-labels.ts ledgerUnitMeanings), handed in as unitMeaning's `known`.
+    expect(unitMeaning("tts_characters", GLOSS)).toBeNull();
+    expect(unitMeaning("tts_characters", GLOSS, ledgerUnitMeanings(GLOSS))).toBe("characters");
   });
 });
