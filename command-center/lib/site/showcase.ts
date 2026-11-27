@@ -212,12 +212,17 @@ export function showcaseModels(entries: readonly ShowcaseEntry[]): { modelId: st
 export interface ShowcaseFiles {
   poster: string;
   posterSm: string;
-  /** null for a picture. */
-  clip: { mp4: string; webm: string; smMp4: string; smWebm: string } | null;
+  /**
+   * null for a picture. `audio: true` when the export found an audio track and kept it in the 1280 copies (the clip-sm.* files
+   * are always silent); absent means silent, which is every entry exported before 2026-11-22. The generator writes it from the
+   * entry's measured `audio` (tools/export_showcase.py), and the site offers sound only where it is true (CLAUDE.md #5).
+   */
+  clip: { mp4: string; webm: string; smMp4: string; smWebm: string; audio?: true } | null;
   /**
    * A larger rendition than the 1280 one, only when the model's own output is larger (never an upscale): its still, its
    * real width, and its clip for a video. No entry has one today (the site's clips are 720p to 768p); the pages already offer
    * it to a wide screen when it is there (lib/site/renditions.ts) and fall back to the 1280 files when it is not.
    */
-  lg?: { poster: string; width: number; clip: { mp4: string; webm: string } | null };
+  /** `audio: true` only when that larger file carries the track too; without it a clip playing the larger file offers no sound. */
+  lg?: { poster: string; width: number; clip: { mp4: string; webm: string; audio?: true } | null };
 }

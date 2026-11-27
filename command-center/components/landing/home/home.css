@@ -189,6 +189,9 @@
   /* The pause switch, where the reference keeps its sound key: the bottom right corner. Visually hidden until a keyboard focuses it
      (owner, 2026-11-13: no visible pause word or icon; site-next.css), and then it shows there, clear of the bar. */
   .hm-hero .nx-motion { position: absolute; top: auto; right: var(--hm-gutter); bottom: 60px; }
+  /* The hero clip's sound key (components/site/SoundToggle.tsx), stacked above the pause switch's 44 px corner so the two never
+     overlap, and clear of the "AI" badge bottom left. Drawn only for a clip with sound, while it plays. */
+  .hm-hero .hm-hero-sound { right: var(--hm-gutter); bottom: 112px; }
 
   .hm-badge {
     display: inline-flex;
