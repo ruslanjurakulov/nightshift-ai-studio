@@ -44,7 +44,7 @@ import {
   priceView,
   promptLimit,
   PROMPT_CAP,
-  providerName,
+  providerLabel,
   SHOW_PROVIDER_TO_CUSTOMERS,
   showsProvider,
   widestShape,
@@ -60,6 +60,7 @@ import {
   type DiscoveryModel,
   type Filters,
 } from "../lib/models-discovery";
+import { providerLabels, providerName } from "../lib/server/provider-names";
 import { STUDIO_TOOLS } from "../lib/navigation";
 import { en } from "../lib/i18n/en";
 import { ru } from "../lib/i18n/ru";
@@ -402,8 +403,9 @@ describe("search and filters", () => {
     expect(matchesQuery("anything", "   ")).toBe(true);
     expect(fold("Oʻzbek")).toBe(fold("O'zbek"));
     // The operator searches providers; a customer, who is not shown them, cannot find a model by one.
-    expect(models.filter((m) => matchesFilters(m, f({ q: "ByteDance" }), [], true)).map((m) => m.id)).toEqual(["vid-a"]);
-    expect(models.filter((m) => matchesFilters(m, f({ q: "openai img" }), [], true)).map((m) => m.id)).toEqual(["img-b"]);
+    const labels = providerLabels(models.map((m) => m.provider));
+    expect(models.filter((m) => matchesFilters(m, f({ q: "ByteDance" }), [], labels)).map((m) => m.id)).toEqual(["vid-a"]);
+    expect(models.filter((m) => matchesFilters(m, f({ q: "openai img" }), [], labels)).map((m) => m.id)).toEqual(["img-b"]);
     expect(models.filter((m) => matchesFilters(m, f({ q: "ByteDance" }))).map((m) => m.id)).toEqual([]);
     expect(models.filter((m) => matchesFilters(m, f({ q: "img" }))).map((m) => m.id)).toEqual(["img-b"]);
   });
@@ -526,6 +528,15 @@ describe("identity", () => {
     expect(providerName("bfl")).toBe("Black Forest Labs");
     expect(providerName("openai")).toBe("OpenAI");
     expect(providerName("newco")).toBe("newco");
+    // An inherited key is not a provider (a registry slug "constructor" must read as itself).
+    expect(providerName("constructor")).toBe("constructor");
+  });
+
+  it("hands a screen only the labels of the slugs it shows, and reads an unlabelled slug as itself", () => {
+    expect(providerLabels(["bfl", "openai", "", "bfl"])).toEqual({ bfl: "Black Forest Labs", openai: "OpenAI" });
+    expect(providerLabel({ bfl: "Black Forest Labs" }, "bfl")).toBe("Black Forest Labs");
+    expect(providerLabel({ bfl: "Black Forest Labs" }, "newco")).toBe("newco");
+    expect(providerLabel(null, "bfl")).toBe("bfl");
   });
 
   it("prints the widest shape a model makes, and none when it lists none", () => {
