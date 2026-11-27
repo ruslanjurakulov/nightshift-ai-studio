@@ -75,6 +75,11 @@ export const START_REMEDIES: Readonly<Record<string, StartRemedy>> = {
   refs_not_supported: "fix_and_requote",
   source_unavailable: "fix_and_requote",
   scene_too_long_for_model: "fix_and_requote",
+  // 0218 (creative_price): a scene line's prompt is over its model's limit, or carries a negative prompt (or a seed) the model does not
+  // take. The scene is never altered to fit (rule 4): only the person shortens it or chooses another model.
+  prompt_too_long: "fix_and_requote",
+  negative_prompt_not_supported: "fix_and_requote",
+  seed_not_supported: "fix_and_requote",
   voice_not_set: "fix_and_requote",
   channel_voice_not_priced: "fix_and_requote",
   no_scenes: "fix_and_requote",

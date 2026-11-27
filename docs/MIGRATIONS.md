@@ -2549,6 +2549,63 @@ list off sale, and every model priced by size carries a terms gate). Post-event:
 - Lab: `tests/security/test_sec_geo_gate_0208.py`; pins: `tests/test_geo_gate_image_size_migration.py`. Rollback:
   `docs/sql/rollback_0208_geo_gate_and_image_size_price.sql`. Docs: `docs/GEO_BLOCK.md`.
 
+## A quote refuses a prompt longer than the model takes, and settings its adapter would drop (0218)
+
+0218 (`0218_creative_prompt_limits.sql`) is **live on apply** and writes no row. It replaces THREE functions: `creative_params_problem`
+(0208's body plus two hunks), `creative_price` (0208's body plus two hunks; 0208's size checks and its country gate, a trigger, are kept
+exactly) and `film_price` (0171's body plus four hunks). Apply order: 0208, then 0218, then 0219.
+
+- **Evidence.** Breach's pins (`tests/security/test_sec_breach_s9_prompt_limits.py`): a model's own `limits.max_prompt_chars` was read
+  only by the worker (`ModelEntry.problems`, UTF-16 units), after the hold, while the database checked 4000 code points; a prompt of 301
+  characters on a 300-character model was quoted and held through MCP. A `negative_prompt` or a `seed` was quoted and charged for every
+  model, and dropped by every adapter that does not send it (Recraft V4.1 among them; `CapabilityRequest` has no seed at all).
+  `creative_params_problem` repeated an unknown key verbatim (`unknown parameter <key>`), so a key carrying a newline and "SYSTEM: ..."
+  reached a connected assistant inside the server's own refusal.
+- **The rule.** `seed` is refused for every model (`seed_not_supported`) by `creative_params_problem`, before any model is read, so a
+  routed quote (auto / cheap / fast / quality) names it too. In `creative_price`, after the model row is read and before any rate: a
+  `negative_prompt` that is not only white space (what Python's `str.strip()` removes, the worker's test) is refused unless `spec.takes_negative_prompt` is JSON true
+  (`negative_prompt_not_supported`); the prompt is counted in UTF-16 code units (the worker's `prompt_units`: an emoji counts two)
+  against `spec.limits.max_prompt_chars`, and a negative prompt in code points against `spec.limits.max_negative_prompt_chars` (Krea's
+  adapter limit, 1024), refused `prompt_too_long` with "<N> character(s) over this model's limit of <M>; shorten the prompt". A spec with
+  no positive limit is held to the 4000 only (every registry entry states one). Each is `creative_refuse(word, detail, 'NS400')`: the
+  router skips the model, `film_try_price` puts the word on the line, the API and MCP answer 400 `invalid_params` with the detail, and
+  the Studio's routes answer the word itself (a sentence in en / ru / uz).
+- **The registry side.** New field `takes_negative_prompt` (default false), synced into `spec` (always stated), and checked against the
+  adapter's `TAKES_NEGATIVE_PROMPT` in `_cross_errors`. True only where the adapter's `submit` puts the field in the vendor body, proved
+  per model by `tests/test_negative_prompt_wiring.py`: Veo 3.1 (all three), Kling 2.6 and 3, Wan 2.7 and 3.0, Pika 2.5 and Pikaframes,
+  Krea 3 and Krea 3 Regional. The worker refuses a negative prompt the entry does not take (`ModelEntry.problems`) as a backstop.
+- **Unknown keys.** `creative_params_problem` answers `unknown parameter (<count>); allowed: <the keys it knows>` (0208's `image_size`
+  included, `seed` left out), never the key.
+- **Film behaviour change.** `film_price` now prices the words each take sends (0198): the key frame carries the scene's negative
+  prompt, each clip shot its visual prompt and negative prompt. A scene with a negative prompt on a model that does not take one, or a
+  visual prompt longer than the clip model takes, is refused on that scene's lines at `quote_film` / `start_film`; the scene is never
+  altered. The lines' own params (what `start_film` copies into a take and what the quote id hashes) leave the words out as before.
+- **Residuals.** The style kit's and characters' descriptions (0048) are appended by the worker, which still refuses the composed prompt
+  over the limit after the hold; a routed quote with a negative prompt and no model of the capability that takes one answers
+  `no_model_available` (naming it would mean replacing `route_model`); region edits' words are capped at 1000 code points (0126), not in UTF-16 units; `creative_regions_problem`
+  still names an unknown field inside a region; Film's narration line checks one sample.
+- **Before you apply (enforced).** Run Actions -> Probe models with `--sync` FROM A REF THAT CONTAINS 0218 (merge first, then sync from
+  main). The file refuses to apply while `model_registry` has rows and none states `takes_negative_prompt`. A later sync from an older ref
+  removes the key again; every negative prompt is then refused (never dropped) until a sync from a current ref.
+- **Drift guard and end state.** Live bodies must be 0208's (`creative_params_problem` `7ccde072309a637d9b07e59f1be45d20`,
+  `creative_price` `f61aaddd5686045961addd6f14a02c32`) and 0171's (`film_price` `5de6c9bb2a74079e2078cad2d91b3c34`), or this file's
+  (`cb7ad6cd459f31259445bedd1a4a0c88`, `59c5c289009a874af043c534b29934ee`, `3c22f87be736c073d17d93e040e914e1`); 0208 must be applied.
+  Where stream S10's 0224 was applied first (0208's `creative_price` plus its one dated-price line, `d5bc7c5ef1c3d823ece05b9d00274042`),
+  the file creates its own body plus that line (`ea2b58e88fe34ae18b261e5a0fbef435`, by EXECUTE), and its rollback puts 0208's body plus
+  the line back. The base is read from a durable fact (`credits_per_unit_now(text)` exists), never a session setting, so a
+  statement-by-statement run ends in the same place; any other body is refused. The rollback asserts its own end state too. The last block asserts
+  the three bodies, no API role grant, the pinned search_path, the volatility, every guard of `creative_price`, and that an unknown key
+  never comes back in the refusal. Apply as ONE transaction.
+- **Order.** 0208's and 0171's replays and rollbacks refuse 0218's bodies: run `docs/sql/rollback_0218_creative_prompt_limits.sql`
+  first (it puts the three bodies back byte for byte). The lab: `sec_db.take_off_0218`, called by `take_off_0208` and `take_off_0171`;
+  `rollback_0208_body` (and so `rollback_0159_body`) starts with 0218's rollback where 0218 is on; `ON_0156`, `ON_0139` and `ON_0124`
+  list it right after 0208, so every sequence that leaves 0208 out leaves it out too.
+- **Tests.** `tests/test_creative_prompt_limits_migration.py` (the hunks, the count is the worker's, the hashes, the rollback, the lab
+  chain, every synced row states a limit), `tests/test_negative_prompt_wiring.py` (the flag is what each adapter sends),
+  `tests/security/test_sec_creative_prompt_limits.py` (the Studio's create and quote, the real rows, Film's lines, the file on a scratch
+  database), and `tests/security/test_sec_breach_s9_prompt_limits.py` (MCP: the limit, the boundary, a stored quote after the limit was
+  lowered, the unknown key never echoed).
+
 ## Retire gemini-omni-1.1-flash (0222)
 
 0222 (`0222_retire_gemini_omni_1_1.sql`, number from Atlas, stream S10) sets `model_registry.availability = 'disabled'` for

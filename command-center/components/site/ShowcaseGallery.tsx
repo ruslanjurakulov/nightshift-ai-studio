@@ -1,9 +1,10 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
-import { ArrowRight } from "lucide-react";
-import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
-import { SHOWCASE_ENTRIES, modelLeftOut, sourceOnlyJobs, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
+import type { Dictionary, Locale } from "@/lib/i18n";
+import { SHOWCASE_ENTRIES, sourceOnlyJobs, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
 import { tryHref } from "@/lib/site/showcase-link";
+import { cardWords } from "@/lib/site/card-words";
+import { cardTitle } from "@/lib/site/card-titles";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { ShowcaseClip } from "@/components/site/ShowcaseClip";
 import { ClipPause } from "@/components/site/ClipPause";
@@ -11,17 +12,9 @@ import { posterSrcSet } from "@/lib/site/renditions";
 import { GRID_GUTTER_ROWS, PLANNED_COLUMNS, gridSpan, level, levelOrder } from "@/lib/site/gallery-plan";
 import { ShortsFeed } from "@/components/site/ShortsFeed";
 import { shortsItems } from "@/components/site/shorts";
-import { SampleDetail, type SampleDetailCopy } from "@/components/site/SampleDetail";
+import { TapReveal } from "@/components/site/TapReveal";
 import { AiMark } from "@/components/site/AiMark";
-
-/** The day a sample was made, in the page's language (UTC, so the server and every visitor read the same day). */
-function madeOn(iso: string, locale: Locale): string {
-  try {
-    return new Intl.DateTimeFormat(locale, { dateStyle: "long", timeZone: "UTC" }).format(new Date(iso));
-  } catch {
-    return iso.slice(0, 10);
-  }
-}
+import "@/components/site/media-card.css";
 
 export { GRID_GUTTER_ROWS, gridSpan };
 
@@ -50,24 +43,23 @@ export type LandingFormat = { id: string; job: string; title: string; body: stri
 
 /**
  * The model samples (lib/site/showcase.ts): real generations from the operator's Studio, laid out media first, as the AI studios'
- * explore grids are (Higgsfield, Krea, Midjourney: the picture fills the card, tight gutters, no text under it). A card at rest is
- * its picture or clip and the "AI-generated" badge on it, nothing else. With a fine pointer on it, or keyboard focus in it, the
- * first two lines of its words and a compact "Use this prompt" show over the bottom of the picture. Pressing the card opens the
- * sample (components/site/SampleDetail.tsx): the whole picture or clip, the whole prompt, the model, the day, the picture it was
- * made from, and "Try this prompt" / "Use this prompt" with its note. The owner has not decided whether model names show on the
- * public cards (2026-11-14), so a card names none (not even in its picture's description); only its dialog does.
+ * explore grids are (Kling, Higgsfield, Krea: the picture fills the card, tight gutters, no text under it).
  *
- * Nothing claims the model is on sale: a model only the operator can try yet (registry `operator_preview`) is left out of the link
- * and its dialog says it is not in the Studio yet; a model whose announced shutdown day has come is left out the same way, and its
- * dialog says it is no longer in the Studio. Every link fills the Studio form with the tool and the words (lib/site/showcase-link.ts).
+ * Owner decision 22 Nov: no model name on public cards; it travels only in the Studio link. At rest a card is its picture or
+ * clip and one small AI mark (components/site/media-card.css). On hover (a fine pointer), keyboard focus or a first tap on a phone
+ * (components/site/TapReveal.tsx), a caption shows over a dark foot: a bold title (the format's when the sample shows one, else
+ * its hand-written title in this language, lib/site/card-titles.ts) and one grey line under it, the card's
+ * one short line (the export's `cardLine` in this language, else the prompt's first sentence, lib/site/card-words.ts). The whole
+ * card is one link to the Studio form with the sample's tool, model and whole prompt (lib/site/showcase-link.ts tryHref; signed
+ * out, sign-up first), so the model becomes known only in the Studio, which says which model and price it will use before
+ * anything runs. A model customers cannot choose (an operator preview, or past its shutdown day) is left out of that link.
  *
- * With no entry, or none whose files are here, it renders nothing: never a placeholder that looks like ours. A model is named
- * only inside its own box (data-showcase-entry: the card, and its dialog); tests/site-showcase.test.tsx pins it.
+ * With no entry, or none whose files are here, it renders nothing: never a placeholder that looks like ours. No text, alt,
+ * aria or data attribute on the card names the model (tests/site-showcase.test.tsx pins it; only the link's `model=` carries it).
  *
  * Each card keeps its clip's own shape (the box's aspect ratio is the file's, so nothing shifts as it loads), in a masonry of two
  * columns on a phone, three from 760 px and four from 1240 px. On a wide screen every clip in view plays (LoopClip `together`); on
- * a phone only the one most in view. A card whose sample shows a format (lib/site/formats.ts) names the format over its picture on
- * hover and in its dialog. `exclude` leaves out the samples the page already shows in a slot, so no clip is on a page twice.
+ * a phone only the one most in view. `exclude` leaves out the samples the page already shows in a slot, so no clip is on a page twice.
  */
 export function ShowcaseGallery({
   t,
@@ -110,30 +102,6 @@ export function ShowcaseGallery({
     return style as CSSProperties;
   };
   const g = t.site.gallery;
-  // An animation of one of our own pictures reads as a trick without the picture it started from. Shown only when that picture is
-  // itself a sample here (its file is in the repository and its own card names its model); any other input is not shown.
-  // Looked up among every sample, so a picture the page shows in a slot (and leaves out of the grid) still credits the clip made from it.
-  // Starting frames included: they are not cards of their own, but a clip still credits the picture it was made from.
-  const byJob = new Map(showcaseItemsWithSources(entries, files).map((it) => [it.e.jobId, it]));
-  const sourceOf = (e: ShowcaseEntry) => (e.kind === "video" && e.input.kind === "operator_job" ? byJob.get(e.input.jobId) ?? null : null);
-  // The dialog's words (a Client Component takes these, never the whole dictionary).
-  const copy: SampleDetailCopy = {
-    open: g.open,
-    close: g.close,
-    detail: g.detail,
-    badge: g.badge,
-    badgeName: g.badgeName,
-    model: g.model,
-    prompt: g.prompt,
-    notInStudio: g.notInStudio,
-    gone: g.gone,
-    try: g.try,
-    tryAria: g.tryAria,
-    use: g.use,
-    useNote: g.useNote,
-    source: g.source,
-    pause: t.site.fx.pause,
-  };
   return (
     <section id="samples" aria-labelledby="samples-title" className="nx-section" data-tone="raised">
       <div className="nx-wrap">
@@ -143,23 +111,45 @@ export function ShowcaseGallery({
         </h2>
         <p className="nx-sub">{g.lead}</p>
         {/* Phones only (CSS): the vertical clips as a full-screen feed (components/site/ShortsFeed.tsx). */}
-        <ShortsFeed items={shortsItems(items, signedIn, now)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, badgeName: g.badgeName, try: g.try, tryAria: g.tryAria, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />
+        <ShortsFeed items={shortsItems(items, signedIn, now, locale)} copy={t.site.autopilot.shorts} g={{ badge: g.badge, badgeName: g.badgeName, use: g.use, useNote: g.useNote, noPrompt: g.noPrompt }} />
         <div className="nx-gallery-box">
-          {/* One pause key for the whole grid, for a keyboard (hidden until focused; a pointer pauses by tapping a clip elsewhere or in
-              a sample's dialog): one Tab stop, not one per card. */}
+          {/* One pause key for the whole grid, for a keyboard (hidden until focused; the page's pause switch stops them too): one Tab
+              stop, not one per card. */}
           {items.some(({ e, f }) => e.kind === "video" && f.clip !== null) && <ClipPause label={t.site.fx.pause} />}
           <ul className="nx-gallery">
             {items.map(({ e, f }, i) => {
               const href = tryHref(e, signedIn, now);
-              const leftOut = modelLeftOut(e, now);
-              const promptId = `sample-prompt-${e.jobId}`;
               const clip = e.kind === "video" && f.clip !== null;
               const format = formats.find((x) => x.job === e.jobId);
+              const title = format?.title ?? cardTitle(e.jobId, locale);
               const shape = e.height > e.width * 1.15 ? "tall" : e.width > e.height * 1.15 ? "wide" : "square";
-              const source = sourceOf(e);
-              const words = e.prompt.trim() ? e.prompt : g.noPrompt;
+              const words = cardWords(e, locale);
+              // A sample with no words of its own (made from a picture alone) says so, in the page's language.
+              const line = words.text ? words : { text: g.noPrompt, lang: locale, source: "cardLine" as const };
+              const aiId = `sample-ai-${e.jobId}`;
+              const caption = (hidden: boolean) => (
+                // aria-hidden on a link card: the link's own name says the same words once.
+                <span className="mf-cap" data-title={title ? undefined : "none"} aria-hidden={hidden || undefined}>
+                  {title && (
+                    <span className="mf-title" data-format={format?.id} lang={locale}>
+                      {title}
+                    </span>
+                  )}
+                  <span className="mf-desc" lang={line.lang} data-src={line.source === "prompt" ? "prompt" : undefined}>
+                    {line.text}
+                  </span>
+                </span>
+              );
               return (
-                <li key={e.jobId} id={`sample-${e.jobId}`} className="nx-gallery-card" data-showcase-entry={e.jobId} data-model={e.modelId} data-shape={shape} style={place(i)}>
+                <li
+                  key={e.jobId}
+                  id={`sample-${e.jobId}`}
+                  className="nx-gallery-card mf-card"
+                  data-mf-card=""
+                  data-showcase-entry={e.jobId}
+                  data-shape={shape}
+                  style={place(i)}
+                >
                   <div className="nx-gallery-pic" data-clip={clip ? "sample" : undefined} style={{ aspectRatio: `${e.width} / ${e.height}` }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -174,59 +164,41 @@ export function ShowcaseGallery({
                       decoding="async"
                     />
                     {clip && <ShowcaseClip jobId={e.jobId} together />}
-                    <span className="nx-result-badge"><AiMark short={g.badge} name={g.badgeName} /></span>
                   </div>
-                  {/* The whole card opens the sample (a button stretched over it); the words and the link below sit above it. */}
-                  <SampleDetail
-                    copy={copy}
-                    d={{
-                      jobId: e.jobId,
-                      modelName: e.modelName,
-                      prompt: words,
-                      cardPromptId: promptId,
-                      made: fmt(g.made, { date: madeOn(e.createdAt, locale) }),
-                      createdAt: e.createdAt,
-                      width: e.width,
-                      height: e.height,
-                      poster: f.poster,
-                      srcSet: posterSrcSet(f),
-                      clip: clip ? f.clip : null,
-                      alt: fmt(clip ? g.altClip : g.altImage, { model: e.modelName }),
-                      leftOut,
-                      href,
-                      format: format ? { id: format.id, title: format.title, body: format.body } : null,
-                      source: source
-                        ? { jobId: source.e.jobId, src: source.f.posterSm, width: source.e.width, height: source.e.height, alt: fmt(g.altSource, { model: source.e.modelName }), modelName: source.e.modelName }
-                        : null,
-                    }}
-                  />
-                  {/* On hover (a fine pointer) or keyboard focus: the first two lines of the words and a compact link, over the picture.
-                      At rest it is hidden (the card is the picture); its words stay in the page and describe the card's button. */}
-                  <div className="nx-gallery-over">
-                    {format && (
-                      <p className="nx-gallery-over-format" data-format={format.id}>
-                        {format.title}
-                      </p>
-                    )}
-                    <p id={promptId} className="nx-gallery-prompt">
-                      {words}
-                    </p>
-                    {href && (
-                      // "Use this prompt" on every card: the card does not name the model, so its link never says "try" it. The dialog
-                      // says "Try this prompt" where the link opens that model, and why not where it does not.
-                      <Link href={href} prefetch={false} className="nx-gallery-try" aria-describedby={promptId}>
-                        {g.use}
-                        <ArrowRight aria-hidden />
+                  {/* "AI" on screen in every language (owner decision 22 Nov), "AI-generated" in words for a screen reader (AiMark);
+                      the link's description reads the same element, so it is said once in the reading order. */}
+                  <span id={aiId} className="mf-ai">
+                    <AiMark short={g.badge} name={g.badgeName} />
+                  </span>
+                  {href ? (
+                    <>
+                      {caption(true)}
+                      {/* The stretched link over the whole card (media-card.css): its name is the caption's words and what it does,
+                          described by the AI label and the note under the grid (sign-up, then the Studio form). */}
+                      <Link href={href} prefetch={false} className="mf-card-link" aria-describedby={`${aiId} samples-note`}>
+                        <span className="sr-only">
+                          {title && <>{title}. </>}
+                          <span lang={line.lang} data-src={line.source === "prompt" ? "prompt" : undefined}>
+                            {line.text}
+                          </span>{" "}
+                          {g.use}
+                        </span>
                       </Link>
-                    )}
-                  </div>
+                    </>
+                  ) : (
+                    // No Studio form for its tool: the same card and caption, and no link (a dead link would promise a form).
+                    caption(false)
+                  )}
                 </li>
               );
             })}
           </ul>
+          <TapReveal />
         </div>
         {/* Said once for every card, not under each one: what the links do and that nothing starts until the Studio's own button. */}
-        <p className="nx-show-note">{signedIn ? g.tryNote : g.tryNoteSignedOut}</p>
+        <p id="samples-note" className="nx-show-note">
+          {signedIn ? g.tryNote : g.tryNoteSignedOut}
+        </p>
       </div>
     </section>
   );

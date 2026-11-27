@@ -2285,6 +2285,7 @@
       "display_name": "Veo 3.1",
       "provider": "google",
       "adapter": "video.veo",
+      "takes_negative_prompt": true,
       "vendor_model": "veo-3.1-generate-preview",
       "capabilities": [
         "t2v",
@@ -2396,6 +2397,7 @@
       "display_name": "Veo 3.1 Fast",
       "provider": "google",
       "adapter": "video.veo",
+      "takes_negative_prompt": true,
       "vendor_model": "veo-3.1-fast-generate-preview",
       "capabilities": [
         "t2v",
@@ -2507,6 +2509,7 @@
       "display_name": "Veo 3.1 Lite",
       "provider": "google",
       "adapter": "video.veo",
+      "takes_negative_prompt": true,
       "vendor_model": "veo-3.1-lite-generate-preview",
       "capabilities": [
         "t2v",
@@ -2616,6 +2619,7 @@
       "display_name": "Kling 2.6",
       "provider": "kling",
       "adapter": "video.kling",
+      "takes_negative_prompt": true,
       "vendor_model": "kling-v2-6",
       "capabilities": [
         "t2v",
@@ -2680,6 +2684,7 @@
       "display_name": "Kling 3.0",
       "provider": "kling",
       "adapter": "video.kling",
+      "takes_negative_prompt": true,
       "vendor_model": "kling-v3",
       "capabilities": [
         "t2v",
@@ -4068,6 +4073,7 @@
       "display_name": "Wan 2.7",
       "provider": "alibaba",
       "adapter": "video.wan",
+      "takes_negative_prompt": true,
       "vendor_model": "wan2.7-t2v",
       "vendor_model_by_capability": {
         "i2v": "wan2.7-i2v"
@@ -4152,6 +4158,7 @@
       "display_name": "Wan 3.0",
       "provider": "alibaba",
       "adapter": "video.wan",
+      "takes_negative_prompt": true,
       "vendor_model": "wan3.0-video",
       "capabilities": [
         "t2v"
@@ -5512,6 +5519,7 @@
       "display_name": "Krea 3",
       "provider": "krea",
       "adapter": "image.krea",
+      "takes_negative_prompt": true,
       "vendor_model": "krea-3",
       "capabilities": [
         "t2i",
@@ -5574,6 +5582,7 @@
       "attribution": null,
       "api_exposure": "web_only",
       "limits": {
+        "max_negative_prompt_chars": 1024,
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 2
       },
@@ -5591,6 +5600,7 @@
       "display_name": "Krea 3 regional edit",
       "provider": "krea",
       "adapter": "image.krea",
+      "takes_negative_prompt": true,
       "vendor_model": "krea-3:regional",
       "capabilities": [
         "edit"
@@ -5652,6 +5662,7 @@
       "attribution": null,
       "api_exposure": "web_only",
       "limits": {
+        "max_negative_prompt_chars": 1024,
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 2
       },
@@ -6769,6 +6780,7 @@
       "display_name": "Pika 2.5",
       "provider": "pika",
       "adapter": "video.pika",
+      "takes_negative_prompt": true,
       "vendor_model": "pika-2.5",
       "capabilities": [
         "t2v",
@@ -6851,6 +6863,7 @@
       "display_name": "Pika 2.5 Pikaframes",
       "provider": "pika",
       "adapter": "video.pika",
+      "takes_negative_prompt": true,
       "vendor_model": "pikaframes",
       "capabilities": [
         "i2v"

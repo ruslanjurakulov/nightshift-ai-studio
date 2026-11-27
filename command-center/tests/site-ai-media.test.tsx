@@ -279,6 +279,17 @@ describe("the landing with our own clip on its first screen", () => {
     expect(tile.textContent).not.toMatch(/\$|€|credit|new\b/i);
   });
 
+  // Owner decision 22 Nov: no model name on a gallery card; it travels only in the Studio link. Scoped to the gallery: the model
+  // tiles and the ribbon (kept by the owner on 27 Nov) name theirs, each inside its sample's box.
+  it("no gallery card names its model, in text or any attribute but its Studio link", () => {
+    const { container } = landing();
+    const gallery = container.querySelector(GALLERY)!;
+    for (const card of gallery.querySelectorAll(SAMPLE_CARD)) {
+      const words = [card.textContent ?? "", ...[...card.querySelectorAll("*"), card].flatMap((n) => [...n.attributes].filter((a) => a.name !== "href").map((a) => a.value))].join("\n");
+      for (const name of ["Runway Gen-4.5", "runway-gen4.5", "MiniMax H3", "minimax-h3"]) expect(words).not.toContain(name);
+    }
+  });
+
   it("nothing in the grid or the tiles looks dead: each tile plays its sample's loop like the grid, and every poster drifts until its clip plays, stopped by the pause switch and absent under reduced motion", () => {
     const { container } = landing();
     for (const tile of container.querySelectorAll<HTMLElement>("#models .nx-model")) {
