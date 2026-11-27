@@ -208,12 +208,14 @@ describe("/roadmap page", () => {
     for (const word of ["Ishlayapti", "Qurilmoqda", "Rejada", "tasdigʻini kutmoqda"]) expect(main.textContent).not.toContain(word);
   });
 
-  it.each(LOCALES)("%s: the footer links to /roadmap, and the header bar does not", (locale) => {
+  it.each(LOCALES)("%s: the footer links to /roadmap; the header links it only inside its Resources panel, not on the bar", (locale) => {
     const r = dictionaries[locale].site.roadmap;
     const { container } = renderPage(locale);
     const footer = container.querySelector("footer")!;
     expect(within(footer).getByRole("link", { name: r.footer }).getAttribute("href")).toBe("/roadmap");
-    expect(container.querySelector('header a[href="/roadmap"]')).toBeNull();
+    // The bar keeps its five items; /roadmap is one of the Resources panel's links (lib/public-nav.ts) and the sheet's.
+    expect(container.querySelector('header nav.st-nav > a[href="/roadmap"]')).toBeNull();
+    expect(container.querySelectorAll('header .st-mm a[href="/roadmap"]')).toHaveLength(1);
   });
 
   it("the stylesheet keeps a phone free of sideways scroll: one column below 760 px, long words wrap", () => {

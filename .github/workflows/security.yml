@@ -28,7 +28,9 @@ permissions:
 jobs:
   rls:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The lab took 14m16s on main (22 Nov) against a 15-minute cap, and 0218/0219 add about 310 tests: at 15 a passing run
+    # was cancelled as a timeout, which reads like a failure and hides the real result.
+    timeout-minutes: 30
 
     services:
       postgres:
