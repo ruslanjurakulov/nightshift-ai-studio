@@ -22,7 +22,7 @@ export type BrainSlot = "kind" | "target_seconds" | "aspect" | "style" | "langua
 export const SLOT_ORDER: BrainSlot[] = ["kind", "target_seconds", "aspect", "style", "language", "audience"];
 
 /** film_limits() (0166): the database enforces these; they are repeated here only to keep the model inside them. */
-export const FILM = { targetMin: 10, targetMax: 1200, sceneMin: 3, sceneMax: 30, maxScenes: 60, promptMax: 2000, titleMax: 120 } as const;
+export const FILM = { targetMin: 10, targetMax: 1200, sceneMin: 3, sceneMax: 30, maxScenes: 60, promptMax: 2000, titleMax: 120, maxShots: 3 } as const;
 
 export interface BrainSlots {
   kind?: BrainKind;
@@ -45,7 +45,11 @@ export interface BrainCard {
 export interface BriefCharacter { id: string; name: string; description: string; image_prompt: string; asset_id: string | null; character_id: string | null; source: "prompt" | "upload" | "library" }
 export interface BriefLocation { id: string; name: string; description: string; image_prompt: string; asset_id: string | null }
 export interface BriefProp { id: string; name: string; description: string }
-export interface BriefChapter { id: string; title: string; start_s: number; beats: { at_s: number; text: string }[] }
+/** start_s is absent when it is not known (Probe M7): an unknown start is never drawn as 0 s (rule 5). */
+export interface BriefChapter { id: string; title: string; start_s?: number; beats: { at_s: number; text: string }[] }
+/** A proposed outline's chapter: BRIEF v1's chapter plus its length, which the plan step writes that chapter's scenes to. The
+ *  BRIEF itself keeps the contract's shape (start_s carries where each chapter begins; buildBrief drops `seconds`). */
+export interface OutlineChapter extends BriefChapter { seconds: number | null }
 export interface BriefScene {
   id: string; n: number; title: string; duration_s: number; visual_prompt: string;
   dialogue: { character_id: string; line: string }[];
@@ -53,11 +57,18 @@ export interface BriefScene {
   keyframe_model: string | null; clip_model: string | null;
 }
 
-/** One proposed scenario: everything of the BRIEF the model writes. */
+/**
+ * One proposed scenario. Since the plan step, a proposal is an OUTLINE (no scenes): the storyboard is written afterwards, chapter
+ * by chapter (lib/brain/plan.ts), because one answer cannot hold 2–3 whole storyboards past a minute or two (S1_GAPS G2). `scenes`
+ * is filled only by a finished plan, or by a payload stored before the plan step existed that already adds up to the length.
+ */
 export interface Scenario {
   title: string; idea: string; story: { logline: string; conflict: string };
-  chapters: BriefChapter[]; characters: BriefCharacter[]; locations: BriefLocation[]; props: BriefProp[]; scenes: BriefScene[];
+  chapters: OutlineChapter[]; characters: BriefCharacter[]; locations: BriefLocation[]; props: BriefProp[]; scenes: BriefScene[];
   target_seconds: number;
+  /** The server's count of today's messages writing its storyboard takes (lib/brain/plan.ts planTurns); never stored, never the
+   *  model's. Absent when there is nothing to plan. */
+  plan_turns?: { about: number; at_most: number };
 }
 
 export type BriefPrice =
@@ -67,7 +78,8 @@ export type BriefPrice =
   | { state: "unpriced" }
   | { state: "failed" };
 
-export interface Brief extends Partial<Omit<Scenario, "target_seconds">> {
+export interface Brief extends Partial<Omit<Scenario, "target_seconds" | "chapters" | "plan_turns">> {
+  chapters?: BriefChapter[];
   version: 1;
   session_id: string;
   status: "drafting" | "ready" | "created";
@@ -135,15 +147,19 @@ export function plain(v: unknown, max: number, multiline = false): string {
 const LINK = /\[([^\]]{0,200})\]\([^)]*\)|\b(?:https?:\/\/|www\.)\S+|\b[a-z0-9-]+\.(?:com|net|org|io|ru|uz|me|app|link|xyz|ly)\/\S*/gi;
 // Every apostrophe a "soʻm" is typed with, and letters in any script (\w is ASCII: "300 кредитов" left "…ов", Lens on 0199).
 const AP = "[ʻʼ'’‘`]";
-const UNIT = String.raw`(?:usd|eur|uzs|rub|dollars?|euros?|so${AP}?m|сўм|сум(?:ы|ов|а|ах)?|рубл\p{L}*|руб\.?|долл\p{L}*|(?:credits?|кредит\p{L}*|kredit\p{L}*)(?!\s+roll))`;
+// Breach BR-S1-06: the currencies a price is written in, not only ours (GBP, the rupee, stablecoins, "bucks" all passed). TRY (the
+// lira) only AFTER a number: before one it is the English verb ("try 3 more").
+const CODES = "usd|eur|uzs|rub|gbp|inr|usdt|usdc|btc|kzt|cny|rmb|jpy";
+const UNIT = String.raw`(?:${CODES}|try|dollars?|euros?|bucks?|quid|so${AP}?m|сўм|сум(?:ы|ов|а|ах)?|рубл\p{L}*|руб\.?|долл\p{L}*|(?:credits?|кредит\p{L}*|kredit\p{L}*)(?!\s+roll))`;
 const SCALE = String.raw`(?:k|тыс\.?|тысяч\p{L}*|ming|mln|million\p{L}*|млн\.?|миллион\p{L}*)`;
 // Word numbers next to a unit. Not "on" (English): Uzbek "oʻn" (ten) only with its apostrophe (Lens on 0199: "living on credit").
 const WORDNUM = String.raw`(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|hundred|thousand|nol|bir|ikki|uch|to${AP}rt|besh|o${AP}n|yigirma|o${AP}ttiz|qirq|ellik|yuz|ming|ноль|один|два|три|четыре|пять|десять|пятнадцать|двадцать|тридцать|сорок|пятьдесят|сто|двести|триста|пятьсот|тысяч\p{L}*)`;
 const MONEY = new RegExp(
   [
-    String.raw`[$€£¥₽]\s?\d[\d\s.,]*${SCALE}?`,
-    String.raw`\d[\d\s.,]*\s?[$€£¥₽]`,
-    String.raw`(?<![\p{L}])(?:usd|eur|uzs|rub|so${AP}?m|сўм|сум|руб\.?)\s?\d[\d\s.,]*${SCALE}?`,
+    // Any currency sign (\p{Sc}: ₹ ₺ ₸ ₿ ₩ … as well as $ € £ ¥ ₽), on either side of the number.
+    String.raw`\p{Sc}\s?\d[\d\s.,]*${SCALE}?`,
+    String.raw`\d[\d\s.,]*\s?\p{Sc}`,
+    String.raw`(?<![\p{L}])(?:${CODES}|so${AP}?m|сўм|сум|руб\.?)\s?\d[\d\s.,]*${SCALE}?`,
     String.raw`\d[\d\s.,]*\s?${SCALE}?\s?(?:ta\s)?${UNIT}(?![\p{L}])`,
     String.raw`(?<![\p{L}])${WORDNUM}(?:[\s-]+${WORDNUM})*\s+(?:ta\s)?${UNIT}(?![\p{L}])`,
     String.raw`\d+\s?%\s?(?:off|discount|скидк\p{L}*|chegirma\p{L}*)`,
@@ -218,11 +234,13 @@ export function mergeSlots(prev: BrainSlots, raw: unknown): SlotRead {
   }
   if (next.kind === "long") next.aspect = "16:9";
   else if (typeof r.aspect === "string" && (BRAIN_ASPECTS as string[]).includes(r.aspect)) next.aspect = r.aspect as BrainAspect;
-  const style = plain(r.style, CAP.style);
+  // The model's words like any other (Breach BR-S1-01): the style goes into every scene's prompt and every plan call, so a link or a
+  // price in it is taken out here; unsafeBrief reads it too.
+  const style = modelText(r.style, CAP.style);
   if (style) next.style = style;
   const lang = language(r.language);
   if (lang) next.language = lang;
-  const aud = plain(r.audience, CAP.audience);
+  const aud = modelText(r.audience, CAP.audience);
   if (aud) next.audience = aud;
   return { slots: next, lengthOutOfRange };
 }
@@ -276,66 +294,123 @@ export function isSmallTalk(text: string): boolean {
 
 const ID = /^[a-z][a-z0-9_-]{0,15}$/i;
 const sid = (v: unknown, fallback: string) => (typeof v === "string" && ID.test(v) ? v.toLowerCase() : fallback);
-const arr = (v: unknown) => (Array.isArray(v) ? v : []);
-const obj = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+export const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+export const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+
+/** What a scenario reader is given: a fresh proposal (an outline, and nothing else), or a stored payload. */
+export interface ScenarioRules {
+  /**
+   * A fresh proposal from the model: an outline. Its scenes are dropped even when the model wrote some (the plan step writes them,
+   * chapter by chapter), and a short outline must say how long each chapter is. Without it (a stored payload, which may predate the
+   * plan step) a short scenario is usable either as such an outline or as a storyboard that already adds up to the length.
+   */
+  outline?: boolean;
+}
+
+/** A length as the model wrote it, rounded; never clamped (a 99 s scene is not a 30 s one, S1_GAPS G1). */
+export function sceneSeconds(v: unknown): number | null {
+  const n = typeof v === "number" ? v : typeof v === "string" && /^\d{1,4}(\.\d+)?$/.test(v.trim()) ? Number(v) : NaN;
+  return Number.isFinite(n) && n > 0 && n <= 100_000 ? Math.round(n) : null;
+}
+
+export interface SceneRefs { c: Set<string>; l: Set<string>; p: Set<string> }
+export type SceneParts = Omit<BriefScene, "id" | "n" | "duration_s"> & { seconds: number | null };
+
+/** One scene the model wrote, as BRIEF parts: plain text, references only to things that exist. Its length is the caller's check. */
+export function readSceneParts(raw: unknown, kind: BrainKind, known: SceneRefs): SceneParts | null {
+  const o = obj(raw);
+  const visual = modelText(o.visual_prompt, FILM.promptMax, true);
+  if (!visual) return null;
+  return {
+    title: modelText(o.title, CAP.title),
+    seconds: sceneSeconds(o.duration_s),
+    visual_prompt: visual,
+    dialogue: kind === "short"
+      ? arr(o.dialogue).slice(0, 6).map((d) => ({ character_id: sid(obj(d).character_id, ""), line: modelText(obj(d).line, CAP.line) }))
+          .filter((d) => d.line && known.c.has(d.character_id))
+      : [],
+    character_ids: [...new Set(arr(o.character_ids).map((x) => sid(x, "")).filter((x) => known.c.has(x)))],
+    location_id: known.l.has(sid(o.location_id, "")) ? sid(o.location_id, "") : null,
+    prop_ids: [...new Set(arr(o.prop_ids).map((x) => sid(x, "")).filter((x) => known.p.has(x)))],
+    // The model never picks a model: a film's defaults are the Studio's, and a named one is checked by save_film anyway.
+    keyframe_model: null, clip_model: null,
+  };
+}
+
+/** The first of each id only: a second "c1" would let a scene point at either of two characters. */
+function firstOfEach<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
+}
 
 /** One proposed scenario, validated as BRIEF parts; null when it is not usable for this kind. */
-export function readScenario(raw: unknown, slots: BrainSlots): Scenario | null {
+export function readScenario(raw: unknown, slots: BrainSlots, rules: ScenarioRules = {}): Scenario | null {
   const r = obj(raw);
   const title = modelText(r.title, CAP.title);
   const idea = modelText(r.idea, CAP.idea);
   if (!title || !idea || !slots.kind) return null;
-  const characters = arr(r.characters).slice(0, CAP.characters).map((c, i): BriefCharacter => {
+  const characters = firstOfEach(arr(r.characters).slice(0, CAP.characters).map((c, i): BriefCharacter => {
     const o = obj(c);
     return { id: sid(o.id, `c${i + 1}`), name: modelText(o.name, CAP.name), description: modelText(o.description, CAP.description),
              image_prompt: modelText(o.image_prompt, CAP.imagePrompt), asset_id: null, character_id: null, source: "prompt" };
-  }).filter((c) => c.name);
-  const locations = arr(r.locations).slice(0, CAP.locations).map((c, i): BriefLocation => {
+  }).filter((c) => c.name));
+  const locations = firstOfEach(arr(r.locations).slice(0, CAP.locations).map((c, i): BriefLocation => {
     const o = obj(c);
     return { id: sid(o.id, `l${i + 1}`), name: modelText(o.name, CAP.name), description: modelText(o.description, CAP.description),
              image_prompt: modelText(o.image_prompt, CAP.imagePrompt), asset_id: null };
-  }).filter((c) => c.name);
-  const props = arr(r.props).slice(0, CAP.props).map((c, i): BriefProp => {
+  }).filter((c) => c.name));
+  const props = firstOfEach(arr(r.props).slice(0, CAP.props).map((c, i): BriefProp => {
     const o = obj(c);
     return { id: sid(o.id, `p${i + 1}`), name: modelText(o.name, CAP.name), description: modelText(o.description, CAP.description) };
-  }).filter((c) => c.name);
+  }).filter((c) => c.name));
   const known = { c: new Set(characters.map((c) => c.id)), l: new Set(locations.map((l) => l.id)), p: new Set(props.map((p) => p.id)) };
-  const chapters = arr(r.chapters).slice(0, CAP.chapters).map((c, i): BriefChapter => {
+  const chapters = firstOfEach(arr(r.chapters).slice(0, CAP.chapters).map((c, i): OutlineChapter => {
     const o = obj(c);
-    return { id: sid(o.id, `ch${i + 1}`), title: modelText(o.title, CAP.title), start_s: Math.max(0, Math.round(num(o.start_s) ?? 0)),
+    const start = num(o.start_s);
+    return { id: sid(o.id, `ch${i + 1}`), title: modelText(o.title, CAP.title), ...(start !== undefined && start >= 0 ? { start_s: Math.round(start) } : {}),
+             seconds: sceneSeconds(o.seconds),
              beats: arr(o.beats).slice(0, CAP.beats).map((b) => ({ at_s: Math.max(0, Math.round(num(obj(b).at_s) ?? 0)), text: modelText(obj(b).text, CAP.beat) }))
                .filter((b) => b.text) };
-  }).filter((c) => c.title);
-  const scenes = arr(r.scenes).slice(0, FILM.maxScenes).map((sc, i): BriefScene | null => {
-    const o = obj(sc);
-    const dur = Math.round(num(o.duration_s) ?? 0);
-    const visual = modelText(o.visual_prompt, FILM.promptMax, true);
-    if (!visual) return null;
-    return {
-      id: `s${i + 1}`, n: i + 1, title: modelText(o.title, CAP.title),
-      duration_s: slots.kind === "short" ? Math.min(FILM.sceneMax, Math.max(FILM.sceneMin, dur || 6)) : Math.max(1, dur || 10),
-      visual_prompt: visual,
-      dialogue: slots.kind === "short"
-        ? arr(o.dialogue).slice(0, 6).map((d) => ({ character_id: sid(obj(d).character_id, ""), line: modelText(obj(d).line, CAP.line) }))
-            .filter((d) => d.line && known.c.has(d.character_id))
-        : [],
-      character_ids: arr(o.character_ids).map((x) => sid(x, "")).filter((x) => known.c.has(x)),
-      location_id: known.l.has(sid(o.location_id, "")) ? sid(o.location_id, "") : null,
-      prop_ids: arr(o.prop_ids).map((x) => sid(x, "")).filter((x) => known.p.has(x)),
-      // The model never picks a model: a film's defaults are the Studio's, and a named one is checked by save_film anyway.
-      keyframe_model: null, clip_model: null,
-    };
-  }).filter((s): s is BriefScene => s !== null);
-  if (slots.kind === "short" && scenes.length === 0) return null;
-  // A short film's length is what its scenes add up to, within a film's bounds; a long video's is the length the person chose.
-  const sum = scenes.reduce((a, s) => a + s.duration_s, 0);
-  const target_seconds = slots.kind === "short"
-    ? Math.min(FILM.targetMax, Math.max(FILM.targetMin, sum || (slots.target_seconds ?? FILM.targetMin)))
-    : (slots.target_seconds ?? RUN_DURATIONS_S[0]);
-  return {
-    title, idea, story: { logline: modelText(obj(r.story).logline, CAP.logline), conflict: modelText(obj(r.story).conflict, CAP.logline) },
-    chapters, characters, locations, props, scenes, target_seconds,
+  }).filter((c) => c.title));
+  // The length is always the one the person chose (S1_GAPS G1: it used to become whatever the model's scenes added up to).
+  const target_seconds = slots.target_seconds ?? (slots.kind === "short" ? FILM.targetMin : RUN_DURATIONS_S[0]);
+  const story = { logline: modelText(obj(r.story).logline, CAP.logline), conflict: modelText(obj(r.story).conflict, CAP.logline) };
+  const base = { title, idea, story, characters, locations, props, target_seconds };
+
+  // Where each chapter starts, from the lengths when every one is known (Probe M7: a long outline's chapters had the model's own
+  // start_s, or 0). When a length is missing, the model's start_s is kept if it gave one, else none: never a made-up 0.
+  const allTimed = chapters.length > 0 && chapters.every((c) => c.seconds !== null);
+  const fromLengths = (list: OutlineChapter[]) => {
+    let at = 0;
+    return list.map((c) => { const start_s = at; at += c.seconds ?? 0; return { ...c, start_s }; });
   };
+
+  if (slots.kind === "long") {
+    // Run now cuts its own scenes: a long scenario's scenes are informational, and a fresh outline has none.
+    const scenes = rules.outline ? [] : arr(r.scenes).slice(0, FILM.maxScenes).map((sc) => readSceneParts(sc, "long", known))
+      .filter((x): x is SceneParts => x !== null)
+      .map(({ seconds, ...x }, i): BriefScene => ({ ...x, id: `s${i + 1}`, n: i + 1, duration_s: Math.max(1, seconds ?? 10) }));
+    return { ...base, chapters: allTimed ? fromLengths(chapters) : chapters, scenes };
+  }
+
+  // A short outline is usable only when its chapters add up to the person's length, each long enough for one scene. One that does
+  // not is not proposed: nothing downstream stretches, shrinks or drops a chapter to make it fit.
+  const outlined = chapters.length > 0 && chapters.every((c) => c.seconds !== null && c.seconds >= FILM.sceneMin)
+    && chapters.reduce((a, c) => a + (c.seconds ?? 0), 0) === target_seconds;
+  const timed = outlined ? fromLengths(chapters) : chapters;
+  if (rules.outline) return outlined ? { ...base, chapters: timed, scenes: [] } : null;
+
+  // A payload stored before the plan step: its storyboard is kept only when every scene is a length a film takes and they add up
+  // to the person's length exactly. Otherwise it is an outline (planned like a fresh one) or nothing.
+  const parts = arr(r.scenes).slice(0, FILM.maxScenes + 1).map((sc) => readSceneParts(sc, "short", known));
+  const storyboard = parts.length > 0 && parts.length <= FILM.maxScenes
+    && parts.every((x) => x !== null && x.seconds !== null && x.seconds >= FILM.sceneMin && x.seconds <= FILM.sceneMax)
+    && parts.reduce((a, x) => a + (x?.seconds ?? 0), 0) === target_seconds;
+  if (!outlined && !storyboard) return null;
+  const scenes = storyboard
+    ? (parts as SceneParts[]).map(({ seconds, ...x }, i): BriefScene => ({ ...x, id: `s${i + 1}`, n: i + 1, duration_s: seconds ?? 0 }))
+    : [];
+  return { ...base, chapters: timed, scenes };
 }
 
 export interface ModelAnswer {
@@ -386,7 +461,9 @@ export function readModelAnswer(text: string, prev: BrainSlots, cardId: string, 
       ? { ...c, thread_title: "", question: "", options: c.options.some(namesVendor) ? [] : c.options } : c;
     return { reply, slots, lengthOutOfRange, card: clean, scenarios: [], step: "asking" };
   }
-  const scenarios = arr(json.scenarios).map((s) => readScenario(s, slots)).filter((s): s is Scenario => s !== null).slice(0, MAX_SCENARIOS);
+  // Outlines only: one whose chapters do not add up to the person's length is not proposed (S1_GAPS G1).
+  const scenarios = arr(json.scenarios).map((s) => readScenario(s, slots, { outline: true })).filter((s): s is Scenario => s !== null)
+    .slice(0, MAX_SCENARIOS);
   // Fewer than two usable scenarios is not a proposal: no card either (every slot is known), the person can ask again.
   return { reply, slots, lengthOutOfRange, card: null, scenarios: scenarios.length >= MIN_SCENARIOS ? scenarios : [],
            step: scenarios.length >= MIN_SCENARIOS ? "proposing" : "asking" };
@@ -432,7 +509,8 @@ export function unsafeText(text: string): boolean {
 }
 /** Every text of a chosen plan that becomes a picture, a clip or a spoken line. */
 export function unsafeBrief(b: Brief): boolean {
-  const parts: string[] = [b.title ?? "", b.idea ?? "", b.story?.logline ?? "", b.story?.conflict ?? ""];
+  // The style and the audience too: the style is appended to every scene's prompt (filmFromBrief).
+  const parts: string[] = [b.title ?? "", b.idea ?? "", b.story?.logline ?? "", b.story?.conflict ?? "", b.style ?? "", b.audience ?? ""];
   for (const c of b.characters ?? []) parts.push(c.name, c.description, c.image_prompt);
   for (const l of b.locations ?? []) parts.push(l.name, l.description, l.image_prompt);
   for (const s of b.scenes ?? []) parts.push(s.title, s.visual_prompt, ...s.dialogue.map((d) => d.line));
@@ -452,25 +530,88 @@ export function buildBrief(sessionId: string, slots: BrainSlots, chosen: Scenari
     music: { mode: "off" },
     handoff: null,
   };
-  if (chosen) Object.assign(b, { title: chosen.title, idea: chosen.idea, story: chosen.story, chapters: chosen.chapters,
+  // BRIEF v1's chapter has no `seconds`: start_s already says where each begins (the contract is not widened by the plan step).
+  if (chosen) Object.assign(b, { title: chosen.title, idea: chosen.idea, story: chosen.story,
+                                 chapters: chosen.chapters.map(({ id, title, start_s, beats }) => ({ id, title, start_s, beats })),
                                  characters: chosen.characters, locations: chosen.locations, props: chosen.props, scenes: chosen.scenes });
   if (price) b.price = price;
   return b;
 }
 
-/** The film a short BRIEF becomes: the settings and scenes create_film_draft / save_film take (0166). Dialogue goes into the clip
- *  prompt, which the video model speaks; narration stays empty (no TTS is on sale). */
-export function filmFromBrief(b: Brief): { settings: Record<string, unknown>; scenes: Record<string, unknown>[]; sourceText: string } | null {
-  if (b.kind !== "short" || !b.scenes?.length || !b.language || !b.title) return null;
+/** What the film's clip model makes, read server-side from its spec (durations_s); `durations: null` = not known. */
+export interface ClipShape { durations: number[] | null; maxShots: number }
+
+/**
+ * How many shots a scene of `planned` seconds takes on a clip model whose shots are at most `longest` seconds (S1_GAPS G4): one
+ * shot per `longest`, up to max_shots. Unknown lengths are not guessed: null, and the film keeps save_film's default of one shot, so
+ * quote_film's own refusal ("scene_too_long_for_model", "model_not_set") is what the person reads.
+ */
+export function shotCount(planned: number, clip: ClipShape | null): number | null {
+  const longest = clip?.durations?.length ? Math.max(...clip.durations) : null;
+  if (!longest || !Number.isFinite(planned) || planned <= 0) return null;
+  return Math.min(Math.max(1, clip!.maxShots), Math.max(1, Math.ceil(planned / longest)));
+}
+
+/**
+ * A short BRIEF's draft settings and source text, without its scenes: what create_film_draft takes (0166). The draft is made before
+ * the storyboard is written (Breach BR-S1-03: a draft the workspace cannot make must be refused before the plan's turns are spent),
+ * so nothing here may depend on a scene.
+ */
+export function draftSettings(b: Brief): { settings: Record<string, unknown>; sourceText: string } | null {
+  if (b.kind !== "short" || !b.language || !b.title) return null;
+  return {
+    settings: { title: plain(b.title, FILM.titleMax), language: filmLanguage(b.language), aspect: b.aspect ?? "16:9", target_seconds: b.target_seconds },
+    sourceText: plain([b.idea, b.story?.logline].filter(Boolean).join("\n"), 2000, true),
+  };
+}
+
+/** What a scene's prompt is assembled from: its own words and references, and the film's characters, locations and style. */
+export type PromptScene = Pick<BriefScene, "visual_prompt" | "character_ids" | "location_id" | "dialogue">;
+export type PromptFilm = { characters?: BriefCharacter[] | null; locations?: BriefLocation[] | null; style?: string | null };
+
+/**
+ * The prompt a scene is made from, whole: its visual prompt, then the descriptions of its characters and setting, its spoken lines
+ * and the film's style. Never cut (S9, creative_price 0218): a prompt the models cannot take is refused by name, because a cut one
+ * drops the style or a character's description without anyone being told. Its length is counted the way 0218 counts it, in UTF-16
+ * units (`.length`), not code points: an emoji is two.
+ */
+export function scenePrompt(b: PromptFilm, s: PromptScene): string {
   const names = new Map((b.characters ?? []).map((c) => [c.id, c.name]));
-  const describe = (ids: string[]) => ids.map((id) => (b.characters ?? []).find((c) => c.id === id)).filter(Boolean)
+  const described = s.character_ids.map((id) => (b.characters ?? []).find((c) => c.id === id)).filter(Boolean)
     .map((c) => `${c!.name}: ${c!.description || c!.image_prompt}`).join(". ");
+  const loc = (b.locations ?? []).find((l) => l.id === s.location_id);
+  const lines = s.dialogue.map((d) => `${names.get(d.character_id) ?? "A character"} says: "${d.line}"`).join(" ");
+  const prompt = [s.visual_prompt, described, loc ? `Setting: ${loc.name}. ${loc.description}` : "", lines, b.style ? `Style: ${b.style}` : ""]
+    .filter(Boolean).join("\n");
+  return plain(prompt, Number.MAX_SAFE_INTEGER, true);
+}
+
+/** The first scene whose whole prompt is over `limit` UTF-16 units (1-based, in story order), or null when every one fits. */
+export function promptOverLimit(b: Brief, limit: number): { scene: number; limit: number; length: number } | null {
+  for (const [i, s] of (b.scenes ?? []).entries()) {
+    const length = scenePrompt(b, s).length;
+    if (length > limit) return { scene: i + 1, limit, length };
+  }
+  return null;
+}
+
+/** The film a short BRIEF becomes: the settings and scenes create_film_draft / save_film take (0166). Dialogue goes into the clip
+ *  prompt, which the video model speaks; narration stays empty (no TTS is on sale). `promptMax` is the plan's prompt limit
+ *  (planLimits): a scene over it makes no film at all rather than a cut one; the route refuses it first as prompt_too_long.
+ *  It writes no `negative_prompt` and no `seed`: 0218 refuses a seed on every model and a negative prompt on any model whose
+ *  registry row does not take one, and nothing here is the person's choice of either. */
+export function filmFromBrief(b: Brief, clip: ClipShape | null = null, promptMax: number = FILM.promptMax): { settings: Record<string, unknown>; scenes: Record<string, unknown>[]; sourceText: string } | null {
+  if (b.kind !== "short" || !b.scenes?.length || !b.language || !b.title) return null;
+  if (promptOverLimit(b, promptMax)) return null;
   const scenes = b.scenes.map((s) => {
-    const loc = (b.locations ?? []).find((l) => l.id === s.location_id);
-    const lines = s.dialogue.map((d) => `${names.get(d.character_id) ?? "A character"} says: "${d.line}"`).join(" ");
-    const prompt = [s.visual_prompt, describe(s.character_ids), loc ? `Setting: ${loc.name}. ${loc.description}` : "", lines, b.style ? `Style: ${b.style}` : ""]
-      .filter(Boolean).join("\n");
-    return { title: s.title, narration: "", visual_prompt: plain(prompt, FILM.promptMax, true), planned_seconds: s.duration_s };
+    const shots = shotCount(s.duration_s, clip);
+    return {
+      title: s.title, narration: "", visual_prompt: scenePrompt(b, s), planned_seconds: s.duration_s,
+      ...(shots !== null ? { shot_count: shots } : {}),
+      // The panel says the video model speaks these lines (G3): the clip must be asked for its sound, or a model's silent default
+      // variant is priced and made. 0166 makes a clip's own audio a choice, never a default; a scene without lines keeps the default.
+      ...(s.dialogue.length ? { clip_params: { audio: true } } : {}),
+    };
   });
   return {
     settings: { title: plain(b.title, FILM.titleMax), language: filmLanguage(b.language), aspect: b.aspect ?? "16:9", target_seconds: b.target_seconds },

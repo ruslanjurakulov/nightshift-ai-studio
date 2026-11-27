@@ -80,7 +80,9 @@ const shown = items.filter(({ e }) => !SLOT_JOBS.includes(e.jobId));
 // Picture → video shows a starting frame beside its clip (the grids leave it out: Atlas/owner decision 22 Nov, a starting frame is
 // not its own sample), so the pairs are built from every entry, frames included.
 const withSources = showcaseItemsWithSources();
-const shownPairs = withSources.filter(({ e }) => !SLOT_JOBS.includes(e.jobId));
+// Less the effects' previews, as picture → video itself leaves them out (landing-samples.tsx items()): the photo-to-life clip, whose
+// starting frame shipped in #942, is an effect's preview and is shown in the Effects section instead.
+const shownPairs = withSources.filter(({ e }) => !SLOT_JOBS.includes(e.jobId) && !effectPreviewJobs().includes(e.jobId));
 const carouselJobs = () => {
   // The carousel takes what the other landing surfaces leave: picture → video, the ticker, the explore grid's share and the
   // Effects section's previews (components/site/landing-samples.tsx landingSplit).
