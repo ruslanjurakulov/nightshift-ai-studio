@@ -114,3 +114,9 @@ No migration is needed.
   migration; see docs/studio/S8_I2V_LATER_OPTION_A.md once the i2v PR lands).
 - A person's own model pick followed by a switch to a tool that model can't do still falls back quietly (pre-existing, from #922).
 - A hand-made `?desk=overview&tool=…&model=…` link lands a customer on CreateScreen, which ignores `tool`/`model`.
+- **Owner mode: `?template=<slug>` fills nothing** (pre-existing; found in PR 3, left as is by Atlas 27 Nov). Only CreateScreen reads
+  `template`; the platform operator in Owner mode lands on StudioHome, which ignores it. So in Owner mode the explore grid's template
+  cards, StartBox's template cards and the Trends page's "Use template" all open an unfilled Studio home. Customers are unaffected.
+- **The explore grid (PR 3) shows only its one-line empty state today.** It counts only models on sale (no operator preview, even for
+  the operator), and every shipped sample and every template is made with a model the registry still marks `operator_preview`. Each
+  row fills in by itself as its models go live; nothing to change in the grid then.

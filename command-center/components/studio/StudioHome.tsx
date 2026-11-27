@@ -50,6 +50,8 @@ import "@/components/studio/desk.css";
 import "@/components/studio/studio-home.css";
 import "@/components/studio/availability.css";
 import { useShell } from "@/components/shell/ShellContext";
+import { StudioExplore } from "@/components/studio/StudioExplore";
+import type { ExploreSample, OnSale } from "@/lib/creative/explore";
 import { DeskAvailabilityNote, NothingOnSaleNote } from "@/components/studio/Availability";
 import { deskOpen, nothingOnSale, toolOpen, type ToolAvailability } from "@/lib/tool-availability";
 
@@ -106,6 +108,7 @@ export function StudioHome({
   idea = false,
   ideaKind = "video",
   start = null,
+  explore = null,
 }: {
   orgId: string | null;
   models: StudioModel[];
@@ -132,6 +135,8 @@ export function StudioHome({
   ideaKind?: CreateKind;
   /** The start box at the top (components/prompt/StartBox.tsx): whether the server's flag opens Nightshift AI here, and the channel; null = none. */
   start?: { agentOpen: boolean; available: StartAvailable; channel: StartChannel | null } | null;
+  /** Below the fold: the samples on sale here (built on the server, no model names) and the catalogue the formats are kept to; null = none. */
+  explore?: { samples: ExploreSample[]; onSale: OnSale } | null;
 }) {
   const { t, locale, fmt } = useI18n();
   const th = t.studioHome;
@@ -807,6 +812,9 @@ export function StudioHome({
           />
         ) : null}
       </div>
+
+      {/* Below the fold: samples and ready-made formats, media first; a card only opens this channel's Studio form. */}
+      {explore && <StudioExplore samples={explore.samples} onSale={explore.onSale} />}
 
       <section className="sh-section sh-advanced" aria-labelledby="sh-advanced-title">
         <div className="sh-section-head">

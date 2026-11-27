@@ -48,6 +48,7 @@ import { startAvailability } from "@/lib/start-box";
 import { SAMPLE_PARAM, resolveSampleSource } from "@/lib/site/sample-source";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
+import { exploreSamples, onSaleCatalog } from "@/lib/creative/explore";
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -67,7 +68,7 @@ export default async function CreatePage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const { selection, channels } = await getChannelContext();
   const scopedChannel = isScoped(selection)
     ? channels.find((c) => c.channel_id === selection)
@@ -226,6 +227,17 @@ export default async function CreatePage({
         })()
       : null;
 
+  // The explore grid under the overview (lib/creative/explore.ts), on both of its screens: the owner's StudioHome and the customer's
+  // Create screen. From the same catalogue the composer gets, less the operator's previews (not on sale, even to the operator).
+  // Static data and the list already read: no extra request, nothing written.
+  const exploreOnSale = desk === "overview" ? onSaleCatalog(models, ["t2v", "t2i", "i2v"]) : null;
+  const exploreData = exploreOnSale
+    ? {
+        samples: exploreSamples(SHOWCASE_ENTRIES, SHOWCASE_FILES, exploreOnSale, locale),
+        onSale: { t2v: exploreOnSale.t2v, t2i: exploreOnSale.t2i },
+      }
+    : null;
+
   // 0192: the 18+ confirmation, asked once of an account with none. Someone who said they are under 18 gets the honest notice
   // instead of the composer (the database refuses their quotes too); an unknown state stops no one.
   const age = await readAgeState();
@@ -261,6 +273,7 @@ export default async function CreatePage({
             initialKind={isCreateKind(one(q.kind)) ? (one(q.kind) as "video" | "image" | "audio") : "video"}
             initialPrompt={cleanLinkPrompt(one(q.prompt))}
             idea={ideaPickup}
+            explore={exploreData}
             templateSlug={(() => {
               const slug = one(q.template);
               return typeof slug === "string" && SLUG_RE.test(slug) ? slug : null;
@@ -272,6 +285,9 @@ export default async function CreatePage({
       )}
       {desk === "overview" && !createScreen && (
         <StudioHome
+          // Below the fold: the samples and formats whose model is on sale to this workspace, decided here from `models` (the
+          // registry as sellable_models() and this organization's locks leave it; no operator preview: it is not on sale).
+          explore={exploreData}
           orgId={genOrgId}
           models={panelModels}
           unavailable={switchedOff}

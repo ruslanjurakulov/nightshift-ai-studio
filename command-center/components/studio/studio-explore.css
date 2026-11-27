@@ -1,0 +1,71 @@
+/* The Studio home's explore grid (components/studio/StudioExplore.tsx), below the fold. The cards are the landing's media-first
+   card (components/site/media-card.css): this file only lays them out and gives the clip a box, since the site's own stylesheet
+   (site-next.css) is not loaded inside the app and must not be (its rules are global).
+
+   Layout: justified rows. Each card grows in proportion to its own aspect ratio (--ar = width / height), so every card in a row
+   is the same height, each keeps its own shape (nothing is cropped), and the reading and Tab order is the visual order, left to
+   right then down (a CSS-columns masonry reads down each column instead). The spacer after the last card keeps the last row at
+   its natural size instead of stretching two cards across the whole width. */
+
+.sx { display: flex; flex-direction: column; gap: clamp(40px, 28px + 3.3333vw, 72px); min-width: 0; padding-top: 12px; }
+.sx-row { display: flex; flex-direction: column; gap: clamp(16px, 12px + 1.1111vw, 24px); min-width: 0; }
+.sx-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+/* The owner's ~48 px section heading (Kling's), bold, on S5's display face: 28 px at 360 wide, 48 px from 1440. */
+.sx-h2 {
+  margin: 0; font-family: var(--ds-font-display, var(--font-display)); font-weight: 700;
+  font-size: clamp(1.75rem, 1.3333rem + 1.8519vw, 3rem); line-height: var(--ds-lh-display-lg, 1.08); letter-spacing: var(--ds-ls-display-lg, -0.02em);
+  color: var(--color-fg); text-wrap: balance;
+}
+.sx-h2:focus { outline: none; }
+.sx-more { font-size: var(--ds-fs-body-sm, 0.875rem); color: var(--color-primary); text-decoration: underline; text-underline-offset: 3px; }
+
+.sx-grid { --row-h: 160px; display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+/* Templates are mostly 9:16: a taller row, or a vertical card would be a sliver beside a wide sample. */
+.sx-grid:not([data-row="samples"]) { --row-h: 300px; }
+.sx-grid::after { content: ""; flex: 100000 1 0px; }
+.sx-card {
+  flex: var(--ar) 1 calc(var(--ar) * var(--row-h)); min-width: 0; max-width: 100%; border-radius: 16px; background: #12151c;
+}
+.sx-pic { position: relative; width: 100%; overflow: hidden; border-radius: inherit; }
+.sx-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+/* LoopClip's video over its still: one pixel inside it (the still stays the larger picture), faded in once it plays (data-live). */
+.sx-pic .nx-clip {
+  position: absolute; inset: 1px; width: calc(100% - 2px); height: calc(100% - 2px); object-fit: cover; opacity: 0; pointer-events: none;
+}
+.sx-pic[data-live="true"] .nx-clip { opacity: 1; }
+@media (prefers-reduced-motion: no-preference) { .sx-pic .nx-clip { transition: opacity 600ms var(--ns-ease, ease); } }
+@media (prefers-reduced-motion: reduce) { .sx-pic .nx-clip { display: none; } }
+/* A clip with real sound gets the speaker key (components/site/SoundToggle.tsx; none of today's samples has sound). The site's rule
+   for it lives in site-next.css, which the app does not load: the same key, above the card's link, caption, mark and ring. */
+.sx .nx-clip-sound {
+  position: absolute; z-index: 5; right: 10px; bottom: 10px; display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; padding: 0; margin: 0; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(8, 8, 10, 0.62); color: #fff; cursor: pointer;
+}
+.sx .nx-clip-sound:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .sx .nx-clip-sound { display: none; } }
+
+.sx-skel { aspect-ratio: 9 / 16; }
+.sx-state { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; color: var(--color-muted); font-size: var(--ds-fs-body, 1rem); }
+.sx-state p { margin: 0; max-width: var(--ds-measure, 62ch); }
+.sx-note { margin: 0; font-size: var(--ds-fs-caption, 0.8125rem); line-height: var(--ds-lh-caption, 1.45); color: var(--color-muted); max-width: var(--ds-measure, 62ch); }
+
+/* A narrow card cannot hold 22/16 px (media-card.css's desktop scale): the landing's phone rule, for these grids. Up to 480 px the
+   caption is the title alone, 15 px, up to three lines; to 1023 px the title is 18 px. */
+@media (max-width: 480px) {
+  .sx-grid { --row-h: 120px; gap: 6px; }
+  .sx-grid:not([data-row="samples"]) { --row-h: 190px; }
+  .sx-grid .mf-title { font-size: 0.9375rem; -webkit-line-clamp: 3; line-clamp: 3; hyphens: auto; }
+  .sx-grid .mf-desc { display: none; }
+  .sx-grid .mf-cap { padding: 10px 10px 8px; background: linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.8) 50%, rgba(0, 0, 0, 0.86) 100%); }
+  .sx-card { border-radius: 12px; }
+}
+@media (min-width: 481px) and (max-width: 1023px) {
+  .sx-grid .mf-title { font-size: 1.125rem; -webkit-line-clamp: 3; line-clamp: 3; }
+}
+@media (min-width: 1280px) {
+  .sx-grid { --row-h: 220px; gap: 10px; }
+  /* About four vertical cards a row in the Studio's ~1050 px column, each ~250 px wide: at seven a row (~140 px) the 22 px caption
+     title read "Language duo…" and its line one word. */
+  .sx-grid:not([data-row="samples"]) { --row-h: 400px; }
+}
