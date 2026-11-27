@@ -231,6 +231,13 @@ by 0171 when a lease or the deadline runs out.
 | `worker_lost` | Our worker stopped; nothing was charged. | Start again. |
 | `film_studio_off` | Switched off during the run. | Contact support. |
 
+A take whose model went off sale after the film started (retired, hidden, unpriced, past its shutdown date or switched off: the
+worker asks `sellable_models` again right before every take's paid call, as the creative worker does, `modules/creative_worker.py`
+"Still on sale") is never sent: it fails as `bad_request`, charged 0, with an error text that names the model and says to choose
+another. There is no word of its own yet because the live view has copy only for the words above; its one retry meets the same answer,
+and the segment settles as `takes_failed`. The worker never swaps the model. If that answer cannot be read, nothing is sent and
+the segment is left for the next claim.
+
 `film_studio_off` is the settle reason (`films.pause_reason`) when the platform's or the organization's switch went off during the
 run: nothing new begins (the database refuses `film_begin_take` and a new `film_take_job` with `film_studio_disabled`), a take that
 was about to be sent ends with `error_code = film_studio_off`, and the takes that had not begun are skipped. A task already at the

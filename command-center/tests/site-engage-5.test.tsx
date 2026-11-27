@@ -272,8 +272,10 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     for (const b of sampleBoxes) {
       expect(b.getAttribute("data-clip")).toBe("sample");
       expect(b.closest(SAMPLE_CARD)).toBeTruthy();
-      expect(aiMarkOf(b.querySelector(".nx-result-badge"))).toEqual({ seen: t.site.gallery.badge, said: t.site.gallery.badgeName });
-      expect(b.querySelector(".nx-result-badge[data-kind]")).toBeNull();
+      // The AI mark sits on the card over its media (components/site/media-card.css), never a stock label.
+      // "AI" on screen in every language (owner decision 22 Nov); the card says "AI-generated" in full for a screen reader.
+      expect(aiMarkOf(b.closest("[data-mf-card]")?.querySelector(".mf-ai"))).toEqual({ seen: t.site.gallery.badge, said: t.site.gallery.badgeName });
+      expect(b.closest("[data-mf-card]")?.querySelector(".nx-result-badge[data-kind]")).toBeNull();
     }
     const sampleVideos = [...container.querySelectorAll(`${GALLERY} video`)];
     expect(sampleVideos).toHaveLength(clips);

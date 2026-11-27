@@ -114,7 +114,7 @@
 .chat-history-confirm p { margin: 0 0 0.5rem; overflow-wrap: anywhere; }
 .chat-history-confirm-title { font-weight: 600; }
 .chat-history-confirm-acts { display: flex; justify-content: flex-end; gap: 0.5rem; }
-.chat-history :focus-visible, .chat-history-lead:focus-visible, .chat-history-expand:focus-visible { outline: 2px solid #8ab4ff; outline-offset: 2px; }
+.chat-history :focus-visible, .chat-history-lead:focus-visible, .chat-history-expand:focus-visible { outline: 2px solid var(--chat-focus); outline-offset: 2px; }
 
 /* Phone: the panel is a drawer over the chat, opened by the header's menu button. */
 @media (max-width: 47.99rem) {

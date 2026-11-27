@@ -3,6 +3,16 @@ export const ownerAssistantEn = {
   greeting: "Hello, {name}",
   greetingNoName: "Hello",
   noActions: "Answers and drafts only: nothing here pays, changes a price or a plan, edits a user or publishes.",
+  modelPicker: {
+    label: "Chat model",
+    notConfigured: "not set up on the server",
+    noneConfigured: "No chat model is set up on this server.",
+    names: {
+      "anthropic-claude-sonnet-5-5": "Claude Sonnet 5.5",
+      "openai-gpt-6-luna": "GPT-6 Luna",
+      "gemini-3.6-flash": "Gemini 3.6 Flash",
+    },
+  },
   newChat: "New chat",
   regenerate: "Regenerate",
   good: "Good answer",
@@ -49,10 +59,17 @@ export const ownerAssistantEn = {
     needs_migration: "Not saved: chat history needs database migration 0209.",
   },
   errors: {
+    googleGate: {
+      adult_attestation_required: "Confirm that you are 18 or older in Create, then try Gemini again.",
+      adult_only_service: "Gemini is unavailable because of the age recorded for this account. Check the age answer on the account or choose another model.",
+      age_unavailable: "Your age confirmation could not be checked. Try again.",
+      country_blocked: "Gemini is unavailable in your country. Choose another model.",
+      country_unverified: "The server could not determine the country for this request. Choose another model or try again from a known network.",
+    },
     model_unavailable: {
       not_configured: "The chat model's key isn't set on this server. Add it in the server's settings, then ask again.",
-      not_on_sale: "The chosen chat model is switched off in the model registry. Switch it on, or choose another model in Settings.",
-      unknown_model: "The chosen chat model isn't one this console can use. Choose another model in Settings.",
+      not_on_sale: "The chosen chat model is switched off in the model registry. Switch it on, or choose another model here.",
+      unknown_model: "The chosen chat model isn't one this console can use. Choose another model here.",
     },
     model_failed: {
       vendor_auth: "The chat model's provider rejected the key. Replace the key on the server.",
@@ -63,6 +80,8 @@ export const ownerAssistantEn = {
       output_too_long: "The reply ran too long. Ask for a shorter answer or draft.",
       timeout: "The model took too long. Ask again, or ask a narrower question.",
       bad_answer: "The model's reply wasn't in the expected form. Ask again.",
+      vendor_region: "The chat model's provider does not serve the region this server runs in. A new key will not help: run the server in a region the provider supports.",
+      model_not_found: "The chat model's provider does not serve this model. Waiting will not help: the model needs replacing in the model registry.",
       not_configured: "The chat model's key isn't set on this server. Add it in the server's settings, then ask again.",
     },
     daily_cap: "Today's limit of {limit} questions is reached. It frees up over the next 24 hours.",
