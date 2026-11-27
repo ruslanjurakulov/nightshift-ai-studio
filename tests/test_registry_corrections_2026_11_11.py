@@ -36,7 +36,8 @@ WEB_ONLY = {
 STILL_ANY = {
     # The OpenAI image rows left this list on 2026-11-20: web_only (Studio only) until the web+MCP exposure is reviewed for them
     # (migration 0194's header).
-    "luma-ray-3.2": "Luma's terms were not re-read on 2026-11-11",
+    # luma-ray-3.2 left this list on 2026-11-22: web_only, Luma's API Terms of Use §5 items 4 and 5 need its written consent
+    # (migration 0219; tests/test_terms_gate_exposure.py).
     # seedance-1.5-pro (past its shutdown, not sold at all) left this list on 2026-11-22: web_only like every ByteDance model, for
     # BytePlus's terms §4.2.3 (migration 0219; tests/test_no_bytedance_assistant.py).
 }
