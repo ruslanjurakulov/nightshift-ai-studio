@@ -120,6 +120,8 @@ class PikaVideoAdapter(SafeResultMixin, HttpAdapter):
     """Pika 2.5 (text-to-video, image-to-video) and Pikaframes (a first and a last picture)."""
 
     key = "video.pika"
+    #: submit sends negative_prompt in the vendor body (tests/test_negative_prompt_wiring.py proves it per registry model).
+    TAKES_NEGATIVE_PROMPT = True
     key_env = ("PIKA_API_KEY",)
     base_url_env = "PIKA_BASE_URL"
     default_base_url = "https://api.dev.pika.art"
