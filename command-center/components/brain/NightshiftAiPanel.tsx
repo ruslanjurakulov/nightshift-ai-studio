@@ -481,15 +481,17 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   };
 
   /** Where a refusal is fixed, when that is a place in the app (or the support address) rather than another press. */
-  const actionFor = (e: string): NonNullable<Problem>["action"] => {
+  const actionFor = (e: string, d?: Record<string, unknown>): NonNullable<Problem>["action"] => {
     const plans = `/${encodeURIComponent(channelSlug)}/credits#plans`;
     if (e === "chat_plan_required") return { href: plans, label: c.upgrade };
     if (e === "chat_daily_cap") return { href: plans, label: c.seePlans };
     // The 18+ question is asked once, on Create (AgeGate, 0192); an "under 18" answer is not changed in the app: support is.
     if (e === "adult_attestation_required") return { href: `/${encodeURIComponent(channelSlug)}/create`, label: c.confirmAge };
     if (e === "adult_only_service") return { href: LEGAL.contactEmail ? `mailto:${LEGAL.contactEmail}` : CONTACT_HREF, label: t.age.contact };
-    // The plan needs more of today's messages than are left: a larger plan has more (Pixel minor).
-    if (e === "plan_over_cap") return { href: plans, label: c.seePlans };
+    // The plan needs more of today's messages than are left: a larger plan has more (Pixel minor). Not when the cap is the person's
+    // own (0199's per_user_daily, one global setting): no plan raises it, so a "See plans" key would name a remedy that is not one
+    // (Lens round 3). The words say to wait instead.
+    if (e === "plan_over_cap") return d?.scope === "person" ? null : { href: plans, label: c.seePlans };
     return null;
   };
 
@@ -567,7 +569,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
         if (d.error === "chat_daily_cap") setCapped(true);
         // The model's gate refused this turn: the box closes as it would have before the press (Pixel minor).
         const refusedBy = d.error;
-        if (isChatGateError(refusedBy)) {
+        // A "retry" remedy (age_unavailable: the attestation could not be read) is not a closed gate: its Retry must find the box
+        // open once it succeeds, and nothing here would reopen it (Lens round 3).
+        if (isChatGateError(refusedBy) && CHAT_GATE_REMEDY[refusedBy] !== "retry") {
           setLoad((cur) => (cur.state === "ready" ? { ...cur, gate: { code: refusedBy, remedy: CHAT_GATE_REMEDY[refusedBy] } } : cur));
         }
         const retryable = res.status !== 401 && !NO_RETRY.includes(String(d.error));
@@ -578,7 +582,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
           text: explain(res.status, d),
           code: String(d.error ?? ""),
           retry: retryable ? (taken ? () => void run(label, { action: "retry", session: sid }) : () => void run(label, body)) : null,
-          action: actionFor(String(d.error)),
+          action: actionFor(String(d.error), d),
         });
         return false;
       }
@@ -737,7 +741,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
                      retry: checkAgain ? () => void choose(index) : noRetry ? null : () => void choose(index),
                      retryLabel: checkAgain ? c.checkAgain : undefined,
                      action: d.error === "plan_superseded" && typeof d.film_id === "string"
-                       ? { href: editorHref(d.film_id), label: c.openProject } : actionFor(String(d.error)) });
+                       ? { href: editorHref(d.film_id), label: c.openProject } : actionFor(String(d.error), d) });
         return;
       }
       setAsking(null);

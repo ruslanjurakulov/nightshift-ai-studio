@@ -344,10 +344,17 @@ describe("Nightshift AI panel: fix round 2 (Lens and Pixel)", () => {
     expect(sent[1]).toMatchObject({ action: "choose", index: 0 });
   });
 
-  it("plan_over_cap leads to the plans, and says when the cap is the person's own (Pixel minor)", async () => {
+  it("plan_over_cap on the workspace's cap leads to the plans (Pixel minor)", async () => {
+    const alert = await pressAlpha({ status: 429, body: { error: "plan_over_cap", needed: 8, about: 4, left: 2 } });
+    expect(alert.textContent).not.toContain(en.errors.plan_over_cap_person);
+    expect(screen.getByRole("link", { name: en.seePlans }).getAttribute("href")).toBe("/chronos/credits#plans");
+    expect(screen.queryByRole("button", { name: en.retry })).toBeNull();
+  });
+
+  it("plan_over_cap on the person's own cap says so and offers no plans, which cannot raise it (Lens round 3)", async () => {
     const alert = await pressAlpha({ status: 429, body: { error: "plan_over_cap", needed: 8, about: 4, left: 2, scope: "person" } });
     expect(alert.textContent).toContain(en.errors.plan_over_cap_person);
-    expect(screen.getByRole("link", { name: en.seePlans }).getAttribute("href")).toBe("/chronos/credits#plans");
+    expect(screen.queryByRole("link", { name: en.seePlans })).toBeNull();
     expect(screen.queryByRole("button", { name: en.retry })).toBeNull();
   });
 
@@ -384,6 +391,23 @@ describe("Nightshift AI panel: fix round 2 (Lens and Pixel)", () => {
     expect((document.getElementById("ns-ai-input") as HTMLTextAreaElement).disabled).toBe(true);
     // Said once: the refusal's block, not a second one from the gate.
     expect(document.querySelectorAll("[data-gate]")).toHaveLength(1);
+  });
+
+  it("a gate refusal whose remedy is retry leaves the box open, so a Retry that succeeds is not stuck behind it (Lens round 3)", async () => {
+    holdTurn = false;
+    turnReply = { status: 503, body: { error: "age_unavailable" } };
+    stub(false);
+    render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" fresh /></I18nProvider>);
+    const input = () => document.getElementById("ns-ai-input") as HTMLTextAreaElement | null;
+    await waitFor(() => expect(input()?.disabled).toBe(false));
+    fireEvent.change(input()!, { target: { value: "a film about the sea" } });
+    await act(async () => fireEvent.keyDown(input()!, { key: "Enter" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: en.retry })).toBeTruthy());
+    turnReply = { status: 200, body: { reply: "Which kind?", step: "asking", card: null, session: { id: S1 } } };
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: en.retry })));
+    await waitFor(() => expect(screen.queryByRole("button", { name: en.retry })).toBeNull());
+    expect(document.querySelector("[data-gate]")).toBeNull();
+    expect(input()?.disabled).toBe(false);
   });
 
   it("a short film's card shows one price, Create's, and a long one keeps its own (Pixel P3)", async () => {
