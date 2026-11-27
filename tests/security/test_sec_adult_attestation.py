@@ -447,6 +447,7 @@ def test_replay_and_rollback_keep_the_record(db):
     # 0196 sits on three of 0192's bodies and 0198 on two others (quote_film, start_film), and 0192's drift guard refuses them all:
     # both off first, so this compares 0192 alone, and both back on at the end.
     with psycopg.connect(db.dsn, autocommit=True) as c:
+        sec_db.take_off_0219(c)  # 0219 sits on 0192's oauth_creative_quote / _models, which 0192's guard refuses
         sec_db.take_off_0198(c)
         sec_db.take_off_0196(c)
     before = {s: _md5(db, s) for s in GATED}
@@ -465,7 +466,8 @@ def test_replay_and_rollback_keep_the_record(db):
         assert gate_triggers(db) == [], "the hold gate goes with the rollback"
     finally:
         with psycopg.connect(db.dsn, autocommit=True) as c:
-            sec_db.put_back_0192(c)   # puts 0196 and 0198 back too
+            sec_db.put_back_0192(c)   # puts 0196, 0198 and 0219 back too
+            sec_db.take_off_0219(c)
             sec_db.take_off_0198(c)
             sec_db.take_off_0196(c)
     # 0192 alone is exactly what it was before the round trip.
@@ -473,6 +475,7 @@ def test_replay_and_rollback_keep_the_record(db):
     with psycopg.connect(db.dsn, autocommit=True) as c:
         sec_db.put_back_0196(c)
         sec_db.put_back_0198(c)
+        sec_db.put_back_0219(c)
     # Both layers are back on top of 0192: 0198's quote and start ask the organization's switch too, and every other gated body is
     # 0192's or 0196's own (0196 replaces route_model and api_create_video).
     film = ("public.quote_film(uuid,integer)", "public.start_film(uuid,text,text)")

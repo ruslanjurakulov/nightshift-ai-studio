@@ -3649,9 +3649,11 @@
       "credit_unit": "model_seedance_1_5_pro_second",
       "entitlement": "models_video:premium",
       "terms_gate": null,
-      "terms_notes": [],
+      "terms_notes": [
+        "BytePlus service terms §4.2.3 forbid re-integrating its video API into an AI content-creation tool: never the public API or a connected assistant (docs/FILM_STUDIO.md \"Models\"; migration 0219 refuses every ByteDance model to every connected assistant)"
+      ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 2000,
         "max_concurrent_per_org": 1

@@ -825,3 +825,9 @@ sec_owner_ai_0203.extend(TABLES, FUNCTIONS)
 import sec_owner_ai_history_0209  # noqa: E402
 
 sec_owner_ai_history_0209.extend(TABLES, FUNCTIONS)
+
+# Migration 0219 (the operator route for connected assistants, the ByteDance refusal, the recorded exposure): three internal
+# helpers; tests/security/sec_operator_models_0219.py
+import sec_operator_models_0219  # noqa: E402
+
+sec_operator_models_0219.extend(TABLES, FUNCTIONS)

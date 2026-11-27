@@ -548,7 +548,9 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
         description:
           "The Studio models this workspace can generate with through a connected app, each with what it makes and the shapes, " +
           "durations and resolutions it takes. Only models whose terms allow use through an assistant are offered, so the list can be " +
-          "short or empty; every model can still be used in the Studio itself. No prices: quote_creative gives the price of one request.",
+          "short or empty; every model can still be used in the Studio itself. A model marked operator_only: true is available only " +
+          "because this is the operator's own workspace (first-party use); it is not offered to other workspaces' connected apps. " +
+          "No prices: quote_creative gives the price of one request.",
         inputSchema: z.object({ capability: capabilityArg.optional() }).strict(),
         annotations: { readOnlyHint: true },
       },
@@ -577,7 +579,8 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
         description:
           "The price in credits of one picture, clip or edit with these exact settings, and a quote_id that holds that price for a " +
           "few minutes (expires_at). Free: nothing is held or charged. Tell the person the price and ask them to confirm before " +
-          "calling create_creative with this quote_id.",
+          "calling create_creative with this quote_id. Some models may be marked operator_only (in list_creative_models and in the " +
+          "quote): usable only in the operator's own workspace.",
         inputSchema: z
           .object({
             capability: capabilityArg,
