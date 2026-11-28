@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { scenePrompt, type BrainSlots, type SceneParts, type Scenario } from "@/lib/brain/logic";
-import { PLAN, mergePlan, outlineText, planRequestId, planWindows, readWindow, refsOf, type PlanLimits, type PlanWindow } from "@/lib/brain/plan";
+import { clipPrompt, scenePrompt, speechAllowed, type BrainSlots, type SceneParts, type SceneSpeech, type Scenario } from "@/lib/brain/logic";
+import { PLAN, mergePlan, outlineText, planRequestId, planWindows, readWindow, refsOf, shotRules, type PlanLimits, type PlanWindow } from "@/lib/brain/plan";
 import { PLAN_SYSTEM_PROMPT, planDataBlock } from "@/lib/brain/prompt";
 import { PLAN_CALL_TIMEOUT_MS, callChatModel, type ChatModelId } from "@/lib/server/brain/llm";
 import { brainJson, dbRefusal } from "@/lib/server/brain/session";
@@ -55,6 +55,9 @@ export interface PlanRun {
   startedAt?: number;
   /** The catalogue's model names and providers (lib/server/brain/clip catalogueClaimNames): never claimed to have made the film. */
   claimNames?: readonly string[];
+  /** How a scene may be heard in this film today (lib/brain/logic speechAllowed, from the film's own voice): told to every call and
+   *  checked on every answer. Absent = what a film with no quotable voice can be: wordless. */
+  speechAllowed?: readonly SceneSpeech[];
 }
 
 export type PlanResult = { ok: true; scenario: Scenario; quota: Quota | null } | { ok: false; res: Response; reason: string };
@@ -63,6 +66,10 @@ type Step =
   | { ok: true; parts: SceneParts[][] }
   | { ok: false; kind: "length"; problem: string }
   | { ok: false; kind: "prompt"; problem: string; chapter: number; scene: number }
+  | { ok: false; kind: "rules"; problem: string }
+  | { ok: false; kind: "speech"; problem: string }
+  | { ok: false; kind: "narration"; problem: string; chapter: number; scene: number }
+  | { ok: false; kind: "narration_too_long"; chapter: number; scene: number }
   | { ok: false; kind: "mismatch" }
   | { ok: false; kind: "prompt_too_long"; chapter: number; scene: number }
   | { ok: false; kind: "failed"; reason: string }
@@ -81,7 +88,11 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
   const refs = refsOf(run.outline);
   const echo = outlineText(run.outline);
   // Each scene's whole prompt, as filmFromBrief will send it (the outline's characters, locations and the film's style appended).
-  const promptOf = (sc: SceneParts) => scenePrompt({ characters: run.outline.characters, locations: run.outline.locations, style: run.slots.style ?? null }, sc);
+  const film = { characters: run.outline.characters, locations: run.outline.locations, style: run.slots.style ?? null, visual_style: run.outline.visual_style ?? null };
+  const promptOf = (sc: SceneParts) => { const a = scenePrompt(film, sc); const b = clipPrompt(film, sc); return a.length >= b.length ? a : b; };
+  // The story grammar binds a story outline (one that picked a format); a project's own outline and a stored one keep the older rules.
+  const rules = run.outline.format ? shotRules(run.outline, run.slots.language ?? null) : undefined;
+  const allowed = run.speechAllowed ?? speechAllowed(false);
   let quota: Quota | null = null;
   let forgiven = 0;
   // The plan's cap forgives what was not the person's doing; the Free trial counts every outcome (0199 ai_chat_trial_left), so a
@@ -122,7 +133,8 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
     try {
       const llm = await callChatModel(run.model, PLAN_SYSTEM_PROMPT, planDataBlock({
         outline: run.outline, parts: w.parts, window: { n: w.n, of: windows.length },
-        limits: { sceneMin: run.limits.sceneMin, sceneMax: run.limits.sceneMax, maxScenes: w.maxScenes, promptMax: run.limits.promptMax },
+        limits: { sceneMin: run.limits.sceneMin, sceneMax: run.limits.sceneMax, maxScenes: w.maxScenes, promptMax: run.limits.promptMax, aim: w.aim },
+        speechAllowed: [...allowed],
         style: run.slots.style ?? null, language: run.slots.language ?? null, aspect: run.slots.aspect ?? null, problem,
       }), { endUser: run.endUser, size: "plan" });
       if (!llm.ok) {
@@ -134,7 +146,7 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
                      llm.error === "not_configured" ? null : llm.tokensIn, llm.error === "not_configured" ? null : llm.tokensOut);
         return { ok: false, kind: "failed", reason: llm.error };
       }
-      const read = readWindow(llm.text, w, refs, run.limits, echo, promptOf, run.claimNames ?? []);
+      const read = readWindow(llm.text, w, refs, run.limits, echo, promptOf, run.claimNames ?? [], rules, allowed);
       if (!read.ok && read.why === "refused") {
         await finish("refused", llm.tokensIn, llm.tokensOut);
         return { ok: false, kind: "content_refused" };
@@ -144,6 +156,9 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
       if (read.ok) return { ok: true, parts: read.parts };
       if (read.why === "length") return { ok: false, kind: "length", problem: read.problem };
       if (read.why === "prompt") return { ok: false, kind: "prompt", problem: read.problem, chapter: read.chapter, scene: read.scene };
+      if (read.why === "rules") return { ok: false, kind: "rules", problem: read.problem };
+      if (read.why === "speech") return { ok: false, kind: "speech", problem: read.problem };
+      if (read.why === "narration") return { ok: false, kind: "narration", problem: read.problem, chapter: read.chapter, scene: read.scene };
       return { ok: false, kind: "failed", reason: "invalid_output" };
     } catch {
       // The vendor may or may not have been paid: a failure with unknown tokens, never "pending" or "ok".
@@ -155,13 +170,18 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
   const late = () => now() - started > PLAN_BUDGET_MS - PLAN_CALL_TIMEOUT_MS - POST_PLAN_MS;
   const runWindow = async (w: PlanWindow): Promise<Step> => {
     const first = await call(w, false);
-    if (first.ok || (first.kind !== "length" && first.kind !== "prompt")) return first;
+    if (first.ok || (first.kind !== "length" && first.kind !== "prompt" && first.kind !== "rules" && first.kind !== "narration" && first.kind !== "speech")) return first;
     // Once, with the reason in the data block (G1, and a prompt over the models' limit, S9). A second wrong answer fails the plan:
     // never stretched, cut or shortened to fit.
     if (late()) return { ok: false, kind: "failed", reason: "timeout" };
     const again = await call(w, true, first.problem);
     if (again.ok) return again;
     if (again.kind === "prompt") return { ok: false, kind: "prompt_too_long", chapter: again.chapter, scene: again.scene };
+    // A voice-over still too long to be said in its scene: refused by name before any price, never sped up or cut.
+    if (again.kind === "narration") return { ok: false, kind: "narration_too_long", chapter: again.chapter, scene: again.scene };
+    if (again.kind === "rules") return { ok: false, kind: "failed", reason: "shot_rules" };
+    // Still a speaking plan where only a wordless film can be made: refused by that name, never saved to be made silent.
+    if (again.kind === "speech") return { ok: false, kind: "failed", reason: "speech_not_available" };
     if (again.kind !== "length") return again;
     return { ok: false, kind: "mismatch" };
   };
@@ -211,6 +231,9 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
     // `scene` counts within its chapter here: the scenes before it in other windows are not known.
     if (s.kind === "prompt_too_long") {
       return { ok: false, reason: "prompt_too_long", res: brainJson(withQuota({ error: "prompt_too_long", scene: s.scene, chapter: s.chapter, limit: run.limits.promptMax, step }), 422) };
+    }
+    if (s.kind === "narration_too_long") {
+      return { ok: false, reason: "narration_too_long", res: brainJson(withQuota({ error: "narration_too_long", scene: s.scene, chapter: s.chapter, step }), 422) };
     }
     const reason = s.kind === "failed" ? s.reason : "unavailable";
     return { ok: false, res: brainJson(withQuota({ error: "plan_failed", reason, step }), 502), reason };
