@@ -38,7 +38,7 @@
       linear-gradient(90deg, transparent calc(50% - var(--fx-spread)), var(--ds-text), transparent calc(50% + var(--fx-spread))),
       linear-gradient(var(--ds-muted), var(--ds-muted));
     background-size: 250% 100%, auto;
-    background-repeat: no-repeat, padding-box;
+    background-repeat: no-repeat, no-repeat;
     background-clip: text;
     -webkit-background-clip: text;
     animation: fx-shimmer var(--fx-shimmer-duration, 2s) linear infinite;
