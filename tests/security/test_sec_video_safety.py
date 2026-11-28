@@ -440,8 +440,9 @@ def test_the_rollback_restores_the_three_functions_byte_for_byte_and_the_migrati
     base_dsn = sec_db.create_database(admin, base)
     try:
         # (0120 replaces 0111's guard and refuses to do so on a database that never had it: the base for "before 0111" stops short of it too)
-        # 0226 (only a member spends) replaces a body of a file left out here and refuses to apply without it: out too.
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0111_", "0120_", "0122_", "0127_", "0145_", "0189_", "0226_", "0227_", "0232_"))])
+        # 0226 (only a member spends) replaces a body of a file left out here and refuses to apply without it: out too, and
+        # 0231 (cancel audit) and 0232 (film plan leases), which refuse to apply without 0226.
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0111_", "0120_", "0122_", "0127_", "0145_", "0189_", "0226_", "0231_", "0227_", "0232_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s]).fetchone()[0],
                         b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s]).fetchone()[0]) for s in CHANGED}
