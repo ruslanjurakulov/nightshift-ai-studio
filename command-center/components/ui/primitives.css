@@ -109,9 +109,10 @@
   .ui-close:hover { color: var(--ds-text); background: var(--ds-hover); }
   @media (pointer: coarse) { .ui-close { width: 2.75rem; height: 2.75rem; } }
 
+  /* Above the modal scale (and under toasts and tooltips): a popover opened inside a dialog must not open under its scrim. */
   .ui-popover,
   .ui-command-surface {
-    z-index: var(--ds-z-dropdown);
+    z-index: calc(var(--ds-z-modal) + 50);
     color: var(--ds-text);
     background: var(--ds-surface-2);
     border: var(--ds-hairline) solid var(--ds-border-strong);
@@ -247,15 +248,9 @@
   .ui-command-empty { padding: var(--ds-space-6) var(--ds-space-4); text-align: center; font-size: var(--ds-fs-body-sm); color: var(--ds-muted); }
   .ui-command-separator { height: 1px; margin: var(--ds-space-1) 0; background: var(--ds-border); }
 
-  /* Focus: the lime ring drawn OUTSIDE with a gap, so it never reads as a selection (docs/design/SYSTEM.md §4). */
-  .ui-close:focus-visible,
-  .ui-tabs-trigger:focus-visible,
-  .ui-slider-thumb:focus-visible {
-    outline: 2px solid var(--ds-focus);
-    outline-offset: 2px;
-  }
 
-  /* Arriving and leaving. Radix keeps a closing box mounted until its animation ends, so the exit plays too. */
+  /* Arriving and leaving. The exit plays only when the caller sets open={false}: Radix then keeps the box mounted until its
+     animation ends. A caller that unmounts the dialog instead (ModelSheet today) closes it at once. */
   .ui-overlay[data-state="open"] { animation: ui-fade-in var(--ds-dur-panel) var(--ds-ease-out); }
   .ui-overlay[data-state="closed"] { animation: ui-fade-out var(--ds-dur-panel) var(--ds-ease-exit); }
   .ui-dialog[data-state="open"],
@@ -281,6 +276,14 @@
     .ui-overlay, .ui-dialog, .ui-sheet, .ui-popover, .ui-tooltip { animation: none !important; }
   }
 }
+
+/* Focus rings, unlayered on purpose (as in app/tokens.css): the global :focus-visible in globals.css is unlayered, and an
+   unlayered rule beats every layered one whatever its specificity, so inside the layer these would never paint. The lime ring
+   sits OUTSIDE with a gap, so it never reads as a selection (docs/design/SYSTEM.md §4), and each keeps its own corners: the
+   global rule rounds every ring to 0.35rem, which would square a pill thumb. */
+.ui-close:focus-visible { outline: 3px solid var(--ds-focus); outline-offset: 2px; border-radius: var(--ds-r-key); }
+.ui-tabs-trigger:focus-visible,
+.ui-slider-thumb:focus-visible { outline: 3px solid var(--ds-focus); outline-offset: 2px; border-radius: var(--ds-r-pill); }
 
 @keyframes ui-fade-in { from { opacity: 0; } }
 @keyframes ui-fade-out { to { opacity: 0; } }

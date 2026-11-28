@@ -20,8 +20,8 @@ function Slider({
   thumbLabels,
   ...props
 }: React.ComponentProps<typeof SliderPrimitive.Root> & {
-  /** One accessible name per thumb, from lib/i18n (a single slider passes one). */
-  thumbLabels: string[];
+  /** One accessible name per thumb, from lib/i18n (a single slider passes one). Never empty: an unnamed thumb is a bare number. */
+  thumbLabels: [string, ...string[]];
 }) {
   const count = (value ?? defaultValue ?? [min]).length;
   return (

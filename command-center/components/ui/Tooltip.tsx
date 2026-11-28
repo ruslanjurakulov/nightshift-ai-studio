@@ -18,7 +18,17 @@ function TooltipProvider({ delayDuration = 300, ...props }: React.ComponentProps
   return <TooltipPrimitive.Provider delayDuration={delayDuration} {...props} />;
 }
 
-const Tooltip = TooltipPrimitive.Root;
+/**
+ * Radix throws when a Tooltip has no provider above it, and no layout mounts one; like shadcn's v4, each tooltip carries its
+ * own (a provider higher up still shares its delay with its siblings).
+ */
+function Tooltip({ delayDuration = 300, ...props }: React.ComponentProps<typeof TooltipPrimitive.Root> & { delayDuration?: number }) {
+  return (
+    <TooltipProvider delayDuration={delayDuration}>
+      <TooltipPrimitive.Root {...props} />
+    </TooltipProvider>
+  );
+}
 const TooltipTrigger = TooltipPrimitive.Trigger;
 
 function TooltipContent({

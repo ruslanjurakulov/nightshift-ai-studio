@@ -19,7 +19,8 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } 
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/Sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { Slider } from "@/components/ui/Slider";
-import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/Command";
+import { Command, CommandDialog, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/Command";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/Tooltip";
 import { AnimatedGradient, BorderBeam, TextShimmer } from "@/components/ui/effects";
 
 const root = process.cwd();
@@ -295,5 +296,102 @@ describe("no file in components/ui imports a library the licence gate excluded",
     const dir = path.join(root, "components/ui");
     const files = readdirSync(dir, { recursive: true }).map(String).filter((f) => /\.(tsx?|css)$/.test(f));
     for (const f of files) expect(readFileSync(path.join(dir, f), "utf8"), f).not.toMatch(/aceternity|react-bits/i);
+  });
+});
+
+describe("review fixes (react-reviewer on this PR)", () => {
+  it("a command palette's search box is named by the dialog's title", async () => {
+    render(
+      <CommandDialog open title="Find anything" description="Type to search" closeLabel="Yopish">
+        <CommandInput placeholder="…" />
+        <CommandList>
+          <CommandItem>New canvas</CommandItem>
+        </CommandList>
+      </CommandDialog>,
+    );
+    expect(await screen.findByRole("combobox", { name: "Find anything" })).toBeTruthy();
+  });
+
+  it("a tooltip renders on a page that mounts no provider", () => {
+    expect(() =>
+      render(
+        <Tooltip open>
+          <TooltipTrigger>i</TooltipTrigger>
+          <TooltipContent>More</TooltipContent>
+        </Tooltip>,
+      ),
+    ).not.toThrow();
+    expect(screen.getAllByText("More").length).toBeGreaterThan(0);
+  });
+
+  it("a press on a toast does not close the dialog the person is in", async () => {
+    render(
+      <>
+        <Dialog defaultOpen>
+          <DialogContent closeLabel="x">
+            <DialogTitle>T</DialogTitle>
+            <DialogDescription>D</DialogDescription>
+          </DialogContent>
+        </Dialog>
+        <section className="toast-viewport">
+          <button type="button">dismiss</button>
+        </section>
+      </>,
+    );
+    await screen.findByRole("dialog");
+    const dismiss = document.querySelector(".toast-viewport button")!;
+    fireEvent.pointerDown(dismiss);
+    fireEvent.focus(dismiss);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  it("toasts and the session-ended bar sit above the modal scale", () => {
+    expect(read("components/feedback/ToastProvider.tsx")).toMatch(/toast-viewport[^"]*z-\[var\(--ds-z-toast\)\]/);
+    expect(read("components/shell/SessionEndedBar.tsx")).toMatch(/data-notice-layer[\s\S]{0,80}z-\[var\(--ds-z-toast\)\]/);
+    const tokens = read("app/tokens.css");
+    const z = (n: string) => Number(tokens.match(new RegExp(`--ds-z-${n}: (\\d+)`))![1]);
+    expect(z("toast")).toBeGreaterThan(z("modal"));
+  });
+});
+
+describe("the cascade-layer trap (Lens on this PR)", () => {
+  // globals.css is unlayered; the primitives sit in @layer components. An unlayered rule beats a layered one whatever its
+  // specificity, so a .ui-* border colour or focus ring inside the layer silently never paints (confirmed in Chrome).
+  const globals = read("app/globals.css");
+  const borderDefault = globals.slice(globals.indexOf(":where(*:not(.st)"), globals.indexOf("html {", globals.indexOf(":where(*:not(.st)")));
+
+  it("every primitive that draws its own edge is carved out of the global hairline, in both rules", () => {
+    for (const f of STYLES) {
+      const css = read(f);
+      const withEdge = new Set<string>();
+      for (const m of css.matchAll(/((?:\.(?:ui|fx)-[a-z-]+)(?:\[[^\]]+\])?)[^{}]*\{([^}]*)\}/g))
+        // A colour-bearing border (not border-radius, not a "border-bottom: 0" that only removes one side).
+        if (/\bborder(?:-(?:top|right|bottom|left))?(?:-color)?\s*:\s*(?!0;)/.test(m[2])) withEdge.add(m[1].replace(/\[.*$/, ""));
+      expect(withEdge.size, f).toBeGreaterThan(0);
+      for (const cls of withEdge) {
+        const hits = borderDefault.split(cls + ",").length + borderDefault.split(cls + ")").length - 2;
+        expect(hits, `${cls} (${f}) in both carve-outs`).toBe(2);
+      }
+    }
+  });
+
+  it("the focus rings are unlayered and keep their own corners", () => {
+    const css = read("components/ui/primitives.css");
+    const layerEnd = css.indexOf("\n}\n", css.indexOf("@layer components {"));
+    for (const cls of [".ui-close:focus-visible", ".ui-tabs-trigger:focus-visible", ".ui-slider-thumb:focus-visible"]) {
+      const at = css.indexOf(cls);
+      expect(at, cls).toBeGreaterThan(layerEnd);
+    }
+    const rings = css.slice(layerEnd);
+    expect(rings.match(/outline: 3px solid var\(--ds-focus\); outline-offset: 2px; border-radius: var\(--ds-r-(?:key|pill)\)/g)?.length).toBe(2);
+  });
+
+  it("a popover inside a dialog opens above its scrim, under toasts", () => {
+    expect(read("components/ui/primitives.css")).toMatch(/\.ui-popover,\s*\.ui-command-surface \{\s*z-index: calc\(var\(--ds-z-modal\) \+ 50\);/);
+  });
+
+  it("the session bar takes presses while a modal has turned the page's pointer events off", () => {
+    expect(read("components/shell/SessionEndedBar.tsx")).toMatch(/pointer-events-auto[^"]*z-\[var\(--ds-z-toast\)\]/);
   });
 });

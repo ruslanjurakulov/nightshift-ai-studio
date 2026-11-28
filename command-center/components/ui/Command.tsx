@@ -38,7 +38,8 @@ function CommandDialog({
       <DialogContent closeLabel={closeLabel} className="p-0">
         <DialogTitle className="sr-only">{title}</DialogTitle>
         <DialogDescription className="sr-only">{description}</DialogDescription>
-        <Command>{children}</Command>
+        {/* cmdk labels its input and list by this (aria-labelledby on its own hidden label); without it the combobox is unnamed. */}
+        <Command label={title}>{children}</Command>
       </DialogContent>
     </Dialog>
   );

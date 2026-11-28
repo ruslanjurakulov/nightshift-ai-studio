@@ -14,6 +14,7 @@ import * as React from "react";
 import { X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { cn } from "@/lib/cn";
+import { keepOpenOnNotice } from "@/components/ui/notices";
 import "./primitives.css";
 
 const Dialog = DialogPrimitive.Root;
@@ -37,7 +38,7 @@ function DialogContent({
   return (
     <DialogPortal>
       <DialogOverlay />
-      <DialogPrimitive.Content data-slot="dialog-content" className={cn("ui-dialog", className)} {...props}>
+      <DialogPrimitive.Content data-slot="dialog-content" className={cn("ui-dialog", className)} {...props} onInteractOutside={keepOpenOnNotice(props.onInteractOutside)}>
         {children}
         {closeLabel !== null && (
           <DialogPrimitive.Close className="ui-close absolute right-3 top-3" aria-label={closeLabel}>

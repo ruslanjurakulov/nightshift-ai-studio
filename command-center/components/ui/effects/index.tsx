@@ -7,7 +7,7 @@
  * TextShimmer take `active`, which the caller ties to a real job or event (SYSTEM.md §5 "motion must be true"); with it false
  * they draw nothing extra. All three are decoration: hidden from assistive technology, and the caller says the state in words.
  */
-import type { CSSProperties, ElementType, ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import "./effects.css";
 
@@ -51,7 +51,8 @@ export function TextShimmer({
 }: {
   active: boolean;
   children: string;
-  as?: ElementType;
+  /** A text element: a void one (input, img) cannot hold the words. */
+  as?: "span" | "p" | "div" | "strong" | "em" | "h2" | "h3" | "h4";
   duration?: number;
   className?: string;
 }) {

@@ -56,7 +56,25 @@ function Page({ locale = "en" as "en" | "ru" | "uz", onCanvasEscape = () => {} }
 }
 
 describe("model sheet shell", () => {
-  it("opens on the model in use, and Escape closes only the sheet", async () => {
+  it("leaves the canvas's window-level Escape alone: the canvas skips Escape while a dialog is open, and the sheet is one", async () => {
+    // StudioCanvas listens on window (capture) and returns when [role="dialog"] is present; Radix Content carries that role.
+    let sawDialog: boolean | null = null;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") sawDialog = !!document.querySelector('[role="dialog"]');
+    };
+    window.addEventListener("keydown", onKey, true);
+    try {
+      render(<Page />);
+      await screen.findByRole("dialog");
+      await waitFor(() => expect(document.activeElement?.getAttribute("data-model")).toBe("pic-fine"));
+      fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+      expect(sawDialog).toBe(true);
+    } finally {
+      window.removeEventListener("keydown", onKey, true);
+    }
+  });
+
+  it("opens on the model in use, and Escape closes the sheet without reaching a React ancestor (the panel behind)", async () => {
     const canvasEscape = vi.fn();
     render(<Page onCanvasEscape={canvasEscape} />);
     const dialog = await screen.findByRole("dialog", { name: dictionaries.en.gen.sheetTitle });
@@ -68,7 +86,7 @@ describe("model sheet shell", () => {
     expect(document.activeElement?.textContent).toBe("change");
   });
 
-  it("keeps Tab inside and the page behind still", async () => {
+  it("is modal: focus guards at its edges, focus inside, the page behind hidden and still", async () => {
     render(<Page />);
     const dialog = await screen.findByRole("dialog");
     // Radix's scroll lock marks the body; the page under the sheet does not move with a thumb.
@@ -87,6 +105,10 @@ describe("model sheet shell", () => {
     const dialog = await screen.findByRole("dialog", { name: g.sheetTitle });
     expect(screen.getByRole("button", { name: g.sheetClose })).toBeTruthy();
     expect(dialog.getAttribute("aria-describedby")).toBeTruthy();
-    expect(document.getElementById(dialog.getAttribute("aria-describedby")!)?.textContent).toContain(g.sheetFor.split("{")[0].trim());
+    // The description is the formatted sentence for this tool, in this language (kindLabel's t2i word filled in).
+    const desc = document.getElementById(dialog.getAttribute("aria-describedby")!)?.textContent ?? "";
+    const words = g.sheetFor.replace("{kind}", "").replace(/[·.,]/g, " ").split(/\s+/).filter((w) => w.length > 2);
+    expect(words.length).toBeGreaterThan(0);
+    for (const w of words) expect(desc).toContain(w);
   });
 });
