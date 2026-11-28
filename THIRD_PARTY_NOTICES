@@ -6,6 +6,15 @@ the project's license text as it was published.
 
 (Agent definitions adapted from affaan-m/ecc are noted separately in .claude/agents/ECC-NOTICE.md.)
 
+Ported source code follows CLAUDE.md's "Reuse before you build": MIT, Apache-2.0 and BSD only, with the notice kept here and a
+header comment in every file that carries ported code. Packages that are only
+installed from npm and not copied keep their own licence files in node_modules; they are listed here when a ported file
+depends on them.
+
+Excluded on licence grounds (their code is never copied, by rule): Aceternity UI (its own proprietary "Aceternity License",
+no redistribution of source or derivatives) and React Bits (MIT with the Commons Clause, which forbids redistributing the
+components "as a ported version"). Magic UI Pro is a separate, proprietary product; only the MIT repository is used.
+
 -------------------------------------------------------------------------------
 HKUDS/ViMax
 https://github.com/HKUDS/ViMax (commit 01b4696ebb54805dc465f5f815f5ee87891909d8)
@@ -17,6 +26,14 @@ adapted into prompt text and TypeScript types.
 
 Where: command-center/lib/brain/prompt.ts (PLAN_SYSTEM_PROMPT, "How you shoot"), command-center/lib/brain/logic.ts (the shot
 spec types), command-center/lib/brain/plan.ts (the checks of those rules).
+
+Also taken (character reference sheets): the three portrait prompts of agents/character_portraits_generator.py
+(prompt_template_front, prompt_template_side, prompt_template_back) and its order (the front from words, the side and the back
+from the front); the reference rules of agents/reference_image_selector.py (at most 8 pictures, at most one view per character,
+the view the shot shows, "Image N" counted from 0 by position in the selected list), re-written as deterministic code rather than
+a language-model call; and the per-scene character with its own features of interfaces/character.py (CharacterInScene).
+
+Where: command-center/lib/brain/ref-sheets.ts (sheetPrompt, planSheets, selectRefs, wantedView).
 
 License:
 
@@ -108,6 +125,221 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+-------------------------------------------------------------------------------
+shadcn/ui
+https://github.com/shadcn-ui/ui (registry new-york-v4, CLI 4.23.1, fetched 2026-11-28)
+
+What was taken: the Dialog, Sheet, Popover, Tooltip, Tabs, Slider and Command components of registry new-york-v4 and its cn() helper,
+restyled on our --ds-* tokens.
+
+Where: command-center/components/ui/{Dialog,Sheet,Popover,Tooltip,Tabs,Slider,Command}.tsx, command-center/lib/cn.ts
+
+License:
+
+MIT License
+
+Copyright (c) 2023 shadcn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-------------------------------------------------------------------------------
+Radix Primitives (npm package radix-ui)
+https://github.com/radix-ui/primitives (radix-ui 1.8.1)
+
+What was taken: nothing copied; installed from npm as the dependency the components/ui primitives are built on.
+
+Where: dependency of the components/ui primitives above
+
+License:
+
+MIT License
+
+Copyright (c) 2022 WorkOS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-------------------------------------------------------------------------------
+cmdk
+https://github.com/pacocoursey/cmdk (1.1.1)
+
+What was taken: nothing copied; installed from npm as the dependency of Command.
+
+Where: dependency of command-center/components/ui/Command.tsx
+
+License:
+
+MIT License
+
+Copyright (c) 2022 Paco Coursey
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-------------------------------------------------------------------------------
+clsx
+https://github.com/lukeed/clsx (2.1.1)
+
+What was taken: nothing copied; installed from npm as a dependency of cn().
+
+Where: dependency of command-center/lib/cn.ts
+
+License:
+
+MIT License
+
+Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+-------------------------------------------------------------------------------
+tailwind-merge
+https://github.com/dcastil/tailwind-merge (3.7.1)
+
+What was taken: nothing copied; installed from npm as a dependency of cn().
+
+Where: dependency of command-center/lib/cn.ts
+
+License:
+
+MIT License
+
+Copyright (c) 2021 Dany Castillo
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-------------------------------------------------------------------------------
+Magic UI
+https://github.com/magicuidesign/magicui (border-beam, animated-gradient-text; fetched 2026-11-28)
+
+What was taken: the ideas and geometry of border-beam and animated-gradient-text, rewritten as CSS animations on our tokens.
+
+Where: command-center/components/ui/effects/{index.tsx,effects.css}
+
+License:
+
+MIT License
+
+Copyright (c) Magic UI
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-------------------------------------------------------------------------------
+motion-primitives
+https://github.com/ibelick/motion-primitives (text-shimmer; fetched 2026-11-28)
+
+What was taken: the idea of text-shimmer, rewritten as a CSS animation on our tokens.
+
+Where: command-center/components/ui/effects/{index.tsx,effects.css}
+
+License:
+
+MIT License
+
+Copyright (c) 2024 ibelick
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+(The upstream LICENCE.md ends with a stray line, "app/page.tsx", that is not part of the licence; it is left out here.)
 
 -------------------------------------------------------------------------------
 qiuqiangkong/audioset_tagging_cnn (PANNs model code)

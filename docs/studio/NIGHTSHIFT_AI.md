@@ -146,6 +146,87 @@ ceil(t / 40) windows of ≤ 15 scenes. The 3 s floor is today's: `film_scenes.pl
 `film_limits.scene_seconds_min` is 3, and `modules/film_timeline` refuses less; the clip models' shortest clips (4 s, 5 s) are
 already trimmed to the planned seconds. Every plan stays within 0232's turn bound least(15, 1 + 2·ceil(t / 24)).
 
+## Character sheets (S1, `claude/nsai-s1-ref-sheets`)
+
+A short film's plan shows "Make character sheets" under its Create once a draft exists (`components/brain/RefSheetsPanel.tsx`,
+`/api/brain/sheets`, `lib/brain/ref-sheets.ts`, `lib/server/brain/ref-sheets.ts`). The prompts, the order they are made in and the
+selector's rules are ported from HKUDS/ViMax (MIT; THIRD_PARTY_NOTICES).
+
+**The plan** (`planSheets`). One sheet per character, and per age stage when it has stages (plus the character's own look when a
+scene shows it without naming a stage): front, side and back. Each prompt is ViMax's portrait template (full body, pure white
+background, a wide 16:9 canvas whatever the film's shape, arms relaxed; the side "facing left", the back with no facial features),
+then `Features:` and the look exactly as `characterLine` writes it into every key frame of that stage, the no-text line, and the
+film's `visual_style`. Stored on the BRIEF as `ref_sheets: [{character_id, stage, views: [{view, prompt, asset_id, status, job_id,
+attempt, error, key}]}]`: optional, additive. The route never casts the stored jsonb as a BRIEF: it re-reads it through the BRIEF's
+own caps (`readSheetBrief`: at most 8 characters, 4 stages each, so at most 40 sheets; 0199 stores any object, Breach BR-RS-03). A
+view whose look changed starts again (its old picture shows someone else). Every route that rewrites the BRIEF (a chat turn's
+`ai_chat_finish_turn`, a long plan's save, both of a short plan's saves) carries `ref_sheets` and `film_link`, read again right
+before its write (Lens H1, M2). Writes (make, approve, redo, attach) are refused before any quote or create unless the plan is
+`ready`: `session_closed` once it is handed off (0199 refuses every write then), `plan_not_ready` while the chat is changing it
+(Breach BR-RS-02). A project's own storyboard conversation (`film_plan`) has no sheets (`film_conversation`).
+
+**Making them is a person's act, on the existing money path.** `GET` asks `quote_creative_job` for every view that can be made now
+and sums the answers; nothing is held. It returns a `token`: a digest of exactly that set (each view, its attempt, its request and
+its price). The fronts come first (t2i). A side or back is an edit OF its front's picture (`source_asset_id` = the front's result),
+so it cannot be priced before the front exists: those are counted as `waiting`, never as a number, and priced in a second press.
+`POST make {max_credits, quote_token}` quotes again and refuses `price_changed`, before anything is held, unless the fresh set's
+token is the one confirmed and its total is within it (Breach BR-RS-01: a replayed confirm after a front finished, or one made
+before a redo, never buys views nobody was shown). Then two phases (Lens M1): every view to make is saved as `making` with the
+idempotency key its job will have; then `create_creative_job` once per view (mode `exact`, never failed over), each capped at its own
+fresh quote; then the job ids are saved. A save that fails after the creates answers `sheets_not_saved` with the job ids (the
+pictures were started and their credits held; never "nothing held"), and the next read finds each job by its key in
+`creative_jobs.idempotency_key` (readable by members since 0225), filtered to the conversation's workspace. An intent whose key
+finds no job is to make again: nothing was held. The key is a digest of the conversation, the character, the stage, the view, the
+attempt AND the request (model, capability, mode, prompt, front picture, size, aspect; Lens H1): the same request replays the same
+job, a changed one never reuses an old key. A refusal part-way (`insufficient_credits`, `not_a_member`, `forbidden`) is passed on
+by name with how many pictures had started. The capture or refund is `finish_creative_job`'s. A failed view, or a redo, is the next
+attempt; a redone front takes its made side and back with it (they were drawn from the old front, Lens M5). The panel snapshots the
+quote when Make is pressed and sends its token; a quote that changes while the confirm is open closes it and says the new price.
+While a picture is made it polls `GET …&states=1` (the job states only: no catalogue read, no quote) and reads the quote again only
+when a view's state changed.
+
+**Two writers.** Without a migration there is no compare-and-swap: `saveSheets` re-reads the session right before 0199's write and
+merges only `ref_sheets` into that fresh BRIEF, view by view (`mergeConcurrent`: a view this write changed is this write's; any other
+keeps the later attempt, then the further state, of the two), and the turn route re-reads the stored sheets right before each of its writes. The window
+left is the moment between that re-read and the write. A view lost in it is found again by its key, but an approval can still be
+lost to a write landing in that moment; closing it needs a database function that writes `ref_sheets` alone under the row lock.
+
+**The model.** The film's own key-frame model when it is on sale for t2i and edit, else the first of `FILM_MODEL_PREFERENCE.keyframe`
+that is, said by name and with why ("because the film has no picture model set yet", or "because the film's own picture model
+can't make character sheets"). None: `no_sheet_model`. A model sold by size gets its smallest size (the quote prices it).
+
+**The selector** (`selectRefs`, deterministic, never a model call). Per scene, per in-frame character (the first 4, the smallest
+per-model character limit the key-frame models document; the registry has no per-model count; the 5th and later are reported as
+missing), the approved view the shot implies: `back` when the camera position or the first frame says "from behind", "back to
+camera" …; `side` for "in profile", "side view" …; else `front` (wide, two-shot, medium, close). When that view is not approved, the
+same stage's front, recorded as `wanted ≠ view`. Never another stage's sheet: that character goes without a picture instead. At most
+8 pictures (ViMax), at most the model's `image_refs_max` and the worker's 16 counting the film's own references, at most 14 MiB
+together (Nano Banana's adapter limit), each a PNG, JPEG or WebP whose stored size (`media_assets.bytes`) is known; otherwise the
+scene is refused by name (`ref_size_unknown`, `ref_type_not_taken`, `refs_too_large`). Each pick goes as an `asset_id` reference
+(one view is one slot; a `character_id` ref would expand to every picture), and the key-frame prompt gains, once (an older line is
+replaced), "Reference pictures: Mira (child) should reference Image 0. …", counted from 0 after the film-wide references, which 0198
+sends first.
+
+**Attaching** (`POST attach`, one `save_film` with the scene refs and prompts, then `quote_film` again). Only on the conversation's
+own draft: the turn route records `film_link` (the film id and, from save_film's own answer, which film scene each BRIEF scene
+became) when it saves the storyboard; another film is `not_this_film`. Scenes are matched by that link, never by position; a linked
+scene that is gone is `storyboard_changed` (re-plan, or add the pictures scene by scene in the editor). A scene that already has
+references keeps them (the second attach says `already_attached`). A film with a library character as a film-wide reference is
+refused (`film_character_refs`): its picture count cannot be read here, so the numbers would be wrong. The prompt with its line is
+measured against the smaller of `film_limits.max_prompt_chars` (2000) and the model's own limit (`attach_prompt_too_long`, by
+scene); a limit that cannot be read is `prompt_limit_unknown`.
+
+**The gate** (`refGate`). Attaching happens only when the film's key-frame model is on sale for t2i (read from `sellable_models`
+directly), has no terms gate, the person meets its 18+ condition, it takes at least one picture, and its reference capabilities
+include t2i, the capability the worker makes every key frame with. Those come from the registry's `ref_capabilities` (S2, #970)
+under the spec's `inputs`: sellable_models projects only the registry's `inputs` object, so #970 must put the field there (or extend
+the projection; a top-level field would never reach the server and is not read). Where a row has none, they come from what the
+model's adapter declares (`reference_capabilities`), copied to `lib/brain/ref-capabilities.json` by `tools/ref_capabilities_twin.py`
+and pinned by `tests/test_ref_capabilities_twin.py`. Malformed or neither: unknown, closed. Today it is closed for every sellable
+key-frame model (GPT Image 2.6 takes references on edit only; the Gemini models take them on t2i but are not on sale), so the panel
+says "Your key-frame model can't use reference pictures yet; the sheets are saved and will be used when it can" and nothing is
+written to the film: never a priced film that the worker would refuse at submit.
+
 ## Question cards
 
 `POST /api/brain/turn` returns, next to the BRIEF, at most one card:

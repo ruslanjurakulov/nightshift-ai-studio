@@ -25,7 +25,8 @@ export function SessionEndedBar() {
   return (
     <div
       role="alert"
-      className="fixed inset-x-0 top-0 z-[130] flex flex-wrap items-center justify-center gap-3 border-b border-[var(--ns-rule-strong)] bg-[var(--color-surface)] px-4 py-3 text-sm"
+      data-notice-layer
+      className="pointer-events-auto fixed inset-x-0 top-0 z-[var(--ds-z-toast)] flex flex-wrap items-center justify-center gap-3 border-b border-[var(--ns-rule-strong)] bg-[var(--color-surface)] px-4 py-3 text-sm"
     >
       <span>{t.ownerTruth.sessionBar}</span>
       <a className="btn-primary" href={`/login?next=${encodeURIComponent(next)}`}>

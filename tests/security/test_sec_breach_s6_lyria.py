@@ -24,6 +24,8 @@ Fixed (27 Nov, Sentinel's spec; these tests were red before the fix):
 
 Severity guess: LOW today (``music`` is registry-only: no row, no quote, no job, resolve() returns None, probe_models skips it even by
 name; all verified), MEDIUM the day the capability is migrated: a paid song in an unproven sung language, no refusal before the spend.
+(Since 0228 the capability is migrated and the row syncs dark: hidden, terms-gated, unpriced. The refusals pinned below are what
+stand between a named probe and a sung language.)
 
 Held (passing here): a key with an interior CR/LF never reaches a socket or a message; a 3xx is not followed and the key is not sent
 to its Location; a key echoed in a failed interaction or in a model text block is redacted; an answer whose audio is a URL on a
