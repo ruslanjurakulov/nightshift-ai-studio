@@ -515,15 +515,39 @@ again, is required. The measurement requirements install only with `--require-ha
 
 These show only that the pipeline runs and the models load correctly. They are not evidence about Lyria or about real voices.
 
-**Results: NOT YET RUN.**
+**Results: run 46132895972 (2026-11-28, main at 4f1e2a709, GitHub ubuntu-latest runner, 5 paid calls, all HTTP 200 and
+`completed`).** Numbers copied from the job log; spend per call "likely" (a completed interaction; the invoice is not read here).
 
 | id | text block | text len | lines | `returned_singing` | mime | rate | bytes | duration s | UMX p50 dB | UMX p90 dB | UMX max dB | share > -20 dB | longest run > -20 dB s | PANNs voice max | PANNs class | Silero speech s |
 | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
-| P1 | | | | | | | | | | | | | | | | |
-| P2 | | | | | | | | | | | | | | | | |
-| P3 | | | | | | | | | | | | | | | | |
-| N1 | | | | | | | | | | | | | | | | |
-| N2 | | | | | | | | | | | | | | | | |
+| P1 | yes | 1027 | 27 | true | audio/mpeg | 44100 (decoded; not reported) | 3,180,654 | 132.2 | -6.80 | -2.40 | -0.63 | 0.955 | 126 | 0.245 | Humming (Singing 0.232) | 0.4 |
+| P2 | yes | 614 | 20 | true | audio/mpeg | 44100 (decoded; not reported) | 4,318,548 | 179.6 | -6.08 | -2.41 | -0.70 | 0.761 | 27 | 0.351 | Speech (Singing 0.200) | 52.0 |
+| P3 | yes | 712 | 20 | true | audio/mpeg | 44100 (decoded; not reported) | 2,941,163 | 122.2 | -6.07 | -3.70 | -2.58 | 0.760 | 30 | 0.201 | Singing | 44.3 |
+| N1 | yes | 48 | 7 | false | audio/mpeg | 44100 (decoded; not reported) | 4,331,086 | 180.1 | -57.17 | -49.52 | -36.69 | 0.000 | 0 | 0.032 | Speech | 0.0 |
+| N2 | yes | 48 | 7 | false | audio/mpeg | 44100 (decoded; not reported) | 4,009,467 | 166.7 | -26.83 | -12.57 | -5.17 | 0.293 | 12 | 0.039 | Speech | 2.6 |
+
+The same samples at the -10 dB step, where the hard negative stops leaking (share above / longest run above, s): P1 0.849 / 34,
+P2 0.661 / 14, P3 0.694 / 30, N1 0.000 / 0, N2 0.054 / 4. PANNs voice mean: P1 0.158, P2 0.124, P3 0.142, N1 0.025, N2 0.023.
+
+What the numbers say:
+
+- **Lyria sings in English, Russian and Uzbek when asked.** All three positives carry a vocal stem near the mix level (p50 about
+  -6 dB) for most of the song, and Google's text block holds their lyrics (`returned_singing` true). Sung-language support is
+  therefore real, which is why the instrumental promise needs an audio check at all.
+- **An instrumental answer still has a text block** (48 characters, 7 lines: a structure description, not lyrics), so "a text
+  block exists" means nothing; `returned_singing` read it correctly as not sung in both negatives.
+- **The hard negative leaks into the vocal stem.** The saxophone and synth lead of N2 put 29 % of its seconds above -20 dB, and a
+  run of 12 s, which is inside the positives' range at that step (P2: 27 s). At -10 dB it falls to 5 % and 4 s. So -20 dB is not
+  a usable step; -10 dB is.
+- **PANNs separates cleanly on its own:** every positive's voice max is at least 0.201, every negative's at most 0.039, a factor
+  of 5. Its winning class is not reliable (P1 reads Humming, P2 Speech), so the rule uses the maximum over all voice classes, not
+  one class.
+- **Silero does not separate.** It found 0.4 s of speech in P1, a fully sung song, and 2.6 s in the saxophone negative. It is kept
+  as a diagnostic only.
+- **No wordless vocals appeared** in either negative (Humming 0.0026 and 0.0009, Choir 0.0023 and 0.0015), so the owner rule on
+  wordless vocals was not exercised by this run.
+- **Songs run 2 to 3 minutes** (122 to 180 s) for one request, with no length field. On the 2-core runner one song took 17 to 27 s
+  of UMX and 5.6 to 7.2 s of PANNs, at a peak RSS of 3.2 GB. A product check on the worker must budget that per song.
 
 **Decision rule, to be set from the results (not before).**
 
@@ -539,6 +563,31 @@ These show only that the pipeline runs and the models load correctly. They are n
   otherwise. When the run is read, a negative that PANNs tags as Humming or Choir is treated as a vocal (a failure of the
   instrumental promise), not as a false positive of the detector.
 - Five samples is a smoke measurement. The rule says so wherever it is quoted.
+
+**Decision rule, approved 2026-11-28 (Atlas, from run 46132895972; a smoke measurement, n = 5).** A Lyria answer is refused as sung (`after_completion` bad_response, refunded, never retried on another model) if
+**any** of these holds:
+
+1. `returned_singing` on Google's text block (the existing product check).
+2. **UMX:** the share of seconds with the vocal stem above **-10 dB** relative to the mix is **at least 0.30**.
+   Positives 0.661 to 0.849, negatives 0.000 and 0.054: the threshold sits 5.6 times above the worst negative and 2.2 times below
+   the weakest positive.
+3. **PANNs:** the maximum, over 10 s windows, of the largest voice-class probability is **at least 0.10**.
+   Positives 0.201 to 0.351, negatives 0.032 and 0.039: 2.6 times above the worst negative, 2 times below the weakest positive.
+
+4. **UMX longest run (added 2026-11-28, Atlas, after Breach's BR-S6V-05; provisional):** a run of **at least 10 consecutive
+   seconds** with the vocal stem above -10 dB. Positives 14 to 34 s, negatives 0 and 4 s. It exists for a song sung only in a
+   short burst, whose share stays under 0.30 and whose PANNs windows can stay under 0.10; it leans to refusing, and a burst
+   measurement (about three calls with short sung passages) confirms or tunes the 10 s before beta.
+
+Signals 2 and 3 each separate all five samples alone, so the rule keeps both (an OR) as two independent signals; signal 4 is
+the fail-safe for short bursts. Silero is not part of the rule (no separation). If either detector fails to run, the answer is
+refused as "check did not run", never accepted (rules 4 and 5). A false refusal costs the customer nothing (it is refunded) and
+costs us one song; a false acceptance breaks the instrumental promise, so the rule leans to refusing.
+
+**Standing re-measurement.** The first 50 real songs sold in beta are measured again with the same three signals (numbers only,
+no audio kept). Recorded here: how many were refused, by which signal, and how many of those refusals a person judged to be
+instrumental after all (the false-refusal rate), plus any song that passed and was reported as sung. The thresholds change only
+through a new entry in this section, from those numbers.
 
 ---
 
