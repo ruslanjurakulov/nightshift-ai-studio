@@ -10,7 +10,9 @@ import { en } from "../lib/i18n/en";
 import { ru } from "../lib/i18n/ru";
 import { uz } from "../lib/i18n/uz";
 import { unitMeaning } from "../lib/creditUnits";
-import { LEDGER_UNITS, SPECIAL_UNITS, chargePerUnit, isFlatUnit } from "../lib/credits";
+import { SPECIAL_UNITS, chargePerUnit, isFlatUnit } from "../lib/credits";
+import { LEDGER_UNITS } from "../lib/server/ledger-units";
+import { ledgerUnitMeanings } from "../lib/server/ledger-unit-labels";
 
 const m = (unit: string, t = en) => unitMeaning(unit, t.credits.unitMeaning);
 
@@ -52,12 +54,43 @@ describe("unitMeaning", () => {
     expect(m("")).toBeNull();
   });
 
-  it("covers every unit the editor offers, in all three languages", () => {
+  it("covers every unit the editor offers, in all three languages (the ledger's through the server's meanings)", () => {
     for (const t of [en, ru, uz]) {
+      const known = ledgerUnitMeanings(t.credits.unitMeaning);
       for (const u of [...SPECIAL_UNITS, ...LEDGER_UNITS]) {
-        expect(m(u, t), `${u} (${t === en ? "en" : t === ru ? "ru" : "uz"})`).toBeTruthy();
+        expect(unitMeaning(u, t.credits.unitMeaning, known), `${u} (${t === en ? "en" : t === ru ? "ru" : "uz"})`).toBeTruthy();
       }
     }
+  });
+
+  it("reads all nine ledger units exactly as their old table rows did, in en, ru and uz", () => {
+    // The rows lib/creditUnits.ts FIXED had before the units moved to the server (#956).
+    const OLD: Record<string, keyof typeof en.credits.unitMeaning> = {
+      gemini_input_tokens: "tokens",
+      gemini_output_tokens: "tokens",
+      tts_characters: "characters",
+      render_seconds: "renderSeconds",
+      pexels_requests: "requests",
+      upload_bytes: "bytes",
+      video_gen_clips: "generatedClips",
+      image_generations: "generatedImages",
+      vision_calls: "calls",
+    };
+    expect(Object.keys(OLD).sort()).toEqual([...LEDGER_UNITS].sort());
+    for (const t of [en, ru, uz]) {
+      const known = ledgerUnitMeanings(t.credits.unitMeaning);
+      for (const u of LEDGER_UNITS) expect(unitMeaning(u, t.credits.unitMeaning, known), u).toBe(t.credits.unitMeaning[OLD[u]]);
+    }
+  });
+
+  it("gives no meaning to a typed unit whose last word does not settle it (rule 5: the raw name, never a guess)", () => {
+    for (const u of ["avatar_seconds", "foo_clips", "bar_generations", "avatar_characters", "backup_bytes"]) expect(m(u), u).toBeNull();
+    // A last word whose gloss is true of any unit keeps it.
+    expect(m("foo_tokens")).toBe(en.credits.unitMeaning.tokens);
+    expect(m("foo_requests")).toBe(en.credits.unitMeaning.requests);
+    expect(m("foo_calls")).toBe(en.credits.unitMeaning.calls);
+    // And a registry unit is still read by its own rule, never as a ledger one.
+    expect(m("model_foo_second_weird")).toBeNull();
   });
 
   it("glosses every unit of the owner-apply price files", () => {

@@ -2401,7 +2401,19 @@
         "source_url": null,
         "as_of": null,
         "confirmed": false,
-        "note": "billed per input and output token; no per-request figure, so none is claimed"
+        "note": "billed per input and output token; no per-request figure, so none is claimed",
+        "changes": [
+          {
+            "effective_at": "2027-01-01T00:00:00Z",
+            "rates": {
+              "input_usd_per_1m_tokens": {"from": 0.75, "to": 1.5},
+              "output_usd_per_1m_tokens": {"from": 3.75, "to": 7.5}
+            },
+            "source_url": "https://aistudio.google.com/docs/pricing",
+            "as_of": "2026-11-22",
+            "evidence": "Paid tier, standard, per 1M tokens: input \"$0.75 through December 31, 2026\", \"$1.50 starting January 1, 2027\"; output (thinking tokens included) $3.75 through December 31, 2026, $7.50 starting January 1, 2027"
+          }
+        ]
       },
       "credit_unit": "model_gemini_3_6_flash_request",
       "entitlement": null,

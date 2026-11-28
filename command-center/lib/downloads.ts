@@ -11,7 +11,7 @@
  *   charge = max(ceil(minutes × credits_per_unit × (1 + margin)), ceil(download_minimum))
  */
 
-import type { PriceMap } from "@/lib/credits";
+import { chargePerUnit, type ChargedRate, type CreditPrice, type PriceMap } from "@/lib/credits";
 
 export type HdQuality = "720p" | "1080p";
 export type DownloadQuality = "480p" | HdQuality;
@@ -23,6 +23,29 @@ export const QUALITY_SIDE: Record<HdQuality, number> = { "720p": 720, "1080p": 1
 export const UNIT_DOWNLOAD_MINIMUM = "download_minimum";
 export function downloadUnit(q: HdQuality): string {
   return `download_${q}_minute`;
+}
+
+/** The download rates as the Download menu is handed them: `{ unit, credits }`, as charged. */
+export type DownloadRates = Readonly<Record<string, ChargedRate>>;
+
+/**
+ * The part of a price list the Download menu prices from: the HD download units and their floor, as charged (chargePerUnit:
+ * margin folded in, the floor flat), `{ unit, credits }` and nothing else. The menu is a Client Component, so whatever it is
+ * handed is in the video page's payload; the rest of the list and its margins and notes are not its business.
+ */
+export function downloadPrices(prices: PriceMap): DownloadRates {
+  const out: Record<string, ChargedRate> = {};
+  for (const unit of [...HD_QUALITIES.map(downloadUnit), UNIT_DOWNLOAD_MINIMUM]) {
+    const p = prices[unit];
+    if (p) out[unit] = { unit, credits: chargePerUnit(p) };
+  }
+  return out;
+}
+
+/** Credits per unit as charged, from either shape: the menu's rates, or a price list read on the server or in a test. */
+function charged(p: CreditPrice | ChargedRate, flat: boolean): number {
+  if ("credits" in p) return p.credits;
+  return flat ? p.creditsPerUnit : p.creditsPerUnit * (1 + p.margin);
 }
 
 /** A paid download makes the same quality of the same video free for this long. */
@@ -113,14 +136,14 @@ export function availableQualities(master: DownloadMaster | null): HdQuality[] {
 }
 
 /** Whole credits for one download, or null when the quality is unpriced (never free by omission). */
-export function downloadCharge(durationSeconds: number, quality: HdQuality, prices: PriceMap): number | null {
+export function downloadCharge(durationSeconds: number, quality: HdQuality, prices: PriceMap | DownloadRates): number | null {
   const p = prices[downloadUnit(quality)];
   if (!p || !(durationSeconds > 0)) return null;
-  const raw = (durationSeconds / 60) * p.creditsPerUnit * (1 + p.margin);
+  const raw = (durationSeconds / 60) * charged(p, false);
   // Float noise (2.0000000001) must not add a whole credit the database would not charge.
   const perMinute = Math.ceil(Math.round(raw * 1e6) / 1e6);
   const floor = prices[UNIT_DOWNLOAD_MINIMUM];
-  const min = floor ? Math.ceil(Math.round(floor.creditsPerUnit * 1e6) / 1e6) : 0;
+  const min = floor ? Math.ceil(Math.round(charged(floor, true) * 1e6) / 1e6) : 0;
   return Math.max(perMinute, min);
 }
 
@@ -151,7 +174,7 @@ export function freeRedownload(rows: readonly DownloadRequestRow[], quality: HdQ
 export function nextCharge(opts: {
   quality: HdQuality;
   master: DownloadMaster | null;
-  prices: PriceMap;
+  prices: PriceMap | DownloadRates;
   rows: readonly DownloadRequestRow[];
   exempt: boolean;
   now?: number;

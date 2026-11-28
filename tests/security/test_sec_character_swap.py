@@ -1100,8 +1100,8 @@ def test_0137_touches_no_object_it_did_not_add(conn, sc):
     dsn = sec_db.create_database(admin, name)
     try:
         # 0226 (only a member spends) replaces a body of a file left out here and refuses to apply without it: out too, and
-        # 0231 (cancel audit), which refuses to apply without 0226.
-        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0137_", "0226_", "0231_"))])
+        # 0231 (cancel audit) and 0232 (film plan leases), which refuse to apply without 0226.
+        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0137_", "0226_", "0231_", "0232_"))])
         with psycopg.connect(dsn, autocommit=True) as c:
             s = sec_db.Session(c)
             assert all(v == [] for v in fingerprint(s, True).values())

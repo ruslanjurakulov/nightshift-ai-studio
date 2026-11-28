@@ -1,4 +1,4 @@
-import { isEffectPrompt, type Effect } from "@/lib/effects/catalog";
+import { isEffectPrompt, type Effect, type EffectSample } from "@/lib/effects/shared";
 import type { ShowcaseFiles } from "@/lib/site/showcase";
 import { showcaseCard, type ShowcaseCard } from "@/lib/site/showcase-card";
 import { SHOWCASE_CARDS, SHOWCASE_FILES } from "@/components/site/showcase-assets";
@@ -13,16 +13,17 @@ import { SHOWCASE_CARDS, SHOWCASE_FILES } from "@/components/site/showcase-asset
  * effect's output: a clip from the effect's tool, by one of the effect's models, given exactly the effect's words (with a subject
  * in the slot). Anything less is no sample, and the card draws its placeholder: a preview is never borrowed from another job.
  *
- * The words are checked only where the entry carries them (a full entry, on the server or in a test). The default is the client-safe
- * slice (components/site/showcase-assets.ts SHOWCASE_CARDS), which has no prompt: this runs in the browser (EffectFrame, the
- * Studio's desk), and the full manifest is server-only. Both lists are build-time constants, so tests/showcase-cards.test.ts
+ * The words are checked only where the entry carries them (a full entry, or in a test). The default is the client-safe slice
+ * (components/site/showcase-assets.ts SHOWCASE_CARDS), which has no prompt: it ran in the browser until the effects data became
+ * server-only (lib/effects/catalog.ts effectFace now runs it on the server and hands the card the answer), and the default is
+ * kept so every card shows exactly the sample it showed before. Both lists are build-time constants, so tests/showcase-cards.test.ts
  * holding the slice's answer equal to the full entries' answer for every effect in the catalog is the same guard, run once in CI.
  */
 export function effectSample(
   effect: Pick<Effect, "previewJobId" | "capability" | "models" | "prompt">,
   entries: readonly (ShowcaseCard & { prompt?: string })[] = SHOWCASE_CARDS,
   files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES,
-): { entry: ShowcaseCard; files: ShowcaseFiles } | null {
+): EffectSample | null {
   if (!effect.previewJobId) return null;
   const entry = entries.find((e) => e.jobId === effect.previewJobId);
   const f = files[effect.previewJobId];

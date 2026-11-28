@@ -385,6 +385,9 @@ ON_0156 = (*ON_0156, MIGRATION_0218.name)
 #: 0219 (the operator route for connected assistants) refuses to apply before 0218 (which sits on 0208): a sequence that leaves
 #: 0208 or 0218 out leaves 0219 out too, and puts it back last.
 ON_0156 = (*(f for f in ON_0156 if f != "0219_oauth_creative_operator_models.sql"), "0219_oauth_creative_operator_models.sql")
+#: 0224 (dated credit prices) sits on 0218's creative_price and refuses any other body; it names nothing of 0219's. After
+#: 0219, as applied live (0218, 0219, 0224, 0230).
+ON_0156 = (*(f for f in ON_0156 if f != "0224_dated_credit_price.sql"), "0224_dated_credit_price.sql")
 #: 0230 (the country gate reads an allow-list vendor's own list) replaces 0208's creative_jobs_geo_gate and refuses to apply without
 #: it: a sequence that leaves 0208 out leaves 0230 out too, and puts it back last.
 ON_0156 = (*(f for f in ON_0156 if f != "0230_geo_gate_allow_list.sql"), "0230_geo_gate_allow_list.sql")
@@ -420,9 +423,14 @@ ON_0139 = (*ON_0139, "0215_film_archive_resume.sql")
 ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0218.name), MIGRATION_0218.name)
 #: 0219 (the operator route for connected assistants) replaces 0192's oauth_creative_models / oauth_creative_quote and 0191's
 ON_0139 = (*(f for f in ON_0139 if f != "0219_oauth_creative_operator_models.sql"), "0219_oauth_creative_operator_models.sql")
+#: 0224 sits on 0218's creative_price: after 0219, as applied live.
+ON_0139 = (*(f for f in ON_0139 if f != "0224_dated_credit_price.sql"), "0224_dated_credit_price.sql")
 #: 0226 (only a member spends, on every path) replaces 0192's create_creative_job and start_workflow_run and calls 0215's
 #: is_org_spender, and refuses to apply without 0215: after it, in both lists, for the same reason.
 ON_0139 = (*ON_0139, "0226_org_spender_everywhere.sql")
+#: 0232 (one plan per film, its turns reserved) replaces 0226's ai_chat_reserve_turn and ai_chat_plan_end and refuses to apply
+#: without them: right after it, in both lists.
+ON_0139 = (*ON_0139, "0232_ai_chat_film_plan_leases.sql")
 #: 0230 sits on 0208's gate: after 0208 (and everything put back after it), last.
 ON_0139 = (*(f for f in ON_0139 if f != "0230_geo_gate_allow_list.sql"), "0230_geo_gate_allow_list.sql")
 #: 0231 (cancel audit) asks for 0226's cancel_workflow_run and refuses to apply without it: after it, in both lists.
@@ -445,10 +453,14 @@ ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164
            "0226_org_spender_everywhere.sql",
            # 0231 asks for 0226's cancel_workflow_run: out and back right after it.
            "0231_cancel_audit.sql",
+           # 0232 sits on 0226's ai_chat_reserve_turn and ai_chat_plan_end: out and back right after it.
+           "0232_ai_chat_film_plan_leases.sql",
            # 0218 sits on 0208's creative_price and creative_params_problem: out and back with it, after it.
            "0218_creative_prompt_limits.sql",
            # 0219 replaces 0192's and 0191's oauth_creative_* bodies and refuses to apply without 0218: last.
            "0219_oauth_creative_operator_models.sql",
+           # 0224 sits on 0218's creative_price (and refuses any other body): out and back with it, after 0219, as applied live.
+           "0224_dated_credit_price.sql",
            # 0230 replaces 0208's creative_jobs_geo_gate and refuses to apply without 0208: out and back with it, last.
            "0230_geo_gate_allow_list.sql")
 
@@ -624,6 +636,11 @@ CREATIVE_PRICE_0159 = "dafc5edae0000e741ac1b19bd0075790"
 #: md5 of 0208's creative_price body: 0208 replaces 0159's (and 0156's creative_params_problem).
 CREATIVE_PRICE_0208 = "f61aaddd5686045961addd6f14a02c32"
 CREATIVE_PARAMS_PROBLEM_0208 = "7ccde072309a637d9b07e59f1be45d20"
+#: md5 of 0224's creative_price body: 0218's plus one line that reads the rate through credits_per_unit_now (the dated price).
+#: The same body 0218's own 0224 branch writes (CREATIVE_PRICE_0218_0224 below).
+CREATIVE_PRICE_0224 = "ea2b58e88fe34ae18b261e5a0fbef435"
+MIGRATION_0224 = MIGRATIONS / "0224_dated_credit_price.sql"
+ROLLBACK_0224 = REPO / "docs" / "sql" / "rollback_0224_dated_credit_price.sql"
 
 
 def has_0159(conn_or_session) -> bool:
@@ -644,11 +661,38 @@ def has_0208(conn_or_session) -> bool:
         [[CREATIVE_PRICE_0208, CREATIVE_PRICE_0218, CREATIVE_PRICE_0218_0224]]).fetchone()[0])
 
 
+def has_0224(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return _md5_of(conn, "public.creative_price(uuid, text, text, jsonb)") == CREATIVE_PRICE_0224
+
+
+def rollback_0224_body() -> str:
+    """0224's rollback without its own begin / commit. Harmless where 0224 is not on (it leaves any other creative_price alone); the
+    schedule table stays either way (the rollback keeps the owner's rows)."""
+    text = ROLLBACK_0224.read_text(encoding="utf-8")
+    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+
+
+def take_off_0224(conn_or_session) -> None:
+    """0224 sits on 0218's creative_price. 0218's rollback would keep its line (0218 carries a 0224 branch) without 0224's list guard
+    and reader being undone with it, so 0224 comes off first with its own rollback."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if conn.execute("select to_regprocedure('public.credits_per_unit_now(text)') is not null").fetchone()[0]:
+        conn.execute(rollback_0224_body())
+
+
+def put_back_0224(conn_or_session) -> None:
+    """0224 again, only on 0218's exact creative_price (its drift guard refuses any other body) and when it is not on already."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0224(conn) and _md5_of(conn, "public.creative_price(uuid, text, text, jsonb)") == CREATIVE_PRICE_0218:
+        conn.execute(MIGRATION_0224.read_text(encoding="utf-8"))
+
+
 def rollback_0208_body() -> str:
-    """0208's rollback, with 0218's first (0218 sits on 0208's bodies, and 0208's rollback refuses any other): 0218's only where 0218 is
-    on, so it stays harmless where it never was."""
+    """0208's rollback, with 0224's and 0218's first (each sits on the one before, and each rollback refuses a later body): 0224's is
+    harmless where it is not on, 0218's runs only where 0218 is on."""
     text = ROLLBACK_0208.read_text(encoding="utf-8")
-    return rollback_0218_if_on() + "\n" + "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+    return rollback_0224_body() + "\n" + rollback_0218_if_on() + "\n" + "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
 
 
 def take_off_0208(conn_or_session) -> None:
@@ -661,7 +705,8 @@ def take_off_0208(conn_or_session) -> None:
 
 
 def put_back_0208(conn_or_session) -> None:
-    """0208 again, only where it can apply (0159's creative_price and 0196's reroute_creative_job are on) and is not on already."""
+    """0208 again, only where it can apply (0159's creative_price and 0196's reroute_creative_job are on) and is not on already; then
+    0224 on it."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if not has_0208(conn) and has_0159(conn) and has_0196(conn):
         conn.execute(MIGRATION_0208.read_text(encoding="utf-8"))
@@ -751,6 +796,7 @@ def take_off_0218(conn_or_session) -> None:
     replays and rollbacks refuse any other body. A test that replays or rolls back 0208 (and so 0159 or 0156) or 0171 takes 0218 off
     first with its own rollback (take_off_0208 and take_off_0171 do it), and puts it back with put_back_0218 once all three are on."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0224(conn)
     if has_0218(conn):
         conn.execute(rollback_0218_body())
 
@@ -762,6 +808,7 @@ def put_back_0218(conn_or_session) -> None:
         live["public.creative_price(uuid, text, text, jsonb)"], live["public.creative_price(uuid, text, text, jsonb)"])
     if not has_0218(conn) and live == _BEFORE_0218:
         conn.execute(migration_0218_lab())
+    put_back_0224(conn)
 
 
 def migration_0218_lab() -> str:
@@ -1195,6 +1242,7 @@ def take_off_0226(conn_or_session) -> None:
     (take_off_0198, take_off_0192, take_off_0187 and take_off_0171 reach it through it), and so do the take-offs of the other files."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     take_off_0231(conn)  # 0231 asks for 0226's cancel_workflow_run: off first
+    take_off_0232(conn)  # 0232 sits on 0226's ai_chat_reserve_turn and ai_chat_plan_end, which 0226's guard and rollback refuse
     if has_0226(conn):
         # Whole first (its guard takes a mix of the earlier and its own bodies), so that its rollback, which asks for all twenty-eight, runs.
         conn.execute(MIGRATION_0226.read_text(encoding="utf-8"))
@@ -1212,6 +1260,7 @@ def put_back_0226(conn_or_session) -> None:
     if all(_live_md5(session, sig) in (was, now_) for sig, _role, _src, was, now_ in _0226_paths()):
         conn.execute(MIGRATION_0226.read_text(encoding="utf-8"))
     put_back_0231(conn)
+    put_back_0232(conn)
 
 
 MIGRATION_0231 = MIGRATIONS / "0231_cancel_audit.sql"
@@ -1257,11 +1306,85 @@ def put_back_0231(conn_or_session) -> None:
         conn.execute(MIGRATION_0231.read_text(encoding="utf-8"))
 
 
+MIGRATION_0232 = MIGRATIONS / "0232_ai_chat_film_plan_leases.sql"
+ROLLBACK_0232 = REPO / "docs" / "sql" / "rollback_0232_ai_chat_film_plan_leases.sql"
+
+
+def has_0232(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.ai_chat_film_plan_begin(uuid, uuid, integer)') is not null").fetchone()[0])
+
+
+def take_off_0232(conn_or_session) -> None:
+    """0232 (one storyboard plan per film, its turns reserved at begin) replaces 0226's ai_chat_reserve_turn and ai_chat_plan_end and
+    0199's ai_chat_used and ai_chat_trial_left. 0226's guard and rollback refuse its bodies, so take_off_0226 takes it off first. Its
+    rollback drops the film lease table (it references films, so 0166's rollback needs it gone): the rows are kept here and
+    put_back_0232 writes them again, so the scenario's seeded leases survive a take-off and put-back that is committed."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0232(conn):
+        _STASH_0232[conn.info.dbname] = conn.execute("select coalesce(jsonb_agg(to_jsonb(l)), '[]'::jsonb)::text "
+                                             "from public.ai_chat_film_plan_leases l").fetchone()[0]
+        text = ROLLBACK_0232.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0232(conn_or_session) -> None:
+    """0232 again, once the bodies it sits on are 0226's and 0199's (its guard refuses any other), when it is not on already."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0232(conn):
+        return
+    import sec_film_lease_0232  # the one list of the bodies 0232 replaces and relies on
+
+    session = SimpleSession(conn)
+    if all(_live_md5(session, sig) == was for sig, was, _now in sec_film_lease_0232.GUARD):
+        conn.execute(MIGRATION_0232.read_text(encoding="utf-8"))
+        rows = _STASH_0232.pop(conn.info.dbname, None)
+        if rows:
+            # Rows whose film or conversation went with an earlier take-off are not written back (their foreign keys would refuse).
+            conn.execute("insert into public.ai_chat_film_plan_leases "
+                         "select r.* from jsonb_populate_recordset(null::public.ai_chat_film_plan_leases, %s::jsonb) r "
+                         "where exists (select 1 from public.films f where f.id = r.film_id) "
+                         "and exists (select 1 from public.ai_chat_sessions x where x.id = r.session_id) on conflict (film_id) do nothing",
+                         [rows])
+
+
+#: What take_off_0232 found in the film lease table, by database (a take-off and its put-back may use two connections).
+_STASH_0232: dict = {}
+
+
 class SimpleSession:
     """What _live_md5 reads (``.conn``), for a helper handed a bare connection."""
 
     def __init__(self, conn):
         self.conn = conn
+
+
+MIGRATION_0219 = MIGRATIONS / "0219_oauth_creative_operator_models.sql"
+ROLLBACK_0219 = REPO / "docs" / "sql" / "rollback_0219_oauth_creative_operator_models.sql"
+
+
+def has_0219(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.oauth_creative_org_model_state(uuid, text, text)') is not null").fetchone()[0])
+
+
+def take_off_0219(conn_or_session) -> None:
+    """0219 (the operator route for connected assistants, the ByteDance refusal, the recorded exposure) replaces oauth_creative_models()
+    and oauth_creative_quote() (0192's bodies) and oauth_creative_create() (0191's). 0192's rollback refuses any other body, and a
+    replay of 0191 would silently put 0191's create back, so take_off_0192 takes 0219 off first. Its rollback keeps the exposure
+    columns, which put_back_0219 picks up again as its own."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0219(conn):
+        text = ROLLBACK_0219.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0219(conn_or_session) -> None:
+    """0219 again, once 0192 (whose bodies it builds on) is on, and only when it is not on already."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0219(conn) or not has_0192(conn):
+        return
+    conn.execute(MIGRATION_0219.read_text(encoding="utf-8"))
 
 
 MIGRATION_0219 = MIGRATIONS / "0219_oauth_creative_operator_models.sql"

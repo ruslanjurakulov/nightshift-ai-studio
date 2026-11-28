@@ -50,16 +50,23 @@ const FIXED: Record<string, keyof UnitMeaningText> = {
   scene_regenerate: "sceneRegenerate",
   repurpose_clip: "repurposeClip",
   reply_draft: "replyDraft",
-  gemini_input_tokens: "tokens",
-  gemini_output_tokens: "tokens",
-  tts_characters: "characters",
-  render_seconds: "renderSeconds",
-  pexels_requests: "requests",
-  upload_bytes: "bytes",
-  video_gen_clips: "generatedClips",
-  image_generations: "generatedImages",
-  vision_calls: "calls",
 };
+
+/**
+ * A unit glossed by its last word, only where that word's gloss is true of ANY unit ending in it ("per token", "per request",
+ * "per call"). The cost ledger's own units are not a table here: this file is in the Credits page chunk, and several of
+ * their names carry the vendor we meter (gemini_input_tokens, pexels_requests), which no browser chunk may hold
+ * (scripts/vendor-bundle-check.mjs). Their exact meanings ("per second of rendering", "per narrated character") are built
+ * on the server (lib/server/ledger-units.ts ledgerUnitMeanings) and handed in as `known`. A last word whose meaning depends
+ * on what is measured (_seconds, _characters, _bytes, _clips, _generations) settles nothing, so such a unit an operator
+ * types gets no gloss (rule 5: never a guessed meaning).
+ */
+const GENERIC_MEASURES: Record<string, keyof UnitMeaningText> = {
+  tokens: "tokens",
+  requests: "requests",
+  calls: "calls",
+};
+const GENERIC_UNIT = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*_(tokens|requests|calls)$/;
 
 const MEASURES: Record<string, "perSecond" | "perImage" | "perCharacter" | "perRequest"> = {
   second: "perSecond",
@@ -96,7 +103,8 @@ function variantText(tokens: string[], t: UnitMeaningText): string[] | null {
  *   model_wan_2_7_second_720p        → "per second, at 720p"
  *   model_openai_gpt_image_2_image   → "per image"
  */
-export function unitMeaning(unit: string, t: UnitMeaningText): string | null {
+export function unitMeaning(unit: string, t: UnitMeaningText, known?: Readonly<Record<string, string>>): string | null {
+  if (known && Object.hasOwn(known, unit)) return known[unit];
   const fixed = FIXED[unit];
   if (fixed) return t[fixed] as string;
 
@@ -104,6 +112,10 @@ export function unitMeaning(unit: string, t: UnitMeaningText): string | null {
   if (dl) return fmt(t.downloadMinute, { q: dl[1] });
 
   if (/^scene_regenerate_clip_[a-z0-9]+$/.test(unit)) return t.sceneRegenerateClip;
+
+  // Never a registry unit: those start with model_ and end in a singular measure word.
+  const generic = unit.startsWith("model_") ? null : GENERIC_UNIT.exec(unit);
+  if (generic) return t[GENERIC_MEASURES[generic[1]]] as string;
 
   if (unit.startsWith("model_")) {
     const tokens = unit.split("_");
