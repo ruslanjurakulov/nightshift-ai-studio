@@ -1323,9 +1323,9 @@ function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, cre
         </>
       )}
       {brief.kind === "short" && !film && <p className="text-sm">{c.chooseAgain}</p>}
+      {sheets}
       {/* A defence since the fix round: a speaking plan is no longer made (speechAllowed), so this shows only for a storyboard saved
           before it. No dead Create: the reasons, said once that nothing was priced, and the one press that can make it today. */}
-      {sheets}
       {blocked.length > 0 ? (
         <div className="flex flex-col gap-2" role="note" data-speech-blocked={blocked.join(" ")}>
           {blocked.map((b) => <p key={b} className="text-sm">{c.speechBlocked[b]}</p>)}

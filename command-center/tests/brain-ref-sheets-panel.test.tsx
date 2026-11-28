@@ -22,6 +22,7 @@ let answer: Record<string, unknown>;
 let postAnswer: { status: number; body: Record<string, unknown> };
 let posts: Record<string, unknown>[];
 let getStatus = 200;
+let mediaOk = true;
 let statesAnswer: Record<string, unknown> | null = null;
 const gets = { full: 0, states: 0 };
 
@@ -29,6 +30,7 @@ const withStatus = (sheets: RefSheet[], ch: string, stage: string | null, view: 
   sheets.map((s) => (s.character_id === ch && s.stage === stage ? { ...s, views: s.views.map((v) => (v.view === view ? { ...v, ...o } : v)) } : s));
 
 beforeEach(() => {
+  mediaOk = true;
   gets.full = 0;
   gets.states = 0;
   posts = [];
@@ -38,7 +40,7 @@ beforeEach(() => {
   statesAnswer = null;
   postAnswer = { status: 200, body: { sheets: plan } };
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
-    if (url.startsWith("/api/media/")) return new Response(JSON.stringify({ urls: { thumb: "/m/t.png" } }), { status: 200 });
+    if (url.startsWith("/api/media/")) return mediaOk ? new Response(JSON.stringify({ urls: { thumb: "/m/t.png" } }), { status: 200 }) : new Response("{}", { status: 404 });
     if (init?.method === "POST") {
       posts.push(JSON.parse(String(init.body)));
       return new Response(JSON.stringify(postAnswer.body), { status: postAnswer.status });
@@ -122,7 +124,7 @@ describe("the character sheets panel", () => {
     getStatus = 401;
     mount();
     expect(await screen.findByText(en.errors.unauthorized)).toBeTruthy();
-    expect(screen.getByRole("link", { name: en.signIn }).getAttribute("href")).toBe("/login");
+    expect(screen.getByRole("link", { name: en.signIn }).getAttribute("href")).toBe("/login?next=%2Fchronos%2Fstudio");
   });
 
   it("offers attaching only through an open gate, and only once a view is approved", async () => {
@@ -182,6 +184,96 @@ describe("the character sheets panel", () => {
     answer = { ...answer, model: { name: "GPT Image", film_own: "none" } };
     mount();
     expect(await screen.findByText("Drawn with GPT Image, because the film has no picture model set yet.")).toBeTruthy();
+  });
+
+  it("Cancel and Escape give the focus back to Make; after a press it goes to the section's heading, never to <body>", async () => {
+    mount();
+    const makeBtn = await screen.findByRole("button", { name: /Make character sheets/ });
+    fireEvent.click(makeBtn);
+    expect(screen.getByRole("group", { name: "This holds 18 credits now. A picture that fails is refunded." })).toBeTruthy();
+    expect(screen.getByText(en.confirmGateClosed)).toBeTruthy();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: en.cancel })); await new Promise((r) => requestAnimationFrame(() => r(null))); });
+    expect(document.activeElement?.textContent).toMatch(/Make character sheets/);
+    fireEvent.click(screen.getByRole("button", { name: /Make character sheets/ }));
+    await act(async () => { fireEvent.keyDown(screen.getByRole("button", { name: en.confirmYes }), { key: "Escape" }); await new Promise((r) => requestAnimationFrame(() => r(null))); });
+    expect(screen.queryByRole("button", { name: en.confirmYes })).toBeNull();
+    expect(document.activeElement?.textContent).toMatch(/Make character sheets/);
+    fireEvent.click(screen.getByRole("button", { name: /Make character sheets/ }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: en.confirmYes })); });
+    await waitFor(() => expect(document.activeElement?.textContent).toBe(en.title));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it("an approved picture is replaced only after asking, and the note is visible text tied to the button", async () => {
+    answer = { ...answer, sheets: withStatus(plan, "c2", null, "front", { status: "approved", asset_id: "eeeeeeee-0000-4000-8000-000000000003" }) };
+    mount();
+    const redo = await screen.findByRole("button", { name: en.redo });
+    expect(document.getElementById(redo.getAttribute("aria-describedby")!)!.textContent).toBe(en.redoNote);
+    fireEvent.click(redo);
+    expect(posts).toHaveLength(0);
+    expect(screen.getByText(en.replaceAsk)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: en.keep }));
+    expect(posts).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: en.redo }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: en.replaceYes })); });
+    expect(posts[0]).toMatchObject({ action: "redo", character_id: "c2", view: "front" });
+  });
+
+  it("offers no Approve for a picture that cannot be shown, and a way to load it again", async () => {
+    mediaOk = false;
+    answer = { ...answer, sheets: withStatus(plan, "c2", null, "front", { status: "ready", asset_id: "eeeeeeee-0000-4000-8000-000000000003" }) };
+    mount();
+    expect(await screen.findByText(en.imageUnavailable)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: en.approve })).toBeNull();
+    mediaOk = true;
+    fireEvent.click(screen.getByRole("button", { name: en.reloadImage }));
+    expect(await screen.findByRole("button", { name: en.approve })).toBeTruthy();
+  });
+
+  it("taps a picture to show it larger", async () => {
+    answer = { ...answer, sheets: withStatus(plan, "c2", null, "front", { status: "ready", asset_id: "eeeeeeee-0000-4000-8000-000000000003" }) };
+    mount();
+    const toggle = await screen.findByRole("button", { name: "Show Front larger" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Show Front smaller" }).getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("a price that could not be read has a way out; with no sheet model the gate note and empty rows are not shown", async () => {
+    answer = { ...answer, quote: null };
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: en.reload }));
+    await waitFor(() => expect(gets.full).toBe(2));
+    cleanup();
+    answer = { ...answer, refusal: "no_sheet_model", gate: null, model: null };
+    mount();
+    expect(await screen.findByText(en.errors.no_sheet_model)).toBeTruthy();
+    expect(screen.queryByText(en.gateUnknown)).toBeNull();
+    expect(screen.queryByText(en.allPlanned)).toBeNull();
+  });
+
+  it("collapses a character with nothing made yet into one line", async () => {
+    mount();
+    expect(await screen.findAllByText(en.allPlanned)).toHaveLength(3);
+    expect(document.querySelectorAll("[data-view]")).toHaveLength(0);
+  });
+
+  it("says what the workspace has and what the pictures need when credits are short", async () => {
+    postAnswer = { status: 402, body: { error: "insufficient_credits", available: 3, needed: 6 } };
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /Make character sheets/ }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: en.confirmYes })); });
+    expect(await screen.findByText("You have 3 credits; these need 6 credits.")).toBeTruthy();
+  });
+
+  it("hides Attach after a successful attach until something new is approved", async () => {
+    answer = { ...answer, gate: { open: true }, sheets: withStatus(plan, "c2", null, "front", { status: "approved", asset_id: "eeeeeeee-0000-4000-8000-000000000003" }) };
+    postAnswer = { status: 200, body: { attached: 1, film: { id: FILM, version: 8 }, film_quote: {} } };
+    mount();
+    const button = await screen.findByRole("button", { name: en.attach });
+    await act(async () => { fireEvent.click(button); });
+    await waitFor(() => expect(screen.getByText("Added to 1 scene. The film was priced again.")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: en.attach })).toBeNull();
   });
 
   it("speaks Russian and Uzbek", async () => {
