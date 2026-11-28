@@ -37,6 +37,7 @@ import { ImproveWithAi } from "@/components/ai/ImproveWithAi";
 import { isImproveKind } from "@/lib/creative/improve";
 import type { StudioModel } from "@/lib/creative/studio";
 import { VoiceOverRecorder } from "@/components/editor/VoiceOverRecorder";
+import { MusicMaker, musicModelsFrom, readPendingMusic } from "@/components/editor/MusicMaker";
 import { useFullLoadLinks } from "@/components/editor/useFullLoadLinks";
 import { loadDocument } from "@/lib/editor-nav";
 import {
@@ -360,6 +361,7 @@ export function TimelineEditor({
   userId = "",
   aiTools = null,
   aiModels = null,
+  musicModels: musicList = [],
   offerAssetId = null,
   focusPanel = null,
   multiRatio = false,
@@ -388,6 +390,8 @@ export function TimelineEditor({
   aiTools?: readonly string[] | null;
   /** The Studio's models for those tools; null = not known (the Studio picks). */
   aiModels?: readonly StudioModel[] | null;
+  /** The Studio composer's music models, read for this workspace (loadStudioModels(orgId)); empty = no "Make music" key. */
+  musicModels?: readonly StudioModel[];
   /** A finished AI result (a library file id) the Studio sent the person back with: offered as "Add to project". */
   offerAssetId?: string | null;
   /** Open scrolled to a panel ("Improve with AI" → Captions from the library). */
@@ -438,6 +442,14 @@ export function TimelineEditor({
   const [addingSound, setAddingSound] = useState(false);
   /** The voice-over panel. Opening it asks for nothing: the microphone is asked for only when Record is pressed. */
   const [recordingVoice, setRecordingVoice] = useState(false);
+  /** "Make music": offered only while the Studio composer's list has a music model sold to this workspace. */
+  const [makingMusic, setMakingMusic] = useState(false);
+  const makeMusicButton = useRef<HTMLButtonElement>(null);
+  // A track this tab asked for before a refresh (sessionStorage, per project): read after mounting, never during the server render.
+  const [musicPending, setMusicPending] = useState(false);
+  useEffect(() => {
+    setMusicPending(readPendingMusic(projectId) !== null);
+  }, [projectId]);
   const [addingOverlay, setAddingOverlay] = useState(false);
   const [addingShape, setAddingShape] = useState(false);
   // Why the last "Add to video" was refused by the export's budgets (said politely, in words).
@@ -468,6 +480,8 @@ export function TimelineEditor({
   const clips = useMemo(() => layout(model.clips), [model.clips]);
   const total = useMemo(() => modelDuration(model), [model]);
   const picture = pictureEnd(clips);
+  /** Where a new sound starts: the playhead while it is over the picture, else the start (Add sound, voice-over, music). */
+  const soundStart = () => (playhead < picture ? playhead : 0);
   const current = useMemo(() => JSON.stringify(toDoc(model)), [model]);
   const dirty = current !== saved || title.trim() !== savedTitle;
   const active = exportActive(exports);
@@ -1227,7 +1241,7 @@ export function TimelineEditor({
     let next: EditorModel | null = null;
     let pick: Selection = null;
     if (offered.kind === "audio") {
-      const out = addSound(model, offered, playhead < picture ? playhead : 0);
+      const out = addSound(model, offered, soundStart());
       if (out) {
         next = out.model;
         pick = { kind: "sound", id: out.id };
@@ -1292,7 +1306,7 @@ export function TimelineEditor({
   }
 
   function onAddSound(a: EditorAsset) {
-    const out = addSound(model, a, playhead < picture ? playhead : 0);
+    const out = addSound(model, a, soundStart());
     if (!out) return;
     setAssets((x) => ({ ...x, [a.id]: a }));
     apply(out.model);
@@ -1308,6 +1322,23 @@ export function TimelineEditor({
     apply(out.model);
     setSelected({ kind: "sound", id: out.id });
     return true;
+  }
+
+  /** A finished "Make music" track: a sound like any other, where the playhead was at the confirm, marked as music. */
+  function onAddMusic(a: EditorAsset, at: number): boolean {
+    const out = addSound(model, a, at);
+    if (!out) return false;
+    setAssets((x) => ({ ...x, [a.id]: a }));
+    apply(updateSound(out.model, out.id, { role: "music" }, a.durationS));
+    setSelected({ kind: "sound", id: out.id });
+    return true;
+  }
+
+  function closeMusic() {
+    setMakingMusic(false);
+    setMusicPending(readPendingMusic(projectId) !== null);
+    // Back to the key that opened it (the panel's own close key and Escape alike).
+    setTimeout(() => makeMusicButton.current?.focus(), 0);
   }
 
   function onAddOverlay(a: EditorAsset) {
@@ -1349,6 +1380,7 @@ export function TimelineEditor({
   }
 
   const audioFull = audioInputs(model) >= MAX_AUDIO_CLIPS;
+  const musicModels = musicModelsFrom(musicList);
   const shownTexts = textsAt(model, playhead);
   // "Exports are sold now" is not a failure: the price and its yes appear right below it, so it is said as a note, not an
   // alarm, and the next press of Export is the paid one. The refusal that taught it stays the pinned flow.
@@ -1981,6 +2013,18 @@ export function TimelineEditor({
                 {te.voiceOver.open}
               </button>
             ) : null}
+            {orgId && musicModels.length > 0 ? (
+              <button
+                type="button"
+                ref={makeMusicButton}
+                onClick={() => setMakingMusic((v) => !v)}
+                aria-expanded={makingMusic}
+                className={quietBtn}
+              >
+                <Music className="size-3.5" aria-hidden />
+                {t.editorMusic.open}
+              </button>
+            ) : null}
             <button
               type="button"
               ref={addOverlayButton}
@@ -2087,9 +2131,29 @@ export function TimelineEditor({
             <VoiceOverRecorder
               orgId={orgId}
               canAdd={canAddSound(model)}
-              position={() => (playhead < picture ? playhead : 0)}
+              position={soundStart}
               onAdd={onAddVoiceOver}
               onClose={() => setRecordingVoice(false)}
+            />
+          ) : null}
+          {!makingMusic && musicPending && orgId ? (
+            <p role="status" className="m-0 flex flex-wrap items-center gap-2 text-xs text-[var(--color-muted)]" data-testid="music-pending">
+              {t.editorMusic.pending}
+              <button type="button" onClick={() => setMakingMusic(true)} className={`${quietBtn} min-h-11`}>
+                {t.editorMusic.pendingShow}
+              </button>
+            </p>
+          ) : null}
+          {makingMusic && orgId && (musicModels.length > 0 || musicPending) ? (
+            <MusicMaker
+              orgId={orgId}
+              projectId={projectId}
+              models={musicModels}
+              canAdd={canAddSound(model)}
+              position={soundStart}
+              onAdd={onAddMusic}
+              onClose={closeMusic}
+              onPendingChange={setMusicPending}
             />
           ) : null}
           {addingSound ? (

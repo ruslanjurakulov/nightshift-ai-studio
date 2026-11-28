@@ -9,6 +9,8 @@ import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { loadSellableModels } from "@/lib/creative/registry";
 import { loadAiToolAvailability, loadImproveModels } from "@/lib/server/ai-tools";
+import { loadStudioModels } from "@/lib/server/creative";
+import { modelsFor, type StudioModel } from "@/lib/creative/studio";
 import { parseIdParam } from "@/lib/creative/improve";
 import {
   loadEditorImages,
@@ -53,7 +55,7 @@ export default async function EditorProjectPage({
   if (project.state === "not_found") notFound();
   if (project.state === "not_available") return note(t.editor.notEnabled);
   if (project.state !== "ok") return note(t.editor.readFailed);
-  const [videos, sounds, images, sellable, aiTools, aiModels] = await Promise.all([
+  const [videos, sounds, images, sellable, aiTools, aiModels, studioModels] = await Promise.all([
     loadEditorVideos(project.value.orgId),
     loadEditorSounds(project.value.orgId),
     loadEditorImages(project.value.orgId),
@@ -64,6 +66,9 @@ export default async function EditorProjectPage({
     loadAiToolAvailability(),
     // ...and the Studio's models for each, to pick before the Studio opens (it prices them).
     loadImproveModels(project.value.orgId),
+    // "Make music": the Studio composer's own list, read FOR this workspace so its locks see the workspace's purchases (a list
+    // read without the organization would show a first-purchase model as open). A failed read is no model: the editor is unchanged.
+    loadStudioModels(project.value.orgId).catch((): StudioModel[] => []),
   ]);
   const q = (await searchParams) ?? {};
   const focus = Array.isArray(q.focus) ? q.focus[0] : q.focus;
@@ -99,6 +104,7 @@ export default async function EditorProjectPage({
         userId={user?.id ?? ""}
         aiTools={aiTools}
         aiModels={aiModels}
+        musicModels={modelsFor(studioModels, "music")}
         offerAssetId={parseIdParam(q.add)}
         focusPanel={focus === "captions" ? "captions" : null}
         multiRatio={p.multiRatio}
