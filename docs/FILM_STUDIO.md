@@ -394,7 +394,21 @@ the Projects strings: it is read from the app's `nav.hub` key. Code, tables and 
 | Data and state | `components/films/useFilmProject.ts`: the draft, autosave (4 s after the last edit, at least 20 s apart, so at most 180 saves an hour against the database's 240), the version conflict, undo and redo (50 steps), split, merge, insert, delete and reorder, and a pending-edit buffer in the browser so a refresh or a closed tab loses nothing. It knows nothing about how the board is drawn, so a node canvas can replace the scene grid. |
 | Strings | `command-center/lib/i18n/film-studio/{en,ru,uz}.ts` |
 
-What is not available yet, and says so on the screen: writing the storyboard with AI (P3), and Start with a price (P2). Start is
+"Write the storyboard with AI" is Nightshift AI's plan step for this project (`/api/brain/film`, docs/studio/NIGHTSHIFT_AI.md
+"Writing a project's storyboard"). It runs only where Nightshift AI is on for the workspace, only into an EMPTY, saved project,
+and says beforehand how many of today's Nightshift AI messages it uses; otherwise the button is off with the reason. It spends
+messages, never credits, and prices, starts or publishes nothing. It reads the project's title, its whole source text (up to 40,000
+characters, else `source_too_long` before any message), language, aspect and length; the project's reference pictures and refs are
+not used by the writer yet. The canvas is read-only while it writes, and it never reloads the project over unsaved changes. With
+migration 0232 applied, one plan runs per project whoever presses (another editor, or the chat planning the same draft: the
+second is told the storyboard is already being written, and uses nothing), and a plan's worst case of messages is reserved when it
+begins, so a plan that begins can finish (one that does not fit is refused before any message, with what is really left). Until
+0232 is applied: a plan may stop halfway for the cap when other chats or plans use today's messages meanwhile, and one plan at a
+time is per person (two editors pressing on the same empty project within ~5 min: one plan is superseded, its turns are spent,
+the project is never double-written). New refusals: `source_too_long`, `title_claims_vendor`, `film_channel_missing`, and
+`film_conversation` on the chat's own route.
+
+What is not available yet, and says so on the screen: Start with a price (P2). Start is
 drawn disabled with "Pricing for projects is not live yet"; no number, price or quote is shown. Sound, shooting, assembly and the
 handoff are dim stations on the track. Nothing on these screens spends, starts or publishes.
 

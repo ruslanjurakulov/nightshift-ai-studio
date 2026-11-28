@@ -58,7 +58,7 @@ describe("improveHref", () => {
 describe("which tools take words (the Studio's own rule)", () => {
   it.each([
     ["edit", "required"],
-    ["upscale", "optional"],
+    ["upscale", "none"],
     ["i2v", "optional"],
     ["remove_bg", "none"],
     ["video_upscale", "none"],
@@ -110,7 +110,8 @@ describe("the create page reads it back", () => {
 
   it("only cleans the words — it does not decide whether a model is offered (the panel does, against its own list)", () => {
     expect(cleanImprovePrompt("upscale", 42)).toBe("");
-    expect(cleanImprovePrompt("upscale", "faces")).toBe("faces");
+    expect(cleanImprovePrompt("upscale", "faces")).toBe("");
+    expect(cleanImprovePrompt("i2v", "faces")).toBe("faces");
   });
 
   it("strips the bidi overrides and isolates and the C1 controls a crafted link could carry", () => {

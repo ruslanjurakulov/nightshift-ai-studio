@@ -51,6 +51,8 @@ export const OWNER_REFUSALS = [
   "confirm_required",
   /** The price was changed after the page was loaded (Restore only offers the newest change of a service). */
   "price_changed",
+  /** The unit has a dated price (migration 0224, in force or pending): its list rate is changed by a dated row, not edited. */
+  "dated_price_scheduled",
   // team
   "bad_role",
   "bad_email",
@@ -242,6 +244,9 @@ export function ownerReplyToHttp(data: unknown): OwnerHttp {
   return { status: 422, body };
 }
 
+/** The SQLSTATE 0224's list-price guard raises (credit_prices_dated_guard). */
+export const DATED_PRICE_SQLSTATE = "NS428";
+
 /** An error PostgREST returned for an rpc call, as the route's answer. The database's own text is never forwarded. */
 export function ownerRpcErrorToHttp(error: { code?: string | null; message?: string | null }): OwnerHttp {
   const code = error.code ?? "";
@@ -249,6 +254,8 @@ export function ownerRpcErrorToHttp(error: { code?: string | null; message?: str
   // PGRST202: not in the schema cache; 42883: no such function. 0107 not applied (or the cache is stale).
   if (code === "PGRST202" || code === "42883") return { status: 503, body: { ok: false, error: "migration_missing" } };
   if (code === "PGRST301" || code === "PGRST303") return { status: 401, body: { ok: false, error: "unauthorized" } };
+  // 0224's credit_prices_dated_guard: a rate edit for a unit with a dated price. A refusal with a remedy, not a failed call.
+  if (code === DATED_PRICE_SQLSTATE) return { status: 422, body: { ok: false, error: "dated_price_scheduled" } };
   return { status: 502, body: { ok: false, error: "rpc_failed" } };
 }
 

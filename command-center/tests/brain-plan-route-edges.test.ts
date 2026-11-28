@@ -369,7 +369,8 @@ describe("plan_over_cap at the boundary", () => {
   it("the lifetime trial is held to the same count: trial_left == needed - 1 is refused, == needed begins", async () => {
     setup(1200, Array(10).fill(120));
     state.quota = { used: 0, limit: null, trial_left: NEEDED - 1 };
-    expect(await (await choose()).json()).toEqual({ error: "plan_over_cap", needed: NEEDED, about: WINDOWS, left: NEEDED - 1 });
+    // 0232 fix round: on the trial the refusal says scope "trial" (its remedy is a plan, not tomorrow).
+    expect(await (await choose()).json()).toEqual({ error: "plan_over_cap", needed: NEEDED, about: WINDOWS, left: NEEDED - 1, scope: "trial" });
     state.quota = { used: 0, limit: null, trial_left: NEEDED };
     expect((await choose({ request_id: "press55555" })).status).toBe(200);
   });

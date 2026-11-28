@@ -349,7 +349,9 @@ def test_the_listing_of_an_adults_only_model_leaks_no_price_or_terms(oc):
     tok, _ = occ.connection(oc, occ.UA, occ.ORG_A)
     m = {x["id"]: x for x in occ.models(oc, tok, "t2i")["data"]["models"]}[ADULT_MODEL[0]]
     blob = json.dumps(m)
-    assert set(m) == {"id", "name", "capabilities", "availability", "spec"}, m
+    # 0219 adds operator_only (a boolean, false here: a customer's workspace) and, only on an operator-route model, availability_note.
+    assert set(m) == {"id", "name", "capabilities", "availability", "operator_only", "spec"}, m
+    assert m["operator_only"] is False, m
     for leak in ("pricing", "provider_usd", "terms_notes", "18+ per vendor", "vendor_model", "credits", "acme-"):
         assert leak not in blob, (leak, m)
 

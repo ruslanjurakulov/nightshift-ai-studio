@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { StateBlock } from "@/components/states/StateBlock";
 import "../../app-pages-g5.css";
 import { getDictionary } from "@/lib/i18n/server";
+import { ledgerUnitLabels } from "@/lib/server/ledger-unit-labels";
 import { PROVIDERS } from "@/lib/providers";
 import { MODEL_KEY_PROVIDERS } from "@/lib/model-keys";
 import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/github-secrets";
@@ -26,19 +27,15 @@ import { channelInScope, channelName, inSelection, isScoped, orgWide, scopeQuery
 import { unitEconomics, type DurationRow, type LedgerRow } from "@/lib/unitEconomics";
 import {
   BILLED_PROVIDERS,
-  daysLeft,
   elevenLabsRunway,
   firstUseMs,
   isTracked,
   latestBalance,
   ledgerBalanceUsd,
-  oldestRowMs,
   providerBurn,
-  providerHistoryStart,
   providerLedger,
   REGISTRY_BILLING,
   registryPrices,
-  utcDayStart,
   type BalanceRow,
   type BillingSettingsRow,
   type ProbeRunRow,
@@ -46,6 +43,7 @@ import {
   type StudioCostRow,
   type TopupRow,
 } from "@/lib/billing";
+import { daysLeft, oldestRowMs, providerHistoryStart, utcDayStart } from "@/lib/stats";
 
 /** A day, and how far back the spend ledger is ever read for a top-up older than 90 days. */
 const DAY = 86_400_000;
@@ -336,7 +334,7 @@ export default async function BillingPage() {
     return {
       id: p.id,
       name: p.name,
-      billingUrl: p.billingUrl,
+      payUrl: p.billingUrl,
       unitLabel: p.unitLabel,
       keySet: keySetOf(p.id),
       keyUnknown: keysUnknown,
@@ -362,7 +360,7 @@ export default async function BillingPage() {
       cardSaved: st?.card_saved_on_provider ?? false,
       autoRecharge,
       pipeline: pipelineUsed,
-      creditUsd: p.creditUsd ?? null,
+      usdPerCredit: p.creditUsd ?? null,
       ledger,
       daysLeftEstimate: fromLedger && ledger.runsOutEstimate,
     };
@@ -430,9 +428,10 @@ export default async function BillingPage() {
           </StateBlock>
         </section>
       )}
-      {costsFailed ? null : <UnitEconomicsCard ue={ue} scope={ueScope} />}
+      {costsFailed ? null : <UnitEconomicsCard ue={ue} scope={ueScope} unitLabels={ledgerUnitLabels(locale, "long")} />}
       {operatorView ? (
         <BillingBoard
+          unitLabels={ledgerUnitLabels(locale, "measure")}
           providers={views}
           runway={runway}
           githubConfigured={isGithubConfigured}

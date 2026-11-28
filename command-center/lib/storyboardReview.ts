@@ -248,7 +248,8 @@ export type StoryboardErrorCode =
   | "approve_failed"
   | "adult_attestation_required"
   | "adult_only_service"
-  | "age_unavailable";
+  | "age_unavailable"
+  | "not_a_member";
 
 type DbError = { code?: string; message?: string; details?: string | null; hint?: string | null };
 
@@ -266,6 +267,8 @@ export function mapStoryboardError(error: DbError): { status: number; body: Reco
   const code = error.code ?? "";
   const msg = (error.message ?? "").trim();
   if (code === "42501") return { status: 403, body: { error: "forbidden" } };
+  // 0226: approving spends the workspace's credits, which takes a seat in it (a platform admin who holds none reads, never spends).
+  if (code === "NS400" && msg === "not_a_member") return { status: 403, body: { error: "not_a_member" } };
   if (code === "NS409") return { status: 409, body: { error: "storyboard_not_ready" } };
   if (code === "NS402")
     return {
@@ -337,6 +340,8 @@ export function storyboardErrorText(body: Record<string, unknown> | null, t: Dic
       return t.errAdultOnly;
     case "age_unavailable":
       return t.errAgeUnavailable;
+    case "not_a_member":
+      return t.errNotAMember;
     case "stale_revision":
       return t.errStale;
     case "scenes_invalid":

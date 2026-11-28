@@ -41,7 +41,8 @@ import "./nightshift-ai-panel.css";
  * has no function for them, and the panel shows nothing that does not work.
  */
 
-type Plan = { used: number | null; limit: number | null; trial_left: number | null; max_input_chars: number };
+/** `reserved` / `reserved_until` (0232): turns held by storyboards being written and when the last hold ends; held is not used. */
+type Plan = { used: number | null; limit: number | null; trial_left: number | null; max_input_chars: number; reserved?: number; reserved_until?: string | null };
 type Msg = { key: string; role: "user" | "assistant"; content: string; scenarios?: Scenario[]; factsState?: string };
 type State =
   | { state: "loading" }
@@ -80,6 +81,8 @@ function readModels(v: unknown): FilmModels | null {
 /** A failed plan's reasons a new attempt cannot change (Lens L7): the outline cannot fit, the model is not set up or not allowed. */
 const NO_RETRY_REASONS = new Set(["not_plannable", "vendor_auth", "not_configured", "prompt_too_long", "content_refused", "plan_over_cap",
   "plan_superseded"]);
+/** A film's id as the server sends it: only one of these is ever put into a link. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** 0211's lease, as the history read says it (lib/server/brain/conversation.ts planState). `until` is when a running one ends. */
 type PlanLease = { state: "running" | "failed" | "done" | "unknown"; reason: string | null; until: number; index: number | null; proposal: number | null };
 function readLease(v: unknown): PlanLease | null {
@@ -95,9 +98,11 @@ type HistoryRead<T> = { ok: true; value: T } | { ok: false; gone?: boolean; mess
 /** Refusals a Retry cannot change: the same press would meet the same answer. */
 const NO_RETRY = [
   "chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose",
-  "forbidden", "content_refused", "output_too_long",
+  "forbidden", "content_refused", "output_too_long", "not_a_member",
   // The plan step's refusals another press cannot change (lib/server/brain/plan, 0211's lease).
   "plan_over_cap", "plan_running", "plan_unavailable", "plan_superseded", "proposal_outdated",
+  // A project's own storyboard conversation (lib/server/brain/film-plan): it is continued in the project, never here.
+  "film_conversation",
   // A scene over the models' prompt limit was already asked again once: another press spends turns on the same outline.
   "prompt_too_long",
   // The account's own 18+ answer (0192): a Retry would meet the same refusal; the remedy is where the age is answered (Pixel on #900).
@@ -432,12 +437,28 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       {gateWords(r)}
     </StateBlock>
   );
+  /** An ISO time from the server as this person's clock ("14:05"), or null when there is none to say (never a made-up time). */
+  const clockOf = (v: unknown): string | null => {
+    const at = typeof v === "string" ? Date.parse(v) : Number.NaN;
+    return Number.isFinite(at) ? new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(at) : null;
+  };
   const explain = (status: number, d: Record<string, unknown>): string => {
     const e = typeof d.error === "string" ? d.error : "";
     if (status === 401) return c.errors.session_ended;
     if (e === "chat_daily_cap") {
       return typeof d.used === "number" && typeof d.limit === "number" ? fmt(c.errors.chat_daily_cap, { used: d.used, limit: d.limit }) : c.errors.chat_daily_cap_plain;
     }
+    // 0232: the rest is only held by a storyboard being written; it comes back by `until` (minutes), never "in 24 hours".
+    if (e === "chat_reserved") {
+      const at = clockOf(d.until);
+      // The person's own daily limit, held by their own storyboard being written: said as theirs, with how many it holds.
+      if (d.scope === "person") {
+        return at && typeof d.reserved === "number" ? fmt(c.errors.chat_reserved_person, { n: d.reserved, time: at }) : c.errors.chat_reserved_person_plain;
+      }
+      return at ? fmt(c.errors.chat_reserved, { time: at }) : c.errors.chat_reserved_plain;
+    }
+    // More turns than the film's own bound (0232): its length changed while the plan was being set up. Check again re-reads it.
+    if (e === "plan_too_long") return c.errors.plan_too_long;
     if (e === "chat_plan_required") return c.planLocked;
     if (e === "message_too_long") return fmt(c.errors.message_too_long, { max: load.state === "ready" ? load.plan.max_input_chars : 2000 });
     if (e === "short_not_available") return c.shortNotAvailable;
@@ -451,7 +472,10 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (e === "adult_only_service") return c.errors.adult_only_service;
     if (e === "adult_attestation_required") return c.errors.adult_attestation_required;
     if (e === "session_closed") return c.errors.session_closed;
+    if (e === "not_a_member") return c.errors.not_a_member;
     if (e === "card_changed") return c.errors.card_changed;
+    // A film editor's storyboard conversation opened here (a link, the history): its own words and a link to that project.
+    if (e === "film_conversation") return c.errors.film_conversation;
     // The gate's other refusals are worded by their REMEDY, the same words as before a press.
     const remedy = gateRemedy(e);
     if (remedy) return gateWords(remedy);
@@ -463,6 +487,10 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (e === "plan_over_cap" && typeof d.needed === "number" && typeof d.left === "number") {
       // Each count with its own plural (Probe M3: "1 are left").
       const words = fmt(c.errors.plan_over_cap, { needed: pluralText(c.messageCount, d.needed, locale), left: pluralText(c.messagesLeft, d.left, locale) });
+      // The Free trial has no "tomorrow": its remedy is a plan, said in its own words.
+      if (d.scope === "trial") {
+        return fmt(c.errors.plan_over_cap_trial, { needed: pluralText(c.messageCount, d.needed, locale), left: pluralText(c.messagesLeft, d.left, locale) });
+      }
       return d.scope === "person" ? `${words} ${c.errors.plan_over_cap_person}` : words;
     }
     // 0211's lease and the plan's own refusals, each in its own words (a tab waiting, an older proposal, an edit that won).
@@ -492,6 +520,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     // own (0199's per_user_daily, one global setting): no plan raises it, so a "See plans" key would name a remedy that is not one
     // (Lens round 3). The words say to wait instead.
     if (e === "plan_over_cap") return d?.scope === "person" ? null : { href: plans, label: c.seePlans };
+    if (e === "film_conversation" && typeof d?.film_id === "string" && UUID_RE.test(d.film_id)) return { href: editorHref(d.film_id), label: c.openFilm };
     return null;
   };
 
@@ -520,8 +549,10 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     const res = await fetch("/api/brain/turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const d = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (d.quota && typeof d.quota === "object") {
-      const q = d.quota as { used: number; limit: number | null; trial_left?: number | null };
-      setLoad((cur) => (cur.state === "ready" ? { ...cur, plan: { ...cur.plan, used: q.used, limit: q.limit, trial_left: q.trial_left ?? null } } : cur));
+      const q = d.quota as { used: number; limit: number | null; trial_left?: number | null; reserved?: unknown };
+      // A turn's own answer says what is held now (0232); without it, what the panel last read stays.
+      setLoad((cur) => (cur.state === "ready" ? { ...cur, plan: { ...cur.plan, used: q.used, limit: q.limit, trial_left: q.trial_left ?? null,
+        ...(typeof q.reserved === "number" ? { reserved: Math.max(0, q.reserved) } : {}) } } : cur));
     }
     return { res, d };
   };
@@ -580,7 +611,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
         const taken = !!d.quota && !!sid;
         setProblem({
           text: explain(res.status, d),
-          code: String(d.error ?? ""),
+          // A project's conversation is said in words only: its code is never put on the page, not even as a data attribute.
+          code: d.error === "film_conversation" ? "" : String(d.error ?? ""),
           retry: retryable ? (taken ? () => void run(label, { action: "retry", session: sid }) : () => void run(label, body)) : null,
           action: actionFor(String(d.error), d),
         });
@@ -737,7 +769,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
         // A failure no new attempt can change (the outline cannot fit, the model is not set up here) offers none (Lens L7).
         const noRetry = res.status === 401 || NO_RETRY.includes(String(d.error)) || (d.error === "plan_failed" && NO_RETRY_REASONS.has(String(d.reason)));
         const checkAgain = d.error === "plan_unavailable";
-        setProblem({ text: explain(res.status, d), code: String(d.error ?? ""),
+        setProblem({ text: explain(res.status, d), code: d.error === "film_conversation" ? "" : String(d.error ?? ""),
                      retry: checkAgain ? () => void choose(index) : noRetry ? null : () => void choose(index),
                      retryLabel: checkAgain ? c.checkAgain : undefined,
                      action: d.error === "plan_superseded" && typeof d.film_id === "string"
@@ -917,12 +949,18 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     return null;
   })();
 
+  // What storyboards being written hold (0232), shown as held, never as used; never more than what was left to hold.
+  const heldRaw = ready ? Math.max(0, load.plan.reserved ?? 0) : 0;
+  const held = ready && load.plan.limit !== null && load.plan.used !== null ? Math.min(heldRaw, Math.max(0, load.plan.limit - load.plan.used)) : heldRaw;
+  const heldUntil = ready ? clockOf(load.plan.reserved_until) : null;
   const meter: ReactNode = ready && ((load.plan.limit !== null && load.plan.used !== null) || trial !== null) ? (
-    <p className="chat-meter">
-      {load.plan.limit !== null && load.plan.used !== null && fmt(c.quota, { used: load.plan.used, limit: load.plan.limit })}
+    <p className="chat-meter" data-capped={load.plan.limit !== null && load.plan.used !== null && load.plan.used + held >= load.plan.limit ? "" : undefined}>
+      {load.plan.limit !== null && load.plan.used !== null && (held > 0
+        ? fmt(heldUntil ? c.quotaReserved : c.quotaReservedPlain, { used: load.plan.used, limit: load.plan.limit, reserved: held, time: heldUntil ?? "" })
+        : fmt(c.quota, { used: load.plan.used, limit: load.plan.limit }))}
       {trial !== null && (
         <>
-          {pluralText(c.trialLeft, trial, locale)}{" "}
+          {pluralText(c.trialLeft, Math.max(0, trial - heldRaw), locale)}{" "}
           <Link className="chat-meter-link" href={plansHref}>{c.upgrade}</Link>
         </>
       )}
@@ -987,9 +1025,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
               <p className="text-xs text-[var(--color-muted)]" data-plan-turns={s.plan_turns.about}>
                 {load.plan.limit !== null && load.plan.used !== null
                   ? fmt(c.planCost, { about: s.plan_turns.about, at_most: s.plan_turns.at_most, limit: load.plan.limit,
-                                      left: pluralText(c.messagesLeft, Math.max(0, load.plan.limit - load.plan.used), locale) })
+                                      left: pluralText(c.messagesLeft, Math.max(0, load.plan.limit - load.plan.used - heldRaw), locale) })
                   : load.plan.limit === null && load.plan.trial_left !== null
-                    ? fmt(c.planCostTrial, { about: s.plan_turns.about, at_most: s.plan_turns.at_most, left: load.plan.trial_left })
+                    ? fmt(c.planCostTrial, { about: s.plan_turns.about, at_most: s.plan_turns.at_most, left: Math.max(0, load.plan.trial_left - heldRaw) })
                     // What is left today could not be read: the cost alone, never a "left" made up.
                     : fmt(c.planCostPlain, { about: s.plan_turns.about, at_most: s.plan_turns.at_most })}
               </p>

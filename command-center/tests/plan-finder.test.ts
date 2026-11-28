@@ -90,8 +90,10 @@ describe("a YouTube video is quoted exactly as Run now holds it", () => {
   });
 
   it("dates the rate by the list's own updated_at when it has one, else not at all", () => {
-    expect(videoRateSetAt(videoPrices(chargedPrices(baseList(10, 0, 30))))).toBe("2026-11-03T10:00:00Z");
-    expect(videoRateSetAt(videoPrices(parsePrices(publicRows(10, 0, 30))))).toBeNull();
+    expect(videoRateSetAt(chargedPrices(baseList(10, 0, 30)))).toBe("2026-11-03T10:00:00Z");
+    expect(videoRateSetAt(parsePrices(publicRows(10, 0, 30)))).toBeNull();
+    // No date for a list the page would not quote from (no positive per-minute rate).
+    expect(videoRateSetAt(parsePrices([{ unit: "job_minimum", credits_per_unit: 30, updated_at: "2026-11-03T10:00:00Z" }]))).toBeNull();
   });
 });
 
@@ -117,7 +119,21 @@ describe("a missing rate is unavailable, never a number", () => {
     ]);
     const v = videoPrices(list)!;
     expect(Object.keys(v).sort()).toEqual(["job_minimum", "video_minute"]);
-    expect(v.video_minute.note).toBeNull();
+    expect(Object.keys(v.video_minute).sort()).toEqual(["credits", "unit"]);
+  });
+
+  it("hands the browser the final credits per unit, the margin folded in on the server and never sent", () => {
+    // The operator's raw list, a margin on the per-minute rate and on the flat floor, and a note: what the page must never pass on.
+    const list = baseList(10, 0.25, 30);
+    const v = videoPrices(list)!;
+    const wire = JSON.stringify(v);
+    expect(wire).not.toMatch(/margin|note|updatedAt/);
+    // The per-minute rate as charged (10 x 1.25); the floor flat, its margin ignored, as 0020 / credit_rates() charge it.
+    expect(v).toEqual({ video_minute: { unit: "video_minute", credits: 12.5 }, job_minimum: { unit: "job_minimum", credits: 30 } });
+    // And the quote from those two numbers is the hold Run now takes from the list itself.
+    for (const seconds of [60, 90, 300, 3600]) {
+      expect(youtubeVideoCredits(v, seconds)).toBe(estimateRunCredits({ prices: chargedPrices(list), durationS: seconds, videos: [] }).credits);
+    }
   });
 });
 
@@ -173,7 +189,8 @@ describe("what one plan's credits make", () => {
 });
 
 describe("the plan finder", () => {
-  const prices = videoPrices(parsePrices(publicRows(10, 0, 30)))!; // 5 min = 50 credits
+  const list = parsePrices(publicRows(10, 0, 30));
+  const prices = videoPrices(list)!; // 5 min = 50 credits
   const base: FinderInput = { channels: 1, perWeek: 3, lengthMin: 5, voice: "standard", rerunPct: 0 };
   const plans = [
     { id: "studio", name: "Studio", credits: 18000 },
@@ -194,7 +211,7 @@ describe("the plan finder", () => {
 
   it("is the hold of every video in the month: never a figure of its own", () => {
     const need = finderNeed({ channels: 3, perWeek: 2, lengthMin: 7, voice: "standard", rerunPct: 0 }, prices)!;
-    const hold = estimateRunCredits({ prices, durationS: 7 * 60, videos: [] }).credits!;
+    const hold = estimateRunCredits({ prices: list, durationS: 7 * 60, videos: [] }).credits!;
     expect(need.perVideo).toBe(hold);
     expect(need.total).toBe(roundUpCredits(need.videos * hold));
   });

@@ -120,6 +120,33 @@
             "as_of": {"type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
             "confirmed": {"type": "boolean"},
             "note": {"type": "string", "maxLength": 300},
+            "changes": {
+              "description": "A vendor price change the vendor has ANNOUNCED with a date (never a guess). effective_at is the moment in UTC; rates names each billed rate the change moves, from and to in USD. tests/test_dated_vendor_prices.py fails until docs/MIGRATIONS.md documents the credit_price_schedule row (migration 0224) for each of the model's credit units at that moment, scaled by at least the largest to/from ratio.",
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["effective_at", "rates", "source_url", "as_of", "evidence"],
+                "additionalProperties": false,
+                "properties": {
+                  "effective_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+                  "rates": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "propertyNames": {"pattern": "^[a-z][a-z0-9_]{0,63}$"},
+                    "additionalProperties": {
+                      "type": "object",
+                      "required": ["from", "to"],
+                      "additionalProperties": false,
+                      "properties": {"from": {"type": "number", "minimum": 0}, "to": {"type": "number", "minimum": 0}}
+                    }
+                  },
+                  "source_url": {"type": "string", "pattern": "^https://"},
+                  "as_of": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+                  "evidence": {"type": "string", "minLength": 1, "maxLength": 300}
+                }
+              }
+            },
             "variants": {
               "type": "object",
               "required": ["by", "prices"],
@@ -145,6 +172,13 @@
         },
         "blocked_countries": {
           "description": "Countries where the vendor forbids this model, as ISO 3166-1 alpha-2 codes (docs/GEO_BLOCK.md). The Command Center neither offers, quotes nor starts the model for a request whose address it reads in one of them; an unknown country is allowed and logged. Needs api_exposure web_only. command-center/lib/geo/blocked.ts carries the same lists (a test compares them).",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Z]{2}$"}
+        },
+        "available_countries": {
+          "description": "For a vendor whose terms are an ALLOW-list (Google: use only 'within an available region'), the vendor's own list, as ISO 3166-1 alpha-2 codes plus XK (docs/GEO_BLOCK.md). blocked_countries stays its complement in ISO; this list is what the database's country gate (migration 0230) asks, so a code on neither list (a placeholder such as EU, or no country at all) is refused as unverified instead of allowed. Needs blocked_countries and shares no code with it; every google row carries it. command-center/lib/geo/blocked.ts GOOGLE_AVAILABLE_REGIONS is the same list (a test compares them).",
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,

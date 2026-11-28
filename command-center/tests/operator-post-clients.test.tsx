@@ -38,7 +38,7 @@ import { operatorFailureText } from "../lib/setup-errors";
 const provider: ProviderView = {
   id: "elevenlabs",
   name: "ElevenLabs",
-  billingUrl: "https://e.test",
+  payUrl: "https://e.test",
   unitLabel: "1k chars",
   keySet: true,
   price: 0.3,

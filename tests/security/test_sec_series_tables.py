@@ -1030,12 +1030,15 @@ def test_the_quote_of_another_organizations_episode_is_not_found_like_a_missing_
     assert quote(s, ANON, eps[0]).error.startswith("permission denied")
 
 
-def test_a_platform_administrator_reaches_every_organization_as_the_role_system_already_says(conn, world):
+def test_a_platform_administrator_reads_every_organization_but_spends_only_where_they_hold_a_seat(conn, world):
+    """0226 (the owner's decision, 22 Nov): 0043 makes a platform administrator an admin of every organization, which stays read-only
+    support access. They quote an episode of an organization they hold no seat in, and its start is refused (not_a_member) before
+    anything is held. tests/security/test_sec_org_spender_0226.py pins the same for every spend path, and the exempt organization."""
     s = world.su
     plan, eps = ready_plan(s, world.ed, world.chan_a)
     assert quote(s, world.platform, eps[0]).ok
-    out = started(s, world.platform, eps[0])
-    assert out["credits_held"] is not None
+    assert refused(start(s, world.platform, eps[0]), "NS400", "not_a_member")
+    assert episode_row(s, eps[0])[0] == "planned" and holds(s, world.org_a) == []
 
 
 def test_a_hostile_episode_id_or_key_never_reaches_a_row(conn, world):
@@ -1534,7 +1537,8 @@ def test_the_rollback_puts_0029s_validator_and_0111s_guard_back_and_0120_applies
     base_dsn = sec_db.create_database(admin, base)
     sigs = ("public.render_job_params_valid(jsonb,text)", "public.render_jobs_payment_guard()")
     try:
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0120_", "0122_", "0127_", "0145_"))])
+        # 0226 (only a member spends) replaces a body of a file left out here and refuses to apply without it: out too.
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0120_", "0122_", "0127_", "0145_", "0226_", "0227_", "0232_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {s_: (b.execute("select pg_get_functiondef(%s::regprocedure)", [s_]).fetchone()[0],
                          b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [s_]).fetchone()[0]) for s_ in sigs}

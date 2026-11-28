@@ -339,6 +339,23 @@ def _seed_models(conn: psycopg.Connection) -> None:
                [f"model_{m.replace('-', '_')}_image" for m in (MODEL_SOLD, MODEL_HIDDEN, MODEL_GATED)])
 
 
+def seed_model_terms_acceptance(s, accepted_by: str) -> None:
+    # The isolation test needs a row to clone from this closed table.
+    row = _model_row("lab-terms-isolation", terms_gate="written_consent_required")
+    s.rows(
+        "insert into public.model_registry (id, display_name, provider, adapter, capabilities, spec, credit_unit, entitlement) "
+        "values (%s, %s, %s, %s, %s, %s::jsonb, %s, %s) returning id",
+        [row[key] for key in ("id", "display_name", "provider", "adapter", "capabilities")]
+        + [json.dumps(row["spec"]), row["credit_unit"], row["entitlement"]],
+    )
+    s.rows(
+        "insert into public.model_terms_acceptance (model_id, gate, provider, adapter, vendor_model, accepted_by) "
+        "select id, spec ->> 'terms_gate', provider, adapter, spec ->> 'vendor_model', %s "
+        "from public.model_registry where id = %s returning model_id",
+        [accepted_by, row["id"]],
+    )
+
+
 #: Worker status seed (0045): one media worker and one creative worker, both
 #: reporting 'running', each with a detail text no customer may ever see.
 WORKER_MEDIA, WORKER_CREATIVE = "lab-media-1", "lab-creative-1"
@@ -510,6 +527,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # One storyboard plan at a time (0211): tests/security/sec_ai_chat_plan_0211.py — a finished lease on each of those conversations.
     import sec_ai_chat_plan_0211
     sec_ai_chat_plan_0211.seed(conn, sc)
+    # One plan per film (0232): tests/security/sec_film_lease_0232.py — a finished film lease on each tenant's film and conversation.
+    import sec_film_lease_0232
+    sec_film_lease_0232.seed(conn, sc)
     # Channel research (0202): tests/security/sec_research_0202.py — a competitor per tenant and the worker's cache rows.
     import sec_research_0202
     sec_research_0202.seed(conn, sc)
@@ -523,6 +543,11 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # The recorded film sweep (0212): tests/security/sec_film_sweep_0212.py — one sweep, recorded by film_sweep as the service role.
     import sec_film_sweep_0212
     sec_film_sweep_0212.seed(conn, sc)
+    # Dated credit prices (0224): one owner row, so the closed-table attacks hit a real row. It is for the hidden lab model and dated
+    # 2099, so it changes no quote any other test makes.
+    with as_superuser(conn) as s:
+        s.rows("insert into public.credit_price_schedule (unit, credits_per_unit, effective_at, reason) "
+               "values (%s, 5, '2099-01-01T00:00:00Z', 'security lab seed') returning 1", [f"model_{MODEL_HIDDEN.replace('-', '_')}_image"])
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.

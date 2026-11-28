@@ -212,7 +212,7 @@ only to the outline's ids. A plan answer may not name a vendor the outline does 
 
 | Body | Status | Meaning |
 | :-- | :-- | :-- |
-| `{ "error": "plan_over_cap", "needed": 16, "about": 8, "left": 2 }` | 429 | Today's turns cannot cover the plan's worst case (`needed` = `at_most`). Refused before the first call, so a plan never stops halfway for the plan's cap. No turn is taken. With `"scope": "person"`, the cap that does not cover it is the person's own across workspaces (0199 `per_user_daily`, returned by the lease). |
+| `{ "error": "plan_over_cap", "needed": 16, "about": 8, "left": 2 }` | 429 | Today's turns cannot cover the plan's worst case (`needed` = `at_most`). Refused before the first call, so a plan does not stop halfway for the plan's cap unless other chats or plans use today's messages meanwhile (the check reads what is left; it reserves nothing). No turn is taken. With `"scope": "person"`, the cap that does not cover it is the person's own across workspaces (0199 `per_user_daily`, returned by the lease). |
 | `{ "error": "plan_running", "expires_at": "iso" }` | 409 | Another plan of this conversation is running (another tab, or before a refresh). Nothing is reserved or called. The panel waits for it until `expires_at`. |
 | `{ "error": "plan_unavailable" }` | 503 | Migration 0211 is not applied here: the storyboard is not written without a lease. |
 | `{ "error": "plan_superseded", "film_id": "uuid" }` | 409 | The film already has a storyboard that this plan would replace: it was edited while the storyboard was written, it had one from before, or another tab's plan took this one's lease. The film is left as it is and nothing more is written. No credits are charged (the plan's messages are used). Open the project to see it. |
@@ -231,6 +231,100 @@ the workspace's plan cap but counted by the person's own daily cap (0199 `per_us
 to make every chapter refused can make a person spend turns on refusals without spending the workspace's cap. The ceiling on that
 is `per_user_daily` (pinned in tests/security/test_sec_brain_plan_breach.py). The refusal is still said as such each time, and
 nothing is priced.
+
+### Writing a project's storyboard (the film editor, `/api/brain/film`)
+
+The film editor's "Write the storyboard with AI" is the same plan step for ONE existing project, from its own settings (title,
+source text, language, aspect, `target_seconds`). Code: `app/api/brain/film/route.ts`, `lib/server/brain/film-plan.ts`,
+`lib/brain/film-plan.ts`; the scenes are written by `writeStoryboard` itself.
+
+- `GET ?film=<id>` takes nothing. It answers `{ ready: true, turns: { about, at_most }, left, scope: "plan" | "trial",
+  sets: { clip, keyframe }, plan }`, or `{ ready: false, plan: { state: "running", expires_at } }` while a plan of this project
+  runs, or the press's own refusal (below). `sets` names a model the press would set, only for a role the project has none for.
+  `plan` is running while ANY of the person's conversations marked with the project holds a running lease (the rule a press
+  yields by, below); one whose lease cannot be read makes GET answer `unavailable` (503).
+- `POST { film, session? }` answers `{ film: { id, version }, scenes, seconds, models, quota }`. `session` is only ever the
+  `retry_session` of an earlier 503 (below).
+- **The source text is read whole**, up to 40,000 code points, or refused before any turn (`source_too_long` 422
+  `{ limit: 40000 }`, GET and POST): never cut to its first pages. The project's reference pictures and refs are not used by the
+  writer yet: it reads the title, the source text, the language, the aspect and the length.
+- **The chapters are the server's** (`filmChapters`: about 60 s each, adding up to `target_seconds` exactly). The model writes their
+  words in ONE outline call (`FILM_OUTLINE_SYSTEM_PROMPT`; the project's title and source text go in the DATA block). Because the
+  lengths are fixed, every window is known before any turn: `at_most` = 1 + 2 × windows, checked up front as in `choose`. That check
+  reads today's messages left; it reserves none. So a plan does not stop halfway for the cap unless other chats or plans use
+  today's messages meanwhile. The plan's 300 s are counted from the request's first line (the precheck included): a window that
+  could not finish inside them is never started (`plan_failed` `{ reason: "timeout" }`).
+- **The conversation** is the person's own 0199 conversation for the project's workspace and channel (`ai_chat_start`), marked in its
+  BRIEF with `"film_plan": { "film_id": "uuid" }` (an extra top-level field; the chat ignores it). It is found again by that marker,
+  author and workspace, oldest first. `/api/brain` and the history list leave marked conversations out by the same predicate
+  (`brief->film_plan->>film_id IS NULL`), and `/api/brain/turn` refuses every action on one (`film_conversation` 409 with the
+  project's `film_id` when the marker is a uuid, no turn, nothing saved); the chat panel says so in its own words with a link to
+  that project's editor, never the code. The marker write is asked twice; if it still fails, the press answers `unavailable` (503) with `retry_session: <id>`, the
+  panel keeps that id in component state only and sends it as `session` with the next press, and the server takes it back only
+  when it is the caller's own conversation in the project's workspace and channel, not handed off, with an empty BRIEF, no message,
+  and under 24 hours old; otherwise it starts a new one. A project whose channel left the workspace is `film_channel_missing` (409).
+  The outline call stores the
+  press as the person's message (the project's title); every plan call after it is a `p_retry` turn. The lease is 0211's with
+  proposal 0, outline 0. Request ids: `fo` + 40 hex of a sha256 of the conversation, project and attempt, and the plan's `pl…` ids.
+- **One plan at a time, per project (0232).** Two first presses racing (two tabs, a double click) can each make and mark a
+  conversation. So after its lease is granted, a press lists all of the person's marked conversations of the project (at most 5)
+  and asks each other one's lease: while any is running, or cannot be read, it ends its own lease and answers `plan_running` (409)
+  with no turn taken. Then it takes migration 0232's film lease (`ai_chat_film_plan_begin(session, film, at_most)`, also taken by
+  the chat's `choose` on the draft it plans): one running plan per FILM in the database, whoever presses (another editor, the
+  chat's draft and this button), refused `plan_running` with when it ends; only for a film a plan could write into (editable, not
+  archived, no scene: else `film_not_editable`, 409); and the plan's worst case of turns (the film route 1 + 2 x windows incl. the
+  outline call, the chat's choose 2 x windows) reserved under the workspace's cap lock against the workspace's daily cap (or the
+  Free trial) and the person's own limit. The number is bounded by the film: at most `least(15, 1 + 2 x ceil(target_seconds / 24))`
+  (`ai_chat_film_plan_max_turns`; the TypeScript twin `filmLeaseMaxTurns` and tests/brain-film-lease-bound.test.ts keep both
+  planners under it), refused above it as `plan_too_long` (409, "the film's length changed while the storyboard was being set
+  up; check again"), never cut down. Refusals, on charged numbers and in a turn's own order: `chat_plan_required` (no cap and no
+  trial, or a cap of 0), `chat_daily_cap` (charged at the cap), and when short of the worst case: `chat_reserved` (429: `used`,
+  `reserved`, `limit`, `until`, `scope`) if it would fit once other plans' holds end, a wait of minutes, else `plan_over_cap` (429,
+  the real `left`; `scope: trial` on the Free trial, whose remedy is a plan, and `scope: person` for the person's own limit). The
+  prechecks of both routes give the same answer before the press. A chat turn that finds the person's own daily limit held by
+  their own storyboard being written is `chat_reserved` with `scope: person` ("your own storyboard being written holds N"), never
+  "your daily limit is reached". The plan's own turns come out of its reservation.
+  **"Used" means charged.** A hold is never counted as used: `ai_chat_quota` answers `used` (charged), `reserved` and
+  `reserved_until`, the panel's meter shows the held part beside it ("held by a storyboard being written; what it does not need
+  comes back by {time}"), and a turn that only finds the rest held is refused `chat_reserved` with Retry and no plans link, never
+  "24 hours". A hold counts only while its author is still an editor or above of the workspace (a member removed or demoted
+  mid-plan holds nothing). What is not taken comes back at `ai_chat_plan_end` and, for a server that died, the moment the 320 s
+  lease expires. It then reads the project again: scenes are `film_has_scenes`, a moved version `plan_superseded`, again with no
+  turn. **Until 0232 is applied** the function is missing and the press goes on as before: one plan at a time per person only (two
+  editors pressing on the same empty project within ~5 min: one plan is superseded, its turns are spent, the project is never
+  double-written), and the cap check is a read, so a plan may stop halfway when other chats or plans use today's messages
+  meanwhile. A press with 0232 answers `reserved` (the turns held for it); without it, no `reserved` is claimed.
+- **Known limits of 0232, not closed yet** (Sentinel's review): a person's holds across several films are bounded only by their own
+  daily limit, each film at most 15 (follow-up: a per-person, per-workspace sum of at most 15); a plan turn the cap forgives
+  (vendor_refused, refused, not_sent) goes back to the workspace's pool, not to the plan (follow-up: `ai_chat_finish_turn` gives it
+  back to its lease; test `test_a_forgiven_plan_turn_goes_back_to_its_own_plan`); the chat's choose saving a storyboard already
+  stored in its conversation takes no film lease (it spends nothing; follow-up: a non-reserving hold of the film); an expired lease
+  the sweep skipped (another transaction held it) and a new begin then wrote over keeps its pending calls pending until 0211's own
+  takeover (follow-up: close them in the overwrite, with a two-connection lab test).
+- **Never over a person's work.** A project with scenes is refused `film_has_scenes` (409) before any turn; the panel also stays
+  off while the editor has scenes or unsaved changes. `save_film` is called at the version read first: an edit made meanwhile is
+  `plan_superseded`, and nothing is written. While the plan writes (or another tab's is followed, or a lost answer is confirmed)
+  the canvas is read-only; the project is never reloaded over unsaved changes, and `plan_superseded` offers Reload instead of
+  reloading. A press whose answer is lost (a network error, a proxy's non-JSON 502/504) is never sent again: the panel asks GET
+  every 5 s until the lease says running (ask again), done or the project has scenes (written), or failed / ready (a failure, with
+  Retry by hand).
+- **No vendor credit.** A title that claims an AI vendor made the film ("Written by ChatGPT") is `title_claims_vendor` (422) before
+  any turn; a title that only names one ("The rise of OpenAI") plans. The floor under every plan answer (`claimsAuthorship` in
+  `lib/brain/plan.ts`, the chat's and the editor's alike) refuses a claim in the credit's own shapes ("a film by", "brought to you
+  by", "with the help of", "X is the author", "Credits: X", "фильм от", "автор:", "при участии", "X muallifi") naming a chat vendor,
+  a video or image model whose name is also a word (Sora, Veo, Kling, MiniMax, Llama, Mistral, Grok, Copilot…: a claim only, never
+  a name anywhere), or any model or provider the catalogue sells. The chat's `choose` checks the chosen outline the same way before
+  any plan turn. A database error's own text is never sent: `reason` is a machine word or `unavailable`.
+- **Models.** The project's own clip and key-frame models when it has them and they are on sale; one it names that is not on sale is
+  refused `film_model_unavailable` `{ role: "clip" | "keyframe" }` (409), never swapped. A role with none: the server's
+  `FILM_MODEL_PREFERENCE` pick, saved with the storyboard.
+- `plan_superseded` from this route says what the press used: `{ stage: "before_turns", used: 0 }` when the project moved before
+  any turn (nothing was used), or `{ stage: "after_turns", used: N }` with N this press's own reserved turns, `used: null` when a
+  reservation's outcome could not be read (said as "unknown", never 0).
+- Errors added: `film_has_scenes`, `film_not_editable`, `film_model_unavailable`, `chat_plan_required` (402) and `chat_daily_cap`
+  (429) said before the press; `source_too_long` (422, `limit`), `title_claims_vendor` (422), `film_channel_missing` (409),
+  `unavailable` with `retry_session` (503); and on `/api/brain/turn`, `film_conversation` (409). Everything else is `choose`'s, with
+  the same meaning. No price is attached: the project's Start quotes.
 
 ## Reading the BRIEF from the canvas (S6b)
 

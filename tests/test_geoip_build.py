@@ -6,6 +6,7 @@ the same month that is a different file; the committed table and its manifest di
 TypeScript reader drifting apart (both read command-center/tests/fixtures/geoip-fixture.*).
 """
 
+import copy
 import gzip
 import hashlib
 import importlib.util
@@ -165,7 +166,10 @@ class RegistryField(unittest.TestCase):
         self.reg = reg
         self.doc = json.loads((ROOT / "schemas" / "model_registry.json").read_text(encoding="utf-8"))
         self.web_only = next(m for m in self.doc["models"] if m["api_exposure"] == "web_only")
-        self.any = next(m for m in self.doc["models"] if m["api_exposure"] == "any")
+        # The registry may hold no model the API sells (luma-ray-3.2 and seedance-1.5-pro became web_only on their terms),
+        # so the "any" case is built from a copy rather than borrowed from the file.
+        self.any = copy.deepcopy(self.web_only)
+        self.any.update(api_exposure="any", terms_gate=None)
 
     def test_a_web_only_model_takes_a_list_of_codes(self):
         self.web_only["blocked_countries"] = ["IN", "PK"]
@@ -188,6 +192,7 @@ class RegistryField(unittest.TestCase):
 
     def test_a_model_the_api_sells_cannot_be_blocked_by_country(self):
         self.any["blocked_countries"] = ["IN"]
+        self.doc["models"] = [self.any if m is self.web_only else m for m in self.doc["models"]]
         self.assertTrue(any("blocked_countries needs api_exposure web_only" in e for e in self.reg.validate(self.doc)))
 
     def test_codes_are_two_upper_case_letters_listed_once(self):

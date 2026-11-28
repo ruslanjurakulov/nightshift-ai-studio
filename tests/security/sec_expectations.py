@@ -177,6 +177,7 @@ TABLES: Dict[str, Kind] = {
     # probe runs are the operator's evidence
     "model_registry": Public(),
     "model_probe_runs": Platform(),
+    "model_terms_acceptance": Service(),
     # creative generations (0036) and their provider cost (0037: operator economics)
     "creative_jobs": Org(),
     "creative_job_events": Org(),
@@ -388,6 +389,9 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     # what a video costs in credits, for the public price pages (0089)
     "public_video_rates": PRICE_LIST,
     "model_registry_admin": USER,
+    "model_terms_acceptance_admin": USER,
+    "owner_accept_model_terms": USER,
+    "owner_revoke_model_terms": USER,
     "record_model_probe": SERVICE,
     "sync_model_registry": SERVICE,
     # creative jobs (0036): members quote / create / cancel; the worker runs them
@@ -841,6 +845,12 @@ import sec_ai_chat_plan_0211  # noqa: E402
 
 sec_ai_chat_plan_0211.extend(TABLES, FUNCTIONS)
 
+# Migration 0219 (the operator route for connected assistants, the ByteDance refusal, the recorded exposure): three internal
+# helpers; tests/security/sec_operator_models_0219.py
+import sec_operator_models_0219  # noqa: E402
+
+sec_operator_models_0219.extend(TABLES, FUNCTIONS)
+
 # Migration 0212 (the recorded film sweep: one row per runner, film_sweep and film_sweep_status for the service role only):
 # tests/security/sec_film_sweep_0212.py
 import sec_film_sweep_0212  # noqa: E402
@@ -852,6 +862,29 @@ sec_film_sweep_0212.extend(TABLES, FUNCTIONS)
 import sec_film_resume_0215  # noqa: E402
 
 sec_film_resume_0215.extend(TABLES, FUNCTIONS)
+
+# Migration 0224 (dated credit prices, owner decision D7): credit_price_schedule is the owner's, written in the SQL editor; RLS on, no
+# policy and no privilege for any API role, service_role included (tests/security/test_sec_dated_price_0224.py). credits_per_unit_now
+# is creative_price's internal reader: no API role may call it (the schedule's future rows are the owner's plans).
+TABLES.update({"credit_price_schedule": Service()})
+FUNCTIONS.update({"credits_per_unit_now": SERVICE})
+
+# Migration 0226 (only a member spends an organization's credits, on every path): tests/security/sec_org_spender_0226.py. No table and
+# no function of its own (twenty-eight bodies replaced, each keeping its entry above); the hook keeps the pattern every migration follows.
+import sec_org_spender_0226  # noqa: E402
+
+sec_org_spender_0226.extend(TABLES, FUNCTIONS)
+
+# Migration 0232 (one storyboard plan per film, its turns reserved at begin): tests/security/sec_film_lease_0232.py
+import sec_film_lease_0232  # noqa: E402
+
+sec_film_lease_0232.extend(TABLES, FUNCTIONS)
+
+# Migration 0230 (the country gate reads an allow-list vendor's own list, BR-S6-04): no table, no new function; 0208's trigger
+# function is replaced in place. tests/security/sec_geo_allowlist_0230.py
+import sec_geo_allowlist_0230  # noqa: E402
+
+sec_geo_allowlist_0230.extend(TABLES, FUNCTIONS)
 
 # Migration 0228 (music per request, S6): no new table or function; creative_price and creative_params_problem stay internal.
 # tests/security/sec_music_per_request_0228.py

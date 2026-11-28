@@ -33,12 +33,12 @@ vi.mock("@/lib/channels-client", () => ({
 
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, fmt, type Locale } from "@/lib/i18n";
-import { EFFECTS, effectById, publicEffectHref, resolveEffect } from "@/lib/effects/catalog";
+import { EFFECTS, effectById, effectChoice, effectDeskCards, effectFace, publicEffectHref, resolveEffect } from "@/lib/effects/catalog";
 import type { StudioModel } from "@/lib/creative/studio";
 import { EffectsDesk } from "@/components/effects/EffectsDesk";
 import { EffectBanner } from "@/components/effects/EffectBanner";
 import { EffectArt } from "@/components/effects/EffectArt";
-import { effectSample } from "@/components/effects/EffectFrame";
+import { effectSample } from "@/components/effects/effect-sample";
 import { sampleKeepsShape } from "@/components/effects/effect-sample";
 import { EffectsGallery } from "@/components/site/EffectsGallery";
 import { PROVIDER_BRANDS } from "./helpers/brands";
@@ -92,7 +92,7 @@ function expectFrame(c: HTMLElement, e: (typeof EFFECTS)[number], words: { noSam
 
 describe("the Studio's Effects desk", () => {
   it("with no model of an effect offered, says so and offers a disabled button, not a link", () => {
-    render(withI18n(<EffectsDesk models={[]} />));
+    render(withI18n(<EffectsDesk cards={effectDeskCards([])} />));
     const list = screen.getByRole("list", { name: en.effects.desk.listLabel });
     expect(within(list).getAllByRole("article")).toHaveLength(EFFECTS.length);
     for (const e of EFFECTS) {
@@ -108,7 +108,7 @@ describe("the Studio's Effects desk", () => {
   });
 
   it("for the operator, names the preview model each effect will use and links into the Studio form with the effect", () => {
-    render(withI18n(<EffectsDesk models={OPERATOR} />));
+    render(withI18n(<EffectsDesk cards={effectDeskCards(OPERATOR)} />));
     for (const e of EFFECTS) {
       const c = card(e.id);
       const a = resolveEffect(e, OPERATOR);
@@ -124,7 +124,7 @@ describe("the Studio's Effects desk", () => {
   });
 
   it("for a customer, uses only a model on the effect's own list and says the first choice is not open", () => {
-    render(withI18n(<EffectsDesk models={CUSTOMER} />));
+    render(withI18n(<EffectsDesk cards={effectDeskCards(CUSTOMER)} />));
     for (const e of EFFECTS) {
       const c = card(e.id);
       expect(c.querySelector("[data-model]")?.getAttribute("data-model")).toBe("minimax-hailuo-2.3");
@@ -136,13 +136,13 @@ describe("the Studio's Effects desk", () => {
   });
 
   it("says on every card, in words, that the moving picture is a drawing until a real sample exists, and which is a real one", () => {
-    render(withI18n(<EffectsDesk models={OPERATOR} />));
+    render(withI18n(<EffectsDesk cards={effectDeskCards(OPERATOR)} />));
     for (const e of EFFECTS) expectFrame(card(e.id), e, en.effects);
   });
 
   it("speaks Russian and Uzbek too", () => {
     for (const locale of ["ru", "uz"] as const) {
-      const { unmount } = render(withI18n(<EffectsDesk models={[]} />, locale));
+      const { unmount } = render(withI18n(<EffectsDesk cards={effectDeskCards([])} />, locale));
       const d = dictionaries[locale].effects;
       expect(screen.getByRole("list", { name: d.desk.listLabel })).toBeTruthy();
       expect(screen.getAllByText(d.desk.unavailable)).toHaveLength(EFFECTS.length);
@@ -155,7 +155,7 @@ describe("the Studio's Effects desk", () => {
 describe("the banner over the composer", () => {
   it("for a words effect, is a GET form back to this page with the effect and the subject, and names the model", () => {
     const giant = effectById("giant-in-the-city")!;
-    render(withI18n(<EffectBanner effect={giant} availability={resolveEffect(giant, OPERATOR)} subject="a red fox" />));
+    render(withI18n(<EffectBanner effect={effectFace(giant)} availability={effectChoice(resolveEffect(giant, OPERATOR))} subject="a red fox" />));
     const field = screen.getByLabelText(en.effects.items["giant-in-the-city"].subject!) as HTMLInputElement;
     expect(field.value).toBe("a red fox");
     expect(field.maxLength).toBe(120);
@@ -171,14 +171,14 @@ describe("the banner over the composer", () => {
 
   it("for a picture effect, asks for the picture in the form below and has no subject field", () => {
     const burst = effectById("product-burst")!;
-    render(withI18n(<EffectBanner effect={burst} availability={resolveEffect(burst, OPERATOR)} subject="" />));
+    render(withI18n(<EffectBanner effect={effectFace(burst)} availability={effectChoice(resolveEffect(burst, OPERATOR))} subject="" />));
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.getByText(new RegExp(en.effects.banner.pictureHint))).toBeTruthy();
   });
 
   it("with none of its models open, says nothing was filled and offers only the way back or the plain form", () => {
     const giant = effectById("giant-in-the-city")!;
-    render(withI18n(<EffectBanner effect={giant} availability={{ state: "unavailable" }} subject="" />));
+    render(withI18n(<EffectBanner effect={effectFace(giant)} availability={{ state: "unavailable" }} subject="" />));
     const status = document.querySelector<HTMLElement>('[data-state="unavailable"]')!;
     // Not a live region: it is drawn with the page, so role="status" would announce nothing and only hide the section's name.
     expect(status.getAttribute("role")).toBeNull();

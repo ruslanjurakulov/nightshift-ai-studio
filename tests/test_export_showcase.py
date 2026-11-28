@@ -821,6 +821,52 @@ class SoundTest(unittest.TestCase):
         self.assertIn("smWebm: s0SmWebm, audio: true }", loud)
 
 
+class ClientSliceTest(unittest.TestCase):
+    """SHOWCASE_CARDS, the slice of the data file client code reads. The full manifest is server-only: it names the vendor, the
+    vendor's model and the cost, which the public site never shows (command-center/tests/showcase-cards.test.ts holds the slice
+    equal to what the site's own parser makes of the data file)."""
+
+    def entry(self, **kw):
+        base = {"jobId": JOB, "modelId": "runway-gen4.5", "modelName": "Runway Gen-4.5", "provider": "runway", "capability": "i2v",
+                "kind": "video", "width": 1280, "height": 720, "slot": None, "createdAt": "2026-11-13T10:00:00Z", "sha256": "a" * 64,
+                "operatorPreview": True, "input": {"kind": "operator_job", "jobId": PARENT_JOB, "assetId": PARENT_JOB},
+                "cost": {"vendor": [{"provider": "runway", "vendorModel": "gen4.5"}]}, "attribution": {"text": "Powered by Runway", "url": "https://runwayml.com"}}
+        base.update(kw)
+        return base
+
+    def test_a_card_holds_only_what_client_code_reads(self):
+        (card,) = x.showcase_cards([self.entry()])
+        self.assertEqual(card, {"jobId": JOB, "modelId": "runway-gen4.5", "capability": "i2v", "kind": "video", "width": 1280, "height": 720,
+                                "slot": None, "input": {"kind": "operator_job", "jobId": PARENT_JOB}})
+        module = x.render_assets_module([self.entry()])
+        for private in ("provider", "vendorModel", "modelName", "operatorPreview", "sha256", "Runway", "runwayml", "attribution", "assetId"):
+            # After the export, not the first mention: the header's comment and import name SHOWCASE_CARDS / ShowcaseCard too, and
+            # splitting there would scan the files map and header instead of the cards.
+            self.assertNotIn(private, module.split("export const SHOWCASE_CARDS")[1], private)
+
+    def test_a_trailing_newline_never_passes_an_id_check(self):
+        # `$` matches before a final newline; written into TypeScript, "id\n" would break the string literal.
+        self.assertEqual(x.showcase_cards([self.entry(jobId=JOB + "\n")]), [])
+        self.assertEqual(x.showcase_cards([self.entry(modelId="runway-gen4.5\n")]), [])
+        self.assertEqual(x.showcase_cards([self.entry(slot="hero\n")]), [])
+        self.assertEqual(x.showcase_cards([self.entry(capability="i2v\n")]), [])
+
+    def test_the_site_art_input_keeps_its_kind_and_not_its_file_or_hash(self):
+        (card,) = x.showcase_cards([self.entry(input={"kind": "site_art", "file": "a.webp", "sha256": "b" * 64})])
+        self.assertEqual(card["input"], {"kind": "site_art"})
+
+    def test_newest_first_each_job_once_and_a_malformed_entry_is_not_a_card(self):
+        older = self.entry(jobId=PARENT_JOB, createdAt="2026-11-12T10:00:00Z", kind="image", capability="t2i", input={"kind": "none"})
+        bad = self.entry(jobId="11111111-2222-4333-8444-555555555555", modelId="Not An Id")
+        cards = x.showcase_cards([older, self.entry(), self.entry(width=1), bad])
+        self.assertEqual([c["jobId"] for c in cards], [JOB, PARENT_JOB])
+        self.assertEqual(cards[0]["width"], 1280)
+
+    def test_the_committed_slice_has_every_entry_of_the_data_file(self):
+        data = x.load_data()
+        self.assertEqual(len(x.showcase_cards(data["entries"])), len({e["jobId"] for e in data["entries"]}))
+
+
 class CardLineTest(unittest.TestCase):
     def test_none_given_is_null(self):
         self.assertIsNone(x.parse_card_line({}))

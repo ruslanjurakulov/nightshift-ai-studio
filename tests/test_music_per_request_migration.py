@@ -126,7 +126,14 @@ class TheGuards(unittest.TestCase):
         self.assertIn(f'CREATIVE_PRICE_0228 = "{AFTER["creative_price"]}"', LAB)
         self.assertIn(f'CREATIVE_PARAMS_PROBLEM_0228 = "{AFTER["creative_params_problem"]}"', LAB)
         off = LAB[LAB.index("def take_off_0218("):LAB.index("def put_back_0218(")]
-        self.assertLess(off.index("take_off_0228(conn)"), off.index("rollback_0218_body()"))
+        # 0228 comes off before 0218's rollback: directly, or through take_off_0224, which takes 0228 off before anything else.
+        if "take_off_0228(conn)" in off:
+            self.assertLess(off.index("take_off_0228(conn)"), off.index("rollback_0218_body()"))
+        else:
+            self.assertLess(off.index("take_off_0224(conn)"), off.index("rollback_0218_body()"))
+            t0224 = LAB[LAB.index("def take_off_0224("):]
+            t0224 = t0224[:t0224.index("\ndef ")]
+            self.assertLess(t0224.index("take_off_0228(conn)"), t0224.index("rollback_0224_body()"))
         self.assertIn("put_back_0228(conn)", LAB[LAB.index("def put_back_0218("):LAB.index("def migration_0218_lab(")])
         # 0208's rollback starts with 0228's: directly, or (once 0224 is merged) through 0224's rollback, which starts with it.
         r0208 = LAB[LAB.index("def rollback_0208_body("):LAB.index("def take_off_0208(")]

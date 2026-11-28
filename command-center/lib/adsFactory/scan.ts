@@ -296,7 +296,9 @@ export type ScanError =
   | "unauthorized" | "forbidden" | "not_found" | "bad_request" | "org_required" | "not_available" | "not_configured" | "read_failed" | "failed"
   | "invalid_host" | "hosting_parent" | "invalid_url" | "invalid_idempotency_key" | "invalid_fields" | "name_required" | "invalid_reference"
   | "limit_reached" | "too_soon" | "platform_busy" | "org_daily_limit" | "not_on_sale" | "price_changed" | "domain_not_verified" | "scan_in_progress"
-  | "idempotency_conflict" | "scan_not_ready" | "insufficient_credits" | "scan_hold_unavailable" | "parallel_limit";
+  | "idempotency_conflict" | "scan_not_ready" | "insufficient_credits" | "scan_hold_unavailable" | "parallel_limit"
+  // 0226: a scan spends the workspace's credits, which takes a seat in it (a platform admin who holds none reads, never spends).
+  | "not_a_member";
 
 const NS400 = ["invalid_host", "hosting_parent", "invalid_url", "invalid_idempotency_key", "invalid_fields", "name_required", "invalid_reference"];
 const NS409 = ["not_on_sale", "price_changed", "domain_not_verified", "scan_in_progress", "idempotency_conflict", "scan_not_ready"];
@@ -318,6 +320,7 @@ export function mapScanError(error: { code?: string; message?: string; details?:
   const details = error?.details ?? "";
   switch (error?.code) {
     case "NS400":
+      if (word === "not_a_member") return { error: "not_a_member", status: 403 };
       return { error: NS400.includes(word) ? (word as ScanError) : "bad_request", status: 400 };
     case "NS409": {
       if (!NS409.includes(word)) return { error: "failed", status: 502 };
