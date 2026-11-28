@@ -175,6 +175,9 @@ class Outcome:
     #: Decoder peak RSS, including the small launcher's pre-exec footprint.
     #: 0 when unavailable; missing accounting never produces a successful run.
     peak_rss_bytes: int = 0
+    #: Which REFUSAL_MARKERS stderr showed, wherever they were (``tail`` may
+    #: have lost them): the frame cap and memory have different remedies.
+    markers: tuple = ()
 
     @property
     def ok(self) -> bool:
@@ -191,6 +194,10 @@ class _StderrWatch(threading.Thread):
         self.on_refusal = on_refusal
         self.refused = False
         self.tail = b""
+        #: Every marker met anywhere in the stream, not only in the kept tail:
+        #: a reader that must say WHICH refusal it was (the frame cap or
+        #: memory) cannot rely on a line that scrolled out of TAIL_BYTES.
+        self.seen: set = set()
 
     def run(self) -> None:
         keep = max(len(m) for m in REFUSAL_MARKERS) - 1
@@ -201,6 +208,7 @@ class _StderrWatch(threading.Thread):
                 if not chunk:
                     break
                 window = carry + chunk
+                self.seen.update(m for m in REFUSAL_MARKERS if m in window)
                 if not self.refused and any(m in window for m in REFUSAL_MARKERS):
                     self.refused = True
                     try:
@@ -327,7 +335,8 @@ def run(argv: Sequence[str], *, timeout_s: float, heartbeat: Optional[Callable[[
         if -signal.NSIG < reported_status <= 255 and reported_peak > 0:
             status, peak = reported_status, reported_peak
     return Outcome(None if timed_out else status, watch.refused, timed_out,
-                   watch.tail.decode("utf-8", "replace"), peak)
+                   watch.tail.decode("utf-8", "replace"), peak,
+                   tuple(m for m in REFUSAL_MARKERS if m in watch.seen))
 
 
 __all__ = ["CHILD_STACK_BYTES", "CHILD_ENV", "CHILD_MEM_BYTES", "DECODE_THREADS", "ENCODE_THREADS", "FILTER_THREADS", "Outcome",

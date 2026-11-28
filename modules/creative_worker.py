@@ -829,6 +829,15 @@ class CreativeWorker:
                 try:
                     task_id = adapter.submit(request)
                 except Exception as e:
+                    usage = getattr(e, "usage", None)
+                    if isinstance(usage, ProviderUsage):
+                        # A task existed and was given up (a vendor estimate over the price): what it may cost the
+                        # platform is a vendor fact for creative_job_costs, recorded before the job fails.
+                        try:
+                            self.queue.record_cost(job_id, usage)
+                        except Exception as rec:
+                            logger.warning("job %s: the provider's estimate could not be recorded (%s)", job_id,
+                                           type(rec).__name__)
                     raise _Refused(error_code_of(e), error_text_of(e),
                                    not_accepted=getattr(e, "not_accepted", False) is True) from None
                 break

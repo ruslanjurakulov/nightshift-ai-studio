@@ -46,6 +46,14 @@ from tests.test_creative_media_inputs import FakeStore, SourceQueue, put_asset
 from tests.test_creative_worker import JOB, ORG, FakeCredits, job
 from tests.test_voice_tools import RecordingSession
 # BR-L-211's regressions run in the ordinary Tests job through this import.
+from tests.security.test_upscale_frame_count import same_file
+# BR-L-211 residual (a), the remuxed copy, in the ordinary Tests job too.
+from tests.security.test_upscale_normalize import (  # noqa: F401
+    BoundedProbePins,
+    CopyCheckPins,
+    NormalizedUploadPins,
+    PackedAccessUnitPins,
+)
 from tests.security.test_upscale_frame_count import (  # noqa: F401
     ContainerReadPins,
     CountedRateTests,
@@ -77,11 +85,24 @@ TASK = "1f2e3d4c-5b6a-4789-8abc-def012345678"
 OUT = "https://dnznrvs05pmza.cloudfront.net/out.mp4?_jwt=x"
 
 
-def adapter(key, routes=(), downloads=None, env=ENV, fps=30.0):
-    a = build_adapter(key, env=env, session=RecordingSession(routes, downloads))
+def reading(fps):
+    """A whole reading of a 2 s clip at ``fps`` (None: a rate nobody could
+    read), the same for the member's file and the copy the upscale sends."""
+    return FrameReading(rate=fps, avg=fps, frames=None if fps is None else round(fps * 2), seconds=2.0, length=2.0,
+                        index=0, codec="h264")
+
+
+def fake_reader(a, fps):
+    """The upscale's reading and remux replaced (real ones: tests/security);
+    the copy is the file itself, copied."""
     if hasattr(a, "fps_of"):
-        a.fps_of = lambda _path: FrameReading(rate=fps, avg=fps)
+        a.fps_of = lambda _path: reading(fps)
+        a.normalize_of = same_file
     return a
+
+
+def adapter(key, routes=(), downloads=None, env=ENV, fps=30.0):
+    return fake_reader(build_adapter(key, env=env, session=RecordingSession(routes, downloads)), fps)
 
 
 class Tmp(unittest.TestCase):
@@ -424,9 +445,7 @@ class Worker(Tmp):
         q = SourceQueue(j, source=source)
         entry = reg.get(j["requested_model"])
         session = RecordingSession(routes, downloads)
-        built = build_adapter(entry.adapter, env=ENV, session=session)
-        if hasattr(built, "fps_of"):
-            built.fps_of = lambda _p: FrameReading(rate=fps, avg=fps)
+        built = fake_reader(build_adapter(entry.adapter, env=ENV, session=session), fps)
         ra = ca.RegistryAdapter(entry, built, sync_store={})
         library = cw.Library(store=store, media_root=self.media) if store is not None else None
         w = cw.CreativeWorker(q, lambda m: ra if m == entry.id else None, worker_id="w1", out_dir=self.out,
@@ -505,6 +524,105 @@ class Worker(Tmp):
 
 
 # ── the probe ────────────────────────────────────────────────────────────────
+
+class EstimatePins(Worker):
+    """Runway answers a created task with ``estimatedCost.credits``, "the
+    maximum credits this task may charge" (OpenAPI, read 2026-11-28). The job
+    was priced per source second at the 60 fps ceiling: 13 s at 2k covers
+    ceil(0.009 * 60 * 13 / 0.01) = 702 credits. Anything above, or no figure,
+    cancels the task and fails the job, so its whole hold is released."""
+
+    def routes(self, estimate, *, delete=204):
+        created = {"id": TASK} if estimate is None else {"id": TASK, "estimatedCost": estimate}
+        return [("POST", "/v1/uploads", FakeResp(200, TICKET)), ("POST", UPLOAD, FakeResp(204)),
+                ("POST", "/v1/video_upscale", FakeResp(200, created)),
+                ("DELETE", f"/v1/tasks/{TASK}", FakeResp(delete)),
+                ("GET", f"/v1/tasks/{TASK}", FakeResp(200, {"status": "SUCCEEDED", "output": [OUT]}))]
+
+    def run_estimate(self, estimate, **kw):
+        put_asset(self.media, SRC, MP4)
+        return self.run_job(up_job(), video_source(), self.routes(estimate, **kw),
+                            downloads={OUT: FakeResp(200, content=MP4)}, store=FakeStore())
+
+    def assertCancelledAndReleased(self, estimate, code, words):
+        q, session = self.run_estimate(estimate)
+        methods = [(c[0], c[1].rsplit("/", 1)[-1]) for c in session.calls if "/v1/" in c[1]]
+        self.assertEqual(methods, [("POST", "uploads"), ("POST", "video_upscale"), ("DELETE", TASK)],
+                         "the task must be cancelled at once, and never polled")
+        delete = [c for c in session.calls if c[0] == "DELETE"][0]
+        self.assertEqual(delete[2]["headers"]["Authorization"], f"Bearer {KEY}")
+        # Failed through the worker's own path: finish(ok=False) releases the
+        # whole hold in the database (creative_end_locked), nothing captured.
+        self.assertEqual((q.finished["ok"], q.finished["charge"], q.finished["error_code"]), (False, None, code))
+        self.assertFalse([c for c in q.calls if c[:2] == ("finish", True)])
+        self.assertNotIn(("advance", "submitted", TASK), q.calls)
+        self.assertIn(words, q.finished["error"])
+        self.assertIn("this job's price covers 702", q.finished["error"])
+        self.assertIn("60 frames counted", q.finished["error"])
+        self.assertIn("nothing was charged", q.finished["error"])
+        self.assertNotIn(KEY, q.finished["error"])
+        # The vendor fact is kept (0037), its USD unknown, never 0.
+        (cost,) = q.costs
+        self.assertEqual((cost.provider, cost.unit, cost.usd), ("runway", "vendor_credits_estimated", None))
+        return q, cost
+
+    def test_an_estimate_over_what_the_price_covers_cancels_the_task_and_releases_the_hold(self):
+        _, cost = self.assertCancelledAndReleased({"credits": 703}, "estimate_over_quote",
+                                                  "the provider estimated 703 credits")
+        self.assertEqual(cost.quantity, 703.0)
+
+    def test_a_missing_or_unreadable_estimate_is_refused_like_one_over_the_price(self):
+        for estimate in (None, {}, {"credits": "34"}, {"credits": None}, {"credits": True}, {"credits": -1},
+                         {"credits": float("nan")}):
+            with self.subTest(estimate=estimate):
+                _, cost = self.assertCancelledAndReleased(estimate, "estimate_unreadable",
+                                                          "gave no estimate we could read")
+                self.assertIsNone(cost.quantity)
+
+    def test_an_estimate_within_what_the_price_covers_proceeds(self):
+        for credits in (702, 34, 0):
+            with self.subTest(credits=credits):
+                q, session = self.run_estimate({"credits": credits})
+                self.assertTrue(q.finished["ok"], q.finished)
+                self.assertFalse([c for c in session.calls if c[0] == "DELETE"])
+                self.assertIn(("advance", "submitted", TASK), q.calls)
+
+    def test_a_cancel_that_is_not_confirmed_still_fails_the_job_and_says_so(self):
+        put_asset(self.media, SRC, MP4)
+        q, session = self.run_job(up_job(), video_source(), self.routes({"credits": 9999}, delete=500))
+        self.assertEqual((q.finished["ok"], q.finished["error_code"]), (False, "estimate_over_quote"))
+        self.assertIn("cancelling the task was not confirmed", q.finished["error"])
+
+    def test_a_job_without_its_priced_length_is_refused_before_anything_is_spent(self):
+        put_asset(self.media, SRC, MP4)
+        j = up_job()
+        j["quantity"] = None
+        q, session = self.run_job(j, video_source(), self.routes({"credits": 1}))
+        self.assertEqual(session.calls, [])
+        self.assertEqual((q.finished["ok"], q.finished["error_code"]), (False, "bad_request"))
+        self.assertIn("no priced length", q.finished["error"])
+
+    def test_what_the_price_covers_is_the_registrys_per_second_rate_at_the_ceiling(self):
+        a = adapter("video.runway_upscale")
+        prices = reg.get("runway-video-upscale").raw["pricing"]["variants"]["prices"]
+        for target, usd_per_second in prices.items():
+            with self.subTest(target=target):
+                # The registry's per-second figure is the adapter's per-frame
+                # rate at MAX_FPS: they must not drift apart.
+                self.assertAlmostEqual(float(a.USD_PER_FRAME[target] * int(a.MAX_FPS)), usd_per_second)
+        req = CapabilityRequest("video_upscale", upscale_target="720p")
+        # The live probe (row 78): 2 s at 720p, billed 34; the price covers 84.
+        self.assertEqual(a.covered_credits(req, 2.0), 84)
+        self.assertEqual(a.covered_credits(CapabilityRequest("video_upscale", upscale_target="4k"), 13.0), 936)
+        for seconds in (None, 0, -1, float("inf"), float("nan"), True):
+            self.assertIsNone(a.covered_credits(req, seconds), seconds)
+        self.assertIsNone(a.covered_credits(CapabilityRequest("video_upscale", upscale_target="8k"), 2.0))
+
+    def test_fps_boost_is_never_sent(self):
+        q, session = self.run_estimate({"credits": 1})
+        start = [c for c in session.calls if c[1].endswith("/v1/video_upscale")][0]
+        self.assertEqual(set(start[2]["json"]), {"model", "videoUri", "resolution"})
+
 
 class Probe(Tmp):
     def test_an_upscale_probe_draws_its_own_video_and_skips_without_ffmpeg(self):

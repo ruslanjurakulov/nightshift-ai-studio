@@ -76,6 +76,10 @@ WORKER_COOLDOWN = 3 * 60
 STUCK_COOLDOWN = 6 * 60
 CREATIVE_BURST = 3          # failures of one error code within the hour
 CREATIVE_COOLDOWN = 3 * 60
+#: The creative seam's estimate refusals (modules/creative_adapters.ESTIMATE_CODES; not imported, the bot stays light)
+#: and their lines.
+ESTIMATE_ALERTS = {"estimate_over_quote": "alert.creative_estimate_over",
+                   "estimate_unreadable": "alert.creative_estimate_unreadable"}
 #: How far back a payment problem is still news. Inside the 48 hours the store
 #: remembers, so an alert already sent is never sent a second time.
 PAYMENT_WINDOW = timedelta(hours=24)
@@ -158,6 +162,13 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None, lang: str 
                 out.append(Alert("run", f"creative:{safe_id(code, 40)}", "warn",
                                  t(lang, "alert.creative_burst", n=n, code=safe_id(code, 40)),
                                  None, CREATIVE_COOLDOWN))
+        # One alert per job, not a burst of three: a vendor estimate over the price means the price (or the
+        # adapter's rate) is wrong for every job of that model, and the cancelled task may still be billed.
+        for r in recent:
+            code = r.get("error_code")
+            if code in ESTIMATE_ALERTS:
+                out.append(Alert("run", f"creative:estimate:{safe_id(r.get('id'), 40)}", "critical",
+                                 t(lang, ESTIMATE_ALERTS[code], id=safe_id(r.get("id"), 8))))
         for r in c["stuck"]:
             out.append(Alert("stuck", f"stuck:job:{safe_id(r.get('id'), 40)}", "warn",
                              t(lang, "alert.creative_stuck", id=safe_id(r.get("id"), 8),

@@ -149,7 +149,7 @@ class TheContainerRead(Base):
                                                b'"format":{"duration":"2.0"}}', b"")
 
         with mock.patch.object(video.shutil, "which", return_value="/usr/bin/ffprobe"), \
-                mock.patch.object(video.subprocess, "run", side_effect=fake_run):
+                mock.patch.object(video, "_bounded_run", side_effect=fake_run):
             self.assertEqual(video_fps(self.file("a.mp4", mp4(track(b"vide", 12288, [(48, 512)])))), 25.0)
         self.assertEqual(len(calls), 1)
 

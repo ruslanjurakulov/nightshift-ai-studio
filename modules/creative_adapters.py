@@ -63,6 +63,7 @@ key or a vendor body.
 from __future__ import annotations
 
 import hashlib
+import logging
 import threading
 import uuid
 from pathlib import Path
@@ -95,18 +96,33 @@ from modules.creative_worker import (
     ProviderUsage,
 )
 
+logger = logging.getLogger(__name__)
+
 SYNC_PREFIX = "sync:"
 #: Finished synchronous outputs kept for their first poll (a few per thread).
 MAX_SYNC_HELD = 64
 
 
 class CreativeAdapterError(Exception):
-    """A refusal the worker stores as the job's error: ``code`` + ``message``."""
+    """A refusal the worker stores as the job's error: ``code`` + ``message``.
+    ``usage``: what the vendor may have charged for a task that existed
+    (the worker records it, 0037), else None."""
 
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, *, usage: Optional[ProviderUsage] = None):
         super().__init__(f"{code}: {message}")
         self.code = code
         self.message = message
+        self.usage = usage
+
+
+#: The vendor's own estimate of a created task was above what the job's price
+#: covers, or it gave none we could read. Both cancel the task and fail the job
+#: (its hold released, nothing captured); both raise an operator alert
+#: (modules/operator_bot/alerts.py), because the fix is the owner's: a price
+#: below the vendor's, a rate in the adapter that went stale, or a docs change.
+E_ESTIMATE_OVER_QUOTE = "estimate_over_quote"
+E_ESTIMATE_UNREADABLE = "estimate_unreadable"
+ESTIMATE_CODES = (E_ESTIMATE_OVER_QUOTE, E_ESTIMATE_UNREADABLE)
 
 
 def _int(v) -> Optional[int]:
@@ -222,6 +238,16 @@ class RegistryAdapter:
         problems = self.adapter.problems(req, self.entry)
         if problems:
             raise CreativeAdapterError("bad_request", "; ".join(problems)[:500])
+        # A vendor that answers a created task with "the most it may charge"
+        # (Runway's estimatedCost) is held to the job's price: what that price
+        # covers is known BEFORE anything is spent, or nothing is sent.
+        estimates = callable(getattr(self.adapter, "estimated_credits", None))
+        covered = self.adapter.covered_credits(req, request.quantity) if estimates else None
+        if estimates and covered is None:
+            raise CreativeAdapterError(
+                "bad_request",
+                f"this job carries no priced length for {self.entry.id}, so the provider's own estimate could not "
+                "be checked against its price; nothing was charged — start it again")
         # BR-L-019: a failure proves "nothing was bought" only for the submit's
         # FIRST call to the vendor; once an earlier call went out (an upload, a
         # create), that call may have started a paid task, so no proof stands.
@@ -232,6 +258,8 @@ class RegistryAdapter:
             if e.not_accepted and getattr(self.adapter, "calls_sent", 0) > 1:
                 e.not_accepted = False
             raise
+        if estimates and task.task_id:
+            self._hold_to_estimate(task, request, covered)
         if task.task_id:
             return str(task.task_id)
         if not task.outputs:
@@ -242,6 +270,36 @@ class RegistryAdapter:
                 self._held.pop(next(iter(self._held)))
             self._held[key] = list(task.outputs)
         return key
+
+    def _hold_to_estimate(self, task: ProviderTask, request: GenerationRequest, covered: int) -> None:
+        """Cancel the task and fail the job when the vendor's estimate is over
+        what the price covers, or is not a number (CLAUDE.md #5: an unknown
+        estimate is refused, never read as within). The job then ends through
+        the worker's failure path, which releases the whole hold: the customer
+        is never charged more than the quote, and nothing is captured. What
+        the vendor still bills for a cancelled task is not ours to assume (see
+        the adapter's ``cancel``), so the estimate is recorded as a cost with
+        no USD: unknown, never 0."""
+        estimate = self.adapter.estimated_credits(task.task_id)
+        if estimate is not None and estimate <= covered:
+            return
+        status = self.adapter.cancel(task.task_id)
+        frames = self.adapter.counted_frames(task.task_id) if callable(
+            getattr(self.adapter, "counted_frames", None)) else None
+        code = E_ESTIMATE_UNREADABLE if estimate is None else E_ESTIMATE_OVER_QUOTE
+        said = "gave no estimate we could read" if estimate is None else f"estimated {estimate:g} credits"
+        cancelled = "the task was cancelled" if status in (200, 202, 204, 404) else \
+            "cancelling the task was not confirmed"
+        counted = f"{frames} frames counted" if frames is not None else "frames not counted"
+        # Ids, figures and closed words only: no key, no vendor body.
+        logger.warning("job %s: %s %s; the price covers %s (%s); %s", str(request.job_id)[:36],
+                       self.entry.provider, said, covered, counted, cancelled)
+        raise CreativeAdapterError(
+            code,
+            f"the task was stopped before it ran: the provider {said}, and this job's price covers {covered} "
+            f"({counted}); {cancelled}, and nothing was charged",
+            usage=ProviderUsage(provider=self.entry.provider, vendor_model=task.vendor_model,
+                                unit="vendor_credits_estimated", quantity=estimate, route="exact"))
 
     def poll(self, task_id: str, request: GenerationRequest, out_dir: Path) -> ProviderPoll:
         cap = request.capability

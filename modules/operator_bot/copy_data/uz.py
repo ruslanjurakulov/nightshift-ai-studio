@@ -317,6 +317,8 @@ TABLE = {
     "alert.render_stuck": "Render vazifasi #{id} qotib qoldi ({status}, {age}) — {channel}",
     "alert.creative_burst": "Oxirgi soatda {n} ta ijodiy vazifa nosoz tugadi — {code}",
     "alert.creative_stuck": "Ijodiy vazifa {id} qotib qoldi ({status}, {age})",
+    "alert.creative_estimate_over": "Ijodiy vazifa {id} toʻxtatildi: provayder bahosi narx qoplaydiganidan yuqori. Bekor qilish yuborildi, zaxira qaytarildi; narxni va provayder tarifini tekshiring",
+    "alert.creative_estimate_unreadable": "Ijodiy vazifa {id} toʻxtatildi: provayder oʻqiladigan narx bahosini bermadi. Bekor qilish yuborildi, zaxira qaytarildi; provayder API oʻzgarishini tekshiring",
     "alert.balance_low": "{provider} {metric}: kam, {left} qoldi (chegara {threshold})",
     "alert.deploy_failed": "main’dagi deploy nosoz tugadi — {sha}",
     "alert.ci_failed": "main’dagi CI {workflow} nosoz tugadi — {sha}",

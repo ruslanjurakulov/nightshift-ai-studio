@@ -312,6 +312,8 @@ TABLE = {
     "alert.render_stuck": "Задача рендера #{id} зависла ({status}, {age}) — {channel}",
     "alert.creative_burst": "За последний час сбоев творческих задач: {n} — {code}",
     "alert.creative_stuck": "Творческая задача {id} зависла ({status}, {age})",
+    "alert.creative_estimate_over": "Творческая задача {id} остановлена: оценка провайдера выше, чем покрывает цена. Отмена отправлена, резерв снят; проверьте цену и тариф провайдера",
+    "alert.creative_estimate_unreadable": "Творческая задача {id} остановлена: провайдер не дал читаемой оценки стоимости. Отмена отправлена, резерв снят; проверьте изменения API провайдера",
     "alert.balance_low": "{provider} {metric}: мало, осталось {left} (порог {threshold})",
     "alert.deploy_failed": "Деплой в main завершился сбоем — {sha}",
     "alert.ci_failed": "CI {workflow} в main завершился сбоем — {sha}",

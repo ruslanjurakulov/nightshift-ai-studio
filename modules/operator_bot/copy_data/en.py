@@ -318,6 +318,8 @@ TABLE = {
     "alert.render_stuck": "Render job #{id} is stuck ({status}, {age}) — {channel}",
     "alert.creative_burst": "{n} creative jobs failed in the last hour — {code}",
     "alert.creative_stuck": "Creative job {id} is stuck ({status}, {age})",
+    "alert.creative_estimate_over": "Creative job {id} stopped: the provider estimated more than its price covers. Cancel sent, hold released; check the price and the vendor rate",
+    "alert.creative_estimate_unreadable": "Creative job {id} stopped: the provider gave no readable cost estimate. Cancel sent, hold released; check the vendor API for a change",
     "alert.balance_low": "{provider} {metric} low: {left} left (threshold {threshold})",
     "alert.deploy_failed": "Deploy failed on main — {sha}",
     "alert.ci_failed": "CI {workflow} failed on main — {sha}",
