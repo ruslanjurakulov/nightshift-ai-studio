@@ -388,7 +388,8 @@ class AudioPlan(unittest.TestCase):
         self.assertEqual(len(nar["clips"]), 4)
         self.assertFalse(any("loudnorm" in c for c in nar["clips"]))
         self.assertEqual([c["start_s"] for c in nar["clips"]], [i * 10 + ft.NARRATION_LEAD_S for i in range(4)])
-        self.assertIn("not normalised", cut.plan["audio"]["master_loudness"])
+        # One master loudness pass on the whole mix replaced "not normalised" (S2); its targets are the plan's.
+        self.assertEqual(cut.plan["audio"]["master_loudness"]["target_lufs"], ft.MASTER_LUFS)
 
     def test_the_target_is_the_editors_own_loudness(self):
         self.assertIn(f"I={ft.NARRATION_LUFS:g}", rs.LOUDNORM_FILTER)

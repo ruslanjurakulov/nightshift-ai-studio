@@ -272,8 +272,13 @@ def test_the_gates_rollbacks_refuse_while_a_listed_row_is_on_sale(conn, sc):
 def test_the_lab_chain_puts_0238_back_after_0230(conn, sc):
     for name in ("ON_0156", "ON_0139", "ON_0125", "ON_0124"):
         seq = list(getattr(sec_db, name))
-        # 0244 (which sits on 0230's gate) is the only file after 0238.
-        assert seq[-2:] == [MIGRATION.name, sec_db.MIGRATION_0244.name], name
+        # last, or followed only by these, in this order: 0235 (Film Studio's operator preview), 0236 (clip sound, on 0235's
+        # film_price), 0239 (which lands next) and 0244 (a start's country carried). None of them changes 0238's check; only 0244
+        # replaces 0230's gate, on 0230's guarded body, and its rollback writes 0230's back (put_back_0238 takes it off for 0238).
+        after = seq[seq.index(MIGRATION.name) + 1:]
+        allowed = ["0235_film_operator_preview.sql", "0236_film_clip_sound_gate.sql", "0239_film_keyframe_refs_quote.sql",
+                   "0244_geo_claim_carry.sql"]
+        assert set(after) <= set(allowed) and after == [f for f in allowed if f in after], (name, after)
         assert seq.index(M0230.name) < seq.index(MIGRATION.name), name
     with as_superuser(conn, commit=False) as s:
         sec_db.take_off_0208(s)                                        # 0238's rollback first, then the gate goes

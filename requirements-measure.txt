@@ -1,0 +1,64 @@
+# Measurement only (S6, CLAUDE.md rule 8): the vocal-activity tools in tools/vocal_activity.py and tools/lyria_vocal_probe.py.
+# Deliberately NOT in requirements.txt: nothing in the product imports these, and a CPU torch build plus two models would
+# grow the worker image by about a gigabyte for a check that has no threshold yet. Installed only by
+# .github/workflows/lyria_vocal_probe.yml and by hand into a throwaway venv:
+#
+#     python3.11 -m venv /var/tmp/vam && /var/tmp/vam/bin/pip install --require-hashes -r requirements-measure.txt
+#
+# Every line carries the sha256 of the Linux x86_64 CPython 3.11 wheel the runner installs, computed on 2026-11-28 from
+# the files `pip download --only-binary=:all:` fetched (PyPI and download.pytorch.org/whl/cpu), and the workflow installs
+# with --require-hashes: a replaced wheel, or a dependency nobody pinned, stops the install. Another platform or Python
+# needs its own hashes.
+#
+# CPU-only torch: the default index serves the CUDA build (several GB of libraries a GitHub runner cannot use).
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.8.0+cpu \
+    --hash=sha256:cb06175284673a581dd91fb1965662ae4ecaba6e5c357aa0ea7bb8b84b6b7eeb
+# openunmix 1.3.0 declares torchaudio; the pair must be the same release as torch.
+torchaudio==2.8.0+cpu \
+    --hash=sha256:e54bd7fc9472019308097d99102df9acee22aa2451ae808d27840bc874320292
+# Open-Unmix (MIT). Only the vocals model of UMX-HQ is loaded, from its own pinned file (tools/vocal_activity.py).
+openunmix==1.3.0 \
+    --hash=sha256:e893ae22c5b8001a6107022499c2587b70d5c2e4777cc7c9ed6272b68a69534e
+tqdm==4.67.1 \
+    --hash=sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2
+numpy==2.2.6 \
+    --hash=sha256:ba10f8411898fc418a521833e014a77d3ca01c15b0c6cdcce6a0d2897e6dbbdf
+# Silero VAD (LICENSE file: MIT, read 2026-11-28). Its model file ships inside the wheel and is hash-pinned at load.
+silero-vad==6.2.1 \
+    --hash=sha256:09de93c4d874bb19c53e62a47dd38be5f163cedad2b5599583231f2a84ef79cb
+packaging==25.0 \
+    --hash=sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484
+# The ffmpeg binary that decodes the MP3 (the same package and version as constraints.txt).
+imageio-ffmpeg==0.6.0 \
+    --hash=sha256:c7e46fcec401dd990405049d2e2f475e2b397779df2519b544b8aab515195282
+# The probe's one HTTP call, and modules/capabilities (imported for the Lyria constants and the returned_singing check).
+requests==2.33.1 \
+    --hash=sha256:4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a
+# Transitive, pinned so a re-run installs the same set the numbers were measured with.
+certifi==2026.11.20 \
+    --hash=sha256:7422df25243767b9877031a2248cb14d09ddac9beee846f4cef3d5c9191d488f
+charset-normalizer==3.5.3 \
+    --hash=sha256:2a6f937e0b70133d1f826d0a253331b6fe1a4c874808cc12e16f2fb8177042f4
+idna==3.20 \
+    --hash=sha256:ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c
+urllib3==2.8.0 \
+    --hash=sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3
+filelock==4.3.2 \
+    --hash=sha256:02a8801bc6b2a80921bf3d7895c63084d53bae2a3c86783adce5ae2b89a1825b
+fsspec==2026.9.0 \
+    --hash=sha256:8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f
+Jinja2==3.1.6 \
+    --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
+MarkupSafe==3.0.4 \
+    --hash=sha256:6da83a088f8ef93b2d483a8232a4dbf4d69d3d8496b568a03c56becac43e1808
+mpmath==1.3.0 \
+    --hash=sha256:a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c
+networkx==3.6.1 \
+    --hash=sha256:d47fbf302e7d9cbbb9e2555a0d267983d2aa476bac30e90dfbe5669bd57f3762
+sympy==1.14.0 \
+    --hash=sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5
+typing_extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+# PANNs Cnn14 is NOT a dependency: its model code (MIT) is vendored in tools/vendor_panns/, so librosa, numba and
+# torchlibrosa's other imports are not installed for a 64-band log-mel front end whose weights come with the checkpoint.

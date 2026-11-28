@@ -1260,8 +1260,11 @@ def test_replaying_the_migration_twice_changes_nothing(db):
         # before 0208, on after it. 0224 sits on 0218's creative_price: off before 0218, on after it,
         # and 0228 on 0224's: off before 0224, on after it.
         # 0226 sits on 0093's api_begin, 0094's reserve_credits and request_download, 0147's oauth_ctx and 0192's bodies, and calls
-        # 0215's is_org_spender: off first of all, on again last.
-        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0244, sec_db.ROLLBACK_0232, sec_db.ROLLBACK_0231, sec_db.ROLLBACK_0226, sec_db.ROLLBACK_0228, sec_db.ROLLBACK_0224, sec_db.ROLLBACK_0219, sec_db.ROLLBACK_0218,
+        # 0215's is_org_spender: off first of all, on again last. 0235 sits on 0218's film_price and 0215's film_resume_precheck,
+        # whose rollbacks refuse it: off before them, on again after them; 0236 sits on
+        # 0235's film_price: off before it, on again after it. 0244 (a start's country carried) sits on 0226's start_workflow_run
+        # and 0215's and 0198's film bodies: off first of all.
+        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0244, sec_db.ROLLBACK_0236, sec_db.ROLLBACK_0235, sec_db.ROLLBACK_0232, sec_db.ROLLBACK_0231, sec_db.ROLLBACK_0226, sec_db.ROLLBACK_0228, sec_db.ROLLBACK_0224, sec_db.ROLLBACK_0219, sec_db.ROLLBACK_0218,
                                     sec_db.ROLLBACK_0215, sec_db.ROLLBACK_0208, sec_db.ROLLBACK_0198, sec_db.ROLLBACK_0196,
                                     sec_db.ROLLBACK_0192])
     sec_db.apply_files(db.dsn, [path, path])
@@ -1294,7 +1297,7 @@ def test_replaying_the_migration_twice_changes_nothing(db):
         sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql", sec_db.MIGRATION_0192,
                                     sec_db.MIGRATION_0196, sec_db.MIGRATION_0198, sec_db.MIGRATION_0208,
                                     sec_db.MIGRATION_0215, sec_db.MIGRATION_0218, sec_db.MIGRATION_0219, sec_db.MIGRATION_0224, sec_db.MIGRATION_0228,
-                                    sec_db.MIGRATION_0226, sec_db.MIGRATION_0231])
+                                    sec_db.MIGRATION_0226, sec_db.MIGRATION_0231, sec_db.MIGRATION_0235, sec_db.MIGRATION_0236])
         assert db.su("select to_regprocedure('public.film_adult_refusals(uuid, uuid)') is not null")[0][0] is True
 
 

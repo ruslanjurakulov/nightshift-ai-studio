@@ -51,7 +51,8 @@ import { LibraryDrawer, type DroppedAsset } from "./LibraryDrawer";
 import { Inspector, type PanelData } from "./Inspector";
 import { InlineComposer, QuickAddMenu, type QuickMenuState } from "./QuickAdd";
 import type { PanelQuote } from "@/components/studio/GeneratePanel";
-import { KIND_ICONS, Lamp, statusLine } from "./parts";
+import { FinishRing, KIND_ICONS, Lamp, statusLine } from "./parts";
+import { AnimatedGradient, BorderBeam } from "@/components/ui/effects";
 import { Board } from "./FlowBoard";
 import { CanvasLane } from "./CanvasLane";
 import { LAMP, inputOf, jobAsset, kindOpen, nodeAsset, nodeStatus, resultView, type JobReading, type NodeStatus } from "./nodeState";
@@ -1462,6 +1463,8 @@ function FirstRun({ filmStudio, phone, onRecipe, onBlank }: { filmStudio: boolea
   const closed = (tile: Tile) => (tile === "project" ? !filmStudio : closedIn(TILE_RECIPE[tile]));
   return (
     <section className="cv-empty" aria-labelledby="cv-empty-title" data-testid="canvas-first-run">
+      {/* A slow wash of the studio's colours behind the first question: decoration, says nothing, still under reduced motion. */}
+      <AnimatedGradient className="cv-empty-glow" duration={14} />
       <div className="cv-ecard">
         <h2 id="cv-empty-title">{c.ask}</h2>
         <textarea
@@ -1590,6 +1593,8 @@ function FlowView({
                       data-testid={`flow-node-${n.kind}`}
                       data-flow-id={n.id}
                     >
+                      <BorderBeam active={working} size={110} duration={3.5} width={2} />
+                      <FinishRing status={s} ready={rv === "shown" || rv === null} />
                       {/* A prompt's picture is its words. */}
                       {n.kind === "prompt" ? (
                         <span className={n.draft.trim() ? "cv-fwords" : "cv-fwords is-empty"}>{n.draft.trim() || c.node.noWords}</span>

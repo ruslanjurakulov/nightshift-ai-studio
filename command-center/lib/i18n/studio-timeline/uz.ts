@@ -205,6 +205,7 @@ export const studioTimelineUz: StudioTimelineDictionary = {
       unpriced: "Bu loyiha qatorining bugun serverda narxi yoʻq.",
       voice_language_unsupported: "Ovoz modeli bu loyiha tilida gapirmaydi. Loyihada shu tilda gapiradigan ovoz modelini tanlang.",
       voice_language_unknown: "Ovoz modeli bu loyiha tilida gapirishini tasdiqlay olmadik. Loyihada tillari koʻrsatilgan ovoz modelini tanlang.",
+      clip_sound_not_kept: "Klip ovozi hozircha tayyor filmda saqlanmaydi. Loyihada sahna ovozini oʻchiring va narxni qayta soʻrang.",
       other: "Bu loyiha qatorini baholab boʻlmadi.",
     },
     errors: {

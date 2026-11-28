@@ -126,8 +126,13 @@ def render(norm, resolver, out, timings=None, **kw):
 render.calls = 0
 
 
+def mix(norm, cut, resolver, **kw):
+    # Faked as the render is: the lab's clips are placeholder bytes with no sound to master (modules/film_mix.py).
+    return fa.film_mix.Mixed(tracks=(), loudness={"mode": "linear", "status": "linear", "measured": {}})
+
+
 def deps(org, **kw):
-    d = dict(env={fa.ENABLE_ENV: "on"}, render=render, store_file=store_file,
+    d = dict(env={fa.ENABLE_ENV: "on"}, render=render, store_file=store_file, mix=mix,
              probe=lambda p: fa.Probed(FILM_S, 1920, 1080, True), has_audio=lambda p, m: False, free_mb=lambda p: 1e9)
     d.update(kw)
     return fa.Deps(**d)

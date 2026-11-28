@@ -32,7 +32,7 @@ import psycopg
 import pytest
 
 import sec_db
-from test_sec_films_money import ASSEMBLY_RATE, JOB_MINIMUM, MODELS, SCENES, SETTINGS, Db
+from test_sec_films_money import ASSEMBLY_RATE, JOB_MINIMUM, MODELS, SCENES, SETTINGS, Db, Org
 
 KEY = "lab-only-geo-claim-key-0244-not-a-secret-xxxxxxxx"  # a lab-only key, never a real one
 REGISTRY = json.loads((sec_db.REPO / "schemas" / "model_registry.json").read_text(encoding="utf-8"))["models"]
@@ -372,6 +372,54 @@ def test_the_carry_rule_itself_for_a_synthetic_row(db):
         c.execute("update public.film_segments set deadline_at = now() - interval '1 second' where id = %s", [seg["id"]])
         assert c.execute(row, [o.org, G_KEY, o.admin, tid]).fetchone()[0] is None           # past the deadline
         c.rollback()
+
+
+EXEMPT = "00000000-0000-0000-0000-000000000001"  # the credits-exempt default organization, the operator's own
+G_PREVIEW = "google-pv-key"
+
+
+def test_an_operator_preview_google_take_carries_the_starters_claim(db):
+    """0235 lets the platform operator use a hidden operator-preview model in the operator's own organization, Film Studio included.
+    Such a Google row keeps its country lists, so its take meets the same gate: started with a UZ claim, the take carries it; with
+    none, the start is refused by name, nothing held."""
+    if not db.su("select to_regprocedure('public.film_check_model(text, text[], text, uuid)') is not null")[0][0]:
+        pytest.skip("0235 (Film Studio's operator preview) is not in this chain")
+    if not db.su("select count(*) from public.model_registry where id = %s", [G_PREVIEW])[0][0]:
+        spec = {"vendor_model": "acme-" + G_PREVIEW, "output": "image", "operator_preview": True, "terms_gate": "plan_required:scale",
+                "pricing": {"unit": "image", "provider_usd_per_unit": 0.04}, "aspect_ratios": ["16:9", "9:16", "1:1"],
+                "inputs": {"image_refs_max": 4}, **LISTS}
+        db.su("insert into public.model_registry (id, display_name, provider, adapter, capabilities, spec, credit_unit, entitlement) "
+              "values (%s, %s, 'google', 'image.acme', array['t2i', 'edit'], %s::jsonb, %s, 'any')",
+              [G_PREVIEW, G_PREVIEW, json.dumps(spec), "model_google_pv_key_image"])
+        db.su("select public.record_model_probe(%s, 'image.acme', %s, 't2i', true, null, null, 10, 100, 'security-lab')",
+              [G_PREVIEW, "acme-" + G_PREVIEW])
+        operator = str(uuid.uuid4())
+        db.su("insert into auth.users (id, email) values (%s, 'operator@carry.lab')", [operator])
+        db.su("insert into public.app_members (user_id, email, role) values (%s, 'operator@carry.lab', 'owner') "
+              "on conflict do nothing", [operator])
+        db.su("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, 'operator@carry.lab', 'owner')",
+              [EXEMPT, operator])
+        db.su("insert into public.adult_attestations (user_id, adult, terms_version, method) "
+              "values (%s, true, '2026-11-20', 'email_signup') on conflict (user_id) do nothing", [operator])
+        db.film_org_on(EXEMPT)
+    operator = db.su("select user_id::text from public.app_members where email = 'operator@carry.lab'")[0][0]
+    assert G_PREVIEW not in {r[0] for r in db.su("select id from public.sellable_models(null, 'web')")}, "on sale: proves nothing"
+    o = Org(EXEMPT, operator, operator, operator, operator)
+    o.image = db.asset(EXEMPT)
+    fid = db.film(o, settings={**SETTINGS, "keyframe_model": G_PREVIEW})
+    before = footprint(db, o)
+    out = start(db, o, fid, None)
+    assert out["ok"] is False and out["reason"] == "country_unverified" and G_PREVIEW in out["detail"], out
+    assert footprint(db, o) == before
+    seg = start(db, o, fid, "UZ")
+    assert seg["ok"] is True, seg
+    assert db.claim()["id"] == seg["id"]
+    tid = keyframe_take(db, seg["id"])
+    db.begin(tid)
+    job = take_job(db, tid)
+    assert job["ok"] is True and job["job_id"], job
+    assert db.su("select requested_model from public.creative_jobs where id = %s", [job["job_id"]])[0][0] == G_PREVIEW
+    assert carried(db, seg=seg["id"]) == [("UZ", operator)]
 
 
 # ── workflows ───────────────────────────────────────────────────────────────

@@ -32,6 +32,12 @@ Why it is shaped this way
   intermediates, a render that used ``render_backend``'s compact (second lossy generation) encode anyway, an
   output whose length, frame or sound is not what the cut says, or a review copy missing or above 50 MB: each one
   fails the assembly by name, at 0 credits, with the remedy in ``detail``. A shorter film is never rendered.
+* **The sound is mastered before the picture** (``modules/film_mix.py``, S2): the shots' own sound as one stem,
+  the editor's audio graph as a premaster, one two-pass loudness pass, and the final pass muxes that one file.
+  Every shown shot's video is probed for a sound track first (the library does not record it), so the cut can
+  refuse a shot whose sound the film needs and that has none, before anything renders. The loudness pass's
+  result (linear, or loudnorm's dynamic mode when a linear gain cannot meet the target, labelled as such) goes on
+  the master's provenance and the outcome, so the person sees it.
 * **Server-side and flagged.** Nothing here is reachable from a browser. ``NIGHTSHIFT_FILM_ASSEMBLY=on`` is a
   kill switch (default off). Which organizations is the database's single answer:
   ``film_studio_on_for(org)`` (S6's migration; the global Film Studio switch and the organization's own flag).
@@ -53,11 +59,12 @@ import shutil
 import subprocess
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Callable, List, Mapping, Optional, Sequence
+from typing import Callable, Dict, List, Mapping, Optional, Sequence
 
 from modules import editor_export
+from modules import film_mix
 from modules import film_timeline as ft
 from modules import media_library as ml
 from modules import render_backend
@@ -85,6 +92,8 @@ REVIEW_COPY_MAX_BYTES = 50 * 1000 * 1000
 #: copy of it with its proxy. Measured use was 3.8 MB/s against 9 asked (docs/FILM_ASSEMBLY_MEASUREMENT.md);
 #: the headroom is for detailed real footage and for a neighbour writing to the same volume meanwhile.
 OUTPUT_MB_PER_S = 1.0
+#: The sound's intermediates (film_mix: 32-bit float WAV, 48 kHz stereo): film_mix.WAV_MB_PER_S each, as many as exist at once
+#: (film_mix.sound_files_on_disk: two, or the stem's chunks and the stem while they are joined).
 #: At most this many ids in one PostgREST ``in.(...)`` (a 60-scene film's request line stays far under 8 KB).
 ID_CHUNK = 50
 
@@ -95,7 +104,7 @@ ENABLE_ENV = "NIGHTSHIFT_FILM_ASSEMBLY"
 REASONS = ("assembly_not_enabled", "not_running", "lease_lost", "film_unavailable", "narration_missing",
            "captions_failed", "disk_low", "asset_unavailable", "render_timed_out", "render_failed",
            "render_degraded", "output_mismatch", "store_failed", "review_copy_missing", "review_copy_too_large",
-           "assembly_crashed") + ft.REASONS
+           "assembly_crashed", "sound_mix_failed", "mix_silent") + ft.REASONS
 
 
 class AssemblyFailed(Exception):
@@ -144,6 +153,8 @@ class AssemblyOutcome:
     #: Caption words dropped as outside every scene's narration ({word, start_s, end_s}); also on the master's provenance.
     dropped_words: tuple = ()
     segment: Optional[dict] = None        # film_record_assembly's answer, or the segment as read back
+    #: The master loudness pass's report (film_mix), also on the master's provenance; None without sound.
+    loudness: Optional[dict] = None
 
 
 # ── the flag ─────────────────────────────────────────────────────────────────
@@ -451,16 +462,23 @@ class AssemblyStore:
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+#: Bumped when film_mix changes what a master sounds like for the same cut. It is in the master's id and on its provenance, so a
+#: master an earlier mix registered (before S2: no loudness pass, no clip stem) is never handed in as this mix's (Lens N1).
+MIX_FORMAT = 2
+
+
 def master_asset_id(segment_id: str, cut_sha256: str) -> str:
-    return str(uuid.uuid5(ASSET_NS, f"{ml.canonical_id(segment_id)}:{cut_sha256}"))
+    return str(uuid.uuid5(ASSET_NS, f"{ml.canonical_id(segment_id)}:{cut_sha256}:mix{MIX_FORMAT}"))
 
 
 def captions_asset_id(segment_id: str, cut_sha256: str) -> str:
     return str(uuid.uuid5(ASSET_NS, f"{ml.canonical_id(segment_id)}:{cut_sha256}:vtt"))
 
 
-def disk_needed_mb(width: int, height: int, length_s: float) -> float:
-    return length_s * (render_backend.INTERMEDIATE_MB_PER_S_1080P * (width * height) / (1920 * 1080) + OUTPUT_MB_PER_S)
+def disk_needed_mb(width: int, height: int, length_s: float, stem_shots: int = 0) -> float:
+    sound = film_mix.WAV_MB_PER_S * film_mix.sound_files_on_disk(stem_shots)
+    return length_s * (render_backend.INTERMEDIATE_MB_PER_S_1080P * (width * height) / (1920 * 1080) + OUTPUT_MB_PER_S
+                       + sound)
 
 
 def free_mb(path: Path) -> Optional[float]:
@@ -496,10 +514,13 @@ def probe_output(ffprobe: str, path: Path) -> Probed:
 
 
 def render_strict(norm, resolver, out: str, *, ffmpeg: str, workdir: str, jobs: int, timeout_s: float,
-                  timings: render_backend.RenderTimings) -> str:
+                  timings: render_backend.RenderTimings, audio: Optional[Sequence] = None) -> str:
     """The editor's render (timeline_render.render) with its timings kept, so the caller can see which segment
-    encode was used: render_backend falls back to the compact one without raising (Lens L2)."""
+    encode was used: render_backend falls back to the compact one without raising (Lens L2). ``audio``: the
+    film's mastered sound (film_mix), muxed in place of the editor's own mix of the document's tracks."""
     spec = timeline_render.to_render_spec(norm, resolver, out)
+    if audio is not None:
+        spec = replace(spec, audio_tracks=list(audio))
     return render_backend.render(spec, ffmpeg=ffmpeg, workdir=workdir, jobs=jobs, timeout_s=timeout_s, timings=timings)
 
 
@@ -535,6 +556,31 @@ def _with_versions(scenes: Sequence[Mapping], takes: Sequence[Mapping]) -> List[
                 sc["current_version"] = vs.pop()
         out.append(sc)
     return out
+
+
+def _probe_shot_sound(takes: Sequence[Mapping], by_id: Dict[str, dict], media_root: Path,
+                      probe: Callable[[Path, str], bool]) -> None:
+    """``has_audio`` on the video of every finished shot, for build_cut: the library does not record whether a file
+    carries a sound track, and a shot whose sound the film needs must be refused by name before the render rather
+    than rendered silent; the plan also says "no sound in the file" from it. A probe that cannot say, or a file not
+    on the volume, leaves it unknown and marks ``file_missing``: build_cut refuses a shown shot whose sound it needs by that
+    (asset_unavailable, re-shoot; never "unprobed", which a retry could not cure: Lens M1), and the resolver check below catches any
+    other missing file by the same name."""
+    for t in takes:
+        if t.get("kind") not in ("clip", "extend") or t.get("status") != "completed" or not t.get("result_asset_id"):
+            continue
+        aid = ml.canonical_id(t["result_asset_id"])
+        row = by_id.get(aid)
+        if row is None or row.get("kind") != "video" or "has_audio" in row:
+            continue
+        path = ml.asset_file(media_root, aid, "original")
+        if not editor_export._plain_file(path):
+            row["file_missing"] = True
+            continue
+        try:
+            row["has_audio"] = bool(probe(path, str(row.get("mime") or "")))
+        except editor_export.ExportFailed:
+            row.pop("has_audio", None)
 
 
 def store_caption(path: Path, *, asset_id: str, org_id: str, store: ml.MediaStore, media_root: Path,
@@ -593,6 +639,7 @@ class Deps:
     transcribe: Callable[[Path, Optional[str]], List[dict]] = whisper_words
     probe: Optional[Callable[[Path], Probed]] = None
     has_audio: Optional[Callable[[Path, str], bool]] = None
+    mix: Callable[..., film_mix.Mixed] = film_mix.master
     free_mb: Callable[[Path], Optional[float]] = free_mb
     env: Mapping[str, str] = field(default_factory=lambda: os.environ)
 
@@ -655,12 +702,18 @@ def assemble_segment(segment: Mapping, *, worker_id: str, media_root: Path, tool
             raise AssemblyFailed("store_failed", f"the database refused the film ({e.word}): retry the assembly") from None
         logger.info("film assembly %s: completed (%s, %s s)", seg_id, result["asset_id"], result["length_s"])
         dw = result.get("dropped_words") or []
-        detail = (f"{len(dw)} word(s) outside speech dropped from the captions: "
-                  + ", ".join(f"{w['start_s']:.2f}-{w['end_s']:.2f} s" for w in dw[:10]) + ("…" if len(dw) > 10 else "")
-                  ) if dw else None
-        return AssemblyOutcome(True, asset_id=result["asset_id"], cut_sha256=sha, recorded=True, detail=detail,
+        notes = []
+        if dw:
+            notes.append(f"{len(dw)} word(s) outside speech dropped from the captions: "
+                         + ", ".join(f"{w['start_s']:.2f}-{w['end_s']:.2f} s" for w in dw[:10])
+                         + ("…" if len(dw) > 10 else ""))
+        loud = result.get("loudness")
+        if loud and loud.get("mode") != "linear":
+            notes.append(loudness_note(loud))
+        return AssemblyOutcome(True, asset_id=result["asset_id"], cut_sha256=sha, recorded=True,
+                               detail="; ".join(notes) or None,
                                captions_asset_id=result.get("captions_asset_id"), rendered=result["rendered"],
-                               dropped_words=tuple(dw), segment=rec)
+                               dropped_words=tuple(dw), segment=rec, loudness=loud)
     except _LeaseLost:
         return _lost(store, seg_id, registered)
     except AssemblyDisabled:
@@ -734,7 +787,17 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
     if film.get("music_asset_id"):
         ids.append(film["music_asset_id"])
     rows = store.assets(org, [ml.canonical_id(i) for i in ids])
-    by_id = {ml.canonical_id(r["id"]): r for r in rows}
+    by_id = {ml.canonical_id(r["id"]): dict(r) for r in rows}
+    probe_once = deps.has_audio or (lambda path, mime: editor_export.probe_has_audio(tools.ffprobe, path, mime))
+    probed: Dict[str, bool] = {}
+
+    def probe_audio(path: Path, mime: str) -> bool:
+        # Each file once (Lens N2): the cut's probe and the resolver's ask the same question of the same file.
+        key = str(path)
+        if key not in probed:
+            probed[key] = probe_once(path, mime)
+        return probed[key]
+    _probe_shot_sound(takes, by_id, media_root, probe_audio)
 
     narration = None
     words: List[dict] = []
@@ -791,20 +854,23 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
 
     # Idempotent per cut: a crashed attempt that registered this very file hands it in instead of a new render.
     prev = {ml.canonical_id(r["id"]): r for r in store.assets(org, [aid])}.get(aid)
-    if prev is not None and prev.get("kind") == "video":
+    prev_prov = _as_dict((prev or {}).get("provenance"))
+    if prev is not None and prev.get("kind") == "video" and prev_prov.get("mix_format") == MIX_FORMAT:
         _check_master(prev, media_root, aid, cut.length_s)
-        return {"asset_id": aid, "sha": sha, "length_s": cut.length_s, "rendered": False, "captions_asset_id": vtt_id}
+        # The loudness it was recorded with goes on the outcome, as on a fresh render (never "not measured" for a measured file).
+        loud = _as_dict(prev_prov.get("sound")).get("master_loudness")
+        return {"asset_id": aid, "sha": sha, "length_s": cut.length_s, "rendered": False, "captions_asset_id": vtt_id,
+                "loudness": loud if isinstance(loud, dict) else None}
+    # A master an earlier mix registered under this id is not this mix's: it is rendered again, never handed in.
 
-    need = disk_needed_mb(width, height, cut.length_s)
+    need = disk_needed_mb(width, height, cut.length_s, len((cut.sound or {}).get("stem") or []))
     have = deps.free_mb(Path(media_root))
     if have is None or have < need:
         have_txt = "unknown" if have is None else f"{have:.0f} MB"
         raise AssemblyFailed("disk_low", f"the media volume has {have_txt} free and this film needs {need:.0f} MB to "
                              "render at full quality: free space on the media volume and retry the assembly")
 
-    resolver = editor_export.build_resolver(
-        rows, media_root,
-        has_audio=deps.has_audio or (lambda path, mime: editor_export.probe_has_audio(tools.ffprobe, path, mime)))
+    resolver = editor_export.build_resolver(rows, media_root, has_audio=probe_audio)
     missing = [a for a in tl.asset_ids(norm) if resolver(a) is None]
     if missing:
         raise AssemblyFailed("asset_unavailable", f"{len(missing)} of the film's files are not on the media volume: "
@@ -813,9 +879,19 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
     out = work / "film.mp4"
     timings = render_backend.RenderTimings()
     budget = tl.render_timeout_s(cut.length_s)
+    started = time.monotonic()
+    # The sound first, audio only, on the same budget: a premix or loudness failure costs seconds, not a render.
     try:
-        deps.render(norm, resolver, str(out), ffmpeg=tools.ffmpeg, workdir=str(work), jobs=1, timeout_s=budget,
-                    timings=timings)
+        mixed = deps.mix(norm, cut, resolver, ffmpeg=tools.ffmpeg, workdir=str(work), timeout_s=budget)
+    except film_mix.MixFailed as e:
+        raise AssemblyFailed(e.reason, e.detail) from None
+    if mixed.loudness:
+        logger.info("film assembly %s: sound mastered (%s, %d stem shot(s), %s)", seg_id, mixed.loudness["status"],
+                    mixed.stem_shots, mixed.timings)
+    try:
+        deps.render(norm, resolver, str(out), ffmpeg=tools.ffmpeg, workdir=str(work), jobs=1,
+                    timeout_s=max(1.0, budget - (time.monotonic() - started)), timings=timings,
+                    audio=mixed.tracks)
     except render_backend.RenderTimeout:
         raise AssemblyFailed("render_timed_out", f"the render ran past its {budget:.0f} s limit: retry when the "
                              "server is less busy") from None
@@ -830,7 +906,8 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
         raise AssemblyFailed("render_failed", "the render produced no file: retry the assembly")
 
     got = (deps.probe or (lambda p: probe_output(tools.ffprobe, p)))(out)
-    wants_sound = any(t.get("kind") == "A" and t.get("clips") for t in cut.doc["tracks"])
+    # A film whose only sound is its shots' own (no narration, no music) must still come out with sound.
+    wants_sound = any(t.get("kind") == "A" and t.get("clips") for t in cut.doc["tracks"]) or cut.sound is not None
     if got.duration_s is None or abs(got.duration_s - cut.length_s) > DURATION_TOLERANCE_S:
         raise AssemblyFailed("output_mismatch", f"the film rendered {got.duration_s} s of the {cut.length_s} s its "
                              "scenes add up to: retry the assembly")
@@ -852,6 +929,9 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
         # 50 listed (0038 caps provenance at 16 KB); the count is always the whole number.
         prov["captions_dropped_words"] = {"count": len(dropped_words), "words": dropped_words[:50],
                                           "reason": "outside every scene's narration: a transcription artefact"}
+    # The film's QC record a person reads (its library row, shown on the finished film), as the dropped caption words are.
+    prov["mix_format"] = MIX_FORMAT
+    prov["sound"] = sound_record(cut, mixed)
     if vtt_id:
         vtt = work / "captions.vtt"
         vtt.write_text(vtt_text(cut.srt), encoding="utf-8")
@@ -875,7 +955,33 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
                              "(deleted meanwhile?): retry the assembly")
     _check_master(row, media_root, aid, cut.length_s)
     return {"asset_id": aid, "sha": sha, "length_s": cut.length_s, "rendered": True, "captions_asset_id": vtt_id,
-            "dropped_words": dropped_words}
+            "dropped_words": dropped_words, "loudness": mixed.loudness}
+
+
+def sound_record(cut: ft.Cut, mixed: film_mix.Mixed) -> dict:
+    """What the master's provenance says about its sound: the loudness pass's report, and per scene the role and, per shot, what
+    happened to its own sound (used / muted / lip-synced / no sound in the file), whether the priced sound option was bought for it
+    (``sound_paid``: "already paid for" when it is not used) and what the probe found in the file (``file_sound``: a single-price
+    model's sound left out by default reads muted with file_sound true). Compact: 0038 caps provenance at 16 KB, and a 60-scene film
+    of 3 shots stays under 8 KB here."""
+    scenes = []
+    for p in cut.plan.get("scenes") or []:
+        shots = p.get("shots") or []
+        scenes.append({"scene": p.get("number"), "role": p.get("sound_role"), "source": p.get("sound_role_source"),
+                       "clip_sound": [s.get("clip_sound") for s in shots], "sound_paid": [bool(s.get("sound_paid")) for s in shots],
+                       "file_sound": [s.get("file_sound") for s in shots]})
+    return {"mix_format": MIX_FORMAT, "status": "mastered" if mixed.loudness else "no sound",
+            "master_loudness": mixed.loudness, "clip_stem_shots": mixed.stem_shots, "scenes": scenes}
+
+
+def loudness_note(report: Mapping) -> str:
+    """The loudness pass's result in one line for the person: what was measured, and how it was normalised."""
+    m = report.get("measured") or {}
+
+    def f(v, unit):
+        return "unknown" if v is None else f"{v:g} {unit}"
+    return (f"loudness: {report.get('status')} (measured {f(m.get('I'), 'LUFS')}, true peak {f(m.get('TP'), 'dBTP')}, "
+            f"range {f(m.get('LRA'), 'LU')})")
 
 
 def _store(fn: Callable[[], dict], what: str) -> dict:
@@ -913,5 +1019,5 @@ def _check_master(row: Mapping, media_root: Path, aid: str, length_s: float) -> 
 
 
 __all__ = ["AssemblyDisabled", "AssemblyFailed", "AssemblyOutcome", "AssemblyStore", "clients_from", "DbRefused", "DbUnavailable", "Deps", "REASONS",
-           "assemble_segment", "cached_words", "prune_word_cache", "captions_asset_id", "cues_from_words", "disk_needed_mb", "enabled",
+           "assemble_segment", "cached_words", "loudness_note", "sound_record", "MIX_FORMAT", "prune_word_cache", "captions_asset_id", "cues_from_words", "disk_needed_mb", "enabled",
            "master_asset_id", "render_strict", "store_caption", "vtt_text", "whisper_words"]

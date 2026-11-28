@@ -1,0 +1,137 @@
+name: Lyria vocal probe (S6 measurement)
+
+# COSTS MONEY: each sample is one real, paid Lyria 3.5 call, at most 5 per run (a hard cap in
+# tools/lyria_vocal_probe.py, not only here). Measurement only (CLAUDE.md rule 8): nothing here
+# changes what is sold, and no detector is wired into the product. Method and the empty results
+# table: docs/MEASUREMENT.md, "Lyria vocal activity (S6)".
+#
+# Manual only (Actions -> Lyria vocal probe -> Run workflow) and only when `confirm` is typed as
+# spend-5-lyria-calls. This repository is PUBLIC, so this log and its job summary are public:
+# the tool prints one JSON line of numbers per sample. No lyrics or structure text, no audio
+# (base64 or decoded), no prompt text from Google's side. The audio lives in a private temporary
+# directory under RUNNER_TEMP that the tool deletes; nothing is uploaded as an artifact, and only
+# the model weights and pip's downloads are cached.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type spend-5-lyria-calls to run. Each sample is one paid Lyria call."
+        required: true
+        type: string
+      count:
+        description: "How many samples (1 to 5), in the order P1 P2 P3 N1 N2"
+        required: false
+        default: "5"
+        type: choice
+        options: ["1", "2", "3", "4", "5"]
+
+permissions:
+  contents: read
+
+# One probe at a time: two at once would pay for the same calls twice.
+concurrency:
+  group: lyria-vocal-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      # Before anything is installed or fetched: a run without the exact word stops here and spends nothing.
+      # A re-run ("Re-run all jobs" / "Re-run failed jobs") replays the first attempt's inputs, so it would spend again on a
+      # word typed for another run. Only a first attempt proceeds.
+      - name: Confirm the spend
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          COUNT: ${{ inputs.count }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -eu
+          if [[ "$RUN_ATTEMPT" != "1" ]]; then
+            echo "::error::this is re-run attempt $RUN_ATTEMPT of an earlier run: start a new run and type the confirm word again; nothing was called"
+            exit 1
+          fi
+          if [[ "$CONFIRM" != "spend-5-lyria-calls" ]]; then
+            echo "::error::confirm must be exactly spend-5-lyria-calls; nothing was called"
+            exit 1
+          fi
+          if [[ ! "$COUNT" =~ ^[1-5]$ ]]; then
+            echo "::error::count must be 1 to 5; nothing was called"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-measure.txt
+
+      # The weights only (UMX-HQ vocals, PANNs Cnn14, PANNs' label CSV), each checked against its pinned sha256 on every
+      # use. The key changes when the pins in the tool change. Audio is never under this path.
+      - name: Cache the model weights
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/nightshift-vocal-measure
+          key: vocal-measure-weights-${{ hashFiles('tools/vocal_activity.py') }}
+
+      - name: Install the measurement requirements
+        run: pip install --require-hashes -r requirements-measure.txt
+
+      - name: Fetch and verify the weights
+        run: python tools/vocal_activity.py --fetch-only
+
+      # Cold load and one pass on a generated 440 Hz tone: the load time, the inference time and the peak memory of the
+      # detectors on this runner, before any paid call.
+      - name: Cold load on a synthetic tone
+        run: |
+          set -eu
+          out="$RUNNER_TEMP/tone.json"
+          python tools/vocal_activity.py --synthetic tone | tee "$out"
+          {
+            echo "### Cold load on a synthetic 440 Hz tone (no call)"
+            echo
+            echo '```json'
+            cat "$out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Every row goes to the JSONL file the moment it exists (the tool flushes and fsyncs it), and a call_started line
+      # goes there BEFORE each request: a cancelled or failed job still leaves every call it paid for.
+      - name: Probe
+        id: probe
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          COUNT: ${{ inputs.count }}
+        run: |
+          set -euo pipefail
+          python tools/lyria_vocal_probe.py --confirm spend-5-lyria-calls --count "$COUNT" \
+            --jsonl "$RUNNER_TEMP/lyria-samples.jsonl" | tee "$RUNNER_TEMP/lyria-probe.log"
+
+      # Runs whatever happened above (failure, cancel), from the file alone.
+      - name: Summary
+        if: always()
+        run: |
+          set -eu
+          out="$RUNNER_TEMP/lyria-samples.jsonl"
+          if [[ ! -s "$out" ]]; then
+            echo "### Lyria vocal probe: no paid call was started" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "### Lyria vocal probe"
+            echo
+            echo "Numbers only. No threshold is applied here: the decision rule is set from these numbers"
+            echo "(docs/MEASUREMENT.md, Lyria vocal activity (S6))."
+            echo
+            python tools/lyria_vocal_probe.py --markdown "$out"
+          } >> "$GITHUB_STEP_SUMMARY"
+          rm -f "$out" "$RUNNER_TEMP/lyria-probe.log"
