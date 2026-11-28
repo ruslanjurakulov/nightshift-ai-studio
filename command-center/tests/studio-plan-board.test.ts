@@ -17,7 +17,6 @@ import {
 
 const A = "5e550000-0000-4000-8000-0000000000e1";
 const B = "5e550000-0000-4000-8000-0000000000e2";
-const drafting = briefGraph(coerceBrief({ status: "drafting", kind: "short", voice: { mode: "off" }, music: { mode: "off" } })!);
 const scenes = (n: number) =>
   briefGraph(
     coerceBrief({
