@@ -381,6 +381,71 @@ class CreativeAdapter(Protocol):
 AdapterResolver = Callable[[str], Optional[CreativeAdapter]]
 
 
+# ── one vendor call, one cost row (0037) ────────────────────────────────────
+
+#: The price_source of a cost row for a vendor call that delivered nothing usable (failed, timed out, answered without a file, or
+#: was abandoned with nobody left to poll it). Its usd stays None and its quantity is what was ASKED for, never a measurement: the
+#: platform absorbs these calls (0171 charges the customer 0), the vendor may or may not bill them, and a spend total that left them
+#: out read as complete while it ran short.
+FAILED_CALL_PRICE_SOURCE = "failed_call"
+
+
+class VendorCall:
+    """One call that reached a vendor (a task id came back, or a synchronous answer did), so that it gets exactly one cost row
+    whatever happens next. ``recorded``: its row was written (or attempted: a record that raised is not retried as a second row,
+    and a success that reported no usage still owns the call). ``delivered``: the vendor's own usage for an answer that carried a
+    usable file, kept until the result is settled; a later failure records it, never a failed_call estimate in its place."""
+
+    __slots__ = ("recorded", "delivered")
+
+    def __init__(self, *, recorded: bool = False):
+        self.recorded = recorded
+        self.delivered: Optional[ProviderUsage] = None
+
+
+def failed_call_usage(adapter: Any, request: GenerationRequest,
+                      reported: Optional[ProviderUsage] = None) -> Optional[ProviderUsage]:
+    """The usage row for a call that delivered nothing: the adapter's own ``usage(request, 0)`` (the requested seconds, the
+    prompt's characters, 0 pictures), else what the vendor's answer reported, marked failed_call with no USD. None when neither
+    exists; nothing is made up."""
+    usage = None
+    fn = getattr(adapter, "usage", None)
+    if callable(fn):
+        try:
+            usage = fn(request, 0)
+        except Exception as e:  # noqa: BLE001 — reporting only
+            logger.warning("job %s: the failed call's usage could not be computed (%s)", request.job_id, type(e).__name__)
+            usage = None
+    if not isinstance(usage, ProviderUsage):
+        usage = reported if isinstance(reported, ProviderUsage) else None
+    if usage is None:
+        return None
+    return replace(usage, usd=None, price_source=FAILED_CALL_PRICE_SOURCE)
+
+
+def record_call_cost(sink: Any, job_id: str, usage: Optional[ProviderUsage], call: VendorCall) -> None:
+    """Write the call's one row (or nothing, if it already has one). Reporting only: it never raises and never changes the job's
+    outcome; only the exception's type is logged (its text could carry a URL or a vendor's body)."""
+    if call.recorded:
+        return
+    call.recorded = True
+    if usage is None:
+        return
+    try:
+        sink.record_cost(job_id, usage)
+    except Exception as e:  # noqa: BLE001 — reporting only
+        logger.warning("job %s: provider cost not recorded (%s)", job_id, type(e).__name__)
+
+
+def record_unfinished_call(sink: Any, adapter: Any, request: GenerationRequest, call: VendorCall,
+                           reported: Optional[ProviderUsage] = None) -> None:
+    """The call ended here without its row: the vendor's own usage if it delivered a file, else a failed_call estimate."""
+    if call.recorded:
+        return
+    usage = call.delivered if call.delivered is not None else failed_call_usage(adapter, request, reported)
+    record_call_cost(sink, request.job_id, usage, call)
+
+
 # ── the database (PostgREST, service key) ───────────────────────────────────
 
 class CreativeUnavailable(RuntimeError):
@@ -797,7 +862,9 @@ class CreativeWorker:
             adapter = self.resolve_adapter(model)
             if adapter is None:
                 raise _Refused("adapter_missing", f"this worker has no adapter for {model}")
-            return self._poll(job, request, adapter, str(task_id), beat)
+            # The worker that submitted it left without the call's row (it leaves a stored task for the next claim to poll): this
+            # claim's outcome is the call's one row.
+            return self._poll(job, request, adapter, str(task_id), beat, VendorCall())
 
         if request.capability in SOURCE_CAPABILITIES:
             # Before 'submitting': a refusal here costs nobody anything.
@@ -839,13 +906,22 @@ class CreativeWorker:
                 logger.info("job %s: %s answered %s; the database moved the job to %s", job_id, model, r.code,
                             moved["model"])
                 model, base, failovers = moved["model"], replace(base, params=moved["params"]), failovers + 1
+        # The vendor answered: from here the call has one cost row, whatever the outcome.
+        call = VendorCall()
         if not task_id or not isinstance(task_id, str):
+            record_unfinished_call(self.queue, adapter, request, call)
             raise _Refused("bad_response", "the provider accepted the job without a task id")
-        if not self.queue.advance(job_id, self.worker_id, "submitted", task_id,
-                                  {"model": model}):
+        try:
+            stored = self.queue.advance(job_id, self.worker_id, "submitted", task_id, {"model": model})
+        except BaseException:
+            # No task id stored: no later claim polls this call (the stale sweep fails the job), so its row is written here.
+            record_unfinished_call(self.queue, adapter, request, call)
+            raise
+        if not stored:
             logger.error("job %s: the task id could not be stored; leaving it", job_id)
+            record_unfinished_call(self.queue, adapter, request, call)
             return "left"
-        return self._poll(job, request, adapter, str(task_id), beat)
+        return self._poll(job, request, adapter, str(task_id), beat, call)
 
     # -- a region edit (migration 0126) ----------------------------------------
 
@@ -1182,7 +1258,20 @@ class CreativeWorker:
             raise _Refused("hold_below_quote", "the credit hold is smaller than the quote")
 
     def _poll(self, job: Mapping[str, Any], request: GenerationRequest,
-              adapter: CreativeAdapter, task_id: str, beat: _Heartbeat) -> str:
+              adapter: CreativeAdapter, task_id: str, beat: _Heartbeat, call: VendorCall) -> str:
+        """Poll the stored task to its end, and give the call its one cost row. A job that ends here (refused, failed, timed
+        out, an unexpected error) records it here; one left with its task id stored (the database out of reach, the job no longer
+        this worker's, the worker stopping) does not, because the claim that polls the same task next writes it."""
+        try:
+            return self._poll_task(job, request, adapter, task_id, beat, call)
+        except CreativeUnavailable:
+            raise
+        except Exception:
+            record_unfinished_call(self.queue, adapter, request, call)
+            raise
+
+    def _poll_task(self, job: Mapping[str, Any], request: GenerationRequest,
+                   adapter: CreativeAdapter, task_id: str, beat: _Heartbeat, call: VendorCall) -> str:
         job_id = request.job_id
         job_dir = self.out_dir / job_id
         deadline = self.clock() + self.max_poll_seconds
@@ -1205,8 +1294,9 @@ class CreativeWorker:
                     raise _Refused(code, error_text_of(e)) from None
                 result = ProviderPoll(PENDING)
             if result.state == SUCCEEDED:
-                return self._store(job, request, result)
+                return self._store(job, request, result, call)
             if result.state == FAILED:
+                record_unfinished_call(self.queue, adapter, request, call, result.usage)
                 raise _Refused(result.error_code if result.error_code and _CODE_RE.match(result.error_code)
                                else "provider_error", result.error or "the provider failed the task")
             if self.clock() >= deadline:
@@ -1214,16 +1304,19 @@ class CreativeWorker:
                                f"the provider did not finish within {int(self.max_poll_seconds)} s")
             self.sleep(self.poll_seconds)
 
-    def _store(self, job: Mapping[str, Any], request: GenerationRequest, result: ProviderPoll) -> str:
+    def _store(self, job: Mapping[str, Any], request: GenerationRequest, result: ProviderPoll, call: VendorCall) -> str:
         job_id = request.job_id
         files = [Path(f) for f in result.files]
         if not files or not all(f.is_file() and f.stat().st_size > 0 for f in files):
-            # Nothing usable came back: charging for it would be charging for nothing.
+            # Nothing usable came back: charging for it would be charging for nothing. The call is still the vendor's
+            # (a failed_call row, written by _poll).
             raise _Refused("bad_response", "the provider reported success without an output file")
+        # A file came back: the vendor's own usage is this call's row, even if storing or settling it fails below.
+        call.delivered = result.usage
         if request.capability in TEXT_CAPABILITIES:
-            return self._store_text(request, files, result)
+            return self._store_text(request, files, result, call)
         if request.capability in CAPTION_CAPABILITIES:
-            return self._store_captions(request, files, result)
+            return self._store_captions(request, files, result, call)
         if not self.queue.advance(job_id, self.worker_id, "processing"):
             logger.warning("job %s: no longer this worker's; its outputs are not recorded here", job_id)
             return "left"
@@ -1238,15 +1331,11 @@ class CreativeWorker:
         if asset_ids:
             # The library holds the outputs now; the job folder is scratch.
             shutil.rmtree(self.out_dir / job_id, ignore_errors=True)
-        if result.usage is not None:
-            try:
-                self.queue.record_cost(job_id, result.usage)
-            except Exception as e:  # reporting only; the job is settled
-                logger.warning("job %s: provider cost not recorded (%s)", job_id, type(e).__name__)
+        record_call_cost(self.queue, job_id, result.usage, call)  # reporting only; the job is settled
         status = (done or {}).get("status") if isinstance(done, dict) else None
         return f"completed:{len(described)}" if status in (None, "completed") else str(status)
 
-    def _store_text(self, request: GenerationRequest, files: Sequence[Path], result: ProviderPoll) -> str:
+    def _store_text(self, request: GenerationRequest, files: Sequence[Path], result: ProviderPoll, call: VendorCall) -> str:
         """A description: the text kept on the job row (module doc). The
         provider's file is scratch; nothing goes to the library."""
         job_id = request.job_id
@@ -1266,15 +1355,11 @@ class CreativeWorker:
             out["width"], out["height"] = request.source_size
         done = self.queue.finish(job_id, self.worker_id, True, result=out)
         shutil.rmtree(self.out_dir / job_id, ignore_errors=True)
-        if result.usage is not None:
-            try:
-                self.queue.record_cost(job_id, result.usage)
-            except Exception as e:  # reporting only; the job is settled
-                logger.warning("job %s: provider cost not recorded (%s)", job_id, type(e).__name__)
+        record_call_cost(self.queue, job_id, result.usage, call)  # reporting only; the job is settled
         status = (done or {}).get("status") if isinstance(done, dict) else None
         return "completed:text" if status in (None, "completed") else str(status)
 
-    def _store_captions(self, request: GenerationRequest, files: Sequence[Path], result: ProviderPoll) -> str:
+    def _store_captions(self, request: GenerationRequest, files: Sequence[Path], result: ProviderPoll, call: VendorCall) -> str:
         """Captions: the cleaned words kept as a caption track (module doc).
         The provider's file is scratch; nothing goes to the library."""
         import json  # noqa: PLC0415 — one call site
@@ -1311,11 +1396,7 @@ class CreativeWorker:
                "storage": "table"}
         done = self.queue.finish(job_id, self.worker_id, True, result=out)
         shutil.rmtree(self.out_dir / job_id, ignore_errors=True)
-        if result.usage is not None:
-            try:
-                self.queue.record_cost(job_id, result.usage)
-            except Exception as e:  # reporting only; the job is settled
-                logger.warning("job %s: provider cost not recorded (%s)", job_id, type(e).__name__)
+        record_call_cost(self.queue, job_id, result.usage, call)  # reporting only; the job is settled
         status = (done or {}).get("status") if isinstance(done, dict) else None
         return "completed:captions" if status in (None, "completed") else str(status)
 
