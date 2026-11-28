@@ -198,24 +198,26 @@ performance"). It changes the headline in section 0: the column beside the panel
   once per animation frame, and React Flow renders only the visible cards above 40.
 - **Position-keyed ids (a fix).** Scene cards are now `scene#<n>:keyframe|clip`, in both the brief and the film graphs. Before, they were
   keyed by scene id, and the brief's scene ids are not the film's, so every scene card re-mounted at Create.
+  The live lane (#974) finds its card by position as well: `nodeOfPiece` maps a clip piece to `scene#<n>:clip` through the lane's own
+  scene order, so its flights and "open this step" still land on the right card.
 - **Motion.** New cards enter in reading order, 50 ms apart; the stagger stops growing after 16 cards. Under reduced motion nothing
   enters. The first reading after a load or refresh enters nothing. The viewport moves, smoothly, only when the card count grows.
 - **Confirm key.** One CSS rule in `nightshift-ai-panel.css` keeps the confirm key above the composer at 1440×900 (section 1B, step 1).
 
 ### Measured after the change
 
-Measured with the same stub as section 2 (`tools/visual-qa/studio-live-plan.mjs`, 1440 dark). t = 0 is the Send click, and the Choose
+Measured with the same stub as section 2 (`tools/visual-qa/studio-live-plan.mjs`, 1440 dark), on this branch after merging main at `797edc662`. t = 0 is the Send click, and the Choose
 click for the second table.
 
 | Event | L=2 s | L=8 s |
 |---|---|---|
-| Plan column shown, "Planning…" | 0.12 s | 0.11 s |
-| First plan cards (same frame as the reply) | 2.13 s | 8.16 s |
+| Plan column shown, "Planning…" | 0.03 s | 0.05 s |
+| First plan cards (one 100 ms sample after the reply) | 2.14 s | 8.19 s |
 
 | Event (after Choose) | L=2 s | L=8 s |
 |---|---|---|
-| "Writing the storyboard…" shown | 0.05 s | 0.02 s |
-| Storyboard's scene cards on the board | 2.16 s | 8.15 s |
+| "Writing the storyboard…" shown | 0.06 s | 0.05 s |
+| Storyboard's scene cards on the board | 2.17 s | 8.18 s |
 
 - The session was read twice per run: once after the first reply, and once after the storyboard.
 - The confirm key was wholly above the composer in both runs.
