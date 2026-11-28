@@ -69,6 +69,7 @@ export const aiChatUz: AiChatDictionary = {
   checkAgain: "Qayta tekshirish",
   seePlans: "Tariflarni koʻrish",
   openProject: "Loyihani ochish",
+  openFilm: "Filmni ochish",
   confirmAge: "Yoshni tasdiqlash",
   shell: {
     greeting: "Salom, {name}",
@@ -131,6 +132,7 @@ export const aiChatUz: AiChatDictionary = {
     session_closed: "Bu reja allaqachon uzatilgan. Boshqasini boshlash uchun «Yangi suhbat»ni bosing.",
     not_a_member: "Bu ish maydonida uning Nightshift AIʼdan foydalanish uchun yetarli huquqli aʼzoligingiz yoʻq. Uni boshqaradigan kishidan sizni qoʻshishini yoki koʻproq huquq berishini soʻrang.",
     card_changed: "Savol oʻzgardi. Oxirgisiga javob bering.",
+    film_conversation: "Bu suhbat film rejasiga tegishli — davom ettirish uchun filmni oching.",
     assistant_unavailable: "Nightshift AI hozir mavjud emas. Keyinroq urinib koʻring.",
     unavailable: "Nightshift AI hozir javob bera olmadi. Qayta urinib koʻring.",
     plan_failed: "Raskadrovkani yozib boʻlmadi: {total} ta bobdan {n}-bob chiqmadi. Hech narsa narxlanmadi. Qayta urinib koʻring.",

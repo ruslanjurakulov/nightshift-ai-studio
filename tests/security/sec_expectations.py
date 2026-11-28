@@ -869,6 +869,12 @@ import sec_org_spender_0226  # noqa: E402
 
 sec_org_spender_0226.extend(TABLES, FUNCTIONS)
 
+# Migration 0230 (the country gate reads an allow-list vendor's own list, BR-S6-04): no table, no new function; 0208's trigger
+# function is replaced in place. tests/security/sec_geo_allowlist_0230.py
+import sec_geo_allowlist_0230  # noqa: E402
+
+sec_geo_allowlist_0230.extend(TABLES, FUNCTIONS)
+
 # Migration 0231 (cancel audit: a workflow step's job asks the run's rule, every cancel recorded, no browser-written cancel row):
 # tests/security/sec_cancel_audit_0231.py. No table and no function of its own.
 import sec_cancel_audit_0231  # noqa: E402

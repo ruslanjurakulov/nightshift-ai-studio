@@ -16,6 +16,7 @@ import { ProjectPanel, type LibraryCharacter } from "@/components/films/ProjectP
 import { FilmErrorNotice } from "@/components/films/FilmErrorNotice";
 import { CommandPalette, ShortcutsHelp, type CanvasCommand } from "@/components/films/CanvasOverlays";
 import { useFilmProject, type FilmProject } from "@/components/films/useFilmProject";
+import { costText, readCheck, refusalText, setsText, type PlanCheck, type Refusal } from "@/lib/brain/film-plan-view";
 
 const isField = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
@@ -75,7 +76,11 @@ export function CanvasView({
   canEdit: boolean;
 }) {
   const ids = useId();
-  const { view, draft, limits, readOnly, problems, dirty, saving, saveState, conflict, failure } = p;
+  const { view, draft, limits, readOnly: projectReadOnly, problems, dirty, saving, saveState, conflict, failure } = p;
+  // While Nightshift AI writes this project's storyboard (or another tab's plan of it is followed, or a lost press is confirmed),
+  // the canvas is read-only: an edit made meanwhile would be superseded by the plan's save, or would supersede the plan (Lens M3).
+  const [aiBusy, setAiBusy] = useState(false);
+  const readOnly = projectReadOnly || aiBusy;
   const [selected, setSelected] = useState<string | null>(draft.scenes[0]?.key ?? null);
   const [sheet, setSheet] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -184,6 +189,17 @@ export function CanvasView({
     const r = await p.save();
     if (r === "fix") setShowProblems(true);
   }, [p]);
+  // Stable across renders: the AI writer's wait for another tab's plan is a timer keyed on it. Never a reload over unsaved changes:
+  // they stay on screen, and the next save meets the project's newer version through the save's own conflict path.
+  const { reload } = p;
+  const dirtyNow = useRef(dirty);
+  useEffect(() => {
+    dirtyNow.current = dirty;
+  }, [dirty]);
+  const onAiWritten = useCallback(async () => {
+    if (dirtyNow.current) return;
+    await reload();
+  }, [reload]);
 
   const openScene = useCallback(
     (key: string) => {
@@ -238,7 +254,7 @@ export function CanvasView({
 
   // Unsaved work is never lost without a question.
   useEffect(() => {
-    if (!dirty || readOnly) return;
+    if (!dirty || projectReadOnly) return;
     const warn = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = t.canvas.leaveWarning;
@@ -246,12 +262,13 @@ export function CanvasView({
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty, readOnly, t]);
+  }, [dirty, projectReadOnly, t]);
 
   // ── the palette's commands: every action in one or two keystrokes, each disabled with its reason ─────
 
   const or = (...r: (string | false | undefined)[]) => r.find((x): x is string => typeof x === "string");
-  const ro = readOnly && t.palette.readOnly;
+  // While Nightshift AI writes, the lock's own reason: the project CAN be changed, just not until the storyboard is in (Pixel 12).
+  const ro = (projectReadOnly && t.palette.readOnly) || (aiBusy && t.canvas.ai.locked);
   const full = draft.scenes.length >= limits.max_scenes && fmt(t.problems.too_many_scenes, { n: limits.max_scenes });
   const commands: CanvasCommand[] = [
     { id: "add", label: t.canvas.addScene, keys: "N", disabledReason: or(ro, full), run: () => addScene(selIndex >= 0 ? selIndex : null) },
@@ -284,8 +301,8 @@ export function CanvasView({
 
   // ── what the screen says ───────────────────────────────────────────────────
 
-  const lamp = saveState === "saved" ? "ready" : saveState === "saving" ? "work" : saveState === "elsewhere" ? "failed" : saveState === "fix" || saveState === "unsaved" ? "warn" : undefined;
-  const stateText = readOnly ? t.canvas.readOnlyState : t.canvas.saveState[saveState];
+  const lamp = aiBusy && !projectReadOnly ? "work" : saveState === "saved" ? "ready" : saveState === "saving" ? "work" : saveState === "elsewhere" ? "failed" : saveState === "fix" || saveState === "unsaved" ? "warn" : undefined;
+  const stateText = projectReadOnly ? t.canvas.readOnlyState : aiBusy ? t.canvas.ai.locked : t.canvas.saveState[saveState];
   const sceneProblems = (i: number) => problems.filter((x) => x.scene === i);
   const filmProblems = problems.filter((x) => x.scene === undefined);
   const facts = fmt(t.canvas.facts, {
@@ -487,14 +504,18 @@ export function CanvasView({
                 )}
               </div>
             </div>
-            <div className="fs-key-reason" style={{ marginBottom: 14, maxWidth: "none" }}>
-              <button type="button" className="btn-quiet min-h-11 self-start px-4 text-sm" disabled aria-describedby={`${ids}-ai`} data-testid="fs-ai">
-                {t.canvas.aiWrite}
-              </button>
-              <span id={`${ids}-ai`} className="fs-small">
-                {t.canvas.aiWriteReason}
-              </span>
-            </div>
+            <AiWriter
+              t={t}
+              filmId={view.film.id}
+              version={view.film.version}
+              canEdit={canEdit}
+              readOnly={projectReadOnly}
+              hasScenes={view.scenes.length > 0 || draft.scenes.length > 0}
+              dirty={dirty}
+              reasonId={`${ids}-ai`}
+              onWritten={onAiWritten}
+              onBusy={setAiBusy}
+            />
 
             {draft.scenes.length === 0 ? (
               <div className="fs-board-empty" data-testid="fs-board-empty">
@@ -644,5 +665,404 @@ function Notices({
         </div>
       ) : null}
     </>
+  );
+}
+
+const FILM_PLAN_URL = "/api/brain/film";
+/** How often a plan another tab is writing (or this one before a refresh) is asked about: its lease ends within 320 s anyway. */
+export const AI_WAIT_POLL_MS = 5_000;
+/** How long a lost press is confirmed before the panel stops asking and says it cannot reach the server: 0211's lease window. */
+export const AI_CONFIRM_MAX_MS = 320_000;
+/** A GET that has not answered in this long is given up on (Pixel 11): "could not check", with Check again. */
+export const AI_CHECK_TIMEOUT_MS = 20_000;
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A response body as an object, or undefined when it is not JSON (a proxy's 502/504 HTML page, a cut connection). */
+async function jsonOf(res: Response): Promise<Record<string, unknown> | undefined> {
+  const v: unknown = await res.json().catch(() => undefined);
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+}
+
+/** GET /api/brain/film, given up on after AI_CHECK_TIMEOUT_MS: a hung request is an answer of its own ("could not check"). */
+async function getPlan(filmId: string): Promise<{ res: Response; body: Record<string, unknown> | undefined }> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), AI_CHECK_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${FILM_PLAN_URL}?film=${encodeURIComponent(filmId)}`, { cache: "no-store", signal: ctl.signal });
+    return { res, body: await jsonOf(res) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Sign in again and come back to this very project (the app's /login?next=, as LiveView and AssetDownloads do). */
+function loginHref(): string {
+  const here = typeof window === "undefined" ? "/" : window.location.pathname + window.location.search;
+  return `/login?next=${encodeURIComponent(here || "/")}`;
+}
+
+/**
+ * "Write the storyboard with AI" (Nightshift AI's plan step for this project, app/api/brain/film). The button is on only when the
+ * server said, just now, that the plan can run, and it says beforehand what the press uses; otherwise it is off with the reason and
+ * its remedy. It never shows a price: the project's own Start quotes.
+ *
+ * Off without asking the server: a viewer, a project that can no longer be edited, a project that has scenes (saved or not: a
+ * person's scenes are never replaced), and unsaved changes (the plan is written for the project as saved). A plan running in
+ * another tab, or before a refresh, is followed through its lease until it ends, and the project is read again when it wrote.
+ *
+ * While it writes, follows another tab's plan, or confirms a press whose answer was lost, `onBusy(true)`: the canvas is read-only
+ * then. The project is never reloaded over unsaved changes. A press whose answer was lost is never sent again by itself: the plan's
+ * own state is asked, for at most AI_CONFIRM_MAX_MS, then the panel says it cannot reach the server, with Check again.
+ *
+ * Screen readers (Pixel 1, 2): the button is never `disabled` (it would drop focus on every state change), only aria-disabled, and
+ * a press while it is off does nothing; Check again and Reload hand focus back to it. Two live regions exist from the first paint,
+ * one `status` (the start, once, and success) and one `alert` (every failure, the server's refusals before a press included); only
+ * their text changes. The ticking timer is in neither. A failure is said once, in the alert, never again in the reason under the
+ * button.
+ */
+export function AiWriter({
+  t,
+  filmId,
+  version,
+  canEdit,
+  readOnly,
+  hasScenes,
+  dirty,
+  reasonId,
+  onWritten,
+  onBusy,
+}: {
+  t: FilmStudioDictionary;
+  filmId: string;
+  version: number;
+  canEdit: boolean;
+  readOnly: boolean;
+  hasScenes: boolean;
+  dirty: boolean;
+  reasonId: string;
+  onWritten: () => Promise<void>;
+  onBusy?: (busy: boolean) => void;
+}) {
+  const w = t.canvas.ai;
+  const ids = useId();
+  const statusId = `${ids}-status`;
+  const alertId = `${ids}-alert`;
+  const [check, setCheck] = useState<PlanCheck | { kind: "checking" }>({ kind: "checking" });
+  const [writingSince, setWritingSince] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  // What the status region says (the start, once; success; confirming) and what the alert region says (one failure at a time).
+  const [status, setStatus] = useState("");
+  const [failure, setFailure] = useState<Refusal | null>(null);
+  // A refusal no new press can change (the project's text, a cap, a region): kept until the project itself changes.
+  const [final, setFinal] = useState<{ r: Refusal; version: number } | null>(null);
+  // A press whose answer never arrived: the round of asking GET what became of it (0 = not confirming).
+  const [confirming, setConfirming] = useState(0);
+  const confirmSince = useRef(0);
+  // Confirming gave up: the server could not be reached for AI_CONFIRM_MAX_MS. Still busy: what happened is not known.
+  const [lost, setLost] = useState(false);
+  // The project changed while the plan wrote: the person reloads it when they choose, never by itself.
+  const [offerReload, setOfferReload] = useState(false);
+  // The empty conversation a press made but could not mark (the 503's retry_session): sent with the next press, kept nowhere else.
+  const [retrySession, setRetrySession] = useState<string | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const mounted = useRef(true);
+  const busy = useRef(false);
+  // Only the latest GET sets what the button says: an older answer that arrives late is dropped.
+  const seq = useRef(0);
+  const dirtyRef = useRef(dirty);
+  const hasScenesRef = useRef(hasScenes);
+  useEffect(() => {
+    dirtyRef.current = dirty;
+    hasScenesRef.current = hasScenes;
+  }, [dirty, hasScenes]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const local = !canEdit ? w.viewer : readOnly ? w.readOnly : hasScenes ? w.hasScenes : dirty ? w.dirty : null;
+
+  /** The storyboard is in the project: read it again, unless there are unsaved changes on screen, which are never reloaded over. */
+  const written = useCallback(
+    async (text: string) => {
+      setFailure(null);
+      if (dirtyRef.current) {
+        setStatus(w.writtenKept);
+        return;
+      }
+      setStatus(text);
+      await onWritten();
+    },
+    [onWritten, w],
+  );
+
+  /** GET: what the press would do now. `quiet` keeps what is on screen while it asks (the wait for another tab's plan). */
+  const runCheck = useCallback(
+    async (quiet = false): Promise<Record<string, unknown> | null> => {
+      const n = ++seq.current;
+      if (!quiet) setCheck({ kind: "checking" });
+      try {
+        const { res, body } = await getPlan(filmId);
+        if (mounted.current && n === seq.current) setCheck(readCheck(w, res.status, body ?? {}));
+        return body ?? {};
+      } catch (e) {
+        // A request given up on (AI_CHECK_TIMEOUT_MS) could not check; one that never left could not reach the server.
+        const timedOut = e instanceof DOMException && e.name === "AbortError";
+        if (mounted.current && n === seq.current) setCheck({ kind: "blocked", text: timedOut ? w.unavailable : w.network, retry: true });
+        return null;
+      }
+    },
+    [filmId, w],
+  );
+
+  // Asked whenever a press could be possible: on open, after a press ends, and when the project is empty, saved and editable again.
+  useEffect(() => {
+    if (local || writingSince !== null || confirming || lost) return;
+    void runCheck();
+  }, [local, version, writingSince, confirming, lost, runCheck]);
+
+  // Another tab's plan (or this one's before a refresh): asked again until its lease ends; the project is read again when it wrote.
+  useEffect(() => {
+    if (check.kind !== "running" || writingSince !== null || confirming || lost) return;
+    const id = window.setTimeout(async () => {
+      const body = await runCheck(true);
+      const plan = body?.plan as { state?: unknown } | undefined;
+      if (mounted.current && (body?.error === "film_has_scenes" || plan?.state === "done")) {
+        // The other tab's plan wrote: success, not a refusal for the alert. Off until the project is read again.
+        setCheck({ kind: "checking" });
+        await written(w.doneConfirmed);
+      }
+    }, AI_WAIT_POLL_MS);
+    return () => window.clearTimeout(id);
+  }, [check, writingSince, confirming, lost, runCheck, written, w]);
+
+  /**
+   * One question about a press whose answer was lost. "unreachable": no answer that says anything (offline, the proxy again, a
+   * hung GET); "running": the plan is still being written; "settled": the answer is known and has been said.
+   */
+  const probe = useCallback(async (): Promise<"unreachable" | "running" | "settled"> => {
+    let got: { res: Response; body: Record<string, unknown> | undefined } | null = null;
+    try {
+      got = await getPlan(filmId);
+    } catch {
+      got = null;
+    }
+    if (!mounted.current) return "settled";
+    const res = got?.res;
+    const body = got?.body;
+    const plan = body?.plan as { state?: unknown } | undefined;
+    if (!res || !body || (res.status >= 500 && typeof body.error !== "string")) return "unreachable";
+    if (res.status === 200 && plan?.state === "running") return "running";
+    setConfirming(0);
+    setLost(false);
+    seq.current += 1;
+    if (body.error === "film_has_scenes" || plan?.state === "done") {
+      // Written: success, not a refusal to put in the alert. Off until the project is read again (it has scenes then).
+      setCheck({ kind: "checking" });
+      if (!hasScenesRef.current) await written(w.doneConfirmed);
+      else setStatus("");
+      return "settled";
+    }
+    // Failed, or ready again (the press never began, or ended without writing): a failure, and Retry is the person's.
+    setCheck(readCheck(w, res.status, body));
+    const r: Refusal = res.status === 200 ? { text: w.planFailed, retry: true } : refusalText(w, res.status, body);
+    setStatus("");
+    setFailure(r);
+    if (!r.retry) setFinal({ r, version });
+    return "settled";
+  }, [filmId, version, w, written]);
+
+  // A lost press, asked every AI_WAIT_POLL_MS: running asks again; unreachable asks again until AI_CONFIRM_MAX_MS, then stops.
+  useEffect(() => {
+    if (!confirming) return;
+    const id = window.setTimeout(async () => {
+      const got = await probe();
+      if (!mounted.current || got === "settled") return;
+      if (got === "unreachable" && Date.now() - confirmSince.current >= AI_CONFIRM_MAX_MS) {
+        setConfirming(0);
+        setLost(true);
+        setStatus("");
+        setFailure({ text: w.lost, retry: true });
+        return;
+      }
+      setConfirming((n) => n + 1);
+    }, AI_WAIT_POLL_MS);
+    return () => window.clearTimeout(id);
+  }, [confirming, probe, w]);
+
+  useEffect(() => {
+    if (writingSince === null) return;
+    const id = window.setInterval(() => setElapsed(Math.round((Date.now() - writingSince) / 1000)), 1000);
+    return () => window.clearInterval(id);
+  }, [writingSince]);
+
+  const writing = writingSince !== null;
+  const waiting = check.kind === "running";
+  const isConfirming = confirming > 0;
+  const progress = writing || waiting || isConfirming;
+  useEffect(() => {
+    onBusy?.(progress || lost);
+  }, [onBusy, progress, lost]);
+  useEffect(() => () => onBusy?.(false), [onBusy]);
+
+  const finalR = final && final.version === version ? final.r : null;
+  // A check's refusal is not said over a reason found here (the project has scenes now, unsaved changes): that one is newer.
+  const blockedR: Refusal | null = check.kind === "blocked" && !local ? check : null;
+  const ready = check.kind === "ready" ? check.ready : null;
+  const enabled = !progress && !lost && !local && !finalR && !blockedR && check.kind !== "checking" && !!ready;
+
+  const press = async () => {
+    // Never `disabled` (focus would be lost), so an off button's press is ignored here.
+    if (busy.current || !enabled) return;
+    busy.current = true;
+    setFailure(null);
+    setOfferReload(false);
+    setElapsed(0);
+    // Said once, when it starts: the timer under the button is not announced.
+    setStatus(w.writing);
+    setWritingSince(Date.now());
+    try {
+      let res: Response | null = null;
+      try {
+        res = await fetch(FILM_PLAN_URL, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(retrySession ? { film: filmId, session: retrySession } : { film: filmId }),
+        });
+      } catch {
+        res = null;
+      }
+      const body = res ? await jsonOf(res) : undefined;
+      if (!mounted.current) return;
+      // The answer was lost (the connection, or a proxy's own error page): the plan may be running or done. Asked, never re-sent.
+      if (!res || !body || (res.status >= 500 && typeof body.error !== "string")) {
+        setStatus(w.confirming);
+        confirmSince.current = Date.now();
+        setConfirming(1);
+        return;
+      }
+      if (typeof body.retry_session === "string" && SESSION_ID.test(body.retry_session)) setRetrySession(body.retry_session);
+      else if (res.ok) setRetrySession(null);
+      if (res.ok && typeof body.scenes === "number") {
+        // A length the server did not send is not drawn as 0:00 (rule 5).
+        const text = typeof body.seconds === "number" ? fmt(w.done, { n: body.scenes, length: clock(body.seconds) }) : fmt(w.doneNoLength, { n: body.scenes });
+        await written(text);
+      } else if (body.error === "plan_running" || body.error === "duplicate_request") {
+        setStatus("");
+        setCheck({ kind: "running", expiresAt: typeof body.expires_at === "string" ? body.expires_at : null });
+      } else if (body.error === "model_unavailable") {
+        // The model's state is GET's to say (Pixel 19): the check that follows the press says it, with the button agreeing.
+        setStatus("");
+      } else {
+        const r = refusalText(w, res.status, body, "post");
+        setStatus("");
+        setFailure(r);
+        if (!r.retry) setFinal({ r, version });
+        // The project changed while the plan wrote: nothing was saved over it. Reloading is the person's choice (their edits).
+        if (body.error === "plan_superseded") setOfferReload(true);
+        // Another plan of this project finished first: its scenes are read, unless unsaved changes are on screen.
+        if (body.error === "film_has_scenes" && !hasScenesRef.current && !dirtyRef.current) await onWritten();
+      }
+    } finally {
+      busy.current = false;
+      if (mounted.current) setWritingSince(null);
+    }
+  };
+
+  /** Check again: asks GET now (a lost press's plan state, or what a press would do), and hands focus back to the button. */
+  const checkAgain = async () => {
+    button.current?.focus();
+    if (lost) {
+      confirmSince.current = Date.now();
+      const got = await probe();
+      if (mounted.current && got === "running") {
+        setLost(false);
+        setFailure(null);
+        setStatus(w.confirming);
+        setConfirming(1);
+      }
+      return;
+    }
+    setFinal(null);
+    setFailure(null);
+    await runCheck();
+  };
+
+  // The one failure said now, in the alert region only: the press's, unless it was retryable and the check since says something
+  // newer (the model went down meanwhile); else the server's refusal before a press.
+  const alertR = failure && !(failure.retry && blockedR) ? failure : finalR ?? blockedR ?? failure;
+  const extras = ready ? [costText(w, ready), ...setsText(w, ready), ready.lastFailed && !alertR ? w.lastFailed : ""].filter(Boolean).join(" ") : "";
+  // Under the button: why it is off when that is not a failure, what it uses, or the timer. Never a failure's or a status's words.
+  const reasonText = writing ? fmt(w.writingFor, { time: clock(elapsed) })
+    : isConfirming || lost ? ""
+    : waiting ? w.writingElsewhere
+    : local ?? (alertR ? "" : check.kind === "checking" ? w.checking : extras);
+  // Check again where it can change something: the server could not be reached, a check that failed, or a cap that lifts in time.
+  const showCheck = !progress && !local && (lost || (!!alertR && (!!alertR.check || (alertR === blockedR && alertR.retry))));
+  const label = failure && failure.retry && enabled ? w.retry : t.canvas.aiWrite;
+
+  return (
+    <div className="fs-key-reason" style={{ marginBottom: 14, maxWidth: "none" }} data-testid="fs-ai-panel">
+      <button
+        ref={button}
+        type="button"
+        className="btn-quiet min-h-11 self-start px-4 text-sm"
+        aria-disabled={!enabled}
+        aria-describedby={`${reasonId} ${statusId} ${alertId}`}
+        aria-busy={progress || undefined}
+        onClick={() => void press()}
+        data-testid="fs-ai"
+      >
+        {label}
+      </button>
+      <span id={reasonId} className="fs-small" data-testid="fs-ai-reason">
+        {reasonText}
+      </span>
+      {progress && (
+        <div className="fs-ai-track" role="progressbar" aria-label={writing ? w.writing : isConfirming ? w.confirming : w.writingElsewhere} data-testid="fs-ai-progress">
+          <span className="lp-progress" />
+        </div>
+      )}
+      <p id={statusId} className="fs-small" role="status" data-testid="fs-ai-status">
+        {status}
+      </p>
+      <div id={alertId} role="alert" data-testid="fs-ai-alert">
+        {alertR && (
+          <div className="fs-notice" data-tone="fail">
+            <span className="fs-lamp" data-s="failed" aria-hidden="true" />
+            <div className="flex min-w-0 flex-col gap-2">
+              <p data-testid="fs-ai-alert-text">{alertR.text}</p>
+              {alertR.signIn && (
+                <a className="btn-quiet inline-flex min-h-11 items-center self-start px-4 text-sm" href={loginHref()} data-testid="fs-ai-signin">
+                  {w.signIn}
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      {showCheck && (
+        <button type="button" className="btn-quiet min-h-11 self-start px-4 text-sm" onClick={() => void checkAgain()} data-testid="fs-ai-check">
+          {w.checkAgain}
+        </button>
+      )}
+      {offerReload && !dirty && !progress && (
+        <button
+          type="button"
+          className="btn-quiet min-h-11 self-start px-4 text-sm"
+          onClick={() => {
+            button.current?.focus();
+            setOfferReload(false);
+            void onWritten();
+          }}
+          data-testid="fs-ai-reload"
+        >
+          {w.reload}
+        </button>
+      )}
+    </div>
   );
 }

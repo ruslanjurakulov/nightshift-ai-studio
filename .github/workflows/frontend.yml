@@ -113,3 +113,17 @@ jobs:
       - name: Public bundles carry no app dictionary
         if: ${{ !cancelled() }}
         run: node scripts/public-bundle-check.mjs
+
+      # The showcase manifest (lib/site/showcase.json) names each sample's vendor, vendor model, cost and maker's credit, and it
+      # shipped whole in a chunk loaded on /, /login, /signup and the Studio. lib/site/showcase.ts is server-only now and client
+      # code reads the generated slice; this checks the built chunks for the manifest's private fields.
+      - name: Browser bundles carry no showcase vendor data
+        if: ${{ !cancelled() }}
+        run: node scripts/showcase-bundle-check.mjs
+
+      # Vendor billing URLs, a vendor's credit price and our routing map lived in lib/billing.ts and reached the chunk every
+      # public page loads through one pure helper import. Every file under .next/static is scanned, the signed-in operator
+      # chunks too: a static chunk is downloadable by anyone, signed in or not.
+      - name: Static chunks carry no vendor billing data
+        if: ${{ !cancelled() }}
+        run: node scripts/billing-bundle-check.mjs

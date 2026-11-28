@@ -18,9 +18,20 @@
  * export and the registry keep agreeing; no public surface renders it, and tests/site-showcase.test.tsx pins that.
  *
  * Kept free of file imports (those are components/site/showcase-assets.ts), so the tests and the footer can read it.
+ *
+ * SERVER ONLY. An entry carries the job's vendor, the vendor's own model, the cost, the maker's credit and the file's sha256, and
+ * the owner's rule is that vendor names and vendor costs never reach the public site. While client code imported this module, the
+ * whole data file rode in a chunk loaded on /, /login, /signup and the Studio. Client code reads the generated slice instead
+ * (components/site/showcase-assets.ts SHOWCASE_CARDS, lib/site/showcase-card.ts ShowcaseCard); a type-only import of this module is erased
+ * and is fine anywhere. scripts/showcase-bundle-check.mjs checks the built chunks.
  */
+import "server-only";
 import data from "@/lib/site/showcase.json";
 import type { Locale } from "@/lib/i18n/core";
+
+// The card shape and its copier live in a client-safe module (client code needs both); re-exported so server code and tests
+// keep one import.
+export { showcaseCard, type ShowcaseCard } from "@/lib/site/showcase-card";
 
 /** Where the job's input picture came from. A stock photograph or someone's upload is never one (the export refuses it). */
 export type ShowcaseInput =
