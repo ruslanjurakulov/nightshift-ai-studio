@@ -1,10 +1,37 @@
 "use client";
 
-import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
+import {
+  Background,
+  BackgroundVariant,
+  Controls,
+  ReactFlow,
+  ReactFlowProvider,
+  type Connection,
+  type Edge,
+  type EdgeChange,
+  type FinalConnectionState,
+  type NodeChange,
+} from "@xyflow/react";
+import "@xyflow/react/dist/base.css";
+import { fmt } from "@/lib/i18n/core";
 import { createCampaignWorkflow, inspectWorkflow, NODE_TYPES, type AgentWorkflow, type NodeType } from "@/lib/agent-graph";
-import { addNode, checkConnection, removeNode, PORTS, clampPosition, type NodePosition } from "@/lib/agent-graph-editor";
-import { canvasEdges, defaultNodePosition, exportWorkflowDraft, importWorkflowDraft } from "@/lib/agent-draft";
+import { addNode, checkConnection, removeNode, clampPosition, type NodePosition } from "@/lib/agent-graph-editor";
+import { exportWorkflowDraft, importWorkflowDraft } from "@/lib/agent-draft";
+import {
+  applyConnect,
+  dropPosition,
+  nodePosition,
+  readEdgeChanges,
+  readNodeChanges,
+  removeEdges,
+  toFlowEdges,
+  toFlowNodes,
+  type AgentFlowEdge,
+  type AgentFlowNode,
+} from "@/lib/agent-flow";
+import { AgentCanvasContext, AgentEdge, AgentNode, type AgentBuilderCopy, type AgentCanvasActions } from "./AgentNode";
 import { planCreativeRequest, type CreativeIntent } from "@/lib/agent-planner";
 import type { DirectProvider, ProviderPlan } from "@/lib/agent-providers";
 import styles from "./agent-builder.module.css";
@@ -13,7 +40,24 @@ import styles from "./agent-builder.module.css";
  *  each provider's licensing and pricing state, which no static chunk may carry). */
 export type ProviderPreviews = Record<DirectProvider, ProviderPlan | { error: string }>;
 
-export function AgentBuilder({ providerPreviews }: { providerPreviews: ProviderPreviews }) {
+const FLOW_NODE_TYPES = { agent: AgentNode };
+const FLOW_EDGE_TYPES = { agent: AgentEdge };
+/** The world the old SVG canvas drew (2470 × 1850): clampPosition keeps a card's corner inside 2200 × 1600 of it. */
+const WORLD: [[number, number], [number, number]] = [[0, 0], [2470, 1850]];
+const FIT = { padding: 0.12, maxZoom: 1 };
+
+/** Turn a set of ids on or off; the same object back when nothing changed, so React keeps its render. */
+function toggled(prev: ReadonlySet<string>, changes: Record<string, boolean>): ReadonlySet<string> {
+  const next = new Set(prev);
+  for (const [id, on] of Object.entries(changes)) if (on) next.add(id); else next.delete(id);
+  return next.size === prev.size && [...next].every(id => prev.has(id)) ? prev : next;
+}
+
+export function AgentBuilder(props: { providerPreviews: ProviderPreviews; copy: AgentBuilderCopy }) {
+  return <ReactFlowProvider><AgentBuilderInner {...props} /></ReactFlowProvider>;
+}
+
+function AgentBuilderInner({ providerPreviews, copy }: { providerPreviews: ProviderPreviews; copy: AgentBuilderCopy }) {
   const [graph, setGraph] = useState<AgentWorkflow>(createCampaignWorkflow);
   const [source, setSource] = useState("brand");
   const [target, setTarget] = useState("prompt");
@@ -29,17 +73,28 @@ export function AgentBuilder({ providerPreviews }: { providerPreviews: ProviderP
   const [remoteDrafts, setRemoteDrafts] = useState<Array<{id:string;name:string;current_version:number}>>([]);
   const [chosenDraft, setChosenDraft] = useState("");
   const [cloudBusy, setCloudBusy] = useState(false);
-  const defaultPosition = defaultNodePosition;
+  // React Flow's view of the draft: where a card is mid-drag (saved on drop), what is selected, and its measured size.
+  // None of it is the draft: graph and positions are, and everything below writes back through lib/agent-graph-editor.
+  const [dragging, setDragging] = useState<Record<string, NodePosition>>({});
+  const [selectedNodes, setSelectedNodes] = useState<ReadonlySet<string>>(() => new Set());
+  const [selectedEdges, setSelectedEdges] = useState<ReadonlySet<string>>(() => new Set());
+  const [measured, setMeasured] = useState<Record<string, { width: number; height: number }>>({});
+  // A new draft (import, cloud load, planner, example) remounts the flow so fitView frames it, not the last one's view.
+  const [layoutKey, setLayoutKey] = useState(0);
+  const relayout = () => { setDragging({}); setSelectedNodes(new Set()); setSelectedEdges(new Set()); setMeasured({}); setLayoutKey(k => k + 1); };
+  const flowArea = useRef<HTMLDivElement>(null);
   const moveNode = (id: string, position: NodePosition) => setPositions(prev => ({ ...prev, [id]: clampPosition(position.x, position.y) }));
   const report = useMemo(() => inspectWorkflow(graph), [graph]);
   const nodeMap = useMemo(() => new Map(graph.nodes.map(n => [n.id, n])), [graph]);
-  const paths = useMemo(() => canvasEdges(graph, positions), [graph, positions]);
+  const flowNodes = useMemo(() => toFlowNodes(graph, positions, { dragging, selected: selectedNodes, measured }), [graph, positions, dragging, selectedNodes, measured]);
+  const flowEdges = useMemo(() => toFlowEdges(graph, selectedEdges), [graph, selectedEdges]);
   const providerPreview = providerPreviews[provider];
   const generatePlan = () => {
     const planned = planCreativeRequest(requestText, planType);
     if (!planned.ok) { setNotice("Planner refused request: " + planned.error); return; }
     setGraph(planned.workflow);
     setPositions({});
+    relayout();
     setSavedId(null);
     setSavedVersion(null);
     setSource("");
@@ -54,9 +109,78 @@ export function AgentBuilder({ providerPreviews }: { providerPreviews: ProviderP
   };
   const remove = (id: string) => {
     setGraph(prev => removeNode(prev, id));
-    setPositions(prev => { const next = { ...prev }; delete next[id]; return next; });
+    setPositions(prev => dropPosition(prev, id));
+    setDragging(prev => dropPosition(prev, id));
     if (source === id) setSource("");
     if (target === id) setTarget("");
+  };
+  const disconnect = (ids: ReadonlySet<string>) => {
+    setGraph(prev => removeEdges(prev, ids));
+    setSelectedEdges(prev => toggled(prev, Object.fromEntries([...ids].map(id => [id, false]))));
+  };
+  // The drag only colours the target; checkConnection decides by the two nodes' types, never by a handle id.
+  const isValidConnection = useCallback((conn: Connection | Edge) => checkConnection(graph, conn.source, conn.target).ok, [graph]);
+  const onConnect = (conn: Connection) => {
+    // Checked again on the drop (lib/agent-flow applyConnect): isValidConnection is advice to the pointer, not a gate.
+    const outcome = applyConnect(graph, conn.source, conn.target);
+    if (!outcome.ok) { setNotice(outcome.reason); return; }
+    setGraph(prev => applyConnect(prev, conn.source, conn.target).graph);
+    setNotice("Connection added.");
+  };
+  // A drop React Flow refused never reaches onConnect: say why here, from the same check, so a pointer gets the reason too.
+  const onConnectEnd = (_: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+    if (state.isValid !== false || !state.fromNode || !state.toNode) return;
+    const [from, to] = state.fromHandle?.type === "target" ? [state.toNode.id, state.fromNode.id] : [state.fromNode.id, state.toNode.id];
+    // An allowed pair refused anyway was dropped output-on-output or input-on-input: nothing to explain by type.
+    const outcome = checkConnection(graph, from, to);
+    if (!outcome.ok) setNotice(outcome.reason);
+  };
+  const onNodesChange = (changes: NodeChange<AgentFlowNode>[]) => {
+    const out = readNodeChanges(graph, changes);
+    const persisted = Object.keys(out.persist);
+    if (Object.keys(out.dragging).length) setDragging(prev => ({ ...prev, ...out.dragging }));
+    if (persisted.length) {
+      setPositions(prev => ({ ...prev, ...out.persist }));
+      setDragging(prev => persisted.reduce(dropPosition, prev));
+    }
+    for (const id of out.remove) remove(id);
+    if (Object.keys(out.select).length) setSelectedNodes(prev => toggled(prev, out.select));
+    if (Object.keys(out.measured).length) setMeasured(prev => ({ ...prev, ...out.measured }));
+  };
+  const onNodeDragStop = (_: unknown, _node: AgentFlowNode, moved: AgentFlowNode[]) => {
+    // The drop is what is kept: the same clamp as every other move, whatever the pointer reported.
+    const ids = new Set(graph.nodes.map(n => n.id));
+    const kept = Object.fromEntries(moved.filter(n => ids.has(n.id)).map(n => [n.id, clampPosition(n.position.x, n.position.y)]));
+    if (!Object.keys(kept).length) return;
+    setPositions(prev => ({ ...prev, ...kept }));
+    setDragging(prev => Object.keys(kept).reduce(dropPosition, prev));
+  };
+  const onEdgesChange = (changes: EdgeChange<AgentFlowEdge>[]) => {
+    const out = readEdgeChanges(graph, changes);
+    if (out.remove.size) disconnect(out.remove);
+    if (Object.keys(out.select).length) setSelectedEdges(prev => toggled(prev, out.select));
+  };
+  // React Flow listens for Delete / Backspace on the whole document. A node selected a minute ago must not vanish because
+  // Backspace was pressed on a sidebar button: a delete is honoured only while focus is on the canvas itself.
+  const onBeforeDelete = async () => !!flowArea.current && flowArea.current.contains(document.activeElement);
+  const actions: AgentCanvasActions = {
+    copy,
+    onRename: (id, label) => setGraph(prev => ({ ...prev, nodes: prev.nodes.map(x => x.id === id ? { ...x, label } : x) })),
+    onRemove: remove,
+    onNudge: (id, index, dx, dy) => { const at = nodePosition(positions, id, index); moveNode(id, { x: at.x + dx, y: at.y + dy }); },
+    onDisconnect: id => disconnect(new Set([id])),
+  };
+  const ariaLabelConfig = {
+    "node.a11yDescription.default": copy.a11yNode,
+    "node.a11yDescription.keyboardDisabled": copy.a11yNode,
+    "node.a11yDescription.ariaLiveMessage": ({ direction, x, y }: { direction: string; x: number; y: number }) =>
+      fmt(copy.a11yMoved, { dir: direction in copy.dir ? copy.dir[direction as keyof AgentBuilderCopy["dir"]] : direction, x: Math.round(x), y: Math.round(y) }),
+    "edge.a11yDescription.default": copy.a11yEdge,
+    "controls.ariaLabel": copy.controls,
+    "controls.zoomIn.ariaLabel": copy.zoomIn,
+    "controls.zoomOut.ariaLabel": copy.zoomOut,
+    "controls.fitView.ariaLabel": copy.fitView,
+    "handle.ariaLabel": copy.handle,
   };
   const exportPlan = () => {
     if (!report.ok) { setNotice("Fix graph validation errors before exporting."); return; }
@@ -106,6 +230,7 @@ export function AgentBuilder({ providerPreviews }: { providerPreviews: ProviderP
       const imported = importWorkflowDraft(JSON.stringify(out.revision.document));
       setGraph(imported.workflow);
       setPositions(imported.positions);
+      relayout();
       setSource(""); setTarget("");
       setSavedId(out.draft.id);
       setSavedVersion(out.draft.current_version);
@@ -140,6 +265,7 @@ export function AgentBuilder({ providerPreviews }: { providerPreviews: ProviderP
       const draft = importWorkflowDraft(await file.text());
       setGraph(draft.workflow);
       setPositions(draft.positions);
+      relayout();
       setSavedId(null);
       setSavedVersion(null);
       setSource("");
@@ -187,7 +313,7 @@ export function AgentBuilder({ providerPreviews }: { providerPreviews: ProviderP
         <label>To<select value={target} onChange={e => setTarget(e.target.value)}><option value="">Choose target</option>{graph.nodes.map(n => <option key={n.id} value={n.id}>{n.label} [{n.id}]</option>)}</select></label>
         <button type="button" onClick={addConnection}>Connect selected nodes</button>
         <div className={styles.sectionTitle}>04 / Plan</div>
-        <button type="button" className={styles.secondary} onClick={() => {setGraph(createCampaignWorkflow());setPositions({});setSavedId(null);setSavedVersion(null);setNotice("Example restored.");}}>Restore example</button>
+        <button type="button" className={styles.secondary} onClick={() => {setGraph(createCampaignWorkflow());setPositions({});relayout();setSavedId(null);setSavedVersion(null);setNotice("Example restored.");}}>Restore example</button>
         <button type="button" className={styles.download} disabled={!report.ok} onClick={exportPlan}>Download validated draft ↓</button>
         <button type="button" className={styles.secondary} onClick={() => importInput.current?.click()}>Import workflow draft ↑</button>
         <input ref={importInput} type="file" accept=".json,application/json" onChange={importPlan} className={styles.hiddenInput} aria-label="Import Nightshift workflow JSON draft"/>
@@ -209,20 +335,42 @@ export function AgentBuilder({ providerPreviews }: { providerPreviews: ProviderP
           <span className={report.ok ? styles.passed : styles.failed}>{report.ok ? "VALID GRAPH" : "NEEDS REVIEW"}</span>
         </div>
         <div className={styles.legend}>NODES {graph.nodes.length} <span>CONNECTIONS {graph.edges.length}</span> <span>EXECUTION DISABLED</span></div>
-        <p className={styles.disclaimer}>Drag node cards to reposition them. On touch or keyboard, use arrow buttons. Connections remain accessible in the list below.</p>
-        <div className={styles.nodeGrid} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (!graph.nodes.some(n => n.id === id)) return; const rect = e.currentTarget.getBoundingClientRect(); moveNode(id, clampPosition(e.clientX - rect.left + e.currentTarget.scrollLeft - 100, e.clientY - rect.top + e.currentTarget.scrollTop - 35)); }}>
-          <svg className={styles.canvasLines} viewBox="0 0 2470 1850" aria-label="Workflow connection lines" role="img" preserveAspectRatio="xMinYMin meet">{paths.map(edge => <path key={edge.source+"->"+edge.target} d={edge.path} fill="none" stroke="#d7ac78" strokeWidth="3" strokeOpacity=".75" markerEnd="url(#arrow)"/>)}<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6" fill="none" stroke="#d7ac78" strokeWidth="1.4"/></marker></defs></svg>
-          {graph.nodes.map((n, index) => <article key={n.id} className={styles.node} draggable onDragStart={e => e.dataTransfer.setData("text/plain", n.id)} style={{ position: "absolute", left: (positions[n.id] || defaultPosition(index)).x, top: (positions[n.id] || defaultPosition(index)).y, width: 220 }}>
-            <div className={styles.nodeTop}><span>NODE {String(index+1).padStart(2,"0")}</span><button type="button" onClick={() => remove(n.id)} aria-label={`Remove ${n.label}`}>Remove</button></div>
-            <div className={styles.nodeType}>{n.type}</div>
-            <input aria-label={`Rename ${n.id}`} maxLength={80} value={n.label} onChange={e => setGraph(prev => ({...prev,nodes:prev.nodes.map(x => x.id === n.id ? {...x,label:e.target.value}:x)}))}/>
-            <div className={styles.nodeId}>{n.id}</div>
-            <div className={styles.nodePorts}>IN: {PORTS[n.type].input.join(", ") || "—"} · OUT: {PORTS[n.type].output.join(", ") || "—"}</div>
-            <div className={styles.nudge}>
-              {([["←",-20,0],["↑",0,-20],["↓",0,20],["→",20,0]] as const).map(([symbol, dx, dy]) => <button type="button" key={symbol} aria-label={"Move "+n.label+" "+symbol} onClick={() => { const at = positions[n.id] || defaultPosition(index); moveNode(n.id,{x:at.x+dx,y:at.y+dy}); }}>{symbol}</button>)}
-            </div>
-          </article>)}
-        </div>
+        <p className={styles.disclaimer}>{copy.canvasHint}</p>
+        <AgentCanvasContext.Provider value={actions}>
+          <div className={styles.flow} ref={flowArea} role="region" aria-label={copy.canvasLabel}>
+            <ReactFlow<AgentFlowNode, AgentFlowEdge>
+              key={layoutKey}
+              nodes={flowNodes}
+              edges={flowEdges}
+              nodeTypes={FLOW_NODE_TYPES}
+              edgeTypes={FLOW_EDGE_TYPES}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onNodeDragStop={onNodeDragStop}
+              isValidConnection={isValidConnection}
+              onConnect={onConnect}
+              onConnectEnd={onConnectEnd}
+              onBeforeDelete={onBeforeDelete}
+              nodeExtent={WORLD}
+              translateExtent={[[-400, -400], [2870, 2250]]}
+              fitView
+              fitViewOptions={FIT}
+              minZoom={0.2}
+              maxZoom={1.5}
+              nodesFocusable
+              edgesFocusable
+              deleteKeyCode={["Delete", "Backspace"]}
+              multiSelectionKeyCode={null}
+              selectionKeyCode={null}
+              ariaLabelConfig={ariaLabelConfig}
+              proOptions={{ hideAttribution: true }}
+              className={styles.flowBoard}
+            >
+              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#4b5055" />
+              <Controls showInteractive={false} fitViewOptions={FIT} className={styles.flowControls} />
+            </ReactFlow>
+          </div>
+        </AgentCanvasContext.Provider>
         <div className={styles.sectionTitle}>CONNECTION MAP</div>
         <div className={styles.edges}>{graph.edges.map(e => <div className={styles.edge} key={e.source+"->"+e.target}>
           <span>{nodeMap.get(e.source)?.label || e.source}</span><strong>→</strong><span>{nodeMap.get(e.target)?.label || e.target}</span>
