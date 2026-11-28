@@ -436,6 +436,8 @@ ON_0139 = (*ON_0139, "0226_org_spender_everywhere.sql")
 ON_0139 = (*ON_0139, "0232_ai_chat_film_plan_leases.sql")
 #: 0230 sits on 0208's gate: after 0208 (and everything put back after it), last.
 ON_0139 = (*(f for f in ON_0139 if f != "0230_geo_gate_allow_list.sql"), "0230_geo_gate_allow_list.sql")
+#: 0231 (cancel audit) asks for 0226's cancel_workflow_run and refuses to apply without it: after it, in both lists.
+ON_0139 = (*ON_0139, "0231_cancel_audit.sql")
 #: 0236 sits on 0218's film_price: last.
 ON_0139 = (*(f for f in ON_0139 if f != "0236_film_clip_sound_gate.sql"), "0236_film_clip_sound_gate.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
@@ -454,6 +456,8 @@ ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164
            "0215_film_archive_resume.sql",
            # 0226 sits on 0215 (is_org_spender) and 0192's bodies, and on nothing of 0208's or 0218's: out and back after 0215.
            "0226_org_spender_everywhere.sql",
+           # 0231 asks for 0226's cancel_workflow_run: out and back right after it.
+           "0231_cancel_audit.sql",
            # 0232 sits on 0226's ai_chat_reserve_turn and ai_chat_plan_end: out and back right after it.
            "0232_ai_chat_film_plan_leases.sql",
            # 0218 sits on 0208's creative_price and creative_params_problem: out and back with it, after it.
@@ -1286,6 +1290,7 @@ def take_off_0226(conn_or_session) -> None:
     whose bodies it replaced, refuse while it is on, and 0215's rollback drops what it calls: take_off_0215 takes it off first
     (take_off_0198, take_off_0192, take_off_0187 and take_off_0171 reach it through it), and so do the take-offs of the other files."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0231(conn)  # 0231 asks for 0226's cancel_workflow_run: off first
     take_off_0232(conn)  # 0232 sits on 0226's ai_chat_reserve_turn and ai_chat_plan_end, which 0226's guard and rollback refuse
     if has_0226(conn):
         # Whole first (its guard takes a mix of the earlier and its own bodies), so that its rollback, which asks for all twenty-eight, runs.
@@ -1303,7 +1308,51 @@ def put_back_0226(conn_or_session) -> None:
     session = SimpleSession(conn)
     if all(_live_md5(session, sig) in (was, now_) for sig, _role, _src, was, now_ in _0226_paths()):
         conn.execute(MIGRATION_0226.read_text(encoding="utf-8"))
+    put_back_0231(conn)
     put_back_0232(conn)
+
+
+MIGRATION_0231 = MIGRATIONS / "0231_cancel_audit.sql"
+ROLLBACK_0231 = REPO / "docs" / "sql" / "rollback_0231_cancel_audit.sql"
+#: cancel_creative_job's bodies: 0198's (what 0231 replaces, and what 0198's rollback asks for) and 0231's.
+CANCEL_CREATIVE_JOB_0198 = "2720d62c17ae26bce439a28280964575"
+CANCEL_CREATIVE_JOB_0231 = "c210f8e4684e154d40f7029b5c94b893"
+
+
+def _0231_bodies():
+    import sec_cancel_audit_0231  # the one list of the four bodies: signature, earlier file, earlier md5, 0231's md5
+
+    return sec_cancel_audit_0231.BODIES
+
+
+def has_0231(conn_or_session) -> bool:
+    """Any of the four bodies is 0231's. Not all: a lab that replays 0036, 0073, 0074 or 0083 puts one body back silently and leaves the
+    rest, which still has to come off before an earlier rollback runs."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    session = SimpleSession(conn)
+    return any(_live_md5(session, sig) == now_ for sig, _src, _was, now_ in _0231_bodies())
+
+
+def take_off_0231(conn_or_session) -> None:
+    """0231 (a workflow step's job is cancelled by the run's rule, every cancel and every real stop recorded, a browser writes no cancel
+    row, a member takes no workflow step's key) replaces 0198's cancel_creative_job, 0226's create_creative_job and cancel_workflow_run
+    and 0192's workflow_advance_locked, which those files' rollbacks and guards refuse: take_off_0226 takes it off first (take_off_0215,
+    take_off_0198 and take_off_0192 reach it through it)."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0231(conn):
+        # Whole first (its guard takes a mix of the earlier and its own bodies), so that its rollback, which asks for all four, runs.
+        conn.execute(MIGRATION_0231.read_text(encoding="utf-8"))
+        text = ROLLBACK_0231.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0231(conn_or_session) -> None:
+    """0231 again, when it is not on and its guard would take it: 0226 on and each of the four bodies the earlier file's."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    session = SimpleSession(conn)
+    if (not has_0231(conn) and has_0226(conn)
+            and all(_live_md5(session, sig) == was for sig, _src, was, _now in _0231_bodies())):
+        conn.execute(MIGRATION_0231.read_text(encoding="utf-8"))
 
 
 MIGRATION_0232 = MIGRATIONS / "0232_ai_chat_film_plan_leases.sql"
