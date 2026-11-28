@@ -296,7 +296,8 @@ describe("the plan dialog in the Studio", () => {
 
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.activeElement).toBe(button);
+    // The shared Sheet (Radix) gives focus back on the next tick, after the dialog has gone.
+    await waitFor(() => expect(document.activeElement).toBe(button));
     expect(document.body.style.overflow).toBe("");
 
     fireEvent.click(screen.getByRole("button", { name: en.upsell.seePlans }));

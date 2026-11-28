@@ -41,7 +41,7 @@ function SheetContent({
   return (
     <SheetPrimitive.Portal>
       <SheetPrimitive.Overlay data-slot="sheet-overlay" className="ui-overlay" />
-      <SheetPrimitive.Content data-slot="sheet-content" data-side={side} className={cn("ui-sheet", className)} {...props} {...focusBack} onInteractOutside={keepOpenOnNotice(props.onInteractOutside)}>
+      <SheetPrimitive.Content data-slot="sheet-content" data-side={side} className={cn("ui-sheet", className)} aria-modal="true" {...props} {...focusBack} onInteractOutside={keepOpenOnNotice(props.onInteractOutside)}>
         {children}
         {closeLabel !== null && (
           <SheetPrimitive.Close className="ui-close absolute right-3 top-3" aria-label={closeLabel}>

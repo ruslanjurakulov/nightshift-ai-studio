@@ -40,7 +40,7 @@ function DialogContent({
   return (
     <DialogPortal>
       <DialogOverlay />
-      <DialogPrimitive.Content data-slot="dialog-content" className={cn("ui-dialog", className)} {...props} {...focusBack} onInteractOutside={keepOpenOnNotice(props.onInteractOutside)}>
+      <DialogPrimitive.Content data-slot="dialog-content" className={cn("ui-dialog", className)} aria-modal="true" {...props} {...focusBack} onInteractOutside={keepOpenOnNotice(props.onInteractOutside)}>
         {children}
         {closeLabel !== null && (
           <DialogPrimitive.Close className="ui-close absolute right-3 top-3" aria-label={closeLabel}>
