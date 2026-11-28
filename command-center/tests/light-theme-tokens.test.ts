@@ -31,6 +31,15 @@ const TOKEN_ONLY = [
   "components/editor/EditorHome.tsx",
   "components/editor/TimelineEditor.tsx",
   "components/editor/TimelineStrip.tsx",
+  // The adopted primitives (shadcn/ui, Magic UI): their theme collides with ours, so they paint with --ds-* only.
+  "components/ui/Dialog.tsx",
+  "components/ui/Sheet.tsx",
+  "components/ui/Popover.tsx",
+  "components/ui/Tooltip.tsx",
+  "components/ui/Tabs.tsx",
+  "components/ui/Slider.tsx",
+  "components/ui/Command.tsx",
+  "components/ui/effects/index.tsx",
 ];
 
 // Tailwind palette colours (text-rose-300, bg-white/10, border-sky-400/60 ...).

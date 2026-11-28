@@ -81,6 +81,8 @@ export function ImproveWithAi({
   const [open, setOpenState] = useState(false);
   const [sending, setSendingState] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
+  // Where focus lands after the panel closes, when a choice in it sends the person elsewhere (LibraryDialog afterClose).
+  const landing = useRef<(() => void) | null>(null);
   const label = name?.trim() || tx.unnamed;
 
   const tell = (o: boolean, s: boolean) => onOpenChange?.(o || s);
@@ -132,11 +134,14 @@ export function ImproveWithAi({
           project={project}
           captionsWay={captionsWay}
           opener={opener}
+          afterClose={landing}
           onClose={() => setOpen(false)}
           onCaptions={() => {
             if (captionsWay === "here") {
+              // The captions panel takes focus once the dialog has gone (LibraryDialog afterClose): called now, the dialog's
+              // focus trap would pull focus back and the Improve key would then take it, scrolling the editor back.
+              landing.current = () => onCaptions?.();
               setOpen(false);
-              onCaptions?.();
             } else {
               setOpenState(false);
               setSending(true);
@@ -171,6 +176,7 @@ function ImprovePanel({
   project,
   captionsWay,
   opener,
+  afterClose,
   onClose,
   onCaptions,
 }: {
@@ -182,6 +188,7 @@ function ImprovePanel({
   project?: string | null;
   captionsWay: "here" | "send" | null;
   opener: React.RefObject<HTMLButtonElement | null>;
+  afterClose: React.RefObject<(() => void) | null>;
   onClose: () => void;
   onCaptions: () => void;
 }) {
@@ -232,6 +239,7 @@ function ImprovePanel({
       description={fmt(tp.lead, { name: label })}
       onClose={onClose}
       opener={opener}
+      afterClose={afterClose}
       initialFocus={toolOpen ? firstFocus : undefined}
       closeLabel={tx.close}
       wide
