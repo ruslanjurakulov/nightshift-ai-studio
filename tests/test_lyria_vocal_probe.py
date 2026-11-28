@@ -33,6 +33,7 @@ import yaml
 from modules.capabilities import build_adapter
 from modules.capabilities.base import E_BAD_RESPONSE, MUSIC, AdapterError, CapabilityRequest
 from modules.capabilities.google_interactions import LYRIA_API_REVISION, LYRIA_INSTRUMENTAL, GoogleLyriaAdapter
+from tests.music_check_fakes import with_check
 from tests.loopback_vendor import FakeVendor, Resp, cleanup_certificate
 from tools import lyria_vocal_probe as probe
 
@@ -376,7 +377,7 @@ class ProductAdapterRegressionTests(unittest.TestCase):
         self.env = {"GEMINI_API_KEY": KEY, "GEMINI_BASE_URL": self.vendor.base_url + "/v1beta"}
 
     def lyria(self):
-        return build_adapter("audio.google_lyria", env=self.env, session=self.vendor.session())
+        return with_check(build_adapter("audio.google_lyria", env=self.env, session=self.vendor.session()))
 
     def test_it_still_appends_the_instrumental_instruction(self):
         self.vendor.on("POST", "/v1beta/interactions", Resp(200, answer(text="[Instrumental]")))

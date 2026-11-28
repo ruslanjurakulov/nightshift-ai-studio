@@ -33,6 +33,10 @@ What each job does is ``modules/creative_worker.py``. This file wires it up:
 * ``NIGHTSHIFT_REGION_EDITOR`` (default off) lets this worker run region edits (migration 0126, docs/REGION_EDITOR.md): an ``edit`` whose
   params carry ``regions``, run one call per region and pasted back through the pixel lock. Off, such a job fails at once with its credits
   released;
+* ``NIGHTSHIFT_MUSIC_CHECK_URL`` is the music-check service (tools/music_check_server.py, modules/vocal_check.py) every Lyria
+  song is measured by before it is delivered. Unset, out of reach, or short of memory: a Lyria job ends before it is submitted,
+  nothing is sent to Google and its credits are released (the claim cannot pass such a job over: claim_creative_job takes no
+  capability). ``NIGHTSHIFT_MUSIC_CHECK_TIMEOUT_S`` (default 900) bounds one song's check, its wait for the service included;
 * stored error text is scrubbed of every secret in this process's
   environment (the pipeline worker's scrubber) and of token-shaped strings.
 
@@ -169,6 +173,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             credits=credit_rules.CreditsRest(url, key), enforce=enforce, scrub=scrub, stop=stop,
             media_root=media_root, library=library, region_editor=region_editor)
         worker.run_forever(once=args.once)
+
+    from modules import vocal_check  # noqa: PLC0415
+
+    if not (os.environ.get(vocal_check.URL_ENV) or "").strip():
+        # Said once at start, so an operator does not learn it only from failed jobs. Each Lyria job also says it.
+        logger.warning("%s is not set: Lyria music jobs end before they are submitted (nothing is sent, the credits are "
+                       "released) until the music-check service is configured", vocal_check.URL_ENV)
 
     concurrency = 1 if args.once else args.concurrency
     logger.info("creative worker %s started (%s at once, credits %s, media library %s, region editor %s)",

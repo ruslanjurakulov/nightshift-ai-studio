@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""S6: how much singing is in a piece of music? Measurement only (CLAUDE.md rule 8).
+"""S6: how much singing is in a piece of music? Numbers only (CLAUDE.md rule 8).
 
-Nothing in the product imports this file, nothing here decides anything, and it calls no vendor. ``measure(path)`` returns
-NUMBERS and no verdict: which threshold separates "instrumental" from "sung" is what the Lyria probe run
+No adapter imports this file: the music-check service (tools/music_check_server.py) runs its detectors and ``measure()`` on each
+Lyria song, and the approved rule that reads the numbers lives in modules/vocal_check.py. Nothing here decides anything, and it
+calls no vendor. ``measure(path)`` returns NUMBERS and no verdict: which threshold separates "instrumental" from "sung" is what the Lyria probe run
 (tools/lyria_vocal_probe.py, docs/MEASUREMENT.md "Lyria vocal activity (S6)") is for. Detectors and licences:
 docs/research/vocal-activity-detection.md.
 
@@ -457,8 +458,13 @@ def _peak_rss_mb() -> float:
 
 
 def measure(path, *, detectors: Optional[Detectors] = None, silero: bool = True, cache: Optional[Path] = None,
-            decoder: Callable[[Path, int, int], np.ndarray] = decode) -> dict:
-    """Numbers only, no verdict. Raises ``MeasurementError`` when any requested check did not run."""
+            decoder: Callable[[Path, int, int], np.ndarray] = decode,
+            separate: Optional[Callable[[np.ndarray], np.ndarray]] = None) -> dict:
+    """Numbers only, no verdict. Raises ``MeasurementError`` when any requested check did not run.
+
+    ``separate``: how the vocals stem is taken from the whole mix, ``detectors.separate_vocals`` by default (one pass over the
+    whole song). The product's music check passes ``modules.vocal_check.chunked_separator`` instead, so a 3-minute song never
+    holds UMX's whole-song memory; everything after the stem (the per-second ratios, PANNs) is this same code either way."""
     path = Path(path)
     loaded_here = detectors is None
     t = time.perf_counter()
@@ -474,7 +480,7 @@ def measure(path, *, detectors: Optional[Detectors] = None, silero: bool = True,
     duration_s = mix.shape[1] / UMX_RATE
 
     t = time.perf_counter()
-    stem = np.asarray(det.separate_vocals(mix))
+    stem = np.asarray((separate or det.separate_vocals)(mix))
     if stem.shape != mix.shape or not np.isfinite(stem).all():
         raise MeasurementError("Open-Unmix returned a vocals stem of the wrong shape or with non-finite samples")
     umx_s = time.perf_counter() - t

@@ -349,7 +349,8 @@ fetched 2026-11-28)
 What was taken: the ConvBlock and Cnn14 classes of pytorch/models.py, inference only (training paths and weight initialisation
 removed). The label file metadata/class_labels_indices.csv is NOT copied: it is downloaded at that commit by a pinned sha256.
 
-Where: tools/vendor_panns/cnn14.py (measurement only; nothing in the product imports it).
+Where: tools/vendor_panns/cnn14.py, run by tools/vocal_activity.py for the measurement tool and, through it, by the music-check
+service (tools/music_check_server.py) that measures each Lyria song; no adapter imports it.
 
 License:
 
@@ -432,7 +433,7 @@ weights https://zenodo.org/records/3370489 (vocals-b62c91ce.pth, licence on the 
 What was taken: nothing copied. openunmix is a pip dependency of requirements-measure.txt only, and the vocals weights are
 downloaded at run time by a pinned sha256.
 
-Where: tools/vocal_activity.py (measurement only).
+Where: tools/vocal_activity.py, for the measurement tool and the music-check service (tools/music_check_server.py).
 
 License:
 

@@ -237,6 +237,14 @@ class RegistryAdapter:
             slots = max(0, self.entry.image_refs_max - len(request.input_files))
         return StyleSupport(reference_slots=slots, max_prompt_chars=self.entry.max_prompt_chars)
 
+    def ready(self, request: GenerationRequest) -> None:
+        """The adapter's own "can I run a job now?" (rule 6), for the worker to ask BEFORE it marks the job as submitting: Lyria
+        refuses while its music check is not configured, out of reach or short of memory, because a song that cannot be checked
+        could only be refused after Google made it. Raises the adapter's ``AdapterError``; an adapter without ``ready`` is ready."""
+        fn = getattr(self.adapter, "ready", None)
+        if callable(fn) and request.capability in self.adapter.capabilities:
+            fn(capability_request(request))
+
     def submit(self, request: GenerationRequest) -> str:
         cap = request.capability
         if cap not in self.adapter.capabilities or cap not in self.entry.capabilities:

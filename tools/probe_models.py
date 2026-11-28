@@ -57,6 +57,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from modules import model_registry  # noqa: E402
 from modules.capabilities import build_adapter  # noqa: E402
 from modules.capabilities.base import (  # noqa: E402
+    ERROR_CODES,
     E_AUTH,
     E_BAD_REQUEST,
     E_BAD_RESPONSE,
@@ -379,7 +380,10 @@ def run_probe(entry, *, env: Mapping[str, str], voice_id: Optional[str], workdir
                            estimate=_bare_number(estimator(task)) if callable(estimator) else None,
                            estimates=callable(estimator))
     except AdapterError as e:
-        return ProbeResult(entry.id, False, e.code, e.message, int((clock() - started) * 1000),
+        # The probe log takes a closed list of codes (migration 0190). A subclass's own job code (Lyria's check_did_not_run) is
+        # recorded as the bad_response it is, and its message still says which.
+        code = e.code if e.code in ERROR_CODES else E_BAD_RESPONSE
+        return ProbeResult(entry.id, False, code, e.message, int((clock() - started) * 1000),
                            task_id=task.task_id if task else None)
 
 
