@@ -159,13 +159,28 @@ class CapabilityTests(unittest.TestCase):
     def test_the_registry_only_set_is_exactly_what_the_database_does_not_list(self):
         # The migration that teaches the database a capability must also take it out of REGISTRY_ONLY_CAPABILITIES, and
         # nothing may be called registry-only that the database already knows.
-        # 0228 teaches the database `music` (Lyria 3.5), and the code keeps it registry-only until Atlas confirms 0228 is live: a sync
-        # from code merged before the migration is applied must never send a music row (one row outside the check fails the whole
-        # sync). A later small PR takes MUSIC out of REGISTRY_ONLY_CAPABILITIES, and this line loses its `| {MUSIC}`.
+        # 0228 teaches the database `music` (Lyria 3.5); MUSIC left this set only once 0228 was confirmed live, because a sync that
+        # sends one row outside the check fails the whole sync.
         for constraint in ("model_registry_capabilities_check", "model_probe_runs_capability_check"):
-            self.assertEqual((set(CAPABILITIES) - REGISTRY_ONLY_CAPABILITIES) | {MUSIC}, _db_capabilities(constraint), constraint)
+            self.assertEqual(set(CAPABILITIES) - REGISTRY_ONLY_CAPABILITIES, _db_capabilities(constraint), constraint)
         # video_character_swap (0137) is sold through its own tables, never as a creative job: registry-only for good.
-        self.assertEqual(REGISTRY_ONLY_CAPABILITIES, {"music", "video_music", "video_character_swap"})
+        self.assertEqual(REGISTRY_ONLY_CAPABILITIES, {"video_music", "video_character_swap"})
+
+    def test_every_video_music_and_character_swap_entry_is_unsynced_unprobed_and_unserved(self):
+        # The two capabilities the database still does not list (or, for the swap, must never sell as a creative job): a sync row
+        # would fail the sync of every model, a probe could not be recorded, and a job naming one did not come through the database.
+        from tools import probe_models
+
+        entries = list(reg.registry().values())
+        held = [e for e in entries if {"video_music", "video_character_swap"} & set(e.capabilities)]
+        self.assertEqual({e.id for e in held}, {"sonilo-video-music", "kling-4.0-omni-edit", "seedance-2.5-edit"})
+        synced = {row["id"] for row in reg.sync_rows(entries)}
+        for e in held:
+            self.assertTrue(e.registry_only, e.id)
+            self.assertNotIn(e.id, synced, e.id)
+            self.assertEqual(probe_models.select(entries, [e.id], None, False), [], e.id)
+            self.assertNotIn(e.id, {x.id for x in probe_models.select(entries, [e.id], None, True)}, e.id)
+            self.assertIsNone(ca.resolve(e.id, env={"SONILO_API_KEY": KEY}), e.id)
 
     def test_no_migration_here_adds_them(self):
         for path in (ROOT / "supabase" / "migrations").glob("*.sql"):
@@ -205,18 +220,38 @@ class RegistryEntryTests(unittest.TestCase):
             self.assertIn("not a Sonilo endpoint", cm.exception.message)
             self.assertTrue(cm.exception.not_accepted)
 
-    def test_they_are_registry_only_so_the_database_never_sees_them(self):
+    def test_the_video_one_stays_registry_only_so_the_database_never_sees_it(self):
         rows = reg.sync_rows(list(self.r.values()))
         known = _db_capabilities("model_registry_capabilities_check")
-        self.assertFalse({row["id"] for row in rows} & set(IDS))
+        self.assertNotIn("sonilo-video-music", {row["id"] for row in rows})
         for row in rows:      # one row outside the constraint would fail the sync of every model
             self.assertLessEqual(set(row["capabilities"]), known, row["id"])
-        # The two Character Studio entries (0137) are registry-only too: tests/test_character_swap_adapters.py holds them. So is
-        # Google Lyria 3.5, the other `music` provider (tests/test_google_lyria.py).
+        # The two Character Studio entries (0137) are registry-only too, for good: tests/test_character_swap_adapters.py holds them.
         swap = {"kling-4.0-omni-edit", "seedance-2.5-edit"}
-        lyria = {"google-lyria-3.5"}
-        self.assertEqual(len(rows), len(self.r) - 2 - len(swap) - len(lyria))
-        self.assertEqual({e.id for e in self.r.values() if e.registry_only}, set(IDS) | swap | lyria)
+        self.assertEqual(len(rows), len(self.r) - 1 - len(swap))
+        self.assertEqual({e.id for e in self.r.values() if e.registry_only}, {"sonilo-video-music"} | swap)
+
+    def test_the_music_one_syncs_dark_and_the_sync_cannot_light_it(self):
+        # 0228 put `music` in the database's lists, so sonilo-music syncs. What keeps it off sale is the database, not the file:
+        # sync_model_registry (0035) never writes availability, a new row takes 0035's default 'hidden', and 0035's CHECKs refuse
+        # beta/ga for a row whose spec carries a terms_gate or that no probe has verified. The owner can clear the gate in the app
+        # (0227), so the missing credit price is the last hard barrier: no migration may write one for its unit.
+        self.assertFalse(self.r["sonilo-music"].registry_only)
+        (row,) = [row for row in reg.sync_rows(list(self.r.values())) if row["id"] == "sonilo-music"]
+        self.assertEqual(set(row), {"id", "display_name", "provider", "adapter", "capabilities", "credit_unit", "entitlement", "spec"})
+        self.assertNotIn("availability", row["spec"])
+        self.assertEqual((row["capabilities"], row["spec"]["terms_gate"], row["spec"]["api_exposure"]),
+                         (["music"], "terms_review_required", "web_only"))
+        self.assertIs(row["spec"]["pricing"]["confirmed"], False)
+        m0035 = (ROOT / "supabase" / "migrations" / "0035_model_registry.sql").read_text()
+        self.assertIn("availability       text not null default 'hidden'", m0035)
+        self.assertIn("insert into public.model_registry as m (id, display_name, provider, adapter, capabilities, spec, credit_unit, "
+                      "entitlement)", m0035)
+        self.assertIn("check (availability not in ('beta', 'ga') or coalesce(spec ->> 'terms_gate', '') = '')", m0035)
+        self.assertIn("check (availability not in ('beta', 'ga') or verified_at is not null)", m0035)
+        unit = self.r["sonilo-music"].credit_unit
+        for path in (ROOT / "supabase" / "migrations").glob("*.sql"):
+            self.assertNotIn(unit, path.read_text(), path.name)
 
     def test_the_gate_is_terms_review_and_nothing_can_be_sold(self):
         for mid in IDS:
@@ -226,18 +261,21 @@ class RegistryEntryTests(unittest.TestCase):
             self.assertIn("NOT read", notes, mid)
             self.assertIn("Gate stays open", notes, mid)
             self.assertIn("Uzbekistan", notes, mid)
-            self.assertIn("REGISTRY-ONLY", e.raw["api_documented"]["note"], mid)
+        self.assertIn("REGISTRY-ONLY", self.r["sonilo-video-music"].raw["api_documented"]["note"])
+        self.assertIn("SYNCED DARK after 0228", self.r["sonilo-music"].raw["api_documented"]["note"])
+        self.assertIn("written answer on its terms (not enforced by code)", self.r["sonilo-music"].raw["api_documented"]["note"])
         self.assertFalse({e.id for e in self.r.values() if not e.terms_gate} & set(IDS))
 
     def test_a_registry_only_entry_must_be_dark_by_its_own_fields(self):
         for change in (lambda m: m.update(terms_gate=None), lambda m: m.update(api_exposure="any"),
                        lambda m: m["pricing"].update(confirmed=True)):
-            errors = self.mutated("sonilo-music", change)
+            errors = self.mutated("sonilo-video-music", change)
             self.assertTrue(any("a registry-only entry stays dark" in e for e in errors), errors)
 
     def test_a_registry_only_capability_is_never_listed_beside_one_the_database_knows(self):
-        errors = self.mutated("sonilo-music", lambda m: m["capabilities"].append("sfx"))
-        self.assertTrue(any("never listed beside one it knows" in e for e in errors), errors)
+        for cap in ("sfx", "music"):     # music too: the sync would drop the whole entry, and the music half with it
+            errors = self.mutated("sonilo-video-music", lambda m, c=cap: m["capabilities"].append(c))
+            self.assertTrue(any("never listed beside one it knows" in e for e in errors), (cap, errors))
 
     def test_a_music_for_video_model_needs_the_longest_source_it_takes(self):
         errors = self.mutated("sonilo-video-music", lambda m: m["limits"].pop("max_source_seconds"))
@@ -1155,27 +1193,39 @@ class WiringTests(unittest.TestCase):
         self.assertIn('name: "available_services"', card)
         self.assertNotIn("music\"", card.split("strategy")[1])      # never a generation path
 
-    def test_no_probe_is_ever_run_on_them_named_or_not(self):
+    def test_all_never_probes_either_and_the_video_one_is_never_probed_even_by_name(self):
         from tools import probe_models
 
         entries = list(reg.registry().values())
-        self.assertFalse({e.id for e in probe_models.select(entries, [], None, True)} & set(IDS))
+        V = "sonilo-video-music"
+        self.assertFalse({e.id for e in probe_models.select(entries, [], None, True)} & set(IDS))     # gated: --all skips both
         for mid in IDS:
-            self.assertNotIn(mid, {e.id for e in probe_models.select(entries, [mid], None, True)})
-            self.assertEqual(probe_models.select(entries, [mid], None, False), [])
             self.assertIn(mid, {e.id for e in probe_models.gated_left_out(entries, [], None, True)})      # --all says "gated"
-            self.assertEqual([e.id for e in probe_models.registry_only_left_out(entries, [mid], None)], [mid])
+        # video_music: its result could not be recorded (no capability in the database), so not even a probe by name runs.
+        self.assertNotIn(V, {e.id for e in probe_models.select(entries, [V], None, True)})
+        self.assertEqual(probe_models.select(entries, [V], None, False), [])
+        self.assertEqual([e.id for e in probe_models.registry_only_left_out(entries, [V], None)], [V])
         self.assertEqual(probe_models.registry_only_left_out(entries, [], None), [])
         self.assertEqual(probe_models.registry_only_left_out(entries, list(IDS), "sfx"), [])
-        for cap in ("music", "video_music", "sfx", "tts"):
+        for cap in ("video_music", "sfx", "tts"):
             self.assertFalse({e.id for e in probe_models.select(entries, list(IDS), cap, True)} & set(IDS), cap)
+
+    def test_the_music_one_is_probed_only_when_named(self):
+        # Since 0228 its result can be recorded, so a gated entry's one way in applies: the owner names it.
+        from tools import probe_models
+
+        entries = list(reg.registry().values())
+        self.assertEqual([e.id for e in probe_models.select(entries, ["sonilo-music"], None, False)], ["sonilo-music"])
+        self.assertEqual([e.id for e in probe_models.select(entries, list(IDS), "music", False)], ["sonilo-music"])
+        self.assertEqual(probe_models.registry_only_left_out(entries, ["sonilo-music"], None), [])
 
     def test_a_named_probe_spends_nothing_records_nothing_and_says_why(self):
         from tools import probe_models
 
-        for argv, want in ((["--model", "sonilo-music"], "SKIP sonilo-music: registry-only"),
+        for argv, want in ((["--model", "sonilo-video-music"], "SKIP sonilo-video-music: registry-only"),
                            (["--model", "sonilo-video-music", "--brief"], "skipped sonilo-video-music"),
-                           (["--all", "--brief"], "gated sonilo-music")):
+                           (["--all", "--brief"], "gated sonilo-music"),
+                           (["--all", "--brief"], "gated sonilo-video-music")):
             out, db = io.StringIO(), mock.Mock()
             db.record.return_value, db.sync.return_value = 1, 0
             called = []
@@ -1191,20 +1241,66 @@ class WiringTests(unittest.TestCase):
             self.assertFalse(set(called) & set(IDS), argv)
             self.assertFalse([c for c in db.record.call_args_list if c.kwargs.get("model") in IDS], argv)
 
-    def test_a_sync_sends_no_row_for_them(self):
+    def test_a_sync_sends_the_music_row_and_never_the_video_one(self):
         from tools import probe_models
 
         db, out = mock.Mock(), io.StringIO()
         db.sync.return_value = 80
         probe_models.main(["--sync"], env={}, db=db, stream=out)
         (rows,), _ = db.sync.call_args
-        self.assertFalse({row["id"] for row in rows} & set(IDS))
+        self.assertEqual({row["id"] for row in rows} & set(IDS), {"sonilo-music"})
         self.assertFalse([row["id"] for row in rows if set(row["capabilities"]) & REGISTRY_ONLY_CAPABILITIES])
 
-    def test_the_worker_gets_no_adapter_for_them(self):
-        # No job can name one through the database; a row that names one all the same is not served.
-        for mid in IDS:
-            self.assertIsNone(ca.resolve(mid, env={"SONILO_API_KEY": KEY}), mid)
+    def test_a_sync_refused_by_a_database_without_0228_names_the_migration_not_0035(self):
+        # PostgREST answers a CHECK violation 400 with code 23514; the body's details hold the failing row, which is never kept.
+        from tools import probe_models
+
+        class Resp:
+            def __init__(self, status, data):
+                self.status_code, self._data = status, data
+
+            def json(self):
+                return self._data
+
+        class Http:
+            def __init__(self, resp):
+                self.resp = resp
+
+            def post(self, url, json=None, headers=None, timeout=None):  # noqa: A002 — requests' own name
+                return self.resp
+
+        check = {"code": "23514", "details": "Failing row contains (google-lyria-3.5, ...)", "hint": None,
+                 "message": 'new row for relation "model_registry" violates check constraint "model_registry_capabilities_check"'}
+        rows = reg.sync_rows(list(reg.registry().values()))
+        db = probe_models.RegistryDB("https://db.test", "service-key-not-real", session=Http(Resp(400, check)))
+        with self.assertRaises(probe_models.RpcError) as cm:
+            db.sync(rows)
+        msg = str(cm.exception)
+        self.assertIn("apply migration 0228", msg)
+        self.assertIn("capability music", msg)
+        self.assertNotIn("0035", msg)
+        self.assertNotIn("Failing row", msg)
+        self.assertEqual((cm.exception.status, cm.exception.sqlstate), (400, "23514"))
+        # The same CHECK with no music row in the batch: a missing migration, but not 0228.
+        db = probe_models.RegistryDB("https://db.test", "k", session=Http(Resp(400, check)))
+        with self.assertRaises(probe_models.RpcError) as cm:
+            db.sync([r for r in rows if "music" not in r["capabilities"]])
+        self.assertNotIn("0228", str(cm.exception))
+        self.assertIn("a migration that adds it is missing", str(cm.exception))
+        # Any other refusal is passed on as before.
+        for status, body in ((400, {"code": "23514", "message": 'violates check constraint "model_registry_credit_unit_check"'}),
+                             (400, "not json"), (500, None)):
+            db = probe_models.RegistryDB("https://db.test", "k", session=Http(Resp(status, body)))
+            with self.assertRaises(probe_models.RpcError) as cm:
+                db.sync(rows)
+            self.assertNotIn("0228", str(cm.exception), body)
+            self.assertEqual(cm.exception.constraint_hint, None)
+
+    def test_the_worker_serves_no_video_music_row_and_serves_music_only_as_it_serves_any_gated_model(self):
+        # video_music: no job can name it through the database, and a row that names it all the same is not served.
+        self.assertIsNone(ca.resolve("sonilo-video-music", env={"SONILO_API_KEY": KEY}))
+        # music: the adapter exists (a named probe needs it); a job cannot, because the row is hidden, gated and unpriced.
+        self.assertIsNotNone(ca.resolve("sonilo-music", env={"SONILO_API_KEY": KEY}))
         self.assertIsNotNone(ca.resolve("pika-2.5", env={}))                 # control: a gated entry the database knows
         self.assertIsNone(ca.resolve("no-such-model", env={}))
 

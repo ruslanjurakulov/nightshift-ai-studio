@@ -21,7 +21,11 @@ import { MODEL_ID_RE } from "@/lib/models-admin";
 
 // ── tasks ───────────────────────────────────────────────────────────────────
 
-/** The registry's capabilities (0100's model_registry_capabilities_check). */
+/**
+ * The registry's capabilities a screen offers (0100's model_registry_capabilities_check). 0228 added `music` to that check, and it
+ * is deliberately not here: the music rows sync dark (hidden, terms-gated, unpriced), and no screen lists one until a probe, the
+ * vocal-activity check and a credit price exist and a screen for it is built.
+ */
 export const REGISTRY_CAPABILITIES = [
   "t2i",
   "edit",

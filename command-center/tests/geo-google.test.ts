@@ -166,15 +166,20 @@ describe("the list", () => {
 
   it("covers every provider='google' row of the registry, with the same list in the same order", () => {
     const reg = JSON.parse(readFileSync(join(ROOT, "schemas", "model_registry.json"), "utf8")) as {
-      models: Array<{ id: string; provider: string; blocked_countries?: string[]; terms_gate?: string | null; api_exposure?: string }>;
+      models: Array<{
+        id: string; provider: string; blocked_countries?: string[]; available_countries?: string[]; terms_gate?: string | null;
+        api_exposure?: string;
+      }>;
     };
     const google = reg.models.filter((m) => m.provider === "google");
     expect(google.map((m) => m.id).sort()).toEqual([...GOOGLE_MODELS].sort());
     for (const m of google) {
       expect([m.id, m.blocked_countries]).toEqual([m.id, GOOGLE_BLOCKED]);
       expect([m.id, BLOCKED_COUNTRIES[m.id]]).toEqual([m.id, GOOGLE_BLOCKED]);
-      // 0142 and the registry validator: a country list keeps a model off sale until it is opened on purpose.
-      expect([m.id, Boolean(m.terms_gate), m.api_exposure]).toEqual([m.id, true, "web_only"]);
+      // 0238 and the registry validator: a country list keeps a model off sale unless its row also carries the vendor's own
+      // allow-list (which 0230's gate reads); without one it needs a terms_gate. Either way it is never offered past the web.
+      const offSaleOrAllowListed = Boolean(m.terms_gate) || (m.available_countries?.length ?? 0) > 0;
+      expect([m.id, offSaleOrAllowListed, m.api_exposure]).toEqual([m.id, true, "web_only"]);
     }
   });
 });

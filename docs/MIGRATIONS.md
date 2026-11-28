@@ -3277,8 +3277,11 @@ on sale.
   On 0218's `creative_price` alone it refuses and names 0224.
 - **Nothing on sale.**
   - No credit price is seeded: a music quote is `unpriced` until the owner sets one, after a passing probe and the legal sign-off.
-  - The code keeps `music` in `REGISTRY_ONLY_CAPABILITIES`, so the sync never writes a music row before this file is live. A later
-    small PR removes it once 0228 is confirmed live.
+  - The code kept `music` in `REGISTRY_ONLY_CAPABILITIES` until this file was confirmed live, so no sync wrote a music row before
+    it. Since then (branch `claude/nsai-s6-music-on`) the music entries sync dark: a new row is `hidden` (0035's default; the sync
+    never writes availability), and 0035's CHECKs refuse beta/ga while the spec carries a `terms_gate` or no probe verified it.
+    The owner can clear the gate in the app (0227), so the credit price is the last hard barrier (plus 0142 and the entitlement for
+    Lyria). The vocal-activity check, Sonilo's written answer and the legal sign-off are not enforced by code: no price before them.
   - Lyria's registry entry also carries `terms_gate`, `web_only` and `requires_adult`. A vocal-activity check on the returned MP3
     is a condition of sale that does not exist yet.
 - **Backslash-free.** The `creative_price` body is written with `@@0228_BACKSLASH@@` and put back with `chr(92)`, which is 0224's
@@ -3331,3 +3334,55 @@ database doors it used.
   (`tests/security/test_sec_owner_safety.py`) take 0233 off inside their rolled-back transaction, since those checks are what a later
   re-grant would rely on. `tests/security/test_sec_friend_invites.py` pins that a counted friend-invite join adds nobody to a
   workspace or the roster.
+
+## A model with a country list may go on sale with its vendor's allow-list, behind 0230's gate (0238)
+
+0238 (`0238_country_list_sale_needs_allow_list.sql`, stream S10) replaces 0142's CHECK `model_registry_countries_before_sale`
+(same name) and changes no row. It opens nothing for sale.
+
+- **Owner decision, 2026-11-28 (relayed by Atlas).** Google's image terms are cleared for `gemini-3-pro-image` and
+  `gemini-nano-banana-2.1`: the Gemini API Additional Terms, Age Requirements and Use Restrictions ("18+", "not for consumer use"),
+  and Google Cloud Service Terms §20.d ("not for services likely used by under-18s"). The owner's reasoning: the 18+ attestation
+  (0192) is asked of every user, Europe included, so the responsibility does not fall on us. The decision covers only those
+  clauses. Still OPEN: Cloud Service Terms §17.a (competing products) and Google APIs Terms of Service §4(a) (sublicensing), which
+  is why `api_exposure` stays `web_only`. In `schemas/model_registry.json` both rows lose `terms_gate` (now null) and gain a dated
+  `terms_notes` record of the decision. `requires_adult`, both country lists, `api_exposure`, pricing and availability (`hidden`,
+  the database's) are unchanged. No credit price is added. They are NOT marked `operator_preview` (below).
+- **Evidence.** 0142 kept every row with `blocked_countries` off sale because the database did not know the country. 0208's
+  `creative_jobs_geo_gate` (one trigger on the table every create writes, with the signed geo claim) and 0230's allow-list read
+  answer that for a row with `available_countries`. They do not for a deny-list-only row (a code on neither list passes it,
+  BR-S6-04), so such a row must stay off sale.
+- **The CHECK.** `availability not in ('beta','ga')`, or no (or an empty or JSON null) `blocked_countries` (0142's rule), or a
+  non-empty JSON array `available_countries` (0238). The allow-list test is wrapped in `coalesce(..., false)`: a CHECK passes on
+  NULL, and without it a row with no allow-list would pass (the lab caught that).
+- **Apply-time guard.** Refuses unless `creative_jobs_geo_gate()` is 0230's body (`6a7b6f2b075c4775ee83808932f88bd0` by 0230's
+  comment-cut fingerprint, and `6d28388da6b6b927b0da500524fe0325` folded only), `geo_claim_country()` is 0208's
+  (`6cb8abcd7ab3dff8fb2a4ce33afa58d6`), the gate is SECURITY DEFINER with a pinned search_path, and the trigger
+  `creative_jobs_geo_gate` is on `creative_jobs`, on that function, enabled, BEFORE, FOR EACH ROW, on INSERT and UPDATE. It
+  names any deny-list-only row already on sale (possible only where 0142 was rolled back) instead of a bare 23514. No backslash.
+- **Other refusals, read and unchanged.** 0142 has nothing besides the CHECK (its end-state `position()` checks still match 0238's
+  definition). 0173, 0194 and 0195 refuse country-listed rows only while they apply, for fixed model lists. 0191's and 0219's
+  assistant checks answer `not_offered` for any row with `blocked_countries` (no visitor address). `sellable_models` has no
+  country clause. 0035's `terms_before_sale` still refuses a terms-gated row.
+- **Order of undoing.** The CHECK reads the row, not the gate. Take every country-listed row off sale, apply
+  `docs/sql/rollback_0238_country_list_sale_needs_allow_list.sql`, then roll back 0230 or 0208. Since 0238,
+  `rollback_0230_geo_gate_allow_list.sql` and `rollback_0208_geo_gate_and_image_size_price.sql` refuse (and name the rows) while a
+  country-listed row is on sale. A later migration that replaces `creative_jobs_geo_gate` must keep the allow-list read or take
+  such rows off sale first.
+- **Replay.** Drop and add: a replay changes nothing. A replay of 0142 puts 0142's definition back over 0238's; apply 0238 again.
+- **Undo.** `docs/sql/rollback_0238_country_list_sale_needs_allow_list.sql` (owner-applied): refuses while any row with
+  `blocked_countries` is `beta`/`ga`, then puts 0142's CHECK back verbatim and asserts it.
+- **Why not an operator preview (measured in the lab, 2026-11-28).** Both rows are priced by `image_size`, and creative_price
+  (0208's rule, 0224's body) quotes a size-priced preview with no per-size `credit_prices` row (`model_<id>_image_1k` ...) as
+  `unpriced`: 0139's vendor-cost fallback reads no size variant. With the mark added in the lab, a quote by the platform operator
+  in the exempt organization, `image_size` 1K, answered `NS400 unpriced` for both. Marking them would list two dead ends in the
+  operator's Studio, which `tests/test_preview_price_by_quality_migration.py` (NoPreviewIsADeadEnd) and
+  `tests/test_preview_price_by_resolution_migration.py` refuse. The way forward is a later migration that extends the preview
+  fallback to sizes, as 0149 and 0153 did for resolution and quality, or a per-size price set by the owner; then the mark. Separately, a Film Studio take, a workflow step carried on by another member's page, the API and MCP
+  carry no visitor, so the gate refuses them for these rows (`country_unverified`, 0208): a film's key frames on these models are
+  refused even once priced, until a take carries a claim, and Film's own model check needs S2's 0235 (not on main). Opening for
+  sale (`beta`/`ga` plus a `credit_prices` row) stays the owner's act.
+- **Owner steps.** Apply 0238 (after 0230), then `python tools/probe_models.py --sync` (spends nothing) to copy the registry.
+  The two rows now have no terms gate, so `--all` in the Probe models workflow includes them: one paid call each.
+- **Tests.** `tests/test_country_sale_allow_list_migration.py`, `tests/test_geoip_build.py` (`RegistryField`),
+  `tests/test_google_requires_adult.py`, `tests/security/test_sec_country_sale_0238.py`, `tests/security/test_sec_country_block.py`.
