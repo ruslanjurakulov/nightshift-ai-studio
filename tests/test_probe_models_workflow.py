@@ -47,6 +47,10 @@ class ProbeWorkflowShapeTests(unittest.TestCase):
         model = on["workflow_dispatch"]["inputs"]["model"]
         self.assertFalse(model["required"])
         self.assertEqual(model["default"], "")
+        sync_only = on["workflow_dispatch"]["inputs"]["sync_only"]
+        self.assertEqual(sync_only["type"], "boolean")
+        self.assertIs(sync_only["default"], False)
+        self.assertFalse(sync_only["required"])
         voice = on["workflow_dispatch"]["inputs"]["voice_id"]
         self.assertFalse(voice["required"])
         self.assertEqual(voice["default"], "")
@@ -77,7 +81,7 @@ class ProbeWorkflowShapeTests(unittest.TestCase):
         # Only the two inputs are read by the script; every key is the tool's.
         run = probe_step()["run"]
         for name in probe_step()["env"]:
-            if name in ("MODEL_ID", "VOICE_INPUT"):
+            if name in ("MODEL_ID", "VOICE_INPUT", "SYNC_ONLY"):
                 continue
             self.assertNotIn(f"${name}", run, name)
             self.assertNotIn(f"${{{name}", run, name)
@@ -119,7 +123,7 @@ FAKE_PYTHON = textwrap.dedent(
 class ProbeStepScriptTests(unittest.TestCase):
     """Runs the workflow's own `Probe` script with every key set to a secret."""
 
-    def run_step(self, model="", voice=""):
+    def run_step(self, model="", voice="", sync_only=""):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, True)
         bindir = tmp / "bin"
@@ -131,6 +135,7 @@ class ProbeStepScriptTests(unittest.TestCase):
         env.update(
             MODEL_ID=model,
             VOICE_INPUT=voice,
+            SYNC_ONLY=sync_only,
             PATH=f"{bindir}:{os.environ['PATH']}",
             HOME=str(tmp),
             RUNNER_TEMP=str(tmp),
@@ -184,6 +189,47 @@ class ProbeStepScriptTests(unittest.TestCase):
             self.assertEqual(args, "", bad)
             self.assertIn("voice_id input must be a voice id", proc.stdout, bad)
             self.assertNotIn(SECRET, proc.stdout + proc.stderr + summary)
+
+
+    def test_sync_only_runs_exactly_the_sync_and_says_nothing_was_paid(self):
+        proc, summary, args = self.run_step(sync_only="true")
+        # The tool is called once, with --sync and nothing else: no --all, no --model, so nothing is probed.
+        self.assertEqual(args.splitlines(), ["tools/probe_models.py --sync"])
+        self.assertIn("sync only", summary)
+        self.assertIn("No vendor call was made", summary)
+        self.assertNotIn("Costs money", summary)
+        for text in (proc.stdout, proc.stderr, summary, args):
+            self.assertNotIn(SECRET, text)
+
+    def test_sync_only_with_a_model_or_a_voice_is_refused_before_anything_runs(self):
+        for model, voice in (("veo-3.1-lite", ""), ("", "AbCdEfGhIj0123456789")):
+            proc, summary, args = self.run_step(model, voice, sync_only="true")
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertEqual(args, "")
+            self.assertIn("sync_only makes no vendor call", proc.stdout)
+
+    def test_sync_only_false_is_the_ordinary_paid_run(self):
+        _, summary, args = self.run_step(sync_only="false")
+        self.assertIn("--all", args)
+        self.assertIn("Costs money", summary)
+
+
+class SyncOnlyMakesNoVendorCall(unittest.TestCase):
+    def test_the_sync_alone_syncs_and_never_probes(self):
+        # What a sync-only run executes: if this ever probed, a "costs nothing" button would spend money.
+        from tools import probe_models
+
+        out, db = io.StringIO(), mock.Mock()
+        db.sync.return_value = 32
+        with mock.patch.object(probe_models, "run_probe") as probe:
+            code = probe_models.main(["--sync"], env={"OPENAI_API_KEY": SECRET}, db=db, stream=out)
+        for h in list(logging.getLogger().handlers):
+            logging.getLogger().removeHandler(h)
+        self.assertEqual(code, 0)
+        db.sync.assert_called_once()
+        probe.assert_not_called()
+        db.record.assert_not_called()
+        self.assertNotIn(SECRET, out.getvalue())
 
 
 class BriefModeTests(unittest.TestCase):
