@@ -41,6 +41,9 @@ def db():
         pytest.skip(f"{sec_db.DSN_ENV} is not set — the security lab needs a scratch Postgres")
     name = f"ns_clip_sound_{uuid.uuid4().hex[:8]}"
     d = Db(sec_db.build(admin, name))
+    # 0239 sits on this file's film_price (its own lab is test_sec_film_keyframe_refs_quote_0239.py): off, so 0236 is the top here.
+    with psycopg.connect(d.dsn, autocommit=True) as c:
+        sec_db.take_off_0239(c)
     models = [*[(m, p, a, c, u, s) for m, p, a, c, u, _r, s in MODELS], SOUND_MODEL]
     rows = [{"id": m, "display_name": m, "provider": prov, "adapter": a, "capabilities": caps, "credit_unit": unit,
              "entitlement": "any", "spec": {"vendor_model": "acme-" + m, "output": a.split(".")[0], **spec}}

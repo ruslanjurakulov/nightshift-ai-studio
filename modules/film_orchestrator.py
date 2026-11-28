@@ -809,6 +809,13 @@ class FilmOrchestrator:
                     refs.append(self.media.copy_input(item, work / "input", f"film_ref_{i}"))
         except Exception as e:
             raise _TakeFailed("bad_request", f"an input picture could not be read ({type(e).__name__})") from None
+        # film_price allowed the take's references against the model's limit, but a character can be given more pictures after Start
+        # (0239, B5): such a take is failed here, by name and with the remedy, before the style is read or anything is sent.
+        limit = getattr(getattr(adapter, "entry", None), "image_refs_max", None)
+        if refs and isinstance(limit, int) and len(refs) > limit:
+            raise _TakeFailed("bad_request", f"this scene now has {len(refs)} reference pictures and {request.model} takes {limit} "
+                                             "(a character was given more pictures after the price was set); remove some pictures, "
+                                             "or choose a key-frame model that takes them all, then start again")
         if request.capability == "i2v" and first is None:
             raise _TakeFailed("bad_request", "the picture this shot starts from is not there")
         if request.params.get("end_asset_id") and end is None:
@@ -818,7 +825,9 @@ class FilmOrchestrator:
             helper = cw.CreativeWorker(self.db.creative, self.resolve_adapter, worker_id=self.worker_id, out_dir=work,
                                        media_root=self.media_root)
             try:
-                request = helper._style(replace(request, job_id=request.job_id), adapter)
+                # The film's own references go in front of the style pictures (below), so the kit and the @characters get only the
+                # slots they leave: counted the way film_price counts them (0239), never more than the adapter takes.
+                request = helper._style(replace(request, job_id=request.job_id), adapter, reserved_slots=len(refs))
             except cw._Refused as r:
                 raise _TakeFailed("bad_request", r.message) from None
         if refs:

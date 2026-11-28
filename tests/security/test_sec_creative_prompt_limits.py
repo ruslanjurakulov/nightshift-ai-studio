@@ -280,10 +280,10 @@ def test_the_labs_take_off_helpers_take_0218_off_first_and_put_it_back(lab):
     try:
         sec_db.apply_files(base, sec_db.build_sequence())
         d = Db(base)
-        # The full chain ends at 0228 (S6) on 0224 (S10) on 0218: one hunk of 0228 in each of the two shared bodies; and 0236's
-        # film_price on 0235's on 0218's.
+        # The full chain ends at 0228 (S6) on 0224 (S10) on 0218: one hunk of 0228 in each of the two shared bodies; and 0239's
+        # film_price on 0236's on 0235's on 0218's.
         after = {**AFTER, "creative_price": sec_db.CREATIVE_PRICE_0228, "creative_params_problem": sec_db.CREATIVE_PARAMS_PROBLEM_0228,
-                 "film_price": sec_db.FILM_PRICE_0236}
+                 "film_price": sec_db.FILM_PRICE_0239}
         assert _md5s(d) == after
         with psycopg.connect(base, autocommit=False) as c:
             sec_db.take_off_0171(c)
@@ -325,7 +325,8 @@ def test_on_0224s_base_the_file_keeps_0224s_line_its_rollback_puts_it_back_and_t
         sec_db.apply_files(base, [f for f in sec_db.build_sequence()
                                if f.name not in (sec_db.MIGRATION_0218.name, sec_db.MIGRATION_0219.name,
                                                  sec_db.MIGRATION_0224.name, sec_db.MIGRATION_0228.name, sec_db.MIGRATION_0235.name,
-                                                 sec_db.MIGRATION_0236.name)])
+                                                 sec_db.MIGRATION_0236.name,
+                                                 sec_db.MIGRATION_0239.name)])
         d = Db(base)
         assert _md5s(d) == BEFORE
         d.su("create function public.credits_per_unit_now(p_unit text) returns numeric language sql stable "
@@ -403,7 +404,8 @@ def test_the_file_refuses_a_registry_synced_from_a_ref_without_0218(lab):
         sec_db.apply_files(base, [f for f in sec_db.build_sequence()
                                if f.name not in (sec_db.MIGRATION_0218.name, sec_db.MIGRATION_0219.name,
                                                  sec_db.MIGRATION_0224.name, sec_db.MIGRATION_0228.name, sec_db.MIGRATION_0235.name,
-                                                 sec_db.MIGRATION_0236.name)])
+                                                 sec_db.MIGRATION_0236.name,
+                                                 sec_db.MIGRATION_0239.name)])
         d = Db(base)
         d.su("insert into public.model_registry (id, display_name, provider, adapter, capabilities, spec, credit_unit) values "
              "('lab-old', 'old', 'lab', 'image.lab', array['t2i'], '{\"output\": \"image\"}'::jsonb, 'model_lab_old_image')")
