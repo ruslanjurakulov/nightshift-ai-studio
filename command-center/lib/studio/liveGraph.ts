@@ -842,7 +842,8 @@ export function briefGraph(b: Brief): LiveGraph {
   for (const { list, kind } of refs) {
     for (const r of list) {
       const id = `ref:${r.id}`;
-      if (r.name) names.set(r.id, r.name);
+      // An unnamed reference is still in the scene: its chip says "Unnamed" (the UI's word), it is never dropped.
+      names.set(r.id, r.name);
       // A reference picture that exists already (uploaded, or from the library) is real; one still to be made is a sketch. No wire
       // from the script: the card sits under it in the same column, so the wire looped backwards (Pixel L2).
       nodes.push({ id, kind, status: r.assetId ? "done" : "draft", sceneTitle: r.name || undefined, assetId: r.assetId, col: 1, row: ++refRow });

@@ -14,14 +14,18 @@ export function SegTabs<K extends string>({
   idBase,
   className = "",
   testIdBase,
+  panelFor = (id) => id,
 }: {
-  items: readonly { id: K; label: string }[];
+  /** `dot`: something new behind this tab, said in words for a screen reader (a dot is drawn for the eye). */
+  items: readonly { id: K; label: string; dot?: string }[];
   value: K;
   onChange: (id: K) => void;
   label: string;
   idBase: string;
   className?: string;
   testIdBase?: string;
+  /** The panel a tab controls, when two tabs share one (default: its own). */
+  panelFor?: (id: K) => string;
 }) {
   const refs = useRef(new Map<K, HTMLButtonElement | null>());
   const move = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -53,12 +57,18 @@ export function SegTabs<K extends string>({
           role="tab"
           id={`${idBase}-tab-${x.id}`}
           aria-selected={value === x.id}
-          aria-controls={`${idBase}-panel-${x.id}`}
+          aria-controls={`${idBase}-panel-${panelFor(x.id)}`}
           tabIndex={value === x.id ? 0 : -1}
           onClick={() => onChange(x.id)}
           data-testid={testIdBase ? `${testIdBase}-${x.id}` : undefined}
         >
           {x.label}
+          {x.dot ? (
+            <>
+              <span className="seg-dot" aria-hidden />
+              <span className="sr-only">{` (${x.dot})`}</span>
+            </>
+          ) : null}
         </button>
       ))}
     </div>

@@ -94,11 +94,11 @@ describe("the storyboard grid (lib/studio/planGrid.ts)", () => {
     // Voice off and no music: said in one line, not drawn as cards.
     expect(it2.absent.sort()).toEqual(["music", "voice"]);
   });
-  it("12 scenes fit at zoom 1 in the 1440 px column (a 936 x 600 board), one card per scene, never shrunk", () => {
-    const l = planLayout(items(12), 936);
+  it("12 scenes fit at zoom 1 in the 1440 px column (a 936 x 600 board, less the controls' 60 px gutter), never shrunk", () => {
+    const l = planLayout(items(12), 936 - 60);
     expect(l.cols).toBeGreaterThanOrEqual(4);
     expect(l.cardW).toBeGreaterThanOrEqual(200);
-    expect(l.width).toBeLessThanOrEqual(936);
+    expect(l.width).toBeLessThanOrEqual(936 - 60);
     expect(l.height).toBeLessThanOrEqual(600);
   });
   it("more scenes wrap into more rows (the board scrolls down), the card width never drops below its minimum", () => {

@@ -547,6 +547,8 @@ export function StudioCanvas({
     return true;
   };
   const dropAsset = (a: DroppedAsset, at?: { x: number; y: number }, onto?: string) => {
+    // A file dropped on a hidden canvas (it cannot be seen, but a drop event can still be fired at it) adds nothing.
+    if (!active) return;
     const target = onto ? canvas.nodes.find((n) => n.id === onto) : undefined;
     if (target && KIND_SPEC[target.kind].accepts.includes(a.kind) && kindOpen(availability, target.kind)) {
       // Onto a node's input: the file sits beside it, wired in at once.
@@ -809,9 +811,10 @@ export function StudioCanvas({
     </div>
   );
 
-  const bar = <ProjectBar filmStudio={filmStudio} onSearch={() => setPalette("all")} inline={!slot} view="canvas" />;
-  // Hidden behind the Plan column: the header's slot is left empty rather than holding a bar for a canvas nobody can see.
-  const barEl = !active ? null : slot ? createPortal(bar, slot) : bar;
+  // The bar stays in the header while the canvas is hidden behind the Plan column: its project name and Canvas/Timeline are the
+  // Studio's, still true and still the way on. Only its search (which opens the canvas's palette) is the canvas's, so it goes.
+  const bar = <ProjectBar filmStudio={filmStudio} onSearch={active ? () => setPalette("all") : undefined} inline={!slot} view="canvas" />;
+  const barEl = slot ? createPortal(bar, slot) : active ? bar : null;
 
   const inspector =
     sel && inspecting ? (

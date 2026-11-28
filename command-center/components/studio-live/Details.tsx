@@ -110,7 +110,7 @@ export function Details({
       ) : null}
       {node.cast?.length ? (
         <p className="lv-muted" data-testid="live-cast">
-          {fmt(c.plan.castLine, { names: node.cast.join(", ") })}
+          {fmt(c.plan.castLine, { names: node.cast.map((n) => n || c.plan.card.unnamed).join(", ") })}
         </p>
       ) : null}
       {!run && node.status === "draft" ? (

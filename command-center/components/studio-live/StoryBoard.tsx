@@ -1,17 +1,14 @@
 "use client";
 
 /**
- * StoryBoard: the one read-only board a plan is drawn on (docs/studio/LIVE_CREATION_PLAN.md §3.8), in LiveView and in the Studio's
- * Plan column beside Nightshift AI. Its cards and their layout are LiveView's, moved here; what it draws is lib/studio/boardModel.ts's.
- *
- * `enter` names the cards new since the last reading, in arrival order: the ONE hook for an entrance (data-enter plus --lv-enter-i,
- * studio-live.css), so S5's motion can replace it in one place. LiveView sets none, so its board behaves as it did. (The Studio's Plan
- * column draws its own storyboard grid, PlanBoard.tsx.)
+ * StoryBoard: the read-only board a plan is drawn on in LiveView (docs/studio/LIVE_CREATION_PLAN.md §3.8). Its cards and their
+ * layout are LiveView's, moved here; what it draws is lib/studio/boardModel.ts's. (The Studio's Plan column draws the same model as
+ * a storyboard grid of its own, PlanBoard.tsx.)
  *
  * Performance (§3.10): an unchanged card is the same React Flow node object between readings (boardModel reuses the LiveNode, and the
  * card's node object is cached on it here), the cards are memoised, and above VISIBLE_ONLY cards only those on screen are rendered.
  */
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow, type Edge, type Node, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
 import { AudioLines, Clapperboard, FileText, Film, Flag, Image as ImageIcon, Lightbulb, MapPin, Music, Search, ShieldCheck, Sword, Upload, UserRound, Wand2, type LucideIcon } from "lucide-react";
@@ -115,10 +112,8 @@ export function useNarrow(): boolean {
   return narrow;
 }
 
-type CardData = { node: LiveNode; name: string; statusWord: string; price: string | null; lit: boolean; selected: boolean; onOpen: (id: string) => void; enter?: number };
+type CardData = { node: LiveNode; name: string; statusWord: string; price: string | null; lit: boolean; selected: boolean; onOpen: (id: string) => void };
 
-/** A card new since the last reading rises in, its place in the arrival order setting its delay (studio-live.css .lv-card[data-enter]). */
-const enterStyle = (i: number | undefined): CSSProperties | undefined => (i === undefined ? undefined : ({ "--lv-enter-i": i } as CSSProperties));
 
 const CardView = memo(function CardView({ data }: NodeProps<Node<CardData, "step">>) {
   const Icon = ICONS[data.node.kind];
@@ -132,8 +127,6 @@ const CardView = memo(function CardView({ data }: NodeProps<Node<CardData, "step
         data-node-id={data.node.id}
         data-status={data.node.status}
         data-lit={data.lit ? "" : undefined}
-        data-enter={data.enter === undefined ? undefined : ""}
-        style={enterStyle(data.enter)}
         aria-pressed={data.selected}
         onClick={() => data.onOpen(data.node.id)}
       >
@@ -159,8 +152,6 @@ export type ViewProps = {
   words: Map<string, string>;
   prices: Map<string, string>;
   lit: ReadonlySet<string>;
-  /** Cards new since the last reading, each with its place in the arrival order. None under reduced motion (the caller's choice). */
-  enter?: ReadonlyMap<string, number>;
   /**
    * Render only the cards on screen above VISIBLE_ONLY cards. Off where a card must exist off screen: the Live lane's flights start
    * from a card's box (LiveView turns it off while the lane is mounted), and a keyboard must reach every card.
@@ -178,15 +169,15 @@ export const VISIBLE_ONLY = 40;
 type FlowNode = Node<CardData, "step">;
 const sameCard = (a: CardData, b: CardData) =>
   a.node === b.node && a.name === b.name && a.statusWord === b.statusWord && a.price === b.price && a.lit === b.lit && a.selected === b.selected &&
-  a.onOpen === b.onOpen && a.enter === b.enter;
+  a.onOpen === b.onOpen;
 
-export function Board({ graph, selected, onOpen, names, words, prices, lit, enter, visibleOnly = false }: ViewProps) {
+export function Board({ graph, selected, onOpen, names, words, prices, lit, visibleOnly = false }: ViewProps) {
   // The node object React Flow was given for each card last time: handed back as it was when nothing on the card changed.
   const cache = useRef(new Map<string, FlowNode>());
   const nodes = useMemo<FlowNode[]>(() => {
     const next = new Map<string, FlowNode>();
     const list = graph.nodes.map((n) => {
-      const data: CardData = { node: n, name: names.get(n.id) ?? n.id, statusWord: words.get(n.id) ?? "", price: prices.get(n.id) ?? null, lit: lit.has(n.id), selected: selected === n.id, onOpen, enter: enter?.get(n.id) };
+      const data: CardData = { node: n, name: names.get(n.id) ?? n.id, statusWord: words.get(n.id) ?? "", price: prices.get(n.id) ?? null, lit: lit.has(n.id), selected: selected === n.id, onOpen };
       const old = cache.current.get(n.id);
       const node: FlowNode =
         old && old.position.x === n.col * COL_W && old.position.y === n.row * ROW_H && sameCard(old.data, data)
@@ -197,7 +188,7 @@ export function Board({ graph, selected, onOpen, names, words, prices, lit, ente
     });
     cache.current = next;
     return list;
-  }, [graph, selected, onOpen, names, words, prices, lit, enter]);
+  }, [graph, selected, onOpen, names, words, prices, lit]);
   const status = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n.status])), [graph]);
   const edges = useMemo<Edge[]>(
     () =>
@@ -248,8 +239,8 @@ export function Board({ graph, selected, onOpen, names, words, prices, lit, ente
   );
 }
 
-const ListCard = memo(function ListCard({ node: n, name, word, price, lit, enter, selected, onOpen }: {
-  node: LiveNode; name: string; word: string; price: string | null; lit: boolean; enter: number | undefined; selected: boolean; onOpen: (id: string) => void;
+const ListCard = memo(function ListCard({ node: n, name, word, price, lit, selected, onOpen }: {
+  node: LiveNode; name: string; word: string; price: string | null; lit: boolean; selected: boolean; onOpen: (id: string) => void;
 }) {
   const Icon = ICONS[n.kind];
   return (
@@ -261,8 +252,6 @@ const ListCard = memo(function ListCard({ node: n, name, word, price, lit, enter
         data-node-id={n.id}
         data-status={n.status}
         data-lit={lit ? "" : undefined}
-        data-enter={enter === undefined ? undefined : ""}
-        style={enterStyle(enter)}
         aria-pressed={selected}
         onClick={() => onOpen(n.id)}
       >
@@ -277,7 +266,7 @@ const ListCard = memo(function ListCard({ node: n, name, word, price, lit, enter
   );
 });
 
-export function List({ graph, selected, onOpen, names, words, prices, lit, enter }: ViewProps) {
+export function List({ graph, selected, onOpen, names, words, prices, lit }: ViewProps) {
   // A scene reads as its picture then its clip (Pixel M5): the scene columns (2 and 3) are ordered by row first.
   const group = (n: LiveNode) => (n.col < 2 ? 0 : n.col <= 3 ? 1 : 2);
   const order = [...graph.nodes].sort((a, b) => group(a) - group(b) || (group(a) === 1 ? a.row - b.row || a.col - b.col : a.col - b.col || a.row - b.row));
@@ -291,7 +280,6 @@ export function List({ graph, selected, onOpen, names, words, prices, lit, enter
           word={words.get(n.id) ?? ""}
           price={prices.get(n.id) ?? null}
           lit={lit.has(n.id)}
-          enter={enter?.get(n.id)}
           selected={selected === n.id}
           onOpen={onOpen}
         />
@@ -314,9 +302,8 @@ export function StoryBoard({
   selected,
   onOpen,
   lit,
-  enter,
   visibleOnly,
-}: Pick<ViewProps, "graph" | "selected" | "onOpen" | "lit" | "enter" | "visibleOnly">) {
+}: Pick<ViewProps, "graph" | "selected" | "onOpen" | "lit" | "visibleOnly">) {
   const { t } = useI18n();
   const c = t.studioLive;
   const narrow = useNarrow();
@@ -326,6 +313,6 @@ export function StoryBoard({
     () => new Map(graph.nodes.filter((n) => typeof n.price === "number").map((n) => [n.id, fmt(c.price, { n: n.price as number })])),
     [graph, c],
   );
-  const props = { graph, selected, onOpen, names, words, prices, lit, enter, visibleOnly };
+  const props = { graph, selected, onOpen, names, words, prices, lit, visibleOnly };
   return narrow ? <List {...props} /> : <Board {...props} />;
 }

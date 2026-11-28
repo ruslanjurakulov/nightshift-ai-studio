@@ -85,11 +85,6 @@
   .lv-activity { margin-bottom: calc(96px + env(safe-area-inset-bottom)); }
 }
 
-/* StoryBoard's `enter` (LiveView sets none): S5's reveal, its tokens. */
-.lv-card[data-enter] {
-  animation: ds-reveal var(--ds-dur-reveal) var(--ds-ease-emphasized) both;
-  animation-delay: calc(var(--lv-enter-i, 0) * var(--ds-stagger));
-}
 
 /* ── The Studio's Plan column beside Nightshift AI (PlanColumn.tsx). Structure and legibility only: the cards' look is S5's. ── */
 .plan-col { display: grid; gap: var(--ds-space-2); min-width: 0; align-content: start; }
@@ -121,6 +116,13 @@
 /* 44 px targets (Pixel L5), a long label wraps. */
 .cv-kbtn.plan-key { height: auto; min-height: 44px; white-space: normal; text-align: center; }
 .plan-stage { position: relative; flex: 1; min-height: 0; }
+/* A step's details are a drawer over the board's right edge: the board keeps its width, so the grid never reflows from four
+   columns to two under the person's eyes (and focus never loses its card: Pixel N3). */
+.lv-main.plan-stage, .lv-main.plan-stage.has-details { grid-template-columns: minmax(0, 1fr); }
+.plan-stage > .lv-details {
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 6; width: min(360px, 92%); overflow: auto;
+  box-shadow: var(--ds-elev-3, 0 12px 32px -12px rgb(0 0 0 / 0.5));
+}
 /* The board takes the rest of the column; a longer plan scrolls inside it. */
 .lv-board.plan-board { height: auto; min-height: 280px; flex: 1; background: var(--ds-surface-1); }
 .plan-flow { position: absolute; inset: 0; }
@@ -181,9 +183,22 @@
 
 /* The Studio page: chat and plan side by side from 1024 px; below, one at a time as tabs (StudioSplit). */
 .studio-split-chip { justify-self: start; margin-bottom: var(--ds-space-2); min-height: 44px; }
+/* The unread mark on the Chat tab: a dot for the eye, the words for a screen reader (SegTabs). */
+.seg-dot { display: inline-block; width: 8px; height: 8px; margin-inline-start: 6px; border-radius: 50%; background: var(--ds-accent); vertical-align: middle; }
+.plan-answered { padding: var(--ds-space-3); border: 1px solid var(--ds-border); border-radius: var(--ds-r-key); background: var(--ds-surface-1); }
+@media (max-width: 767px) {
+  /* At phone width the details read in the flow, above the list, not as a drawer over it. */
+  .plan-stage > .lv-details { position: static; width: auto; order: -1; box-shadow: none; }
+}
 @media (max-width: 1023px) {
   .studio-split[data-tab="chat"] > .studio-split-plan { display: none; }
-  .studio-split[data-tab="plan"] > .studio-split-chat { display: none; }
+  /* The tabs take a row above the chat: the dock is shorter by it, so its composer stays above the app's tab bar (Pixel L-a). */
+  .studio-split[data-tab] .ns-ai-dock {
+    height: calc(100dvh - var(--ns-shell-h, 4rem) - var(--split-tabs-h, 4rem) - 5.5rem - env(safe-area-inset-bottom));
+    min-height: 20rem;
+  }
+  .studio-split[data-tab="plan"] > .studio-split-chat,
+  .studio-split[data-tab="canvas"] > .studio-split-chat { display: none; }
   .studio-split-chat { display: grid; }
   /* On a phone the storyboard row stays in sight above the tab bar while the list scrolls. */
   .plan-writing { position: sticky; bottom: calc(env(safe-area-inset-bottom) + 72px); z-index: 2; }
@@ -193,7 +208,7 @@
 @media (prefers-reduced-motion: reduce) {
   .lv-card, .lv-board .react-flow__edge-path { transition: none; }
   .lv-card.is-working { transform: none; }
-  .lv-card.is-working::after, .lv-card[data-lit], .lv-card[data-enter] { animation: none; }
+  .lv-card.is-working::after, .lv-card[data-lit] { animation: none; }
   .plan-skel, .plan-sweep::before { animation: none; }
   .plan-switch [role="tab"] { transition: none; }
   .lv-board .lv-edge.is-live .react-flow__edge-path { animation: none; }

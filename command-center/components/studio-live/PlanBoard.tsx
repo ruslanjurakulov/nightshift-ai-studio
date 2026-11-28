@@ -19,6 +19,17 @@ import { PlanSceneCard, type LiveNodeProps } from "./PlanSceneCard";
 import { nodeName, reduced } from "./StoryBoard";
 
 type T = ReturnType<typeof useI18n>["t"];
+
+/** Room kept at the board's right edge for React Flow's Controls (44 px keys and their inset). */
+export const CONTROLS_GUTTER = 60;
+const EDGE = 12;
+/** The viewport y that shows a card wholly (`top`, `h` in screen pixels at y = 0), moving as little as possible. */
+export function scrollInto(top: number, h: number, room: number, y: number): number {
+  const at = top + y;
+  if (at < EDGE) return y + (EDGE - at);
+  if (at + h > room - EDGE) return y - (at + h - (room - EDGE));
+  return y;
+}
 type CardNode = Node<{ card: LiveNodeProps; w: number }, "plan">;
 
 const CardNodeView = memo(function CardNodeView({ data }: NodeProps<CardNode>) {
@@ -60,7 +71,7 @@ export function planCards(
       summary: s.summary,
       durationS: s.seconds,
       durationBasis: s.seconds ? "planned" : undefined,
-      cast: s.cast,
+      cast: s.cast.map((n) => n || t.studioLive.plan.card.unnamed),
       selected: opts.selected === s.keyframe.id || (!!s.clip && opts.selected === s.clip.id),
       onOpen: opts.onOpen,
       order: opts.enter.get(s.id),
@@ -73,7 +84,7 @@ export function planCards(
 function Inner({ cards, items, width, height }: { cards: LiveNodeProps[]; items: PlanItems; width: number; height: number }) {
   const { t } = useI18n();
   const w = t.studioLive.plan.controls;
-  const { setCenter, getViewport } = useReactFlow();
+  const { setViewport, getViewport } = useReactFlow();
   // React Flow's measured card heights, so a taller card (a longer title, S5's card) widens its row instead of overlapping the next.
   const heightsKey = useStore((s) => {
     let k = "";
@@ -88,9 +99,10 @@ function Inner({ cards, items, width, height }: { cards: LiveNodeProps[]; items:
     }
     return m;
   }, [heightsKey]);
-  const layout = useMemo(() => planLayout(items, width, measured), [items, width, measured]);
-  // Centred when the grid is narrower than the board: the leftover is split, not left on one side.
-  const dx = Math.max(0, Math.floor((width - layout.width) / 2));
+  // The Controls sit at the board's bottom right: the grid keeps a gutter for them, so no card ever runs under a key (Pixel b).
+  const layout = useMemo(() => planLayout(items, Math.max(0, width - CONTROLS_GUTTER), measured), [items, width, measured]);
+  // Centred in the room left of the controls' gutter: the leftover is split, not left on one side.
+  const dx = Math.max(0, Math.floor((width - CONTROLS_GUTTER - layout.width) / 2));
   const place = useMemo(() => new Map(layout.placed.map((p) => [p.id, p])), [layout]);
   const cache = useRef(new Map<string, CardNode>());
   const nodes = useMemo<CardNode[]>(() => {
@@ -127,13 +139,13 @@ function Inner({ cards, items, width, height }: { cards: LiveNodeProps[]; items:
       const id = (e.target as HTMLElement).closest<HTMLElement>("[data-node-id]")?.dataset.nodeId;
       const p = id ? place.get(id) : undefined;
       if (!p) return;
+      // Up or down only, by as little as brings the card wholly into view: the grid already fits the width, so a sideways pan or a
+      // zoom on Tab would only move the plan under the person's eyes (Pixel N1).
       const { x, y, zoom } = getViewport();
-      const left = (p.x + dx) * zoom + x;
-      const top = p.y * zoom + y;
-      const inside = left >= 0 && top >= 0 && left + p.w * zoom <= width && top + p.h * zoom <= height;
-      if (!inside) void setCenter(p.x + dx + p.w / 2, p.y + p.h / 2, { zoom, duration: reduced() ? 0 : 200 });
+      const ny = scrollInto(p.y * zoom, p.h * zoom, height, y);
+      if (ny !== y) void setViewport({ x, y: ny, zoom }, { duration: reduced() ? 0 : 200 });
     },
-    [place, dx, getViewport, setCenter, width, height],
+    [place, getViewport, setViewport, height],
   );
   const extentH = Math.max(layout.height, height);
   return (

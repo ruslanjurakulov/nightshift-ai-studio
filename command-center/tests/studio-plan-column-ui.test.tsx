@@ -6,11 +6,11 @@
  * screen, cards that move under reduced motion, and a failed re-read that blanks the plan.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Profiler, useContext, useState, type ReactNode } from "react";
 import { CanvasActiveContext } from "../components/studio-canvas/canvasActive";
 import { studioLiveEn as c } from "../lib/i18n/studio-live/en";
-import { emitBrainActivity } from "../lib/studio/brainActivity";
+import { clearBrainActivity, dispatchBrainCanvas, type BrainActivity } from "../lib/studio/brainActivity";
 import { VIEW_MEMORY_KEY } from "../lib/studio/planBoard";
 
 vi.mock("@/lib/i18n/context", async () => {
@@ -79,7 +79,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   // The page remembers the last activity for late listeners (brainActivity replay): each test starts from a quiet panel.
-  emitBrainActivity({ session_id: null, phase: "idle" });
+  clearBrainActivity();
 });
 
 /** The person's own canvas: it has cards, and a count only kept if it is never unmounted. */
@@ -95,7 +95,9 @@ function FakeCanvas() {
   );
 }
 const briefDone = (sid: string) => act(async () => void window.dispatchEvent(new CustomEvent("nightshift:brain-brief", { detail: { session_id: sid } })));
-const activity = (session_id: string | null, phase: "thinking" | "storyboard" | "idle") => act(async () => emitBrainActivity({ session_id, phase }));
+// Sent as the panel sends it: a detail that breaks #989's contract (a null session on anything but "thinking") is never sent.
+const activity = (session_id: string | null, phase: BrainActivity["phase"], plan?: BrainActivity["plan"]) =>
+  act(async () => void dispatchBrainCanvas({ kind: "activity", detail: (plan ? { session_id, phase, plan } : { session_id, phase }) as BrainActivity }));
 // A read resolves, then the board commits its model on the next animation frame (useBoardModel batches per frame).
 const flush = () =>
   act(async () => {
@@ -170,14 +172,14 @@ describe("Plan column: switching", () => {
 
   it("another conversation's storyboard and idle move nothing: no plan comes back beside a new chat (Lens H1)", async () => {
     render(ui(null));
-    await activity(A, "storyboard");
-    await activity(A, "idle");
+    await activity(A, "planning");
+    await activity(A, "end");
     expect(pane()).toBeNull();
     expect(reads).toBe(0);
     await activity(null, "thinking");
     expect(pane()).toBeTruthy();
-    await activity(A, "storyboard");
-    await activity(A, "idle");
+    await activity(A, "planning");
+    await activity(A, "end");
     await flush();
     expect(reads).toBe(0);
     expect(screen.getByTestId("plan-planning")).toBeTruthy();
@@ -188,8 +190,8 @@ describe("Plan column: switching", () => {
     search = new URLSearchParams(`brain=${B}`);
     render(ui(B));
     await flush();
-    await activity(A, "storyboard");
-    await activity(A, "idle");
+    await activity(A, "planning");
+    await activity(A, "end");
     await flush();
     expect(readUrls.every((u) => u.endsWith(B))).toBe(true);
     expect(screen.queryByTestId("plan-storyboard")).toBeNull();
@@ -203,7 +205,7 @@ describe("Plan column: the plan", () => {
     expect(s1.textContent).toContain("Shot 1");
     expect(s1.textContent).toContain("The kite, shot 1");
     expect(s1.textContent).not.toContain("more");
-    expect(s1.textContent).toContain("3 s plan");
+    expect(s1.textContent).toContain("planned 3 s");
     expect(s1.textContent).toContain("Aziza");
     expect(s1.textContent).not.toContain(c.status.draft);
     expect(screen.getByText(c.plan.absent.voiceMusic)).toBeTruthy();
@@ -211,13 +213,13 @@ describe("Plan column: the plan", () => {
 
   it("while the storyboard is written: its own row, the time measured here, no per-scene count", async () => {
     await openOn(A, drafting);
-    await activity(A, "storyboard");
+    await activity(A, "planning");
     const s = screen.getByTestId("plan-storyboard");
     expect(s.textContent).toContain(c.plan.storyboard);
     expect(s.textContent).toContain(c.plan.storyboardNote);
     expect(s.textContent).not.toMatch(/\d+\s*(\/|of|%)/);
     expect(card("idea")).toBeTruthy();
-    await activity(A, "idle");
+    await activity(A, "end");
     expect(screen.queryByTestId("plan-storyboard")).toBeNull();
   });
 
@@ -267,11 +269,29 @@ describe("Plan column: the plan", () => {
     expect(screen.getByTestId("plan-stale").textContent).toBe(c.plan.stale);
   });
 
-  it("a first turn that got no answer says so, not 'send a message' (Pixel M3)", async () => {
-    render(ui(null));
-    await activity(null, "thinking");
-    await activity(null, "idle");
+  it("a turn that got no answer, with no plan yet, says so, not 'not found' (Pixel M3)", async () => {
+    answers.push({ status: 404, body: {} });
+    search = new URLSearchParams(`brain=${A}`);
+    render(ui(A));
+    await flush();
+    await activity(A, "thinking");
+    await activity(A, "end");
     expect(screen.getByTestId("plan-no-answer").textContent).toBe(c.plan.noAnswer);
+  });
+
+  it("a storyboard with the server's counts says which chapter; without them, only that it is being written", async () => {
+    await openOn(A, drafting);
+    await activity(A, "planning");
+    expect(screen.getByTestId("plan-storyboard").textContent).toContain(c.plan.storyboard);
+    await activity(A, "planning", { windows: 1, of: 2, chapters_written: 2, chapters: 6 });
+    expect(screen.getByTestId("plan-storyboard").textContent).toContain("Writing chapter 3 of 6");
+    await activity(A, "saving");
+    expect(screen.queryByTestId("plan-storyboard")).toBeNull();
+    expect(screen.getByTestId("plan-busy").textContent).toBe(c.plan.saving);
+    await activity(A, "pricing");
+    expect(screen.getByTestId("plan-busy").textContent).toBe(c.plan.pricing);
+    await activity(A, "end");
+    expect(screen.queryByTestId("plan-busy")).toBeNull();
   });
 });
 
@@ -382,5 +402,96 @@ describe("below 1024 px: Chat and Plan are tabs (StudioSplit, Pixel H4)", () => 
     expect(chip.textContent).toBe(c.plan.chip.planning);
     fireEvent.click(chip);
     expect(screen.getByTestId("studio-split").dataset.tab).toBe("plan");
+  });
+});
+
+describe("below 1024 px: one three-way tablist, New chat, unread, an answer waiting in the chat", () => {
+  const splitUi = async (initial: string | null = null) => {
+    const { StudioSplit } = await import("../components/studio-live/StudioSplit");
+    const tree = () => (
+      <StudioSplit initialSession={initial} chat={<p data-testid="chat">chat</p>} column={<PlanColumn initialSession={initial}><FakeCanvas /></PlanColumn>} />
+    );
+    const r = render(tree());
+    return { ...r, again: () => r.rerender(tree()) };
+  };
+  const tab = () => screen.getByTestId("studio-split").dataset.tab;
+
+  it("Chat · Plan · My canvas: the column's own switch is not drawn, and the third tab shows the person's canvas (Pixel c)", async () => {
+    await splitUi();
+    expect(screen.queryByTestId("plan-switch-plan")).toBeNull();
+    fireEvent.click(screen.getByTestId("studio-tab-canvas"));
+    expect(tab()).toBe("canvas");
+    expect(canvasPane().hasAttribute("inert")).toBe(false);
+    fireEvent.keyDown(screen.getByTestId("studio-tab-canvas"), { key: "ArrowLeft" });
+    expect(tab()).toBe("plan");
+    expect(pane()).toBeTruthy();
+    expect(canvasPane().hasAttribute("inert")).toBe(true);
+  });
+
+  it("New chat (?brain= taken off) clears the chip; another conversation's storyboard and end move nothing (Lens M1, L2)", async () => {
+    search = new URLSearchParams(`brain=${A}`);
+    answers.push({ status: 200, body: { brief: drafting } });
+    const { again } = await splitUi(A);
+    await flush();
+    fireEvent.click(screen.getByTestId("studio-tab-chat"));
+    expect(screen.getByTestId("studio-plan-chip").textContent).toBe(c.plan.chip.open);
+    await activity(A, "planning");
+    expect(screen.getByTestId("studio-plan-chip").textContent).toBe(c.plan.chip.storyboard);
+    await activity(B, "planning");
+    await activity(B, "end");
+    expect(screen.getByTestId("studio-plan-chip").textContent).toBe(c.plan.chip.storyboard);
+    // New chat: the panel ends A's activity and takes ?brain= off the page.
+    await activity(A, "end");
+    search = new URLSearchParams();
+    again();
+    await flush();
+    expect(screen.queryByTestId("studio-plan-chip")).toBeNull();
+  });
+
+  it("an answer that lands while the person is on the plan marks the Chat tab, and opening the chat clears it", async () => {
+    await splitUi();
+    await activity(null, "thinking");
+    expect(tab()).toBe("plan");
+    answers.push({ status: 200, body: { brief: drafting } });
+    await briefDone(A);
+    await flush();
+    const chatTab = screen.getByTestId("studio-tab-chat");
+    expect(chatTab.querySelector(".seg-dot")).not.toBeNull();
+    expect(chatTab.textContent).toContain(c.plan.views.unread);
+    // The outline waits for the person's choice in the chat: the plan says so, with the way there (Pixel N4).
+    fireEvent.click(within(screen.getByTestId("plan-answered")).getByRole("button", { name: c.plan.openChat }));
+    expect(tab()).toBe("chat");
+    expect(screen.getByTestId("studio-tab-chat").querySelector(".seg-dot")).toBeNull();
+  });
+});
+
+describe("replay (Lens H2)", () => {
+  it("a fresh column never adopts a conversation from a send left behind by an earlier mount", async () => {
+    await activity(A, "thinking");
+    cleanup();
+    render(ui(null));
+    await flush();
+    expect(readUrls).toEqual([]);
+    expect(pane()).toBeNull();
+    expect(window.localStorage.getItem(VIEW_MEMORY_KEY) ?? "").not.toContain(A);
+  });
+  it("a fresh column shows no planning skeleton for a first send that is not in flight", async () => {
+    await activity(null, "thinking");
+    cleanup();
+    render(ui(null));
+    fireEvent.click(screen.getByTestId("plan-switch-plan"));
+    expect(screen.queryByTestId("plan-planning")).toBeNull();
+  });
+  it("a refresh mid-storyboard: the column that mounts after the panel spoke still shows the storyboard row, and switches nothing", async () => {
+    answers.push({ status: 200, body: { brief: drafting } });
+    await activity(A, "planning");
+    search = new URLSearchParams(`brain=${A}`);
+    window.localStorage.setItem(VIEW_MEMORY_KEY, JSON.stringify({ session: A, view: "canvas" }));
+    render(ui(A));
+    await flush();
+    expect(pane()).toBeNull();
+    fireEvent.click(screen.getByTestId("plan-switch-plan"));
+    expect(screen.getByTestId("plan-storyboard")).toBeTruthy();
+    expect(screen.getByTestId("plan-announce").textContent).not.toContain(c.plan.autoShown);
   });
 });

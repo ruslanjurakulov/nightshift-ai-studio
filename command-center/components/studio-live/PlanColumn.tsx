@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
@@ -17,6 +17,7 @@ import { Details } from "./Details";
 import { PlanBoard, PlanList, planCards } from "./PlanBoard";
 import { SegTabs, tabPanelProps } from "./SegTabs";
 import { reduced } from "./StoryBoard";
+import { StudioSplitContext } from "./StudioSplit";
 import "@/components/studio-canvas/studio-canvas.css";
 import "./studio-live.css";
 
@@ -72,8 +73,12 @@ const cardOf = (nodeId: string) => (/^scene#\d+:(keyframe|clip)$/.test(nodeId) ?
  *
  * Read-only (CLAUDE.md rule 3): the cards are DRAFT steps; nothing here starts, prices or spends. Create stays in the panel.
  *
- * The person's own canvas stays mounted while the plan is shown, hidden and inert, and told it is not active (CanvasActiveContext),
- * so its bar, overlays and keys stand down and an open composer, a quote or a running card is exactly as it was when they come back.
+ * The person's own canvas stays mounted while the plan is shown, hidden and inert, and told it is not active (CanvasActiveContext):
+ * its overlays, keys, drops and search stand down (its project bar stays in the header), and an open composer, a quote or a running
+ * card is exactly as it was when they come back.
+ *
+ * Below 1024 px the page's own three-way tabs (StudioSplit: Chat · Plan · My canvas) choose the view, and this column's switch is
+ * not drawn.
  */
 export function PlanColumn({ initialSession, children }: { initialSession: string | null; children: ReactNode }) {
   const { t } = useI18n();
@@ -81,6 +86,7 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
   const p = c.plan;
   const phone = usePhone();
   const path = useChannelPath();
+  const split = useContext(StudioSplitContext);
 
   // The conversation: the page's ?brain= (kept in step by the panel's replaceState and New chat), or the one the panel named since.
   const params = useSearchParams();
@@ -114,7 +120,7 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
   }, [session]);
 
   const [activity, setActivity] = useState<BrainActivity | null>(null);
-  /** A send is out and has not been answered: an "idle" with no answer since is a failed turn (Pixel M3). */
+  /** A send is out and has not been answered: an "end" with no answer since is a failed turn (Pixel M3). */
   const awaiting = useRef(false);
   const [noAnswer, setNoAnswer] = useState(false);
   // The ids on the last board drawn; null: nothing drawn yet for a conversation that was already there (open, refresh, switch), so
@@ -129,6 +135,11 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
     () =>
       onBrainActivity((a) => {
         const mine = a.session_id === sessionRef.current;
+        // A replay is what is still in flight, not an act: it never adopts, switches, remembers or announces (Lens H2).
+        if (a.replayed) {
+          if (mine && a.phase === "planning") setActivity(a);
+          return;
+        }
         if (a.phase === "thinking") {
           awaiting.current = true;
           setNoAnswer(false);
@@ -149,10 +160,11 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
           setActivity(a);
           return;
         }
-        // "storyboard" and "idle" are about the conversation they name: another one's (a wait that outlived a New chat) moves
+        // "planning", "saving", "pricing" and "end" are about the conversation they name: another one's (a wait that outlived a
+        // New chat) moves
         // nothing here, and never brings its plan back beside a new chat (Lens H1).
         if (!mine) return;
-        if (a.phase === "idle" && awaiting.current) {
+        if (a.phase === "end" && awaiting.current) {
           awaiting.current = false;
           setNoAnswer(true);
         }
@@ -191,8 +203,9 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
 
   const read = useBrainBrief(session);
   const brief = read.load.state === "ready" ? read.load.brief : null;
-  const phase = activity && activity.session_id === session && activity.phase !== "idle" ? activity.phase : null;
-  const boardInput = useMemo<BoardInput | null>(() => (brief ? { source: "brief", brief, writing: phase === "storyboard" } : null), [brief, phase]);
+  const phase = activity && activity.session_id === session && activity.phase !== "end" ? activity.phase : null;
+  const planCounts = phase === "planning" ? (activity?.plan ?? null) : null;
+  const boardInput = useMemo<BoardInput | null>(() => (brief ? { source: "brief", brief, writing: phase === "planning" } : null), [brief, phase]);
   const model = useBoardModel(boardInput, session);
   const graph = model?.graph ?? null;
   const items = useMemo(() => (graph ? planItems(graph) : null), [graph]);
@@ -237,11 +250,19 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
   // Closing a step gives focus back to its card, focused before the details unmount (or the browser drops it to <body>); Escape
   // closes it wherever focus is, and is taken, so nothing else on the page reads it as "leave" (Pixel H5).
   const close = useCallback(() => {
-    if (selected) {
-      const card = cardOf(selected);
+    if (!selected) return setSelected(null);
+    const card = cardOf(selected);
+    const focusCard = () =>
       [...document.querySelectorAll<HTMLElement>("[data-node-id]")].find((el) => el.dataset.nodeId === card)?.focus({ preventScroll: true });
-    }
+    focusCard();
     setSelected(null);
+    // The details are a drawer over the board (the grid never reflows), but React Flow may re-render the card as they go: if focus
+    // fell to <body> on the way, it is put back once the frame after next has settled (Pixel N3: lost 3 times in 6).
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (document.activeElement === document.body || !document.activeElement) focusCard();
+      }),
+    );
   }, [selected]);
   const closeRef = useRef(close);
   closeRef.current = close;
@@ -257,6 +278,10 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
   }, [selected]);
 
   const choose = (v: ColumnView) => {
+    if (split) {
+      split.setTab(v);
+      return;
+    }
     setView(v);
     setAnnounce("");
     writeMemory({ session, view: v });
@@ -289,7 +314,8 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
       </div>
     );
   } else if (phase === "thinking") body = planning;
-  else if (phase === "storyboard") body = null;
+  else if (phase === "planning") body = null;
+  else if (phase === "saving" || phase === "pricing") body = <p className="ds-t-caption plan-quiet" role="status" data-testid="plan-busy">{phase === "saving" ? p.saving : p.pricing}</p>;
   else if (noAnswer) body = <p className="ds-t-body-sm plan-empty" role="status" data-testid="plan-no-answer">{p.noAnswer}</p>;
   else if (!session) body = <p className="ds-t-body-sm plan-empty" data-testid="plan-empty">{p.empty}</p>;
   else if (read.load.state === "loading") body = <p className="ds-t-caption" role="status" data-testid="plan-loading">{c.briefLoading}</p>;
@@ -331,31 +357,35 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
       </div>
     );
 
+  // What is on screen: the page's tabs below 1024 px, this column's own switch at a desk.
+  const shown: ColumnView = split ? (split.tab === "canvas" ? "canvas" : "plan") : view;
   const absent = items?.absent ?? [];
   const absentLine = absent.length === 2 ? p.absent.voiceMusic : absent[0] === "voice" ? p.absent.voice : absent[0] === "music" ? p.absent.music : null;
 
   return (
-    <div className="plan-col" data-view={view} data-testid="studio-plan-column">
+    <div className="plan-col" data-view={shown} data-testid="studio-plan-column">
+      {split ? null : (
       <SegTabs
         items={[
           { id: "plan" as const, label: p.plan },
           { id: "canvas" as const, label: p.canvas },
         ]}
-        value={view}
+        value={shown}
         onChange={choose}
         label={p.switchLabel}
         idBase="plan-col"
         className="cv-tok plan-switch"
         testIdBase="plan-switch"
       />
+      )}
       {/* Outside the panes, so it is there before and after a switch: "Showing the plan" when a send switched it for them. */}
       <p className="sr-only" role="status" aria-live="polite" data-testid="plan-announce">
         {announce}
         {enter.size > 0 ? ` ${fmt(p.arrived, { n: enter.size })}` : ""}
       </p>
       <div className="plan-col-stack">
-        {view === "plan" ? (
-          <section {...tabPanelProps("plan-col", "plan")} className="cv-root lv-root plan-root" data-testid="plan-board-pane" data-phase={phase ?? "idle"}>
+        {shown === "plan" ? (
+          <section {...tabPanelProps("plan-col", "plan")} className="cv-root lv-root plan-root" data-testid="plan-board-pane" data-phase={phase ?? "end"}>
             <header className="plan-head">
               <h2 className="ds-t-heading-xl plan-title">{brief?.title || p.title}</h2>
               {graph ? <p className="ds-t-caption">{p.headerNote}</p> : null}
@@ -364,14 +394,33 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
                   {elapsed >= STILL_WORKING_MS ? p.stillWorking : p.planning}
                 </p>
               ) : null}
+              {graph && (phase === "saving" || phase === "pricing") ? (
+                <p className="ds-t-caption plan-quiet" role="status" data-testid="plan-busy">
+                  {phase === "saving" ? p.saving : p.pricing}
+                </p>
+              ) : null}
               {graph && read.stale ? <p className="ds-t-caption lv-stale" data-testid="plan-stale">{p.stale}</p> : null}
             </header>
-            {phase === "storyboard" ? (
-              // A row of its own above the board, never over the cards; an indeterminate sweep and the time measured here, no
-              // per-scene count, because the server reports none (CLAUDE.md rule 5).
+            {split && model?.stage === "proposing" && !phase ? (
+              // On a phone the chat is another tab: an answer that waits for the person's choice is said here, with the way to it.
+              <div className="plan-state plan-answered" role="status" data-testid="plan-answered">
+                <p className="ds-t-body-sm">{p.answered}</p>
+                <div className="plan-keys">
+                  <button type="button" className="cv-kbtn plan-key" onClick={() => split.setTab("chat")}>
+                    {p.openChat}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {phase === "planning" ? (
+              // A row of its own above the board, never over the cards, with the time measured here. A chapter count only when the
+              // server reported one (#989's plan counts); without it an indeterminate sweep and no number (CLAUDE.md rule 5).
               <div className="plan-writing" role="status" data-testid="plan-storyboard">
                 <p className="ds-t-body-sm plan-writing-head">
-                  {p.storyboard} <span className="ds-mono ds-t-caption">{fmt(p.elapsed, { time: clock(elapsed) })}</span>
+                  {planCounts
+                    ? fmt(p.chapterOf, { n: Math.min(planCounts.chapters_written + 1, planCounts.chapters), total: planCounts.chapters })
+                    : p.storyboard}{" "}
+                  <span className="ds-mono ds-t-caption">{fmt(p.elapsed, { time: clock(elapsed) })}</span>
                 </p>
                 <p className="ds-t-caption">{p.storyboardNote}</p>
                 <span className="plan-sweep" aria-hidden />
@@ -384,12 +433,12 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
         <div
           {...tabPanelProps("plan-col", "canvas")}
           className="plan-col-canvas"
-          inert={view !== "canvas"}
-          aria-hidden={view !== "canvas" || undefined}
-          data-hidden={view !== "canvas" ? "" : undefined}
+          inert={shown !== "canvas"}
+          aria-hidden={shown !== "canvas" || undefined}
+          data-hidden={shown !== "canvas" ? "" : undefined}
           data-testid="plan-canvas-pane"
         >
-          <CanvasActiveContext.Provider value={view === "canvas"}>{children}</CanvasActiveContext.Provider>
+          <CanvasActiveContext.Provider value={shown === "canvas"}>{children}</CanvasActiveContext.Provider>
         </div>
       </div>
     </div>

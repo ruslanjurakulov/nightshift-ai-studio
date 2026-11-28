@@ -9,7 +9,7 @@ import { useBrainBrief, handoffTarget } from "./useBrainBrief";
 import { ActivityPanel } from "./ActivityPanel";
 import { LiveLane } from "./LiveLane";
 import { utc } from "@/lib/studio/utc";
-import { type Brief, type LiveGraph, type LiveStatus, type Activity, type ActivityItem } from "@/lib/studio/liveGraph";
+import { type Brief, type BriefHandoff, type LiveGraph, type LiveStatus, type Activity, type ActivityItem } from "@/lib/studio/liveGraph";
 import { useLiveGraph, type LiveTarget } from "./useLiveGraph";
 import { nodeName, StoryBoard } from "./StoryBoard";
 import { Details, failureText } from "./Details";
@@ -28,6 +28,17 @@ function loginHref(): string {
 export { utc };
 
 export { nodeName, Details, failureText };
+
+/**
+ * The live target a brief's handoff names, one object per handoff and not per render: every read of the brief makes a new handoff
+ * object, and a new target each render fed the board a new reading each frame (React H1: 53 commits a second after a handoff,
+ * forever). Keyed on the handoff's fields.
+ */
+export function useHandoffTarget(handoff: BriefHandoff | null): LiveTarget | null {
+  const key = handoff ? JSON.stringify(handoff) : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the handoff's fields, not on its object identity
+  return useMemo(() => (handoff ? handoffTarget(handoff) : null), [key]);
+}
 
 /** A channel run's live facts: GitHub's own status of the dispatched job, and the run's credit hold. Only what was read is said. */
 function RunFacts({ graph }: { graph: LiveGraph }) {
@@ -75,12 +86,7 @@ export function LiveView({
   const brief = givenBrief ?? (brainRead.load.state === "ready" ? brainRead.load.brief : null);
   // After Create the brief names what was made; the view follows it in place. The scene cards keep their ids because both graphs key
   // them by the scene's position (liveGraph sceneNodeId): the brief's scene ids are not the film's, so keyed by id they never matched.
-  // One object per handoff, not per render: every read of the brief makes a new handoff object, and a new target each render fed
-  // the board a new reading each frame (React H1: 53 commits a second after a handoff, forever).
-  const handoff = brief?.handoff ?? null;
-  const handoffKey = handoff ? JSON.stringify(handoff) : null;
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the handoff's fields, not on its object identity
-  const fromHandoff = useMemo(() => (handoff ? handoffTarget(handoff) : null), [handoffKey]);
+  const fromHandoff = useHandoffTarget(brief?.handoff ?? null);
   const target = given ?? fromHandoff;
   const run = target?.kind === "run" || target?.kind === "window" || (!target && brief?.kind === "long");
   const shown = filmStudio || run ? target : null;
@@ -241,9 +247,8 @@ export function LiveView({
       ) : null}
       {graph ? (
         <div className={`lv-main${sel ? " has-details" : ""}${activity ? " has-activity" : ""}`}>
-          {/* Not only the visible cards while the lane is under the board: its flights start from a card's box, which an unrendered
-              card does not have (Lens L3). */}
-          <StoryBoard graph={graph} selected={selected} onOpen={setSelected} lit={lit} visibleOnly={!(target?.kind === "film" && shown && !draft)} />
+          {/* Only the visible cards above VISIBLE_ONLY: the lane's flight falls back to its own start for a card off screen. */}
+          <StoryBoard graph={graph} selected={selected} onOpen={setSelected} lit={lit} visibleOnly />
           {sel ? <Details node={sel} run={run} filmId={target?.kind === "film" ? target.id : null} video={graph.video} onClose={close} /> : null}
         </div>
       ) : null}

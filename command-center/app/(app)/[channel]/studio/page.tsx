@@ -77,7 +77,7 @@ export default async function StudioPage({
           ? { kind: "window" as const, channel, since, hold: typeof sp.hold === "string" && /^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$/.test(sp.hold) ? sp.hold : null }
           : null;
     // ?brain=<conversation> with no plan named: the conversation's brief as a draft, followed live once it is handed off.
-    const brain = !target && typeof sp.brain === "string" && /^[0-9a-f-]{36}$/i.test(sp.brain) ? sp.brain : null;
+    const brain = !target && typeof sp.brain === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sp.brain) ? sp.brain : null;
     return <LiveView filmStudio={filmStudio} target={target} brain={brain} />;
   }
   if (sp.view === "timeline") {
@@ -135,6 +135,7 @@ export default async function StudioPage({
   const initialSession = one(sp.ai) === "new" ? null : brain && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(brain) ? brain : null;
   return (
     <StudioSplit
+      initialSession={initialSession}
       className="grid min-w-0 gap-4 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)]"
       chat={
         <NightshiftAiPanel

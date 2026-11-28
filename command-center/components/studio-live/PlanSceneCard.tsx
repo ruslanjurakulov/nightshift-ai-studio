@@ -80,7 +80,7 @@ export const PlanSceneCard = memo(function PlanSceneCard(p: LiveNodeProps) {
         <p className="ds-t-caption psc-flag">{[p.failureCause, p.failureRemedy].filter(Boolean).join(" ")}</p>
       ) : null}
       {dur || p.cast?.length ? (
-        <ul className="psc-chips" aria-label={w.castLabel}>
+        <ul className="psc-chips" aria-label={dur && p.cast?.length ? w.castLabel : dur ? w.lengthLabel : w.castOnlyLabel}>
           {dur ? <li className="ds-t-caption psc-chip">{dur}</li> : null}
           {(p.cast ?? []).map((name) => (
             <li key={name} className="ds-t-caption psc-chip">
