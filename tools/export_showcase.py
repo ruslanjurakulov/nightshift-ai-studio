@@ -30,14 +30,17 @@ command-center/lib/site/showcase.json and regenerates command-center/components/
 or retouched: a sample is shown as the model made it.
 
 Provenance (docs/AI_DISCLOSURE.md "Vendor watermarks and provenance", owner decision 2026-11-12): a maker's invisible label is
-always kept, never stripped or replaced, on the site's copies too. MiniMax ships a format-level `AIGC` tag (its signed TC260
-implicit label), and the copies carry the source's metadata as it is (`-map_metadata 0`, ffmpeg's default, stated so no one
-"tidies" it away). The Matroska muxer writes every global tag, but the MP4 muxer silently drops a key it has no atom for unless
-asked (measured with ffmpeg 6.1: without `-movflags use_metadata_tags` the AIGC tag is gone from clip.mp4), and losing it there
-would be stripping by omission, so both MP4s ask. The MP4 copies exported before this flag had lost it; each was given back its
-own WebM's exact value by a stream-copy remux (no re-encode), and tests/test_export_showcase.py pins that every MP4 carries its
-WebM's label. scripts/media-bundle-check.mjs allows exactly that signed tag in
-/_next/static/media/ and fails on a vendor name or id anywhere else.
+always kept, never stripped or replaced. What this keeps is the source's FORMAT-LEVEL CONTAINER TAGS, copied as they are into
+every clip (`-map_metadata 0`, ffmpeg's default, stated so no one "tidies" it away): MiniMax ships its signed TC260 implicit label
+as such a tag (`AIGC`). The Matroska muxer writes every global tag, but the MP4 muxer silently drops a key it has no atom for
+unless asked (measured with ffmpeg 6.1: without `-movflags use_metadata_tags` the tag is gone from clip.mp4), so both MP4s ask.
+The MP4 copies exported before this flag had lost it; each was given back its own WebM's exact value by a stream-copy remux,
+and tests/test_export_showcase.py pins that every MP4 carries its WebM's label.
+What does NOT survive (docs/AI_DISCLOSURE.md "Re-encodes we cannot avoid", and the open owner decision there): the posters are
+re-saved by Pillow and carry no EXIF, XMP or C2PA; a re-encode cannot keep a C2PA manifest valid, so none is written; and the
+copied TC260 signature was made over the maker's file, so it cannot verify against the re-encoded picture. The copies are not
+signed provenance, only the maker's label carried along. scripts/media-bundle-check.mjs allows exactly that label, on its own
+sample's files, in /_next/static/media/ and fails on a vendor name or id anywhere else.
 
 Sound (the owner's decision of 2026-11-22: every video on the site is cinematic and has sound). When ffprobe finds an audio
 stream in the downloaded clip, the two FULL copies keep it: AAC 128 kb/s stereo 48 kHz in clip.mp4, Opus 96 kb/s stereo 48 kHz
