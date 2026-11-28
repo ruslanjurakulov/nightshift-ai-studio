@@ -348,7 +348,8 @@ def test_the_two_overloads_are_internal_and_the_three_argument_check_is_unchange
     assert md5(db, SIGS["problem3"]) == "d828ee349aa5da3aa05ea9db4d8f1b94"
     assert md5(db, SIGS["check4"]) == sec_db.FILM_CHECK_MODEL_0235
     assert md5(db, SIGS["problem4"]) == sec_db.FILM_MODEL_PROBLEM_0235
-    assert md5(db, "public.film_price(public.films)") == sec_db.FILM_PRICE_0235
+    # 0239 sits on 0235's film_price (its own lab pins that body): one or the other, never anything else.
+    assert md5(db, "public.film_price(public.films)") in (sec_db.FILM_PRICE_0235, sec_db.FILM_PRICE_0239)
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
         db.svc(f"select public.film_model_problem('{PREVIEW}', array['tts'], 'voice.model', '{EXEMPT}'::uuid)")
 
@@ -364,10 +365,13 @@ def test_the_file_has_no_backslash_and_every_replaced_caller_names_the_film_orga
 
 @pytest.fixture
 def scratch():
-    """A database of its own for the file-level tests, built from every migration (0235 included)."""
+    """A database of its own for the file-level tests, built from every migration (0235 included), with 0239 (which sits on 0235's
+    bodies, and whose own lab is test_sec_film_keyframe_refs_quote_0239.py) taken off, so these tests read 0235 as the top."""
     admin = sec_db.admin_dsn()
     name = f"ns_m0235_{uuid.uuid4().hex[:8]}"
     dsn = sec_db.build(admin, name)
+    with psycopg.connect(dsn, autocommit=True) as c:
+        sec_db.take_off_0239(c)
     try:
         yield dsn
     finally:

@@ -45,7 +45,9 @@ ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0147_mcp_free_tier.sql"
 # 0226 (only a member spends) sits on 0147's oauth_ctx and 0192's bodies and calls 0215's is_org_spender: off first of all.
 # 0235 (Film Studio's operator preview) sits on 0218's film_price and 0215's film_resume_precheck, and both refuse it: off first.
 # 0231 (cancel audit) asks for 0226: off before it.
-LATER = [(sec_db.MIGRATION_0235, sec_db.ROLLBACK_0235),
+# 0239 (a film's key frame quoted the way it is made) sits on 0235's film_price and callers, and 0235's rollback refuses it: off first.
+LATER = [(sec_db.MIGRATION_0239, sec_db.ROLLBACK_0239),
+         (sec_db.MIGRATION_0235, sec_db.ROLLBACK_0235),
          (sec_db.MIGRATION_0232, sec_db.ROLLBACK_0232),  # 0232 sits on 0226's chat bodies, which 0226's rollback refuses
          (sec_db.MIGRATION_0231, sec_db.ROLLBACK_0231),
          (sec_db.MIGRATION_0226, sec_db.ROLLBACK_0226),

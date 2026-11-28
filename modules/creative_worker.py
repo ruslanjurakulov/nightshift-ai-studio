@@ -1098,9 +1098,15 @@ class CreativeWorker:
         except OSError as e:
             raise _Refused("source_unavailable", f"the end frame could not be read ({type(e).__name__})") from None
 
-    def _style(self, request: GenerationRequest, adapter: CreativeAdapter) -> GenerationRequest:
+    def _style(self, request: GenerationRequest, adapter: CreativeAdapter, *, reserved_slots: int = 0) -> GenerationRequest:
         """The job's style kit and mentioned characters, applied to the request
-        (module doc). Before 'submitting': a refusal here costs nobody anything."""
+        (module doc). Before 'submitting': a refusal here costs nobody anything.
+
+        ``reserved_slots`` is how many of the model's reference pictures the
+        caller sends itself beside these (a film key frame's own references,
+        put in front of them): the kit and the characters get what is left,
+        so the request never carries more than the model takes (the adapter
+        refuses that at submit, after the film's hold)."""
         try:
             info = self.queue.job_style(request.job_id, self.worker_id)
         except CreativeFunctionMissing:
@@ -1122,7 +1128,7 @@ class CreativeWorker:
             return request  # only unknown @names: the prompt goes as typed
         support_of = getattr(adapter, "style_support", None)
         support = support_of(request) if callable(support_of) else cs.StyleSupport()
-        picked = cs.pick_references(inputs, support.reference_slots)
+        picked = cs.pick_references(inputs, max(0, support.reference_slots - max(0, int(reserved_slots))))
         lost = cs.unusable(inputs, picked)
         if lost:
             one = len(lost) == 1

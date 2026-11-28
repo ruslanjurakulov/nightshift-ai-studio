@@ -218,6 +218,11 @@ class FilmOperatorPreviewMigration(unittest.TestCase):
         for f in later:
             text = (MIG / f).read_text(encoding="utf-8")
             for name, _n in AFTER:
+                if f == "0239_film_keyframe_refs_quote.sql" and name in ("film_price", "film_apply_settings", "film_save_scenes"):
+                    # 0239 replaces these with this file's bodies plus its marked hunks, and refuses any other base
+                    # (tests/test_film_keyframe_refs_quote_migration.py undoes its hunks back to this file's bodies).
+                    self.assertIn(f"'{AFTER[(name, 3 if name == 'film_apply_settings' else 2 if name == 'film_save_scenes' else 1)]}', ", text)
+                    continue
                 self.assertNotIn(f"function public.{name}(", text, (f, name))
 
     def test_the_number_is_unique_and_the_lab_knows_the_chain(self):
@@ -243,7 +248,8 @@ class FilmOperatorPreviewMigration(unittest.TestCase):
         self.assertIn('ON_0139 = (*(f for f in ON_0139 if f != "0235_film_operator_preview.sql"), "0235_film_operator_preview.sql")', LAB)
         on_0124 = LAB[LAB.index("ON_0124 = ("):]
         on_0124 = on_0124[:on_0124.index(")\n")]
-        self.assertTrue(on_0124.rstrip().endswith('"0235_film_operator_preview.sql"'), on_0124[-200:])
+        # 0235 closes the list, or is followed only by 0239 (on its bodies).
+        self.assertRegex(on_0124, r'"0235_film_operator_preview\.sql"(,\s*(#[^\n]*\s*)*"0239_film_keyframe_refs_quote\.sql")?\s*$')
         self.assertLess(LAB.index('ON_0156 = (*(f for f in ON_0156 if f != "0230_geo_gate_allow_list.sql")'),
                         LAB.index('ON_0156 = (*ON_0156, "0235_film_operator_preview.sql")'))
 

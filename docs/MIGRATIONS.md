@@ -3266,3 +3266,43 @@ allows it. Nothing changes for any customer. Dark until the registry marks a row
   0215 or 0218 (the lab's `take_off_0235` does).
 - **Tests.** `tests/test_film_operator_preview_migration.py`, `tests/test_creative_model_recheck.py` (the worker's recheck),
   `tests/security/test_sec_film_operator_preview_0235.py` (a real PostgreSQL; contract `tests/security/sec_film_operator_preview_0235.py`).
+
+## Film Studio: a key frame is quoted the way it is made (0239, provisional)
+
+0239 (`0239_film_keyframe_refs_quote.sql`) makes `film_price` ask the questions a key-frame take and the worker really ask, so that a
+film is refused at the quote, by name, instead of being priced, held at Start and refused at its first key frame. **It depends on
+0235 being applied first** (its bodies are 0235's plus hunks marked `-- 0239`), and it replaces neither `start_film` nor
+`film_take_job`.
+
+- **The findings (Breach, lab; `tests/security/test_sec_breach_0235_refs_take.py`).** B1: an edit-only model (live:
+  `krea-3-regional`) was accepted as the key-frame model and priced on edit, but `film_take_job` makes key frames as t2i only. B2: the
+  worker gave the style kit and the @characters every reference slot and then put the film's references in front, so one film
+  reference plus a kit on a 3-picture model was 4 pictures, refused at submit. B3: a kit or @character with no description on a model
+  that takes no reference on t2i was priced, then refused by the worker. B4: a reference character's deleted picture was not asked at
+  the quote. B5: a character given more pictures after Start reached the adapter above the model's limit. B6: the quote priced up to
+  the model's 30 references; `film_take_job` refuses more than 16. No credit was lost in any of them (a failed take is charged 0 and
+  the hold released), but the quote promised a film that could not be made.
+- **The change (SQL).** `film_apply_settings` (`f5cdf963343a4b722333eaf0d13bd840` -> `9a2ae594cb08df36973c7e656a7f1c9d`) and
+  `film_save_scenes` (`d2d32abea21beb742eea14d92ad6e9fd` -> `4115ba8800b1b1a702585267d27af17c`): a key-frame model must be on sale
+  for t2i (`model_not_available`, "choose a key-frame model that makes a picture from words"). `film_price`
+  (`186d34ffb633bc56a91bbf617b0b7520` -> `a3be47c473036b97121df607ffb911e2`): the same refusal for a film saved before; more than 16
+  references `refs_not_supported`; a reference character with a picture no longer in the library `reference_missing`; and the style
+  path, the worker's arithmetic in SQL: the slots the film's references leave (only when the model lists t2i in
+  `inputs.ref_capabilities`), the kit and mentioned characters read as `creative_job_style` reads them, picked in turns as
+  `creative_style.pick_references` picks them; one with no description that gets no picture is `style_needs_description`, naming it
+  and the remedy (add a description, or choose a key-frame model that takes reference pictures). md5s fold white space with
+  `[[:space:]]+`; the file holds no backslash (`@@0239_BACKSLASH@@`, `chr(92)`).
+- **The change (worker).** B2 was the worker's side: `FilmOrchestrator._inputs` now passes `reserved_slots=len(film refs)` to
+  `CreativeWorker._style`, so the style gets only the slots left and the request never exceeds `image_refs_max`. B5 is closed in the
+  worker too (a later file owns `film_take_job`): `_inputs` fails a take whose own references are more than the model takes,
+  `bad_request`, naming the counts and the remedy, before the style is read or anything is sent.
+- **Command Center.** The new word `style_needs_description` has a sentence in `lib/i18n/studio-timeline/{en,ru,uz}.ts` and the
+  `fix_and_requote` remedy in `lib/studio/useFilmStart.ts`.
+- **Not covered (named in the header).** The prompt the style descriptions lengthen (0218's residual); a kit or character changed
+  after Start other than the film references' count; a kit with more pictures than the slots left is sent its first ones (0048's
+  design).
+- **Owner steps.** Apply 0235 first, then 0239 (one transaction; the header's read-only check first), and deploy the worker with it.
+- **Undo.** `docs/sql/rollback_0239_film_keyframe_refs_quote.sql` (owner-applied): refuses a body that is neither 0239's nor 0235's,
+  puts 0235's three bodies back byte for byte. Run it before rolling back or replaying 0235 (the lab's `take_off_0235` does).
+- **Tests.** `tests/test_film_keyframe_refs_quote_migration.py`, `tests/test_film_keyframe_refs_worker.py`,
+  `tests/security/test_sec_film_keyframe_refs_quote_0239.py`, `tests/security/test_sec_breach_0235_refs_take.py`.
