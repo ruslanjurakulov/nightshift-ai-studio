@@ -321,11 +321,23 @@ async function layout() {
         await page.goto(`${BASE}/${SLUG}/studio?brain=${SID}`, { waitUntil: "load", timeout: 120000 });
         await page.waitForSelector("[data-testid=studio-split]", { timeout: 60000 });
         await sleep(600);
-        const tabs = await page.locator("[data-testid=studio-tab-plan]").count();
+        const tabs = await page.locator("[data-testid^=studio-tab-]").count();
+        const ownSwitch = await page.locator("[data-testid=plan-switch-plan]").count();
         if (width < 1024) {
-          check(tabs === 1, `${name}: Chat / Plan tabs below 1024 px`);
+          check(tabs === 3 && ownSwitch === 0, `${name}: one three-way tablist (Chat · Plan · My canvas) below 1024 px, no second switch`);
+          // The chat's composer sits above the app's tab bar, not under it (Pixel L-a).
+          await page.locator("[data-testid=studio-tab-chat]").click().catch(() => {});
+          await sleep(300);
+          const gap = await page.evaluate(() => {
+            const comp = document.querySelector(".ns-ai-dock .chat-composer")?.getBoundingClientRect();
+            const bar = document.querySelector(".ns-tabbar")?.getBoundingClientRect();
+            if (!comp) return null;
+            const floor = bar && bar.height ? bar.top : window.innerHeight;
+            return Math.round(floor - comp.bottom);
+          });
+          check(gap !== null && gap >= 0, `${name}: the chat's composer is above the tab bar (${gap} px clear)`);
           await page.locator("[data-testid=studio-tab-plan]").click().catch(() => {});
-        } else check(tabs === 0, `${name}: chat and plan side by side, no tabs`);
+        } else check(tabs === 0 && ownSwitch === 1, `${name}: chat and plan side by side, the column's own switch`);
         const cards = await page.locator("[data-testid=plan-board-pane] [data-node-id]").first().waitFor({ timeout: 30000 }).then(() => true, () => false);
         await sleep(1200);
         const s = await page.evaluate(probe);
@@ -345,6 +357,17 @@ async function layout() {
         check(cards && s.cards > 0, `${name}: Plan cards drawn (${s.cards})`);
         check(s.scrollW <= s.clientW, `${name}: no horizontal overflow (${s.scrollW} <= ${s.clientW})`);
         check(small.length === 0, `${name}: no card text under 12 px as rendered ${small.join(" ")}`);
+        if (width >= 768) {
+          // No card under the board's controls (Pixel b).
+          const overlap = await page.evaluate(() => {
+            const k = document.querySelector("[data-testid=plan-board] .react-flow__controls")?.getBoundingClientRect();
+            if (!k) return "no controls";
+            const hit = [...document.querySelectorAll("[data-testid=plan-board] .psc")].map((e) => e.getBoundingClientRect())
+              .find((r) => r.left < k.right && r.right > k.left && r.top < k.bottom && r.bottom > k.top);
+            return hit ? `card at ${Math.round(hit.left)},${Math.round(hit.top)}` : null;
+          });
+          check(overlap === null, `${name}: no card under the board's controls ${overlap ?? ""}`);
+        }
         if (width === 1440) {
           const fit = await page.evaluate(() => {
             const board = document.querySelector("[data-testid=plan-board]")?.getBoundingClientRect();
@@ -361,23 +384,42 @@ async function layout() {
           // Tab through the board from its first card: every card is reached.
           const ids = await page.evaluate(() => [...document.querySelectorAll("[data-testid=plan-board-pane] [data-node-id]")].map((e) => e.dataset.nodeId));
           await page.locator("[data-testid=plan-board-pane] [data-node-id]").first().focus();
+          const xz = () =>
+            page.evaluate(() => {
+              const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)\s*scale\(([\d.]+)\)/.exec(document.querySelector("[data-testid=plan-board] .react-flow__viewport")?.style.transform ?? "");
+              return m ? `${m[1]}|${m[3]}` : "none";
+            });
+          const xz0 = await xz();
           const reached = new Set();
+          const xzSeen = new Set([xz0]);
           for (let i = 0; i < ids.length + 2; i++) {
             const id = await page.evaluate(() => document.activeElement?.closest?.("[data-node-id]")?.dataset.nodeId ?? null);
             if (id) reached.add(id);
             await page.keyboard.press("Tab");
+            await sleep(250);
+            xzSeen.add(await xz());
           }
           check(ids.every((id) => reached.has(id)), `${name}: every card is reached by Tab (${reached.size}/${ids.length})`);
-          // Escape closes a step and never leaves the Studio.
+          check(xzSeen.size === 1, `${name}: Tab never pans sideways or zooms (x|zoom seen: ${[...xzSeen].join(", ")})`);
+          // Escape closes a step, gives focus back to its card every time (Pixel N3: 10 runs), and never leaves the Studio.
           const before = page.url();
-          await page.locator('[data-testid=plan-board-pane] [data-node-id="scene#3"]').click();
-          const opened = await page.locator("[data-testid=live-details]").count();
+          let ok = 0;
+          const misses = [];
+          for (let run = 0; run < 10; run++) {
+            const id = `scene#${(run % N) + 1}`;
+            await page.locator(`[data-testid=plan-board-pane] [data-node-id="${id}"]`).click();
+            await sleep(150);
+            const opened = await page.locator("[data-testid=live-details]").count();
+            await page.keyboard.press("Escape");
+            await sleep(250);
+            const closed = (await page.locator("[data-testid=live-details]").count()) === 0;
+            const focused = await page.evaluate(() => document.activeElement?.closest?.("[data-node-id]")?.dataset.nodeId ?? document.activeElement?.tagName);
+            if (opened === 1 && closed && focused === id) ok++;
+            else misses.push(`${id}->${focused}`);
+          }
           await page.keyboard.press("Escape");
-          await sleep(300);
-          const closed = (await page.locator("[data-testid=live-details]").count()) === 0;
-          await page.keyboard.press("Escape");
-          await sleep(500);
-          check(opened === 1 && closed && page.url() === before, `${name}: Escape closes the step and stays on the Studio`);
+          await sleep(400);
+          check(ok === 10 && page.url() === before, `${name}: Escape closes the step, focus back on its card 10/10 (${ok}; ${misses.join(" ")}), stays on the Studio`);
         }
         await page.screenshot({ path: path.join(dir, `${name}.png`), fullPage: phone });
         check(errors.length === 0, `${name}: no page error ${errors.join(" | ")}`);

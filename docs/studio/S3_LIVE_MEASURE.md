@@ -249,5 +249,6 @@ Measured after this round (same stub, 1440 dark, main merged):
 | "Writing the storyboard…" after Choose | 0.12 s | 0.05 s |
 | Scene cards after Choose | 2.24 s | 8.13 s |
 
-The page itself still scrolls about 50 px at 1440×900. The cause is on main: the app shell's left rail and the map credit under
-the page, neither of which this PR touches. The Studio column ends inside the window.
+The page itself still scrolls about 50 px at 1440×900. The cause is on main: the shell's `app-geo-credit` line under the page
+(`studio-canvas.css:202`), with the two-step sign-in banner above the bar. The left rail only stretches to the page's height; it
+does not set it. This PR touches neither. The Studio column ends inside the window.
