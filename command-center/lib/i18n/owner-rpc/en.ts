@@ -32,6 +32,8 @@ export const ownerRpcEn = {
     no_such_history: "That history entry does not exist. Nothing was changed.",
     price_changed:
       "The price of this service changed after this page was loaded, so it was not restored. Reload the page and look at the price history first. Nothing was changed.",
+    dated_price_scheduled:
+      "A dated price is in force or scheduled for this service, so its rate is not edited here: the owner adds a dated price row (effective now) in the database instead. The markup and the note can still be changed. Nothing was changed.",
     confirm_required:
       "This is a big price change (rate {rate}, charged {charged}; the normal limit is {max}× up or down). Check the old and new figures, then confirm it explicitly.",
     bad_role: "The role must be owner, admin, editor or viewer. Nothing was changed.",
