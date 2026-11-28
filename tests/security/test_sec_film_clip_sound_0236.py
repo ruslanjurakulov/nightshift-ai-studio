@@ -3,7 +3,7 @@
 What would break without each guard: a person charged the with-sound price for a clip whose sound the film then drops (rules 4 and 5);
 the refusal living only in a panel, so a direct call to quote_film or start_film still sells it; a quote taken while the switch was on
 started after it was turned off; the browser (anon or a member's session) or the worker's service key turning the switch itself; a
-replay resetting the switch, the drift guard accepting a body that is not 0218's or its own, or the rollback leaving 0236's body or
+replay resetting the switch, the drift guard accepting a body that is not 0235's or its own, or the rollback leaving 0236's body or
 column behind.
 
 Runs in its own scratch database (it commits), with test_sec_films_money's registry plus one clip model priced by its sound.
@@ -41,6 +41,9 @@ def db():
         pytest.skip(f"{sec_db.DSN_ENV} is not set — the security lab needs a scratch Postgres")
     name = f"ns_clip_sound_{uuid.uuid4().hex[:8]}"
     d = Db(sec_db.build(admin, name))
+    # 0239 sits on this file's film_price (its own lab is test_sec_film_keyframe_refs_quote_0239.py): off, so 0236 is the top here.
+    with psycopg.connect(d.dsn, autocommit=True) as c:
+        sec_db.take_off_0239(c)
     models = [*[(m, p, a, c, u, s) for m, p, a, c, u, _r, s in MODELS], SOUND_MODEL]
     rows = [{"id": m, "display_name": m, "provider": prov, "adapter": a, "capabilities": caps, "credit_unit": unit,
              "entitlement": "any", "spec": {"vendor_model": "acme-" + m, "output": a.split(".")[0], **spec}}
@@ -157,21 +160,13 @@ def _md5(db):
 
 def test_a_replay_changes_nothing_and_keeps_the_switch(db):
     kept(db, True)
-    # 0241 sits on this file's film_price, and this file's guard refuses any other body: off for the replay, on again after.
-    with psycopg.connect(db.dsn, autocommit=False) as c:
-        sec_db.take_off_0241(c)
-        c.execute(MIGRATION.read_text(encoding="utf-8"))
-        assert c.execute("select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc "
-                         "where oid = 'public.film_price(public.films)'::regprocedure").fetchone()[0] == sec_db.FILM_PRICE_0236
-        sec_db.put_back_0241(c)
-        c.commit()
-    assert _md5(db) == sec_db.FILM_PRICE_0241
+    db.su(MIGRATION.read_text(encoding="utf-8"))
+    assert _md5(db) == sec_db.FILM_PRICE_0236
     assert db.su("select clip_sound_kept from public.film_studio_settings where id")[0][0] is True
 
 
-def test_the_drift_guard_refuses_a_body_that_is_neither_0218s_nor_its_own(db):
+def test_the_drift_guard_refuses_a_body_that_is_neither_0235s_nor_its_own(db):
     with psycopg.connect(db.dsn, autocommit=False) as c:
-        sec_db.take_off_0241(c)  # 0241 sits on this file's film_price (see the replay test)
         c.execute("comment on function public.film_price(public.films) is 'drift'")  # a comment is not the body: still accepted
         c.execute(MIGRATION.read_text(encoding="utf-8"))
         src = c.execute("select prosrc from pg_proc where oid = 'public.film_price(public.films)'::regprocedure").fetchone()[0]
@@ -181,9 +176,9 @@ def test_the_drift_guard_refuses_a_body_that_is_neither_0218s_nor_its_own(db):
                   "|| quote_literal(current_setting('lab.src')); end $d$")
         with pytest.raises(psycopg.Error) as e:
             c.execute(MIGRATION.read_text(encoding="utf-8"))
-        assert "neither 0218" in str(e.value)
+        assert "neither 0235" in str(e.value)
         c.rollback()
-    assert _md5(db) == sec_db.FILM_PRICE_0241
+    assert _md5(db) == sec_db.FILM_PRICE_0236
 
 
 def test_the_s2_assemblys_transient_words_may_be_rerun_and_clip_without_sound_may_not(db):
@@ -208,11 +203,11 @@ def test_0215s_take_off_takes_0236_off_first_and_its_put_back_puts_it_back(db):
         c.rollback()
 
 
-def test_the_rollback_puts_0218_back_and_drops_the_column_and_0236_applies_again(db):
+def test_the_rollback_puts_0235_back_and_drops_the_column_and_0236_applies_again(db):
     with psycopg.connect(db.dsn, autocommit=False) as c:
         sec_db.take_off_0236(c)
         assert c.execute("select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc "
-                         "where oid = 'public.film_price(public.films)'::regprocedure").fetchone()[0] == sec_db.FILM_PRICE_0218
+                         "where oid = 'public.film_price(public.films)'::regprocedure").fetchone()[0] == sec_db.FILM_PRICE_0235
         assert c.execute("select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc "
                          "where oid = 'public.film_assembly_retryable(text)'::regprocedure").fetchone()[0] \
             == sec_db.FILM_ASSEMBLY_RETRYABLE_0215

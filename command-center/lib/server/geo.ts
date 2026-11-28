@@ -5,7 +5,7 @@ import { gunzipSync } from "node:zlib";
 import { headers } from "next/headers";
 import { isPublicIp, lookupCountry, parseGeoTable, parseIp, type GeoTable } from "@/lib/geo/table";
 import { ON_VERCEL, trustedClientIp } from "@/lib/geo/client-ip";
-import { BLOCKED_COUNTRIES, blockedCountriesOf, refusesUnknownCountry, withoutBlocked, type BlockedMap } from "@/lib/geo/blocked";
+import { BLOCKED_COUNTRIES, blockedCountriesOf, isBlockedIn, isKnownCountry, refusesUnknownCountry, withoutBlocked, type BlockedMap } from "@/lib/geo/blocked";
 
 /**
  * The request's country, from the address our own proxy vouches for (lib/geo/client-ip) and the DB-IP table shipped in the image
@@ -60,7 +60,8 @@ export function readCountry(h: Pick<Headers, "get">, load: () => GeoTable | null
   const table = load();
   if (!table) return { country: null, why: "no_table" };
   const country = lookupCountry(table, ip);
-  return country ? { country, why: "found" } : { country: null, why: "not_in_table" };
+  // BR-S6-03: a code that is not a country (ISO 3166-1 alpha-2, or Google's XK) is unknown, never a country to look up in a list.
+  return isKnownCountry(country) ? { country, why: "found" } : { country: null, why: "not_in_table" };
 }
 
 /**
@@ -95,7 +96,7 @@ export function geoRefusal(
     console.warn("geo: the country is unknown (%s) for a model sold by country; allowed", reading.why);
     return null;
   }
-  return list.includes(reading.country) ? { status: 451, body: { error: "country_blocked" } } : null;
+  return isBlockedIn(model, reading.country, map) ? { status: 451, body: { error: "country_blocked" } } : null;
 }
 
 /** The same for several models at once (a workflow's steps): the first refusal, or null. Each model is asked once. */
@@ -133,7 +134,7 @@ export function blockedModelsHere(
     ids = new Set(unknownRefuses(reading.why, strict) ? listed : listed.filter(refusesUnknownCountry));
   } else {
     const here = reading.country;
-    ids = new Set(listed.filter((m) => blockedCountriesOf(m, map).includes(here)));
+    ids = new Set(listed.filter((m) => isBlockedIn(m, here, map)));
   }
   return ids.size > 0 ? (model) => ids.has(model) : null;
 }

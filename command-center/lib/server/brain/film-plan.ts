@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { FILM, buildBrief, filmFromBrief, plain, promptOverLimit, unsafeBrief, type BrainSlots, type Scenario } from "@/lib/brain/logic";
+import { FILM, buildBrief, filmFromBrief, plain, promptOverLimit, speechAllowed, unsafeBrief, voiceQuotable, type BrainSlots, type Scenario } from "@/lib/brain/logic";
 import { claimsAuthorship, planLimits, type PlanLimits } from "@/lib/brain/plan";
 import { MODEL_ID, pickFilmModel, type OnSaleModel, type PickedModel } from "@/lib/brain/film-models";
 import { FILM_PLAN_KEY, SOURCE_MAX, filmChapters, filmPlanTurns, filmSlots, readFilmOutline, unsafeFilm, type FilmPlanSource, type FilmPlanTurns } from "@/lib/brain/film-plan";
@@ -54,6 +54,8 @@ export interface PlanFilm extends FilmPlanSource {
   clipModel: string | null;
   keyframeModel: string | null;
   maxShots: number | null;
+  /** The project's voice as film_json stores it (0166 films.voice), read only to decide whether a voice-over can be planned. */
+  voice: unknown;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -85,6 +87,7 @@ export async function readPlanFilm(supabase: SupabaseClient, id: unknown): Promi
       title: str(f.title), sourceKind: str(f.source_kind), sourceText: str(f.source_text), language: str(f.language), aspect: str(f.aspect),
       targetSeconds: f.target_seconds, clipModel: modelOf(f.clip_model), keyframeModel: modelOf(f.keyframe_model),
       maxShots: typeof maxShots === "number" && Number.isInteger(maxShots) && maxShots >= 1 ? maxShots : null,
+      voice: f.voice ?? null,
     },
   };
 }
@@ -545,6 +548,8 @@ export async function planFilm(args: {
       supabase, sessionId: sid, model: ready.model, endUser,
       requestBase: `pl${digest(`film-plan:${sid}:${film.id}:${lease.attempt}`).slice(0, 40)}`,
       choiceStored: true, choiceText: said, outline, slots: ready.slots, limits: ready.limits, startedAt: started, claimNames,
+      // The project's own voice decides whether a voice-over can be planned (lib/brain/logic speechAllowed): the same helper as the chat.
+      speechAllowed: speechAllowed(voiceQuotable(film.voice)),
     });
     if (!run.ok) {
       ending = { state: "failed", reason: run.reason };

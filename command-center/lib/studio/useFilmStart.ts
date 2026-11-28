@@ -73,6 +73,9 @@ export const START_REMEDIES: Readonly<Record<string, StartRemedy>> = {
   model_not_set: "fix_and_requote",
   prompt_missing: "fix_and_requote",
   refs_not_supported: "fix_and_requote",
+  // 0239: a style kit or @character with no description whose pictures the key-frame model cannot take. Only the person adds a
+  // description or picks another model; it is never dropped (rule 4).
+  style_needs_description: "fix_and_requote",
   source_unavailable: "fix_and_requote",
   scene_too_long_for_model: "fix_and_requote",
   // 0218 (creative_price): a scene line's prompt is over its model's limit, or carries a negative prompt (or a seed) the model does not

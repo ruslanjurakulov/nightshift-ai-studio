@@ -30,7 +30,6 @@ const STATIC = path.join(NEXT, "static");
 // lib/billing.ts. Today every app route is dynamic, so this is mostly 500.html, but a page that becomes static is covered.
 const PRERENDERED = path.join(NEXT, "server");
 const SOURCE = path.join(ROOT, "lib", "billing.ts");
-const KEY_PAGE_SOURCES = [path.join(ROOT, "lib", "providers.ts"), path.join(ROOT, "lib", "model-keys.ts")];
 
 const fail2 = (msg) => {
   console.error(`billing-bundle-check: ${msg}`);
@@ -46,16 +45,9 @@ function readSource() {
   if (!/^import "server-only";$/m.test(src)) fail2('lib/billing.ts no longer starts with `import "server-only"` — the guard this check backs up is gone.');
 
   const urls = [...new Set([...src.matchAll(/billingUrl:\s*"(https:\/\/[^"]+)"/g)].map((m) => m[1]))];
-  // A vendor whose billing page IS its API-key console (BFL, Kling, Leonardo) has that one URL in lib/providers.ts or
-  // lib/model-keys.ts too, which the operator's Providers / model-keys screens link to for the key itself. That copy is
-  // not this module leaking, so it is not counted here (read from those files, so the exemption cannot outlive them);
-  // every other billing URL, the credit price and the routing pairs still are.
-  const keyPages = new Set();
-  for (const file of KEY_PAGE_SOURCES) {
-    if (!existsSync(file)) continue;
-    for (const m of readFileSync(file, "utf8").matchAll(/(?:consoleUrl|keyUrl):\s*"(https:\/\/[^"]+)"/g)) keyPages.add(m[1].replace(/\/+$/, ""));
-  }
-  const exempt = urls.filter((u) => keyPages.has(u.replace(/\/+$/, "")));
+  // Every billing URL counts, the ones that are also a vendor's API-key console (BFL, Kling, Leonardo) included: those used to
+  // be exempt because lib/providers.ts put them in the Providers page's chunk, but that list is server-only now and the page
+  // passes its cards as props (scripts/vendor-bundle-check.mjs checks the key pages themselves).
   // Vendors sold at a fixed credit price: { id, name, price }. The price is a bare number (.01) that cannot be searched for
   // alone, so it is searched for next to the vendor it belongs to (see creditHits).
   const credits = [...src.matchAll(/^\s{2}([a-z0-9_]+):\s*\{\s*name:\s*"([^"]+)"[^}]*?creditUsd:\s*([0-9.e-]+)/gm)].map((m) => ({
@@ -76,7 +68,7 @@ function readSource() {
   // longer read the file, and a pass would be a pass over an empty list.
   if (urls.length < 10) fail2(`read only ${urls.length} billing URLs from lib/billing.ts — its shape changed.`);
   if (pairs.length < 15 || routed.length < 3) fail2(`read only ${pairs.length} REGISTRY_BILLING entries (${routed.length} routed) — its shape changed.`);
-  return { urls: urls.filter((u) => !exempt.includes(u)), exempt, routed, credits };
+  return { urls, routed, credits };
 }
 
 /** Every pattern the browser must not see, as [label, RegExp]. */
@@ -204,7 +196,7 @@ function main() {
     process.exit(1);
   }
   console.log(
-    `billing-bundle-check: ${scanned}, ${list.length} patterns (${source.urls.length} vendor billing URLs, ${source.routed.length} routing pairs, ${source.credits.length} credit prices; ${source.exempt.length} URLs that are also a key console not counted): clean.`,
+    `billing-bundle-check: ${scanned}, ${list.length} patterns (${source.urls.length} vendor billing URLs, ${source.routed.length} routing pairs, ${source.credits.length} credit prices): clean.`,
   );
 }
 

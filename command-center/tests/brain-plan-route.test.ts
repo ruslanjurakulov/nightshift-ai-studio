@@ -37,7 +37,7 @@ const exact: Answer = (parts, data) => ({ ok: true, tokensIn: 100, tokensOut: 20
   const k = Math.max(Math.ceil(p.seconds / 30), Math.min(room, Math.ceil(p.seconds / 10)));
   const lens = Array.from({ length: k }, (_, i) => Math.floor(p.seconds / k) + (i < p.seconds % k ? 1 : 0));
   return { id: p.id, scenes: lens.map((d, k) => ({ title: `${p.id}-${k}`, duration_s: d, visual_prompt: `shot of ${p.id}`, character_ids: ["c1"], location_id: "l1",
-    dialogue: k === 0 ? [{ character_id: "c1", line: "Hold the line!" }] : [] })) };
+    dialogue: [] /* wordless: only speech "none" can be planned today (speechAllowed) */ })) };
 }) }) });
 
 /** One sellable_models row as the registry reader (lib/creative/registry coerceSellableModels) takes it. */
@@ -217,12 +217,11 @@ describe("choose → the plan step", () => {
     expect(names).not.toContain("reserve_credits");
   });
 
-  it("a dialogue scene asks for audio; a scene without lines does not", async () => {
+  it("no scene asks for clip audio while the cut drops clip sound (S1 story grammar, BR-SG-01)", async () => {
     setup(60, [60]);
     await choose();
     const scenes = (called("save_film")[0].p_patch as { scenes: Record<string, unknown>[] }).scenes;
-    expect(scenes[0]).toMatchObject({ clip_params: { audio: true } });
-    expect(scenes[1]).not.toHaveProperty("clip_params");
+    for (const s of scenes) expect(s).not.toHaveProperty("clip_params");
     // No clip model on a new draft (none is chosen by default): its lengths are unknown and no scene is split on a guess.
     expect(scenes[0]).not.toHaveProperty("shot_count");
   });
@@ -447,7 +446,7 @@ describe("choose → the chosen models' prompt limit", () => {
   /** One 30 s scene with the given visual prompt and Aziz's line: its whole prompt adds his description, the dune and "noir". */
   const oneScene = (visual: (call: number) => string): Answer => (parts, _data, call) => ({ ok: true, tokensIn: 1, tokensOut: 1, text: JSON.stringify({
     chapters: [{ id: parts[0].id, scenes: [{ title: "x", duration_s: 30, visual_prompt: visual(call), character_ids: ["c1"], location_id: "l1",
-      dialogue: [{ character_id: "c1", line: "Hold the line!" }] }] }] }) });
+      dialogue: [] }] }] }) });
   // 740 waves: 740 code points but 1480 UTF-16 units, and the added description, setting, line and style take it past 1500.
   const WAVES = "🌊".repeat(740);
   const onSale = (clipLimit: number, keyframeLimit: number) => {

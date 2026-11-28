@@ -1,7 +1,7 @@
 -- 0236_film_clip_sound_gate.sql — while the film's cut drops a clip's own sound, a scene that asks for the priced sound option is
 -- refused by name (clip_sound_not_kept), at quote and at start, instead of being sold and then dropped (Breach BR-SG-01, S1).
 --
--- *** LIVE ON APPLY. *** It replaces TWO functions that exist there (film_price, 0218's body plus one hunk; film_assembly_retryable,
+-- *** LIVE ON APPLY. *** It replaces TWO functions that exist there (film_price, 0235's body plus one hunk; film_assembly_retryable,
 -- 0215's body plus one hunk) and adds one column to one table (film_studio_settings.clip_sound_kept, default false). It writes no
 -- other row and grants nothing.
 --
@@ -15,7 +15,8 @@
 --   film_studio_settings.clip_sound_kept   NEW column, boolean, default FALSE (0171's one-row switch table: no API role reads or
 --                                          writes it, RLS on, written only from the SQL editor). It says "the worker that renders
 --                                          films keeps a clip's own sound in the cut" (modules/film_timeline.py CLIP_SOUND_IN_CUT).
---   film_price                             REPLACED on 0218's body (3c22f87be736c073d17d93e040e914e1) with ONE hunk, every line marked
+--   film_price                             REPLACED on 0235's body (186d34ffb633bc56a91bbf617b0b7520: 0218's plus 0235's org-aware
+--                                          model checks) with ONE hunk, every line marked
 --                                          `-- 0236`: right after the clip model's check, a scene whose clip_params.audio is the JSON
 --                                          true, while clip_sound_kept is not true, gets `clip_sound_not_kept` on each of its clip
 --                                          lines ("scene N: clip sound is not yet kept in the final film; turn the scene's sound option
@@ -41,20 +42,20 @@
 --   modules/film_timeline.py CLIP_SOUND_IN_CUT = True, modules/film_mix.py) is deployed. Then, in the SQL editor:
 --     update public.film_studio_settings set clip_sound_kept = true, updated_at = now() where id;
 --   Turning it on before that worker runs would sell sound a running worker still drops.
--- OVERLAP. 0235 (branch claude/nsai-s2-film-operator-preview, unmerged) also replaces film_price on 0218's body. Whichever of the two
---   merges second rebases on the other: its drift guard, end state and rollback must name the other file's md5s, and the lab must take
---   the later one off first. The hunk here is six lines in one place, so the rebase is copying it into 0235's body.
+-- ORDER. Apply after 0235 (#970: the operator preview, which replaces 0218's film_price first); Atlas's merge and apply order is
+--   0235 -> 0236 -> 0239 -> 0240. This file accepts only 0235's film_price (or its own): on 0218's it refuses, with "apply 0235
+--   first". The hunk is six lines in one place, right after the clip model's check, which 0235 gives the film's organization.
 -- NO BACKSLASH anywhere in this file (0219's header: the live apply path once rewrote backslash escapes in SQL text). White space is
---   folded with [[:space:]]+, and the one backslash film_price's body holds (0218's clip-length pattern) is written @@0236_BACKSLASH@@
+--   folded with [[:space:]]+, and the one backslash film_price's body holds (0218's clip-length pattern, kept by 0235) is written @@0236_BACKSLASH@@
 --   and put back with chr(92) before the body is executed, so the body that reaches the database is byte for byte the one hashed below.
 -- REPLACES (md5 of prosrc with every run of white space read as one space):
---   film_price                0218 3c22f87be736c073d17d93e040e914e1 -> 0236 b873f893f3f185b3eab3698d349f3379
+--   film_price                0235 186d34ffb633bc56a91bbf617b0b7520 -> 0236 af0fb80cce8e92fd2360aa6d5366a942
 --   film_assembly_retryable   0215 82ec51dabd0ff178ec2280bc0c56e62b -> 0236 88a312d28e63be043796bcc86f024164
 --   0215's own replay and rollback refuse 0236's film_assembly_retryable: take 0236 off first (its rollback), as the lab does.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only; the SQL editor on the live project). Expected: one row, all true.
 --   select (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.film_price(public.films)'::regprocedure)
---            = '3c22f87be736c073d17d93e040e914e1' as film_price_is_0218s,
+--            = '186d34ffb633bc56a91bbf617b0b7520' as film_price_is_0235s,
 --          (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.film_assembly_retryable(text)'::regprocedure)
 --            = '82ec51dabd0ff178ec2280bc0c56e62b' as retryable_is_0215s,
 --          to_regclass('public.film_studio_settings') is not null as switch_table_exists;
@@ -62,7 +63,7 @@
 -- APPLY AS ONE TRANSACTION (SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1): `set local lock_timeout`
 -- assumes it, and the last block asserts the end state. Idempotent: a replay finds this file's body and the column, and writes them
 -- again (the switch's value is never reset by a replay).
--- Rollback: docs/sql/rollback_0236_film_clip_sound_gate.sql (owner-applied; puts 0218's and 0215's bodies back byte for byte and drops
+-- Rollback: docs/sql/rollback_0236_film_clip_sound_gate.sql (owner-applied; puts 0235's and 0215's bodies back byte for byte and drops
 -- the column).
 -- Docs: docs/MIGRATIONS.md, "Film clip sound: refused until the cut keeps it (0236, provisional)".
 
@@ -73,14 +74,17 @@ declare
   h text;
 begin
   if to_regclass('public.film_studio_settings') is null or to_regprocedure('public.film_price(public.films)') is null then
-    raise exception '0236 needs 0171_films_money.sql and 0218_creative_prompt_limits.sql: apply them first';
+    raise exception '0236 needs 0171_films_money.sql, 0218_creative_prompt_limits.sql and 0235_film_operator_preview.sql: apply them first';
   end if;
-  -- The body this file replaces must be 0218's, or this file's own (a replay). Anything else was changed since, and replacing it would
-  -- silently undo that change (the 0064/0103 lesson); 0235's body in particular means "rebase this file on 0235" (see OVERLAP).
+  -- The body this file replaces must be 0235's, or this file's own (a replay). Anything else was changed since, and replacing it would
+  -- silently undo that change (the 0064/0103 lesson); 0218's body means 0235 is not applied yet (see ORDER).
   select md5(regexp_replace(x.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc x
    where x.oid = 'public.film_price(public.films)'::regprocedure;
-  if h is null or h <> all (array['3c22f87be736c073d17d93e040e914e1', 'b873f893f3f185b3eab3698d349f3379']) then
-    raise exception '0236 found a film_price() that is neither 0218''s body nor 0236''s (md5 %): read the live body first', h;
+  if h = '3c22f87be736c073d17d93e040e914e1' then
+    raise exception '0236 found 0218''s film_price: apply 0235_film_operator_preview.sql first (0236 is written on its body)';
+  end if;
+  if h is null or h <> all (array['186d34ffb633bc56a91bbf617b0b7520', 'af0fb80cce8e92fd2360aa6d5366a942']) then
+    raise exception '0236 found a film_price() that is neither 0235''s body nor 0236''s (md5 %): read the live body first', h;
   end if;
   if to_regprocedure('public.film_assembly_retryable(text)') is null then
     raise exception '0236 needs 0215_film_archive_resume.sql (film_assembly_retryable): apply it first';
@@ -104,7 +108,7 @@ comment on column public.film_studio_settings.clip_sound_kept is
 revoke all on public.film_studio_settings from public, anon, authenticated, service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 2. film_price: 0218's body plus the one hunk marked -- 0236
+-- 2. film_price: 0235's body plus the one hunk marked -- 0236
 -- ───────────────────────────────────────────────────────────────────────────
 -- Built as text with its one backslash written @@0236_BACKSLASH@@ and put back with chr(92) (see the header), then executed; the end
 -- state below checks the md5 of the body that results.
@@ -158,7 +162,8 @@ begin
     -- The key frame (only a scene that makes its own).
     if sc.first_frame = 'keyframe' then
       ln := jsonb_build_object('line', 'keyframe', 'scene_id', sc.id, 'position', sc.position, 'shot_index', 0, 'model', kmodel);
-      q := case when kmodel is not null then public.film_model_problem(kmodel, array['t2i', 'edit'], label || ' keyframe_model') end;
+      -- 0235: the film's organization, so a platform admin's operator preview in the exempt organization passes (and nobody else's).
+      q := case when kmodel is not null then public.film_model_problem(kmodel, array['t2i', 'edit'], label || ' keyframe_model', f.org_id) end;
       if kmodel is null then
         ln := ln || jsonb_build_object('priced', false, 'reason', 'model_not_set',
                                        'detail', format('%s: choose a key-frame model', label));
@@ -189,6 +194,14 @@ begin
           q := jsonb_build_object('priced', false, 'reason', 'refs_not_supported',
                                   'detail', format('%s: %s takes %s reference pictures and this scene has %s; choose a model that takes them all or remove some',
                                                    label, kmodel, ref_max, refs_n));
+        -- 0235 (refs path): a film's key frame is made from words (film_take_job sends t2i), and an adapter sends references only on
+        -- the capabilities it lists (registry inputs.ref_capabilities, checked against the adapter): one that does not list t2i would
+        -- refuse this take at submit, after the hold. Not listed, or not stated at all, is refused here, before anything is held.
+        elsif refs_n > 0 and not coalesce(jsonb_typeof(spec -> 'inputs' -> 'ref_capabilities') = 'array'
+                                          and (spec -> 'inputs' -> 'ref_capabilities') ? 't2i', false) then
+          q := jsonb_build_object('priced', false, 'reason', 'refs_not_supported',
+                                  'detail', format('%s: %s does not take reference pictures for a key frame made from words; remove the reference pictures or choose a key-frame model that takes them',
+                                                   label, kmodel));
         elsif cap = 'edit' and stand is null then
           q := jsonb_build_object('priced', false, 'reason', 'source_unavailable',
                                   'detail', format('%s: an edit model is priced against a picture of this library; add one picture', label));
@@ -216,7 +229,8 @@ begin
 
     -- The clip shots: shot 1 from the first frame, shots 2-3 extend from the shot before.
     select m.spec into spec from public.model_registry m where m.id = cmodel;
-    bad := case when cmodel is not null then public.film_model_problem(cmodel, array['i2v'], label || ' clip_model') end;
+    -- 0235: the film's organization, so a platform admin's operator preview in the exempt organization passes (and nobody else's).
+    bad := case when cmodel is not null then public.film_model_problem(cmodel, array['i2v'], label || ' clip_model', f.org_id) end;
     -- 0236: while the cut drops a clip's own sound (BR-SG-01), the priced sound option is refused by name, not sold to be dropped.
     if bad is null and sc.clip_params -> 'audio' = 'true'::jsonb  -- 0236
        and not coalesce((select s.clip_sound_kept from public.film_studio_settings s where s.id), false) then  -- 0236
@@ -300,7 +314,8 @@ begin
       q := jsonb_build_object('priced', false, 'reason', 'channel_voice_not_priced',
                               'detail', 'a channel''s own voice is not priced here; choose a voice for the film');
     else
-      q := coalesce(public.film_model_problem(f.voice ->> 'model', array['tts'], 'voice.model'),
+      -- 0235: the film's organization, so a platform admin's operator preview in the exempt organization passes (and nobody else's).
+      q := coalesce(public.film_model_problem(f.voice ->> 'model', array['tts'], 'voice.model', f.org_id),
                     public.film_try_price(f.org_id, 'tts', f.voice ->> 'model',
                                           jsonb_build_object('prompt', left(sample, (public.film_money_limits() ->> 'tts_sample_chars')::integer),
                                                              'voice_id', f.voice ->> 'voice_id')));
@@ -389,7 +404,7 @@ declare
   got text;
 begin
   select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into got from pg_proc p where p.oid = fp;
-  if got <> 'b873f893f3f185b3eab3698d349f3379' then
+  if got <> 'af0fb80cce8e92fd2360aa6d5366a942' then
     raise exception '0236 end state: film_price does not hold this file''s body (md5 %)', got;
   end if;
   if exists (select 1 from pg_proc p
@@ -441,7 +456,7 @@ end $$;
 -- ───────────────────────────────────────────────────────────────────────────
 -- select
 --   (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
---     where oid = 'public.film_price(public.films)'::regprocedure) = 'b873f893f3f185b3eab3698d349f3379' as film_price_is_0236s,
+--     where oid = 'public.film_price(public.films)'::regprocedure) = 'af0fb80cce8e92fd2360aa6d5366a942' as film_price_is_0236s,
 --   (select clip_sound_kept from public.film_studio_settings where id) = false as switch_off_until_the_worker_is_deployed,
 --   not has_table_privilege('authenticated', 'public.film_studio_settings', 'select')
 --     and not has_table_privilege('authenticated', 'public.film_studio_settings', 'update')

@@ -17,7 +17,10 @@ from modules.capabilities import ADAPTERS
 from tools import probe_models
 
 GROK = ("grok-imagine-video-1.5", "grok-imagine-video-1.5-lite", "grok-imagine-image-2.0")
-GOOGLE_DARK = ("gemini-omni-1.1-flash", "gemini-nano-banana-2.1")
+GOOGLE_DARK = ("gemini-omni-1.1-flash",)
+#: The owner cleared Google's 18+ and consumer-use clauses for these on 2026-11-28 (their terms_notes, migration 0238): no terms gate,
+#: so ``--all`` makes one real, paid call to each. That is the cost of the decision, and this pin makes it visible.
+GOOGLE_CLEARED = ("gemini-3-pro-image", "gemini-nano-banana-2.1")
 
 #: Every adapter finds a key, so the only reason a model is not probed is its terms gate.
 ENV = {name: "k" * 24 for cls in ADAPTERS.values() for name in cls.key_env}
@@ -73,7 +76,13 @@ class SelectTests(unittest.TestCase):
         for cap in ("t2v", "i2v", "t2i"):
             self.assertFalse({e.id for e in probe_models.select(self.entries, [], cap, True)} & set(GROK), cap)
 
-    def test_all_leaves_out_both_google_dark_entries_and_a_named_one_comes_back(self):
+    def test_the_cleared_google_entries_are_probed_by_all(self):
+        chosen = {e.id for e in probe_models.select(self.entries, [], None, True)}
+        for mid in GOOGLE_CLEARED:
+            self.assertIsNone(reg.get(mid).terms_gate, mid)
+            self.assertIn(mid, chosen, mid)
+
+    def test_all_leaves_out_the_google_dark_entries_and_a_named_one_comes_back(self):
         chosen = {e.id for e in probe_models.select(self.entries, [], None, True)}
         self.assertFalse(chosen & set(GOOGLE_DARK))
         for mid in GOOGLE_DARK:

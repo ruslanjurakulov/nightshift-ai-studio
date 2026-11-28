@@ -192,6 +192,7 @@ export const studioTimelineUz: StudioTimelineDictionary = {
       model_not_set: "Sahnada model tanlanmagan. Uni loyihada tanlang.",
       prompt_missing: "Sahnada rasm tavsifi yoʻq. Uni loyihada yozing.",
       refs_not_supported: "Sahna modeli qabul qilmaydigan namuna rasmlardan foydalanadi. Boshqa model tanlang yoki namunalarni olib tashlang.",
+      style_needs_description: "Sahnaning uslub toʻplami yoki @personajida tavsif yoʻq, kalit kadr modeli esa ularning rasmlarini qabul qilmaydi. Uslub toʻplami yoki personajga tavsif qoʻshing yoki namuna rasmlarni qabul qiladigan kalit kadr modelini tanlang.",
       source_unavailable: "Sahnaning boshlangʻich rasmi tayyor emas. Uni loyihada yarating yoki tanlang.",
       scene_too_long_for_model: "Sahna modeli yarata oladiganidan uzunroq. Uni qisqartiring yoki boshqa model tanlang.",
       prompt_too_long: "Sahna tavsifi uning modeli qabul qiladiganidan uzunroq. Uni loyihada qisqartiring yoki boshqa model tanlang.",

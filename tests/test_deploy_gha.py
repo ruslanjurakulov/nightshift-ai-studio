@@ -2505,6 +2505,8 @@ OPERATOR_OPTIONAL = [
     "TELEGRAM_ADMIN_USER_IDS", "GITHUB_TOKEN", "GITHUB_REPOSITORY", "ELEVENLABS_LOW_CREDITS",
     "OPERATOR_APP_URL", "OPERATOR_LANGUAGE", "OPERATOR_TZ", "OPERATOR_QUIET_HOURS",
     "OPERATOR_DIGEST_HOUR", "OPERATOR_STUCK_MINUTES", "OPERATOR_ALERT_MAX_PER_HOUR", "OPERATOR_DEADMAN_HOURS",
+    # The film spend watch's two lines (modules/operator_bot/config.py): a malformed one is a refusal.
+    "NIGHTSHIFT_FILM_SPEND_WARN_USD", "NIGHTSHIFT_FILM_SPEND_STOP_USD",
     # The owner's pause of the scheduled pipeline (docs/VIDEO_GO_LIVE.md): the bot says "paused", not MISSING.
     "NIGHTSHIFT_PIPELINE_PAUSED",
     # The owner's e-mail copy (docs/OWNER_EMAIL.md): off unless NIGHTSHIFT_OWNER_EMAIL is exactly `on`.

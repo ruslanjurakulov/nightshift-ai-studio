@@ -53,15 +53,16 @@ def refused(db, who, q, p=None):
 def replay_history_redaction(db):
     """The fix's history redaction (a migration marked BR-0036-02), replayed over rows seeded after the lab was built, as
     test_sec_breach_leaks replays 0088 over its seeded rows (0225)."""
-    # 0236 replaces 0215's film_assembly_retryable, and 0215's replay refuses its body: off for the replay, on again after.
+    # 0235 replaces 0215's film_resume_precheck, and 0215's replay refuses its body: off for the replay (0236, on it, with it), on again after.
     with psycopg.connect(db.dsn, autocommit=True) as c:
-        sec_db.take_off_0236(c)
+        sec_db.take_off_0235(c)
     for f in sec_db.migration_files():
         text = f.read_text(encoding="utf-8")
         if "BR-0036-02" in text:
             db.su(text)
     with psycopg.connect(db.dsn, autocommit=True) as c:
-        sec_db.put_back_0236(c)
+        sec_db.put_back_0235(c)
+        assert sec_db.has_0235(c)
         assert sec_db.has_0236(c)
 
 

@@ -9,7 +9,7 @@ that sells its sound apart without that option, or while the cut drops clip soun
 sold where the worker asks for no sound (refused clip_without_sound after the spend, rule 6); a muted scene that buys sound; a prompt
 the quote never counted (the lines) over the model's limit, held for and then refused by the worker; the quote and the worker writing
 the lines differently; a film that sets neither key priced to another quote_id; a replay, a drift guard or a rollback that is not what
-the header says, or the lab's take-off helpers leaving 0236's replay to refuse 0241's body.
+the header says, or the lab's take-off helpers leaving 0239's replay to refuse 0241's body.
 
 Runs in its own scratch database (it commits), on test_sec_films_money's registry plus four clip models: one priced by its sound (as
 kling-v3), one that speaks inside one price (as Veo or LTX), the same with a small prompt limit, and test_sec_films_money's silent one.
@@ -456,7 +456,7 @@ def test_a_replay_changes_nothing_and_keeps_the_lines(db, a):
     assert stored(db, fid) == ("dialogue", [UZ, RU])
 
 
-@pytest.mark.parametrize("sig,needle", [(PRICE_SIG, "neither 0236"), (SAVE_SIG, "neither 0166")])
+@pytest.mark.parametrize("sig,needle", [(PRICE_SIG, "neither 0239"), (SAVE_SIG, "neither 0239")])
 def test_the_drift_guard_refuses_a_body_that_is_neither_the_base_nor_its_own(db, sig, needle):
     with psycopg.connect(db.dsn, autocommit=False) as c:
         src = c.execute("select prosrc from pg_proc where oid = %s::regprocedure", [sig]).fetchone()[0]
@@ -489,19 +489,19 @@ def test_the_rollback_refuses_while_a_scene_holds_lines_unless_told_to_discard_t
     assert stored(db, fid) == ("dialogue", [UZ])
 
 
-def test_the_rollback_puts_0166_and_0236_back_drops_everything_and_0241_applies_again(db, a):
+def test_the_rollback_puts_0239s_bodies_back_drops_everything_and_0241_applies_again(db, a):
     fid = film(db, a)
     save(db, a, fid, spoken())
     with psycopg.connect(db.dsn, autocommit=False) as c:
         sec_db.take_off_0241(c)
-        assert (_md5(c, SAVE_SIG), _md5(c, PRICE_SIG)) == (sec_db.FILM_SAVE_SCENES_0166, sec_db.FILM_PRICE_0236)
+        assert (_md5(c, SAVE_SIG), _md5(c, PRICE_SIG)) == (sec_db.FILM_SAVE_SCENES_0239, sec_db.FILM_PRICE_0239)
         assert c.execute("select count(*) from information_schema.columns where table_schema = 'public' "
                          "and table_name = 'film_scenes' and column_name in ('sound_role', 'dialogue')").fetchone()[0] == 0
         for sig in ("public.film_dialogue(jsonb, text)", "public.film_dialogue_prompt(jsonb)", "public.film_clip_prompt(text, jsonb)",
                     "public.film_sound_problem(text, jsonb, jsonb, text, text)"):
             assert c.execute("select to_regprocedure(%s)", [sig]).fetchone()[0] is None, sig
-        # 0236's and 0166's own replays accept what came back (the take-off left nothing of 0241's in their way).
-        c.execute(sec_db.MIGRATION_0236.read_text(encoding="utf-8"))
+        # 0239's own replay accepts what came back (the take-off left nothing of 0241's in its way).
+        c.execute(sec_db.MIGRATION_0239.read_text(encoding="utf-8"))
         sec_db.put_back_0241(c)
         assert sec_db.has_0241(c)
         assert (_md5(c, SAVE_SIG), _md5(c, PRICE_SIG)) == (sec_db.FILM_SAVE_SCENES_0241, sec_db.FILM_PRICE_0241)
@@ -511,8 +511,16 @@ def test_the_rollback_puts_0166_and_0236_back_drops_everything_and_0241_applies_
     assert stored(db, fid) == ("dialogue", [UZ])
 
 
-def test_0236s_and_0218s_take_offs_take_0241_off_first_and_their_put_backs_put_it_back(db):
+def test_0239s_0236s_and_0218s_take_offs_take_0241_off_first_and_their_put_backs_put_it_back(db):
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0239(c)
+        assert not sec_db.has_0241(c) and not sec_db.has_0239(c) and sec_db.has_0236(c)
+        sec_db.put_back_0239(c)
+        assert sec_db.has_0241(c)
+        sec_db.take_off_0235(c)
+        assert not sec_db.has_0241(c) and not sec_db.has_0236(c)
+        sec_db.put_back_0235(c)
+        assert sec_db.has_0241(c)
         sec_db.take_off_0236(c)
         assert not sec_db.has_0241(c) and not sec_db.has_0236(c)
         sec_db.put_back_0236(c)
@@ -531,10 +539,12 @@ def test_0236s_and_0218s_take_offs_take_0241_off_first_and_their_put_backs_put_i
 def test_the_rollback_if_on_text_takes_0241_off_where_it_is_on_and_nothing_where_it_is_not(db):
     with psycopg.connect(db.dsn, autocommit=False) as c:
         c.execute(sec_db.rollback_0241_if_on())
-        assert not sec_db.has_0241(c) and _md5(c, PRICE_SIG) == sec_db.FILM_PRICE_0236
+        assert not sec_db.has_0241(c) and _md5(c, PRICE_SIG) == sec_db.FILM_PRICE_0239
         c.execute(sec_db.rollback_0241_if_on())   # off already: nothing happens
-        c.execute(sec_db.rollback_0236_if_on())   # 0236's text starts with 0241's
-        assert _md5(c, PRICE_SIG) == sec_db.FILM_PRICE_0218
+        c.execute(sec_db.put_back_0241(c) or "select 1")
+        assert sec_db.has_0241(c)
+        c.execute(sec_db.rollback_0239_if_on())   # 0239's text starts with 0241's
+        assert _md5(c, PRICE_SIG) == sec_db.FILM_PRICE_0236
         c.rollback()
 
 

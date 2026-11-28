@@ -28,6 +28,8 @@ Review node in a graph is only a structural rule. Runtime must validate **real a
 
 
 ## Phase 1B — visual preview implemented in draft PR
+Until launch, `/agent-builder` and its drafts serve only a platform operator, in three places that agree: the page (`guardOperatorPage`, the same guard as the Providers page: a customer gets the public 404), every `/api/agent-builder/drafts` route (`requireOperator`, asked before the release switch, so every non-operator gets the same 401/403 whatever `NIGHTSHIFT_AGENT_DRAFTS_ENABLED` says, and an operator gets the 404 while it is off), and the database (migration 0234: both draft functions raise `operator_only` unless `is_platform_admin()`).
+
 The noindex route `/agent-builder` renders a responsive graph planning interface. Users can rename the plan, add/remove allowlisted nodes, rename nodes, connect compatible node types, disconnect edges, reset the example, see structural diagnostics, and download a validated JSON draft. This uses only client-side state and an in-browser Blob export; nothing is saved to Supabase, no AI Agent actually runs, and no credits are used.
 
 `agent-graph-editor.ts` implements a narrow typed connection matrix, immutable graph edit helpers and validation before adding an edge. `agent-graph-editor.test.ts` tests distinct identities, removal, incompatible/duplicate connections and unknown nodes.
@@ -55,7 +57,7 @@ Added a client-side draggable, bounded node-card workspace with accessible direc
 - Switch `NIGHTSHIFT_AGENT_DRAFTS_ENABLED` (on, 1, true or yes; default off): off, every draft route answers the public 404 before reading the session.
 
 ### What the switch does NOT cover
-The switch hides the web routes only. Once migration 0130 is applied, **any signed-in user can call `save_agent_workflow_draft()` and `delete_agent_workflow_draft()` directly through PostgREST with the browser (anon) key, whatever the switch says**, and read their own rows of the two tables. That is accepted on purpose and bounded by the database itself: 50 plans per person, 30 versions per plan, 150 KB per version, the document rules above, and only the caller's own rows. Nothing stored is ever executed, billed or published. If even that exposure is unwanted before launch, do not apply 0130 yet (or apply its rollback).
+The switch hides the web routes only. Before migration 0234, any signed-in user could call `save_agent_workflow_draft()` and `delete_agent_workflow_draft()` directly through PostgREST with the browser (anon) key, whatever the switch said (BR-S8-01). Since 0234 both functions refuse anyone who is not a platform owner or admin (`operator_only`, 42501), with grants unchanged; a person still reads their own rows of the two tables, including plans saved before 0234. The database's own bounds stay: 50 plans per person, 30 versions per plan, 150 KB per version, the document rules above, and only the caller's own rows. Nothing stored is ever executed, billed or published.
 
 ### Tests
 `tests/security/test_sec_agent_workflow_drafts.py` (security lab, real Postgres): every guard of the function has a test that fails when the guard is removed, including two-connection races for the 50-plan limit and the version lock, and the rollback. `tests/security/test_sec_isolation.py` attacks real seeded rows of both tables (`tests/security/sec_agent_drafts_0130.py`). `command-center/tests/agent-drafts-route.test.ts` covers the switch, same-origin, the body cap and the error mapping.

@@ -15,7 +15,10 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 16
+        "image_refs_max": 16,
+        "ref_capabilities": [
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -95,7 +98,10 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 16
+        "image_refs_max": 16,
+        "ref_capabilities": [
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -168,7 +174,10 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 16
+        "image_refs_max": 16,
+        "ref_capabilities": [
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -241,7 +250,10 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 16
+        "image_refs_max": 16,
+        "ref_capabilities": [
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -315,7 +327,10 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 16
+        "image_refs_max": 16,
+        "ref_capabilities": [
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -389,7 +404,11 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 14
+        "image_refs_max": 14,
+        "ref_capabilities": [
+          "t2i",
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -729,7 +748,11 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 3
+        "image_refs_max": 3,
+        "ref_capabilities": [
+          "t2i",
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -1062,7 +1085,11 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 14
+        "image_refs_max": 14,
+        "ref_capabilities": [
+          "t2i",
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -1108,7 +1135,7 @@
       },
       "credit_unit": "model_gemini_3_pro_image_image",
       "entitlement": "models_image:premium",
-      "terms_gate": "terms_review_required",
+      "terms_gate": null,
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
         "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
@@ -1116,7 +1143,11 @@
         "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
         "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading",
         "Gemini API Additional Terms re-read 2026-11-11 (aistudio.google.com/docs/terms, 'Effective March 23, 2026'): 'You must be 18 years of age or older to use the APIs' and the API 'is for developers building with Google AI models for professional or business purposes, not for consumer use.'",
-        "Those clauses keep gemini-nano-banana-2.1 and gemini-omni-1.1-flash gated until the owner's lawyer has read them, and they cover this model the same way: terms_review_required (was null until 2026-11-11). No credit price was changed; the gate makes it inert."
+        "Those clauses keep gemini-nano-banana-2.1 and gemini-omni-1.1-flash gated until the owner's lawyer has read them, and they cover this model the same way: terms_review_required (was null until 2026-11-11). No credit price was changed; the gate makes it inert.",
+        "Owner decision 2026-11-28 (relayed by Atlas): cleared the Gemini API Additional Terms age clause (18+) and Use Restrictions (not for consumer use), and Google Cloud Service Terms §20.d (not for services likely used by under-18s). terms_gate set to null.",
+        "Owner's reasoning, 2026-11-28: the 18+ attestation (migration 0192, requires_adult) is asked of every user, Europe included, so the responsibility for those clauses does not fall on us. The decision covers only those 18+ and consumer-use clauses.",
+        "Still OPEN after 2026-11-28: Google Cloud Service Terms §17.a (competing products) and Google APIs ToS §4(a) (sublicensing), hence api_exposure stays web_only. Not on sale: availability stays hidden and no credit price is added; opening for sale is the owner's act.",
+        "operator_preview NOT set (2026-11-28): priced by image_size, and creative_price (0208) quotes such a preview with no per-size credit_prices row as unpriced (lab-measured), so marking it would list a dead end (tests/test_preview_price_by_quality_migration.py)."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -1399,7 +1430,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "16:9",
@@ -1734,7 +1766,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "ref_capabilities": []
       },
       "aspect_ratios": [],
       "relight_looks": [
@@ -2062,7 +2095,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "ref_capabilities": []
       },
       "aspect_ratios": [],
       "resolutions": [],
@@ -2933,7 +2967,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -2995,7 +3030,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3057,7 +3093,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3119,7 +3156,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "21:9",
@@ -3203,7 +3241,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "21:9",
@@ -3287,7 +3326,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3361,7 +3401,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3436,7 +3477,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3502,7 +3544,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3576,7 +3619,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3664,7 +3708,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "ref_capabilities": []
       },
       "aspect_ratios": [],
       "resolutions": [],
@@ -3726,7 +3771,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3796,7 +3842,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3866,7 +3913,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -6690,7 +6738,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 10
+        "image_refs_max": 10,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -6754,7 +6803,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 10
+        "image_refs_max": 10,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -6817,7 +6867,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -7131,7 +7182,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -7214,7 +7266,11 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 10
+        "image_refs_max": 10,
+        "ref_capabilities": [
+          "t2i",
+          "edit"
+        ]
       },
       "aspect_ratios": [],
       "resolutions": [],
@@ -7327,6 +7383,7 @@
         "confirmed": false,
         "note": "elevenlabs.io/pricing/api read 2026-11-11: v4 '$0.08 Price per 1K characters', the same on every plan row."
       },
+      "operator_preview": true,
       "credit_unit": "model_elevenlabs_v4_character",
       "entitlement": "models_audio:premium",
       "terms_gate": "plan_required:scale",
@@ -7385,6 +7442,7 @@
         "confirmed": false,
         "note": "elevenlabs.io/pricing/api read 2026-11-11: v3 '$0.08 Price per 1K characters', the same on every plan row; '5,000 character limit'."
       },
+      "operator_preview": true,
       "credit_unit": "model_elevenlabs_v3_character",
       "entitlement": "models_audio:premium",
       "terms_gate": "plan_required:scale",
@@ -7774,7 +7832,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -7854,7 +7913,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -8281,7 +8341,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "3:1",
@@ -8351,7 +8412,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "3:1",
@@ -8765,7 +8827,11 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 14
+        "image_refs_max": 14,
+        "ref_capabilities": [
+          "t2i",
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -8817,7 +8883,7 @@
       },
       "credit_unit": "model_gemini_nano_banana_2_1_image",
       "entitlement": "models_image:premium",
-      "terms_gate": "terms_review_required",
+      "terms_gate": null,
       "terms_notes": [
         "Google Cloud Service Terms §20.d, as the registry cites it for Google models (NOT re-read for the Gemini API, whose own terms are the notes below): not for a service directed to, or likely to be accessed by, people under 18",
         "Google Cloud Service Terms §17.a, as cited for Google models (NOT re-read here): no use to develop a similar or competing product; needs a lawyer's reading before launch",
@@ -8826,7 +8892,11 @@
         "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading",
         "Use only in an available region (Gemini API Additional Terms); EEA/CH/UK users need Paid Services. Uzbekistan is on Google's region list; billing from Uzbekistan was NOT verified. Output carries invisible SynthID; no customer watermark duty found.",
         "Not read: whether a refused or failed request is billed (no Google page says). Requests are sent store=false (the interaction is not kept for later turns); what Google retains otherwise, e.g. for abuse review, was not read.",
-        "Gate stays open until the owner's lawyer has read the Gemini API Additional Terms and the Google APIs Terms for a credits-based creative platform whose users may be under 18 or consumers. No credit price may be added before that."
+        "Gate stays open until the owner's lawyer has read the Gemini API Additional Terms and the Google APIs Terms for a credits-based creative platform whose users may be under 18 or consumers. No credit price may be added before that.",
+        "Owner decision 2026-11-28 (relayed by Atlas): cleared the Gemini API Additional Terms age clause (18+) and Use Restrictions (not for consumer use), and Google Cloud Service Terms §20.d (not for services likely used by under-18s). terms_gate set to null.",
+        "Owner's reasoning, 2026-11-28: the 18+ attestation (migration 0192, requires_adult) is asked of every user, Europe included, so the responsibility for those clauses does not fall on us. The decision covers only those 18+ and consumer-use clauses.",
+        "Still OPEN after 2026-11-28: Google Cloud Service Terms §17.a (competing products) and Google APIs ToS §4(a) (sublicensing), hence api_exposure stays web_only. Not on sale: availability stays hidden and no credit price is added; opening for sale is the owner's act.",
+        "operator_preview NOT set (2026-11-28): priced by image_size, and creative_price (0208) quotes such a preview with no per-size credit_prices row as unpriced (lab-measured), so marking it would list a dead end (tests/test_preview_price_by_quality_migration.py)."
       ],
       "attribution": null,
       "api_exposure": "web_only",
@@ -9798,6 +9868,326 @@
         "capability": "video_music",
         "prompt": "score this clip",
         "input_video": "generated"
+      }
+    },
+    {
+      "id": "google-lyria-3.5",
+      "display_name": "Lyria 3.5",
+      "provider": "google",
+      "adapter": "audio.google_lyria",
+      "vendor_model": "lyria-3.5",
+      "capabilities": [
+        "music"
+      ],
+      "output": "audio",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://aistudio.google.com/docs/music-generation",
+        "checked_at": "2026-11-27",
+        "source": "vendor_docs_search",
+        "evidence": "aistudio.google.com music-generation, models/lyria-3.5, interactions, pricing, terms and available-regions pages read 2026-11-27 (docs/research/lyria-3-5.md). No real call made.",
+        "note": "REGISTRY-ONLY: the database has no 'music' capability yet. Interactions API (POST /v1beta/interactions, Api-Revision 2026-05-20), synchronous, store false. No duration, language or lyrics field. Instrumental only until a probe proves a sung language."
+      },
+      "pricing": {
+        "unit": "request",
+        "provider_usd_per_unit": 0.08,
+        "source_url": "https://aistudio.google.com/docs/pricing",
+        "as_of": "2026-11-27",
+        "confirmed": false,
+        "note": "'$0.08 per song', paid tier only (free tier: 'Not available'). A 'song' is not defined and no maximum length is stated: billing per request is UNVERIFIED until a paid probe. No credit price is seeded."
+      },
+      "credit_unit": "model_google_lyria_3_5_request",
+      "entitlement": "models_audio:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "Google Cloud Service Terms §20.d, as the registry cites it for Google models (NOT re-read for the Gemini API, whose own terms are the notes below): not for a service directed to, or likely to be accessed by, people under 18",
+        "Google Cloud Service Terms §17.a, as cited for Google models (NOT re-read here): no use to develop a similar or competing product; needs a lawyer's reading before launch",
+        "Gemini API Additional Terms (effective 2026-03-23), Age Requirements: 18+ only, and no use in a service directed to or likely to be accessed by people under 18. Owner/lawyer decision needed on under-18 users before any Google model is offered",
+        "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
+        "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading",
+        "Use only in an available region (Gemini API Additional Terms: the list binds our end users); EEA/CH/UK users need Paid Services. Russia is not listed; an unknown country is refused (owner, 2026-11-27). Uzbekistan is listed.",
+        "Lyria 3.5 is on the paid tier only (free tier: 'Not available'). Under 4(a) it lives only inside the Studio/video workflow as a music tool: never a bare prompt-to-song passthrough, never the public API or MCP.",
+        "Google APIs Terms 3(d): a privacy policy for the product (prompts sent to Google, retention); 6(b): any attribution Google requires. The Prohibited Use Policy is passed on in Terms 7. Legal text for owner review: lib/legal-docs (S6).",
+        "Safety filter: prompts that 'request specific artist voices or the generation of copyrighted lyrics' are blocked; that reaches the person as 'policy' with a remedy, never a substitute model or a reworded prompt.",
+        "SynthID: 'All generated audio includes a SynthID audio watermark', no opt-out; disclosed in the legal text now and in any music UI, by the owner's decision (no disclosure duty is documented).",
+        "Ownership: 'Google won't claim ownership over that content'; 'Google may generate the same or similar content for others' (not exclusive). Paid-tier content is not used to improve Google's products.",
+        "Requests are sent store=false (synchronous). UNVERIFIED until a paid probe: Russian and Uzbek vocals (no official 3.5 list), what one 'song' is and its longest length, rate limits, latency, error codes, billing of a block.",
+        "Gate stays open until the owner signs the legal text (privacy, terms, SynthID) and a paid probe passes. No credit price may be added before that.",
+        "NOT ON SALE until a vocal-activity check on the returned MP3 exists (its own measurement PR first, rule 8). Today instrumental-only rests on a prompt shape check and a check of Google's returned lyrics text (BR-S6-01/02)."
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "blocked_countries": [
+        "AF",
+        "BV",
+        "BY",
+        "CN",
+        "CU",
+        "GP",
+        "HK",
+        "IR",
+        "KP",
+        "MF",
+        "MM",
+        "MO",
+        "MQ",
+        "PF",
+        "RU",
+        "SJ",
+        "SX",
+        "TF",
+        "YT"
+      ],
+      "available_countries": [
+        "AD",
+        "AE",
+        "AG",
+        "AI",
+        "AL",
+        "AM",
+        "AO",
+        "AQ",
+        "AR",
+        "AS",
+        "AT",
+        "AU",
+        "AW",
+        "AX",
+        "AZ",
+        "BA",
+        "BB",
+        "BD",
+        "BE",
+        "BF",
+        "BG",
+        "BH",
+        "BI",
+        "BJ",
+        "BL",
+        "BM",
+        "BN",
+        "BO",
+        "BQ",
+        "BR",
+        "BS",
+        "BT",
+        "BW",
+        "BZ",
+        "CA",
+        "CC",
+        "CD",
+        "CF",
+        "CG",
+        "CH",
+        "CI",
+        "CK",
+        "CL",
+        "CM",
+        "CO",
+        "CR",
+        "CV",
+        "CW",
+        "CX",
+        "CY",
+        "CZ",
+        "DE",
+        "DJ",
+        "DK",
+        "DM",
+        "DO",
+        "DZ",
+        "EC",
+        "EE",
+        "EG",
+        "EH",
+        "ER",
+        "ES",
+        "ET",
+        "FI",
+        "FJ",
+        "FK",
+        "FM",
+        "FO",
+        "FR",
+        "GA",
+        "GB",
+        "GD",
+        "GE",
+        "GF",
+        "GG",
+        "GH",
+        "GI",
+        "GL",
+        "GM",
+        "GN",
+        "GQ",
+        "GR",
+        "GS",
+        "GT",
+        "GU",
+        "GW",
+        "GY",
+        "HM",
+        "HN",
+        "HR",
+        "HT",
+        "HU",
+        "ID",
+        "IE",
+        "IL",
+        "IM",
+        "IN",
+        "IO",
+        "IQ",
+        "IS",
+        "IT",
+        "JE",
+        "JM",
+        "JO",
+        "JP",
+        "KE",
+        "KG",
+        "KH",
+        "KI",
+        "KM",
+        "KN",
+        "KR",
+        "KW",
+        "KY",
+        "KZ",
+        "LA",
+        "LB",
+        "LC",
+        "LI",
+        "LK",
+        "LR",
+        "LS",
+        "LT",
+        "LU",
+        "LV",
+        "LY",
+        "MA",
+        "MC",
+        "MD",
+        "ME",
+        "MG",
+        "MH",
+        "MK",
+        "ML",
+        "MN",
+        "MP",
+        "MR",
+        "MS",
+        "MT",
+        "MU",
+        "MV",
+        "MW",
+        "MX",
+        "MY",
+        "MZ",
+        "NA",
+        "NC",
+        "NE",
+        "NF",
+        "NG",
+        "NI",
+        "NL",
+        "NO",
+        "NP",
+        "NR",
+        "NU",
+        "NZ",
+        "OM",
+        "PA",
+        "PE",
+        "PG",
+        "PH",
+        "PK",
+        "PL",
+        "PM",
+        "PN",
+        "PR",
+        "PS",
+        "PT",
+        "PW",
+        "PY",
+        "QA",
+        "RE",
+        "RO",
+        "RS",
+        "RW",
+        "SA",
+        "SB",
+        "SC",
+        "SD",
+        "SE",
+        "SG",
+        "SH",
+        "SI",
+        "SK",
+        "SL",
+        "SM",
+        "SN",
+        "SO",
+        "SR",
+        "SS",
+        "ST",
+        "SV",
+        "SY",
+        "SZ",
+        "TC",
+        "TD",
+        "TG",
+        "TH",
+        "TJ",
+        "TK",
+        "TL",
+        "TM",
+        "TN",
+        "TO",
+        "TR",
+        "TT",
+        "TV",
+        "TW",
+        "TZ",
+        "UA",
+        "UG",
+        "UM",
+        "US",
+        "UY",
+        "UZ",
+        "VA",
+        "VC",
+        "VE",
+        "VG",
+        "VI",
+        "VN",
+        "VU",
+        "WF",
+        "WS",
+        "XK",
+        "YE",
+        "ZA",
+        "ZM",
+        "ZW"
+      ],
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "requires_adult": true,
+      "probe": {
+        "capability": "music",
+        "prompt": "a calm solo piano piece"
       }
     },
     {

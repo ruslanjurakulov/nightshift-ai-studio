@@ -1,12 +1,16 @@
+import "server-only";
+import { PROVIDER_CATEGORIES, type ProviderCategory, type ProviderDef } from "@/lib/provider-types";
+
 /**
  * Provider registry — the single source of truth for which external providers
  * the Command Center can hold an API key for.
  *
- * This module is client-safe on purpose: it names providers, their category,
- * the GitHub Actions secret each key is sealed into, and the provider's own
- * console page. It holds NO secret values and makes NO network calls, so it can
- * be imported by the Providers board in the browser and by the server-side
- * secret allowlist alike — one list, so the two can never drift.
+ * Server-only: it names the vendors we hold accounts with, which ones are live,
+ * the GitHub Actions secret each key is sealed into and each console page. It
+ * used to be client-safe and imported by the Providers board, so the whole list
+ * sat in a static chunk anyone can download (scripts/vendor-bundle-check.mjs).
+ * The Providers page reads it here and passes the cards down as props; the
+ * server-side secret allowlist reads the same list, so the two cannot drift.
  *
  * `secretName` is what the bot reads at runtime (see config.py) and what the
  * write endpoint seals into a repository secret. Every name here MUST also be
@@ -17,35 +21,11 @@
  * by opt-in provider adapters (Track 4) and change nothing until a key is set.
  */
 
-export type ProviderCategory = "llm" | "research" | "voice" | "video" | "image";
-
-export const PROVIDER_CATEGORIES: ProviderCategory[] = [
-  "llm",
-  "research",
-  "voice",
-  "video",
-  "image",
-];
-
-export interface ProviderDef {
-  /** Stable slug, used as a key and in the DOM. */
-  id: string;
-  /** Display name, the provider's own brand — not localized. */
-  name: string;
-  category: ProviderCategory;
-  /** The GitHub Actions secret this key is sealed into. Must be allow-listed. */
-  secretName: string;
-  /** The provider's own API-key / console page (opens in a new tab). */
-  consoleUrl: string;
-  /** true = the pipeline already uses this key; false = opt-in adapter, off until set. */
-  live: boolean;
-}
-
 /**
  * Every provider a channel operator can configure from the site. Grouped by
  * category in the UI; ordering here is the display order within a category.
  */
-export const PROVIDERS: ProviderDef[] = [
+export const PROVIDERS = [
   // Language models — scripting, topic + prompt generation
   { id: "gemini", name: "Google Gemini", category: "llm", secretName: "GEMINI_API_KEY", consoleUrl: "https://aistudio.google.com/apikey", live: true },
   { id: "anthropic", name: "Anthropic Claude", category: "llm", secretName: "ANTHROPIC_API_KEY", consoleUrl: "https://console.anthropic.com/settings/keys", live: false },
@@ -67,10 +47,22 @@ export const PROVIDERS: ProviderDef[] = [
   { id: "ideogram", name: "Ideogram", category: "image", secretName: "IDEOGRAM_API_KEY", consoleUrl: "https://ideogram.ai/manage-api", live: false },
   { id: "fal", name: "fal.ai", category: "image", secretName: "FAL_KEY", consoleUrl: "https://fal.ai/dashboard/keys", live: false },
   { id: "pexels", name: "Pexels", category: "image", secretName: "PEXELS_API_KEY", consoleUrl: "https://www.pexels.com/api", live: true },
-];
+] as const satisfies readonly ProviderDef[];
+
+/** A provider the registry knows. */
+export type ProviderId = (typeof PROVIDERS)[number]["id"];
 
 /** Secret names for every provider — the allowlist imports this. */
 export const PROVIDER_SECRET_NAMES: readonly string[] = PROVIDERS.map((p) => p.secretName);
+
+/** The secret a provider's key is sealed into. Typed by the registry's ids, so a guessed id does not compile: a guessed name
+ *  would seal a key where the bot never reads it. */
+export function secretNameOf(id: ProviderId): string {
+  const p = PROVIDERS.find((x) => x.id === id);
+  // Unreachable while the type holds; a cast from outside must fail loudly rather than return a made-up name.
+  if (!p) throw new Error(`unknown provider: ${id}`);
+  return p.secretName;
+}
 
 /** Providers grouped by category, preserving the order in `PROVIDERS`. */
 export function providersByCategory(): { category: ProviderCategory; items: ProviderDef[] }[] {

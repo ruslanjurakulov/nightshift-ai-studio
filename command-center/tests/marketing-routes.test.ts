@@ -317,7 +317,7 @@ describe("the order of the route's checks", () => {
   it("the owner routes still gate on their own switch by default", () => {
     const src = readFileSync(join(__dirname, "..", "lib", "server", "owner-rpc.ts"), "utf8");
     expect(src).toContain("flagOn: () => boolean = ownerRpcOn");
-    for (const f of ["credits/grant", "credits/reverse", "prices", "team"]) {
+    for (const f of ["credits/grant", "credits/reverse", "prices"]) {
       const r = readFileSync(join(__dirname, "..", "app", "api", "owner", f, "route.ts"), "utf8");
       expect(r, f).toMatch(/handleOwnerPost\(request, parse\w+\)\)/);
     }

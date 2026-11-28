@@ -37,6 +37,7 @@ export const REGISTRY_NAMES: Readonly<Record<string, string>> = {
   "generic-video-edit": "Video edit (provider not assigned)",
   "generic-video-reframe": "Video reframe (provider not assigned)",
   "generic-video-remove-bg": "Video background removal (provider not assigned)",
+  "google-lyria-3.5": "Lyria 3.5",
   "grok-imagine-image-2.0": "Grok Imagine Image 2.0",
   "grok-imagine-video-1.5": "Grok Imagine Video 1.5",
   "grok-imagine-video-1.5-lite": "Grok Imagine Video 1.5 Lite",

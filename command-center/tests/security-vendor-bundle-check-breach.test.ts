@@ -21,7 +21,9 @@ import { afterEach, describe, expect, it } from "vitest";
  */
 const CC = process.cwd();
 const SCRIPT = path.join(CC, "scripts", "vendor-bundle-check.mjs");
-const SOURCES = ["lib/effects/effects.json", "lib/effects/catalog.ts", "lib/server/provider-names.ts", "lib/server/ledger-units.ts"];
+// The signed-in screens' sources too (lib/providers.ts, lib/imageProviders.ts, …): the script reads its patterns from them.
+const { SIGNED_IN_SOURCES } = (await import("../scripts/vendor-bundle-check.mjs")) as { SIGNED_IN_SOURCES: string[] };
+const SOURCES = ["lib/effects/effects.json", "lib/effects/catalog.ts", "lib/server/provider-names.ts", "lib/server/ledger-units.ts", ...SIGNED_IN_SOURCES];
 const roots: string[] = [];
 
 type Fx = { id: string; models: string[]; prompt: string; slotHint: string | null };
@@ -48,7 +50,11 @@ function fakeBuild(): string {
   mkdirSync(path.join(chunks, "app", "pricing"), { recursive: true });
   for (let i = 0; i < 60; i++) writeFileSync(path.join(chunks, `${i}-filler.js`), `self.x${i}={a:1,b:"ok"};`);
   writeFileSync(path.join(chunks, "app", "pricing", "page-def.js"), "self.p=1;");
-  writeFileSync(path.join(chunks, "70-desk.js"), 'e("ul",{className:"fx-grid"});e("ul",{className:"cv-effects"});e("div",{id:"credit-prices"})');
+  writeFileSync(
+    path.join(chunks, "70-desk.js"),
+    'e("ul",{className:"fx-grid"});e("ul",{className:"cv-effects"});e("div",{id:"credit-prices"});' +
+      'e("div",{className:"g2-key-field"});a=t.providers.routingAutopilot;b=t.create.voiceModelDropped;t="00B / Direct model provider review"',
+  );
   mkdirSync(path.join(root, ".next", "server", "app"), { recursive: true });
   writeFileSync(path.join(root, ".next", "server", "app", "_not-found.html"), "<html>404</html>");
   return root;

@@ -11,9 +11,10 @@ import { useChannelPath } from "@/lib/channels-client";
 import { AssetDownloads } from "@/components/media/AssetDownloads";
 import { Lamp } from "@/components/studio-canvas/parts";
 import { useMediaUrls } from "@/components/studio-timeline/useTimelineData";
-import { JOB_ERROR_CODES } from "@/lib/runBackend";
+import { JOB_ERROR_CODES } from "@/lib/job-errors";
 import { useBrainBrief, handoffTarget } from "./useBrainBrief";
 import { ActivityPanel } from "./ActivityPanel";
+import { LiveLane } from "./LiveLane";
 import { utc } from "@/lib/studio/utc";
 import { briefGraph, type Brief, type LiveGraph, type LiveNode, type LiveNodeKind, type LiveStatus, type RunVideoRef, type Activity, type ActivityItem } from "@/lib/studio/liveGraph";
 import { useLiveGraph, type LiveTarget } from "./useLiveGraph";
@@ -44,6 +45,8 @@ const ICONS: Record<LiveNodeKind, LucideIcon> = {
 const TONE: Record<LiveStatus, "ok" | "run" | "fail" | "warn" | "idle"> = {
   draft: "idle",
   waiting: "idle",
+  // Its first attempt failed; the retry has not begun: not fine, not running.
+  retried: "warn",
   working: "run",
   done: "ok",
   failed: "fail",
@@ -175,6 +178,7 @@ function CardView({ data }: NodeProps<Node<CardData, "step">>) {
         type="button"
         className={`lv-card is-${data.node.status}${data.selected ? " is-selected" : ""}`}
         data-testid={`live-node-${data.node.id}`}
+        data-node-id={data.node.id}
         data-status={data.node.status}
         data-lit={data.lit ? "" : undefined}
         aria-pressed={data.selected}
@@ -272,6 +276,7 @@ function List({ graph, selected, onOpen, names, words, prices, lit }: ViewProps)
               type="button"
               className={`lv-card is-${n.status}${selected === n.id ? " is-selected" : ""}`}
               data-testid={`live-node-${n.id}`}
+              data-node-id={n.id}
               data-status={n.status}
               data-lit={lit.has(n.id) ? "" : undefined}
               aria-pressed={selected === n.id}
@@ -309,18 +314,37 @@ function Output({ node }: { node: LiveNode }) {
 }
 
 /**
- * The finished video's sound, as its file records it (S2): how the loudness was set and what it measured, and the shots whose sound
- * was paid for or left out. A file without the record reads "unknown", never as if all were well (rule 5).
+ * The finished video's sound, as its file records it (S2): how the loudness was set and what it measured, and the clips whose sound
+ * was paid for or left out. A file without the record reads "unknown", with its cause, never as if all were well (rule 5).
  */
 function FinalSound({ sound }: { sound: MasterSound }) {
   const { t, locale } = useI18n();
   const c = t.studioLive.sound;
-  const n = (v: number | null) =>
-    v === null ? c.notRecorded : v.toLocaleString(locale === "uz" ? "uz-Latn-UZ" : locale, { maximumFractionDigits: 1 });
+  const loc = locale === "uz" ? "uz-Latn-UZ" : locale;
+  // A number keeps its unit (Pixel L4); a value not recorded is the phrase alone, never "not recorded LU" (Pixel M1).
+  const value = (v: number | null, unit: "lufs" | "dbtp" | "lu") =>
+    v === null ? (
+      <span>{c.notRecorded}</span>
+    ) : (
+      <span className="lv-num">
+        {v.toLocaleString(loc, { maximumFractionDigits: 1 })}
+        {"\u00a0"}
+        <abbr title={c.unitTitles[unit]}>{c.units[unit]}</abbr>
+      </span>
+    );
+  const count = (v: number | null) => (v === null ? c.notRecorded : v.toLocaleString(loc));
+  const measured = (m: { i: number | null; tp: number | null; lra: number | null }) => {
+    const parts = { i: value(m.i, "lufs"), tp: value(m.tp, "dbtp"), lra: value(m.lra, "lu") };
+    return c.measured.split(/(\{i\}|\{tp\}|\{lra\})/).map((piece, k) => {
+      const key = piece.slice(1, -1) as keyof typeof parts;
+      return piece.startsWith("{") && key in parts ? <span key={k}>{parts[key]}</span> : piece;
+    });
+  };
+  const unknown = sound.state === "unknown" ? { read_failed: c.unknownReadFailed, made_before: c.unknownMadeBefore, no_record: c.unknownNoRecord }[sound.cause] : null;
   return (
-    <div className="lv-final-sound" data-testid="live-final-sound" data-state={sound.state}>
+    <div className="lv-final-sound" data-testid="live-final-sound" data-state={sound.state} data-cause={sound.state === "unknown" ? sound.cause : undefined}>
       <h3>{c.title}</h3>
-      {sound.state === "unknown" ? <p className="lv-muted">{c.unknown}</p> : null}
+      {unknown ? <p className="lv-muted">{unknown}</p> : null}
       {sound.state === "none" ? <p className="lv-muted">{c.none}</p> : null}
       {sound.state === "ready" ? (
         <>
@@ -328,10 +352,18 @@ function FinalSound({ sound }: { sound: MasterSound }) {
             {sound.mode === "linear" ? c.linear : sound.mode === "dynamic" ? c.dynamic : sound.mode === "silent" ? c.silent : c.modeUnknown}
           </p>
           {sound.mode !== "silent" ? (
-            <p className="lv-muted">{fmt(c.measured, { i: n(sound.measured.i), tp: n(sound.measured.tp), lra: n(sound.measured.lra) })}</p>
+            <p className="lv-muted" data-testid="live-final-measured">
+              {measured(sound.measured)}
+            </p>
           ) : null}
-          {sound.paidUnused > 0 ? <p data-testid="live-final-paid">{fmt(c.paidUnused, { n: sound.paidUnused })}</p> : null}
-          {sound.defaultUnused > 0 ? <p className="lv-muted">{fmt(c.defaultUnused, { n: sound.defaultUnused })}</p> : null}
+          {sound.paidUnused === null || sound.paidUnused > 0 ? (
+            <p data-testid="live-final-paid">{fmt(c.paidUnused, { n: count(sound.paidUnused) })}</p>
+          ) : null}
+          {sound.defaultUnused === null || sound.defaultUnused > 0 ? (
+            <p className="lv-muted" data-testid="live-final-default">
+              {fmt(c.defaultUnused, { n: count(sound.defaultUnused) })}
+            </p>
+          ) : null}
         </>
       ) : null}
     </div>
@@ -413,7 +445,7 @@ function Details({
       {node.kind === "final" && node.assetId ? (
         <div className="lv-final" data-testid="live-final">
           <AssetDownloads assetId={node.assetId} preview="ready" />
-          <FinalSound sound={node.sound ?? { state: "unknown" }} />
+          <FinalSound sound={node.sound ?? { state: "unknown", cause: "read_failed" }} />
           {filmId ? (
             <Link className="cv-kbtn" href={path(`/studio?view=timeline&film=${filmId}`)} data-testid="live-open-timeline">
               {c.openTimeline}
@@ -602,6 +634,7 @@ export function LiveView({
           {sel ? <Details node={sel} run={run} filmId={target?.kind === "film" ? target.id : null} video={graph.video} onClose={close} /> : null}
         </div>
       ) : null}
+      {target?.kind === "film" && shown && !draft ? <LiveLane load={load} planKey={planKey} stale={stale} selected={selected} onOpen={setSelected} retry={retry} /> : null}
       {graph && activity ? (
         // Below the board, never beside it: a side column narrows the board until its ends fall outside at 1280-1440 (Pixel HIGH).
         <ActivityPanel activity={activity} run={run} />

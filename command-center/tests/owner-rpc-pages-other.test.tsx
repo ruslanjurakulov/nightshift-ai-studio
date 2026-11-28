@@ -1,10 +1,10 @@
 /**
- * The Billing, Security and Team pages and NIGHTSHIFT_OWNER_RPC.
+ * The Billing and Security pages and NIGHTSHIFT_OWNER_RPC, and the old Team page that is now only a redirect.
  *
  * Off: none of the new reads is made and none of the new panels is drawn (the pages are what they were). On: Billing
  * asks the database for the provider spend and draws it, with an unknown as unknown; Security draws the read-only
- * safety panel for the operator and for nobody else; Team hands the board `ownerRpc`. On, but migration 0106/0107
- * not applied: the pages say so or fall back, never break.
+ * safety panel for the operator and for nobody else. On, but migration 0106/0107 not applied: the pages say so or
+ * fall back, never break. /members reads nothing and sends a bookmark to Settings, flag on or off.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
@@ -18,7 +18,6 @@ const s = vi.hoisted(() => ({
   client: null as unknown,
   operator: true,
   role: "owner" as string,
-  boardProps: null as Record<string, unknown> | null,
 }));
 
 vi.mock("@/lib/config", () => ({ isSupabaseConfigured: true, SUPABASE_URL: "https://x.supabase.co", SUPABASE_ANON_KEY: "x" }));
@@ -36,7 +35,13 @@ vi.mock("@/lib/i18n/public-context", async () => {
   const { fmt } = await import("../lib/i18n");
   return { usePublicI18n: () => ({ t: en, locale: "en", fmt, setLocale: () => {} }) };
 });
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }), usePathname: () => "/x/billing" }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: () => {} }),
+  usePathname: () => "/x/billing",
+  redirect: (to: string) => {
+    throw new Error(`REDIRECT:${to}`);
+  },
+}));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined, getAll: () => [] }), headers: async () => new Headers() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => s.client, getUser: async () => ({ id: "u1", email: "me@a.uz" }) }));
 vi.mock("@/lib/supabase/client", () => ({ createClient: () => null }));
@@ -59,13 +64,6 @@ vi.mock("@/lib/auth/roles", () => ({
   requireRole: async () => s.role,
 }));
 vi.mock("@/lib/server/github-secrets", () => ({ isGithubConfigured: false, listConfiguredSecretNames: async () => [] }));
-// The team board is a client component that reads the roster itself; here only what the page hands it matters.
-vi.mock("@/components/members/MembersBoard", () => ({
-  MembersBoard: (props: Record<string, unknown>) => {
-    s.boardProps = props;
-    return null;
-  },
-}));
 vi.mock("@/components/security/SecurityBoard", () => ({ SecurityBoard: () => null }));
 
 const o = en.ownerRpc;
@@ -87,7 +85,6 @@ const asked = (st: ReturnType<typeof stub>) => new Set(st.log.map((q) => q.table
 beforeEach(() => {
   s.operator = true;
   s.role = "owner";
-  s.boardProps = null;
   results = {};
   vi.resetModules();
 });
@@ -98,7 +95,7 @@ afterEach(() => {
 
 const billing = async () => renderToStaticMarkup((await (await import("../app/(app)/[channel]/billing/page")).default()) as ReactElement);
 const security = async () => renderToStaticMarkup((await (await import("../app/(app)/[channel]/security/page")).default()) as ReactElement);
-const members = async () => renderToStaticMarkup((await (await import("../app/(app)/[channel]/members/page")).default()) as ReactElement);
+const members = async () => (await import("../app/(app)/[channel]/members/page")).default();
 
 describe("Billing", () => {
   it.each([undefined, "", "off", "true"])("flag %j: no provider-spend read and no panel", async (flag) => {
@@ -215,42 +212,14 @@ describe("Security", () => {
   });
 });
 
-describe("Team", () => {
-  it.each([undefined, "", "off"])("flag %j: the board writes the table as before and nothing is asked", async (flag) => {
+describe("the old Team page", () => {
+  it.each([undefined, "off", "on"])("flag %j: redirects to Settings and asks the database nothing", async (flag) => {
     if (flag !== undefined) vi.stubEnv("NIGHTSHIFT_OWNER_RPC", flag);
     else delete process.env.NIGHTSHIFT_OWNER_RPC;
-    const st = stub();
-    s.client = st.client;
-    await members();
-    expect(s.boardProps?.ownerRpc).toBe(false);
-    expect(asked(st).has("owner_security_get")).toBe(false);
-  });
-
-  it("on, owner: the board goes through the server", async () => {
-    vi.stubEnv("NIGHTSHIFT_OWNER_RPC", "on");
     results.owner_security_get = { data: SECURITY, error: null };
     const st = stub();
     s.client = st.client;
-    await members();
-    expect(s.boardProps?.ownerRpc).toBe(true);
-  });
-
-  it("on, but 0107 is not applied: the board falls back to the table", async () => {
-    vi.stubEnv("NIGHTSHIFT_OWNER_RPC", "on");
-    results.owner_security_get = { data: null, error: { code: "PGRST202", message: "x" } };
-    const st = stub();
-    s.client = st.client;
-    await members();
-    expect(s.boardProps?.ownerRpc).toBe(false);
-  });
-
-  it("on, but the person is only an editor: no control to wire, and nothing asked", async () => {
-    vi.stubEnv("NIGHTSHIFT_OWNER_RPC", "on");
-    s.role = "editor";
-    const st = stub();
-    s.client = st.client;
-    await members();
-    expect(s.boardProps?.ownerRpc).toBe(false);
-    expect(asked(st).has("owner_security_get")).toBe(false);
+    await expect(members()).rejects.toThrow("REDIRECT:/chronos/organization");
+    expect(st.log).toEqual([]);
   });
 });

@@ -173,6 +173,7 @@ export const studioTimelineEn = {
       model_not_set: "A scene has no model chosen. Choose one in the project.",
       prompt_missing: "A scene has no picture description. Write one in the project.",
       refs_not_supported: "A scene uses reference pictures that its model cannot take. Choose another model or remove the references.",
+      style_needs_description: "A scene's style kit or @character has no description, and its key-frame model cannot take their pictures. Add a description to the style kit or character, or choose a key-frame model that takes reference pictures.",
       source_unavailable: "A scene's starting picture is not ready. Make or choose it in the project.",
       scene_too_long_for_model: "A scene is longer than its model can make. Shorten it or choose another model.",
       prompt_too_long: "A scene's description is longer than its model takes. Shorten it in the project or choose another model.",

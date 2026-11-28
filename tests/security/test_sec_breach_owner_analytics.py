@@ -307,15 +307,25 @@ def test_a_platform_admin_cannot_take_a_customers_revenue_out_of_the_owners_figu
             return {r[0]: r[1] for r in rows}["pay_oabalice"]
 
         before = alice_internal()
-        conn.execute("reset role")
         import json
-        conn.execute("select set_config('request.jwt.claims', %s, true)",
-                     [json.dumps({"role": "authenticated", "sub": admin.uid, "email": admin.email})])
-        conn.execute("set local role authenticated")
-        from sec_db import Session
-        added = Session(conn).run("insert into public.app_members (user_id, email, role) values (%s, %s, 'viewer')",
-                                  [sc.alice.actor.uid, sc.alice.actor.email])
+        from sec_db import Session, take_off_0233
+
+        def admin_adds_alice():
+            conn.execute("reset role")
+            conn.execute("select set_config('request.jwt.claims', %s, true)",
+                         [json.dumps({"role": "authenticated", "sub": admin.uid, "email": admin.email})])
+            conn.execute("set local role authenticated")
+            return Session(conn).run("insert into public.app_members (user_id, email, role) values (%s, %s, 'viewer')",
+                                     [sc.alice.actor.uid, sc.alice.actor.email])
+
+        # Since 0233 the attack's first step is refused outright: nobody writes the roster from a browser.
+        refused = admin_adds_alice()
+        # And were 0233 ever rolled back (here, inside this rolled-back transaction), the books still do not move.
+        conn.execute("reset role")
+        take_off_0233(conn)
+        added = admin_adds_alice()
         after = alice_internal()
     assert before is False
-    assert added.ok, f"lab precondition: an admin may add a viewer to the roster ({added!r})"
+    assert not refused.ok and refused.sqlstate == "42501", f"0233: an admin's roster write must be refused ({refused!r})"
+    assert added.ok, f"lab precondition with 0233 off: an admin may add a viewer to the roster ({added!r})"
     assert after is False, "a platform admin's roster edit moved a paying customer's sale out of the owner's revenue"

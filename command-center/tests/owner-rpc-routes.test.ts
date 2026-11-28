@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -65,11 +65,9 @@ vi.mock("@/lib/server/admin-post-guard", () => ({ guardAdminPost: async () => h.
 const grant = (await import("../app/api/owner/credits/grant/route")).POST;
 const reverse = (await import("../app/api/owner/credits/reverse/route")).POST;
 const prices = (await import("../app/api/owner/prices/route")).POST;
-const team = (await import("../app/api/owner/team/route")).POST;
 
 const ORIGIN = "https://app.test";
 const ORG = "0b000000-0000-0000-0000-00000000000b";
-const MEMBER = "11111111-2222-3333-4444-555555555555";
 
 const post = (path: string, body: unknown, headers: Record<string, string> = { origin: ORIGIN }) =>
   new Request(`${ORIGIN}/api/owner/${path}`, {
@@ -83,7 +81,6 @@ const ROUTES = [
   ["credits/grant", grant, GRANT],
   ["credits/reverse", reverse, { transactionId: 42, reason: "given by mistake, twice" }],
   ["prices", prices, { action: "set", unit: "usd", rate: 100, margin: 0.25 }],
-  ["team", team, { action: "remove", member: MEMBER }],
 ] as const;
 
 beforeEach(() => {
@@ -169,7 +166,7 @@ describe("with the flag on", () => {
     expect(h.rpc.mock.calls[0][1].p_org).toBe(ORG);
   });
 
-  it("reverse, prices and team call their own function with their own arguments", async () => {
+  it("reverse and prices call their own function with their own arguments", async () => {
     await reverse(post("credits/reverse", { transactionId: 42, reason: "given by mistake, twice" }));
     expect(h.rpc).toHaveBeenLastCalledWith("owner_reverse_grant", { p_transaction_id: 42, p_reason: "given by mistake, twice" });
     await prices(post("prices", { action: "set", unit: "usd", rate: 100, margin: 0.25, confirm: true }));
@@ -178,12 +175,6 @@ describe("with the flag on", () => {
     expect(h.rpc).toHaveBeenLastCalledWith("owner_delete_credit_price", { p_unit: "usd", p_reason: null, p_confirm_big_change: true });
     await prices(post("prices", { action: "restore", historyId: 5 }));
     expect(h.rpc).toHaveBeenLastCalledWith("owner_restore_credit_price", { p_history_id: 5, p_reason: null, p_confirm_big_change: false });
-    await team(post("team", { action: "add", email: "New@A.uz", role: "editor" }));
-    expect(h.rpc).toHaveBeenLastCalledWith("owner_add_member", { p_email: "new@a.uz", p_role: "editor", p_reason: null });
-    await team(post("team", { action: "role", member: MEMBER, role: "viewer" }));
-    expect(h.rpc).toHaveBeenLastCalledWith("owner_set_member_role", { p_member: MEMBER, p_role: "viewer", p_reason: null });
-    await team(post("team", { action: "remove", member: MEMBER }));
-    expect(h.rpc).toHaveBeenLastCalledWith("owner_remove_member", { p_member: MEMBER, p_reason: null });
   });
 
   describe("every refusal of the database reaches the browser as a code with its figures", () => {
@@ -193,10 +184,10 @@ describe("with the flag on", () => {
       ["per_call_cap", 422],
       ["daily_cap", 422],
       ["key_reused", 422],
-      ["last_owner", 422],
-      ["self_change", 422],
-      ["owner_required", 422],
-      ["already_member", 422],
+      ["bad_unit", 422],
+      ["no_such_price", 422],
+      ["nothing_to_reverse", 422],
+      ["already_reversed", 422],
       ["not_reversible", 422],
       ["too_old", 422],
     ])("%s", async (code, status) => {
@@ -296,9 +287,20 @@ describe("Restore refuses a row that is no longer the newest change of its servi
 describe("the owner path never holds a service key", () => {
   it("the server helper, the routes and the readers name no service key and no service-role client", () => {
     const root = join(__dirname, "..");
-    for (const file of ["lib/server/owner-rpc.ts", "lib/server/owner-reads.ts", "lib/owner-rpc.ts", "app/api/owner/credits/grant/route.ts", "app/api/owner/credits/reverse/route.ts", "app/api/owner/prices/route.ts", "app/api/owner/team/route.ts"]) {
+    for (const file of ["lib/server/owner-rpc.ts", "lib/server/owner-reads.ts", "lib/owner-rpc.ts", "app/api/owner/credits/grant/route.ts", "app/api/owner/credits/reverse/route.ts", "app/api/owner/prices/route.ts"]) {
       const src = readFileSync(join(root, file), "utf8");
       expect(src, file).not.toMatch(/SERVICE_KEY|SERVICE_ROLE|service_role|serviceKey|createServiceClient/i);
+    }
+  });
+});
+
+describe("the team route is gone", () => {
+  it("there is no /api/owner/team, and no owner route names a roster function", () => {
+    // Workspaces have one person; the platform roster is changed in the database, not from a page (migration 0233).
+    const root = join(__dirname, "..");
+    expect(existsSync(join(root, "app/api/owner/team/route.ts"))).toBe(false);
+    for (const file of ["lib/owner-rpc.ts", "lib/server/owner-rpc.ts"]) {
+      expect(readFileSync(join(root, file), "utf8"), file).not.toMatch(/owner_(add|set|remove)_member/);
     }
   });
 });

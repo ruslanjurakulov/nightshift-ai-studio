@@ -597,6 +597,9 @@ jobs:
           OPERATORENV_OPERATOR_STUCK_MINUTES: ${{ vars.OPERATOR_STUCK_MINUTES }}
           OPERATORENV_OPERATOR_ALERT_MAX_PER_HOUR: ${{ vars.OPERATOR_ALERT_MAX_PER_HOUR }}
           OPERATORENV_OPERATOR_DEADMAN_HOURS: ${{ vars.OPERATOR_DEADMAN_HOURS }}
+          # The film spend watch's lines (empty = USD 6 and 8); a malformed one stops the service from starting.
+          OPERATORENV_NIGHTSHIFT_FILM_SPEND_WARN_USD: ${{ vars.NIGHTSHIFT_FILM_SPEND_WARN_USD }}
+          OPERATORENV_NIGHTSHIFT_FILM_SPEND_STOP_USD: ${{ vars.NIGHTSHIFT_FILM_SPEND_STOP_USD }}
           # The owner's pause of the scheduled pipeline: the always-on bot reads it at deploy time, so after
           # changing the variable run Deploy web (docs/VIDEO_GO_LIVE.md, section 8).
           OPERATORENV_NIGHTSHIFT_PIPELINE_PAUSED: ${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}

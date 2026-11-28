@@ -174,10 +174,11 @@ class RedirectTests(Rig):
         from modules.capabilities import ADAPTERS as ALL
 
         self.assertEqual(sorted(k for k, c in ALL.items() if not c.follow_redirects),
-                         ["audio.sonilo", "image.anthropic_describe", "image.bfl", "image.bfl3", "image.gemini_interactions", "image.openai_describe", "video.bfl", "video.gemini_omni",
+                         ["audio.google_lyria", "audio.sonilo", "image.anthropic_describe", "image.bfl", "image.bfl3", "image.gemini_interactions", "image.openai_describe", "video.bfl", "video.gemini_omni",
                           "video.kling_omni", "video.pika", "video.veo", "video.vidu"])
         # sonilo / veo / pika / vidu / kling_omni (0137): their header key must not follow a 3xx
         # anthropic_describe / openai_describe (S10): x-api-key / Bearer must not follow a 3xx either
+        # google_lyria (S6): x-goog-api-key, the Interactions base it shares with gemini_interactions / gemini_omni
 
 
 if __name__ == "__main__":

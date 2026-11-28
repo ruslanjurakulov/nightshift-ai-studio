@@ -2,12 +2,13 @@
 -- film_scenes.dialogue, written only through save_film (film_save_scenes), and quoted only where the film can keep them.
 --
 -- *** LIVE ON APPLY. *** It adds two nullable columns and one check constraint to film_scenes (every existing row reads null: the
--- default role), adds four internal helpers, and replaces TWO functions that exist there: film_save_scenes (0166's body plus three
--- marked hunks) and film_price (0236's body plus two marked hunks). It writes no row and grants nothing.
+-- default role), adds four internal helpers, and replaces TWO functions that exist there: film_save_scenes (0239's body plus three
+-- marked hunks) and film_price (0239's body plus two marked hunks). It writes no row and grants nothing.
 --
--- DEPENDS ON 0236 (PR #973, branch claude/nsai-s2-clip-sound, NOT MERGED when this was written; this branch is built on its head
--- 3ddb729f4). This file refuses to apply without 0236's film_price and its film_studio_settings.clip_sound_kept switch: merge and apply
--- #973 first.
+-- ORDER: 0235 -> 0236 -> 0239 -> 0240 -> 0241. This file is written on 0239's film_price and film_save_scenes (PR #981, branch
+-- claude/nsai-s2-keyframe-refs-quote, which carries 0235 (#970) and 0236 (#973); none merged when this was written) and needs 0236's
+-- film_studio_settings.clip_sound_kept switch: it refuses to apply without them. 0240 (#978) touches no film function and applies
+-- before this file.
 --
 -- EVIDENCE (the code, 2026-11-28).
 --   * modules/film_timeline.py (0236's worker) gives every scene a sound role, dialogue / ambience / muted, and reads it from the
@@ -40,12 +41,12 @@
 --                                         pins the two equal).
 --   film_clip_prompt(text, jsonb)         NEW, a spoken scene's clip prompt: the visual prompt, a line break, then the lines.
 --   film_sound_problem(text, jsonb, jsonb, text, text)  NEW, what film_price refuses about a scene's chosen role (below).
---   film_save_scenes         REPLACED on 0166's body (c836631256f669318c9ef499d7c4c54b) with three hunks, every line marked `-- 0241`:
+--   film_save_scenes         REPLACED on 0239's body (4115ba8800b1b1a702585267d27af17c; 0166's, then 0235's, then 0239's key-frame hunk) with three hunks, every line marked `-- 0241`:
 --                            the two keys are known; sound_role and dialogue are parsed, and the merged scene is checked (lines only on a
 --                            dialogue scene; a dialogue scene has lines; a dialogue scene is ONE shot, because its lines go into that
 --                            shot's clip prompt and an extend would be made without them or speak them again); both columns are then
---                            written. Every refusal is creative_refuse('invalid_params', ...) with the fix in its sentence, as 0166's are.
---   film_price               REPLACED on 0236's body (b873f893f3f185b3eab3698d349f3379) with two hunks, every line marked `-- 0241`:
+--                            written. Every refusal is creative_refuse('invalid_params', ...) with the fix in its sentence, as 0166's and 0239's are.
+--   film_price               REPLACED on 0239's body (02016cc4a695a54c5693a5066247269b; 0218's, 0235's, 0236's, 0239's) with two hunks, every line marked `-- 0241`:
 --                            (1) right after 0236's hunk, a scene whose sound_role is set gets film_sound_problem's refusal on each of its
 --                            clip lines, carried exactly as a model problem is (priced false, total NULL), a model problem or 0236's
 --                            refusal on the same scene named first:
@@ -82,29 +83,29 @@
 -- OWNER STEP. None beyond 0236's: turn film_studio_settings.clip_sound_kept on only once a worker with modules/film_orchestrator.py and
 --   modules/film_timeline.py from THIS pull request is deployed (0236's worker does not read the lines: a dialogue scene sold to it
 --   would be made without them). Until then a dialogue or ambience scene is refused clip_sound_not_kept.
--- OVERLAP. 0235 (PR #970, branch claude/nsai-s2-film-operator-preview, unmerged) also replaces film_price on 0218's body, as 0236 does.
---   Whichever of 0235 / 0236 merges second rebases on the other, and this file then rebases its two film_price hunks onto that body:
---   its drift guard, end state and rollback must name the new base md5, and the lab must take 0241 off first.
+-- OVERLAP. 0235, 0236 and 0239 each replace film_price in that order, and 0235 and 0239 film_save_scenes; this file is last. A file
+--   that changes either body before this one merges means rebasing these hunks onto it: the drift guard, end state and rollback name
+--   the base md5, and the lab's take_off_0239 takes 0241 off first.
 -- NO BACKSLASH anywhere in this file (0219's header: the live apply path once rewrote backslash escapes in SQL text). White space is
 --   folded with [[:space:]]+; film_price's one backslash (0218's clip-length pattern) is written @@0241_BACKSLASH@@ and put back with
 --   chr(92) before the body is executed, so the body that reaches the database is byte for byte the one hashed below; a line break is
 --   chr(10).
 -- REPLACES (md5 of prosrc with every run of white space read as one space):
---   film_save_scenes   0166 c836631256f669318c9ef499d7c4c54b -> 0241 5d6e6eebe280645e6c5ef186dc48629a
---   film_price         0236 b873f893f3f185b3eab3698d349f3379 -> 0241 81e7a2dd0701068508e2663b495683cb
+--   film_save_scenes   0239 4115ba8800b1b1a702585267d27af17c -> 0241 50942d89b6c407fc7438fe158cdd8115
+--   film_price         0239 02016cc4a695a54c5693a5066247269b -> 0241 3607297484f191d45ff9a1f63a11c5b5
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only; the SQL editor on the live project). Expected: one row, all true.
 --   select (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
---            where oid = 'public.film_save_scenes(public.films, jsonb)'::regprocedure) = 'c836631256f669318c9ef499d7c4c54b' as save_scenes_is_0166s,
+--            where oid = 'public.film_save_scenes(public.films, jsonb)'::regprocedure) = '4115ba8800b1b1a702585267d27af17c' as save_scenes_is_0239s,
 --          (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
---            where oid = 'public.film_price(public.films)'::regprocedure) = 'b873f893f3f185b3eab3698d349f3379' as film_price_is_0236s,
+--            where oid = 'public.film_price(public.films)'::regprocedure) = '02016cc4a695a54c5693a5066247269b' as film_price_is_0239s,
 --          (select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'film_studio_settings'
 --            and column_name = 'clip_sound_kept') = 1 as switch_exists;
 --
 -- APPLY AS ONE TRANSACTION (SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1): `set local lock_timeout`
 -- assumes it, and the last block asserts the end state. Idempotent: a replay finds this file's bodies and columns, and writes the same.
 -- Rollback: docs/sql/rollback_0241_film_scene_dialogue.sql (owner-applied; refuses while any scene holds a sound role or lines unless
--- told to discard them; puts 0166's and 0236's bodies back byte for byte, drops the helpers, the constraint and the columns).
+-- told to discard them; puts 0239's two bodies back byte for byte, drops the helpers, the constraint and the columns).
 -- Docs: docs/MIGRATIONS.md, "A film scene's own sound and its spoken lines (0241)".
 
 set local lock_timeout = '5s';
@@ -121,17 +122,17 @@ begin
                     and c.column_name = 'clip_sound_kept') then
     raise exception '0241 needs 0236_film_clip_sound_gate.sql (PR #973, the clip sound switch): apply it first';
   end if;
-  -- The bodies this file replaces must be 0166's and 0236's, or this file's own (a replay). Anything else was changed since, and
-  -- replacing it would silently undo that change (the 0064/0103 lesson); 0235's film_price means "rebase this file" (see OVERLAP).
+  -- The bodies this file replaces must be 0239's, or this file's own (a replay). Anything else was changed since, and replacing it
+  -- would silently undo that change (the 0064/0103 lesson); 0236's or 0235's body means 0239 is not applied yet (see ORDER).
   select md5(regexp_replace(x.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc x
    where x.oid = to_regprocedure('public.film_save_scenes(public.films, jsonb)');
-  if h is null or h <> all (array['c836631256f669318c9ef499d7c4c54b', '5d6e6eebe280645e6c5ef186dc48629a']) then
-    raise exception '0241 found a film_save_scenes() that is neither 0166''s body nor 0241''s (md5 %): read the live body first', h;
+  if h is null or h <> all (array['4115ba8800b1b1a702585267d27af17c', '50942d89b6c407fc7438fe158cdd8115']) then
+    raise exception '0241 found a film_save_scenes() that is neither 0239''s body nor 0241''s (md5 %): apply 0239_film_keyframe_refs_quote.sql first, or read the live body', h;
   end if;
   select md5(regexp_replace(x.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc x
    where x.oid = to_regprocedure('public.film_price(public.films)');
-  if h is null or h <> all (array['b873f893f3f185b3eab3698d349f3379', '81e7a2dd0701068508e2663b495683cb']) then
-    raise exception '0241 found a film_price() that is neither 0236''s body nor 0241''s (md5 %): read the live body first', h;
+  if h is null or h <> all (array['02016cc4a695a54c5693a5066247269b', '3607297484f191d45ff9a1f63a11c5b5']) then
+    raise exception '0241 found a film_price() that is neither 0239''s body nor 0241''s (md5 %): apply 0239_film_keyframe_refs_quote.sql first, or read the live body', h;
   end if;
 end $$;
 
@@ -296,7 +297,7 @@ revoke all on function public.film_dialogue(jsonb, text) from public, anon, auth
 revoke all on function public.film_sound_problem(text, jsonb, jsonb, text, text) from public, anon, authenticated, service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 3. film_save_scenes: 0166's body plus the three hunks marked -- 0241
+-- 3. film_save_scenes: 0239's body plus the three hunks marked -- 0241
 -- ───────────────────────────────────────────────────────────────────────────
 create or replace function public.film_save_scenes(p_film public.films, p_scenes jsonb) returns integer
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
@@ -447,8 +448,16 @@ begin
         else
           m := x #>> '{}';
           if m is distinct from (case when ck = 'keyframe_model' then old.keyframe_model else old.clip_model end) then
+            -- 0235: the film's organization, so a platform admin's operator preview in the exempt organization passes (and nobody else's).
             perform public.film_check_model(m, case when ck = 'keyframe_model' then array['t2i', 'edit'] else array['i2v'] end,
-                                             format('%s %s', label, ck));
+                                             format('%s %s', label, ck), p_film.org_id);
+            -- 0239: a key frame is made from words (film_take_job sends t2i and refuses a model without it), so a model on sale only
+            -- for editing a picture cannot be a scene's key-frame model: refused here, by name, never priced and then refused at the take.
+            if ck = 'keyframe_model' and public.film_model_problem(m, array['t2i'], format('%s %s', label, ck), p_film.org_id) is not null then
+              perform public.creative_refuse('model_not_available',
+                format('%s %s: %s is not on sale for making a picture from words, and a key frame is made from words; choose a key-frame model that makes a picture from words',
+                       label, ck, m));
+            end if;
           end if;
         end if;
         if ck = 'keyframe_model' then sc.keyframe_model := m; else sc.clip_model := m; end if;
@@ -538,7 +547,7 @@ $$;
 revoke all on function public.film_save_scenes(public.films, jsonb) from public, anon, authenticated, service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 4. film_price: 0236's body plus the two hunks marked -- 0241
+-- 4. film_price: 0239's body plus the two hunks marked -- 0241
 -- ───────────────────────────────────────────────────────────────────────────
 -- Built as text with its one backslash written @@0241_BACKSLASH@@ and put back with chr(92) (see the header), then executed; the end
 -- state below checks the md5 of the body that results.
@@ -564,6 +573,15 @@ declare
   cap      text;
   refs_n   integer;
   ref_max  integer;
+  refs_k   integer;  -- 0239: the film references the take carries (film_take_job's own count)
+  slots    integer;  -- 0239: the model's references left for the style kit's and @characters' pictures
+  owners   jsonb;    -- 0239: the kit and the mentioned characters, as the worker reads them
+  own      jsonb;    -- 0239
+  seen     text[];   -- 0239
+  got      text[];   -- 0239
+  lost     text[];   -- 0239
+  depth    integer;  -- 0239
+  n_picked integer;  -- 0239
   target   numeric;
   dur      numeric;
   longest  numeric;
@@ -592,7 +610,16 @@ begin
     -- The key frame (only a scene that makes its own).
     if sc.first_frame = 'keyframe' then
       ln := jsonb_build_object('line', 'keyframe', 'scene_id', sc.id, 'position', sc.position, 'shot_index', 0, 'model', kmodel);
-      q := case when kmodel is not null then public.film_model_problem(kmodel, array['t2i', 'edit'], label || ' keyframe_model') end;
+      -- 0235: the film's organization, so a platform admin's operator preview in the exempt organization passes (and nobody else's).
+      q := case when kmodel is not null then public.film_model_problem(kmodel, array['t2i', 'edit'], label || ' keyframe_model', f.org_id) end;
+      -- 0239: the key frame is made from words (film_take_job sends t2i and refuses a model without it): a model on sale only for
+      -- editing a picture is refused here, by name, before anything is held.
+      if q is null and kmodel is not null
+         and public.film_model_problem(kmodel, array['t2i'], label || ' keyframe_model', f.org_id) is not null then
+        q := jsonb_build_object('priced', false, 'reason', 'model_not_available',
+                                'detail', format('%s: %s is not on sale for making a picture from words, and a key frame is made from words; choose a key-frame model that makes a picture from words',
+                                                 label, kmodel));
+      end if;
       if kmodel is null then
         ln := ln || jsonb_build_object('priced', false, 'reason', 'model_not_set',
                                        'detail', format('%s: choose a key-frame model', label));
@@ -619,10 +646,86 @@ begin
                   || case when btrim(sc.negative_prompt) <> '' then jsonb_build_object('negative_prompt', sc.negative_prompt)
                           else '{}'::jsonb end
                   || case when cap = 'edit' and stand is not null then jsonb_build_object('source_asset_id', stand) else '{}'::jsonb end;
+        -- 0239 (style path): the worker (film_orchestrator._inputs, creative_worker._style) puts the film's references in front and
+        -- gives the style kit's and the @characters' pictures only the slots they leave (creative_style.pick_references: in turns,
+        -- each character in order of mention and then the kit, a picture shared by two going once). A kit or character with no
+        -- description that gets none of its pictures would reach the model as nothing, and the worker refuses that take after the
+        -- hold (rule 4): it is counted here exactly that way and refused by name. The pictures are the ones creative_job_style hands
+        -- out (live, an image the vendors read), the @names its pattern finds in the visual prompt (the take's prompt), at most 16.
+        refs_k := (select count(*) from public.film_refs r
+                    where r.film_id = f.id and (r.scene_id is null or r.scene_id = sc.id) and r.asset_id is not null)
+                  + (select count(*) from public.film_refs r
+                       join public.character_references cr on cr.character_id = r.character_id and cr.org_id = r.org_id
+                      where r.film_id = f.id and (r.scene_id is null or r.scene_id = sc.id) and r.character_id is not null);
+        slots := case when jsonb_typeof(spec -> 'inputs' -> 'ref_capabilities') = 'array'
+                           and (spec -> 'inputs' -> 'ref_capabilities') ? 't2i'
+                      then greatest(ref_max - refs_k, 0) else 0 end;
+        select coalesce(jsonb_agg(x.o order by x.k1, x.k2), '[]'::jsonb) into owners from (
+          select 0 as k1, mn.first_at as k2,
+                 jsonb_build_object('name', '@' || c.name, 'described', coalesce(c.description, '') ~ '[^[:space:]]',
+                   'refs', coalesce((select jsonb_agg(a.id::text order by cr.position)
+                                       from public.character_references cr join public.media_assets a on a.id = cr.asset_id
+                                      where cr.character_id = c.id and cr.org_id = f.org_id and a.org_id = f.org_id
+                                        and a.kind = 'image' and a.deleted_at is null and a.purged_at is null
+                                        and (a.mime in ('image/jpeg', 'image/png', 'image/webp')
+                                             or (a.mime in ('image/heic', 'image/heif') and 'display' = any (a.variants)))), '[]'::jsonb)) as o
+            from (select lower(m.x[1]) as name, min(m.o) as first_at
+                    from regexp_matches(coalesce(sc.visual_prompt, ''),
+                                        '(?:^|[^A-Za-z0-9_@])@([A-Za-z0-9_]{2,32})(?![A-Za-z0-9_])', 'g') with ordinality as m(x, o)
+                   group by lower(m.x[1]) order by min(m.o) limit 16) mn
+            join public.characters c on c.name = mn.name and c.org_id = f.org_id
+          union all
+          select 1, 0,
+                 jsonb_build_object('name', 'the style kit', 'described', coalesce(k.description, '') ~ '[^[:space:]]',
+                   'refs', coalesce((select jsonb_agg(a.id::text order by kr.position)
+                                       from public.style_kit_references kr join public.media_assets a on a.id = kr.asset_id
+                                      where kr.kit_id = k.id and kr.org_id = f.org_id and a.org_id = f.org_id
+                                        and a.kind = 'image' and a.deleted_at is null and a.purged_at is null
+                                        and (a.mime in ('image/jpeg', 'image/png', 'image/webp')
+                                             or (a.mime in ('image/heic', 'image/heif') and 'display' = any (a.variants)))), '[]'::jsonb))
+            from public.style_kits k where k.id = f.style_kit_id and k.org_id = f.org_id) x;
+        seen := '{}';
+        got := '{}';
+        n_picked := 0;
+        depth := 0;
+        while n_picked < slots
+              and exists (select 1 from jsonb_array_elements(owners) e where jsonb_array_length(e -> 'refs') > depth) loop
+          for own in select e from jsonb_array_elements(owners) with ordinality t(e, i) order by t.i loop
+            if jsonb_array_length(own -> 'refs') > depth and n_picked < slots and not ((own -> 'refs' ->> depth) = any (seen)) then
+              seen := seen || (own -> 'refs' ->> depth);
+              got := got || (own ->> 'name');
+              n_picked := n_picked + 1;
+            end if;
+          end loop;
+          depth := depth + 1;
+        end loop;
+        select coalesce(array_agg(e ->> 'name' order by t.i), '{}') into lost
+          from jsonb_array_elements(owners) with ordinality t(e, i)
+         where not (e ->> 'described')::boolean and not ((e ->> 'name') = any (got));
         if refs_n > ref_max then
           q := jsonb_build_object('priced', false, 'reason', 'refs_not_supported',
                                   'detail', format('%s: %s takes %s reference pictures and this scene has %s; choose a model that takes them all or remove some',
                                                    label, kmodel, ref_max, refs_n));
+        -- 0239: film_take_job sends a key frame at most 16 reference pictures, whatever the model states (the schema allows 30).
+        elsif refs_k > 16 then
+          q := jsonb_build_object('priced', false, 'reason', 'refs_not_supported',
+                                  'detail', format('%s: a key frame carries at most 16 reference pictures and this scene has %s; remove some',
+                                                   label, refs_k));
+        -- 0235 (refs path): a film's key frame is made from words (film_take_job sends t2i), and an adapter sends references only on
+        -- the capabilities it lists (registry inputs.ref_capabilities, checked against the adapter): one that does not list t2i would
+        -- refuse this take at submit, after the hold. Not listed, or not stated at all, is refused here, before anything is held.
+        elsif refs_n > 0 and not coalesce(jsonb_typeof(spec -> 'inputs' -> 'ref_capabilities') = 'array'
+                                          and (spec -> 'inputs' -> 'ref_capabilities') ? 't2i', false) then
+          q := jsonb_build_object('priced', false, 'reason', 'refs_not_supported',
+                                  'detail', format('%s: %s does not take reference pictures for a key frame made from words; remove the reference pictures or choose a key-frame model that takes them',
+                                                   label, kmodel));
+        -- 0239 (style path): see above.
+        elsif cardinality(lost) > 0 then
+          q := jsonb_build_object('priced', false, 'reason', 'style_needs_description',
+                                  'detail', format('%s: %s %s no description, and %s takes none of %s pictures for this key frame; add a description to the style kit or character, or choose a key-frame model that takes reference pictures',
+                                                   label, array_to_string(lost, ' and '),
+                                                   case when cardinality(lost) = 1 then 'has' else 'have' end, kmodel,
+                                                   case when cardinality(lost) = 1 then 'its' else 'their' end));
         elsif cap = 'edit' and stand is null then
           q := jsonb_build_object('priced', false, 'reason', 'source_unavailable',
                                   'detail', format('%s: an edit model is priced against a picture of this library; add one picture', label));
@@ -650,7 +753,8 @@ begin
 
     -- The clip shots: shot 1 from the first frame, shots 2-3 extend from the shot before.
     select m.spec into spec from public.model_registry m where m.id = cmodel;
-    bad := case when cmodel is not null then public.film_model_problem(cmodel, array['i2v'], label || ' clip_model') end;
+    -- 0235: the film's organization, so a platform admin's operator preview in the exempt organization passes (and nobody else's).
+    bad := case when cmodel is not null then public.film_model_problem(cmodel, array['i2v'], label || ' clip_model', f.org_id) end;
     -- 0236: while the cut drops a clip's own sound (BR-SG-01), the priced sound option is refused by name, not sold to be dropped.
     if bad is null and sc.clip_params -> 'audio' = 'true'::jsonb  -- 0236
        and not coalesce((select s.clip_sound_kept from public.film_studio_settings s where s.id), false) then  -- 0236
@@ -729,6 +833,15 @@ begin
     refusals := refusals || jsonb_build_array(jsonb_build_object('line', 'film', 'reason', 'reference_missing',
       'detail', 'a reference picture or character no longer exists; remove it or choose another'));
   end if;
+  -- 0239: a character is all of its pictures (0166), and the take asks that every one is still in the library (film_take_job): a
+  -- picture deleted since is refused here, by name, never priced and then refused at the take.
+  if exists (select 1 from public.film_refs r
+               join public.character_references cr on cr.character_id = r.character_id and cr.org_id = r.org_id
+              where r.film_id = f.id and r.character_id is not null
+                and not public.film_asset_live(r.org_id, cr.asset_id, 'image')) then
+    refusals := refusals || jsonb_build_array(jsonb_build_object('line', 'film', 'reason', 'reference_missing',
+      'detail', 'a picture of a reference character was deleted from the library; remove it from the character, or remove the character from the references'));
+  end if;
 
   -- The narration: one film-level take of every scene's narration, at the voice model's rate as charged (see the header).
   select coalesce(sum(char_length(s.narration)), 0), min(s.narration) filter (where s.narration <> '')
@@ -742,7 +855,8 @@ begin
       q := jsonb_build_object('priced', false, 'reason', 'channel_voice_not_priced',
                               'detail', 'a channel''s own voice is not priced here; choose a voice for the film');
     else
-      q := coalesce(public.film_model_problem(f.voice ->> 'model', array['tts'], 'voice.model'),
+      -- 0235: the film's organization, so a platform admin's operator preview in the exempt organization passes (and nobody else's).
+      q := coalesce(public.film_model_problem(f.voice ->> 'model', array['tts'], 'voice.model', f.org_id),
                     public.film_try_price(f.org_id, 'tts', f.voice ->> 'model',
                                           jsonb_build_object('prompt', left(sample, (public.film_money_limits() ->> 'tts_sample_chars')::integer),
                                                              'voice_id', f.voice ->> 'voice_id')));
@@ -800,7 +914,7 @@ begin
     'lines', lines, 'scenes', scenes_, 'refusals', refusals,
     'planned_seconds', seconds, 'assembly_minutes', minutes);
 end
-$$;$fp0241$, '@@0241_BACKSLASH@@', chr(92));
+$$$fp0241$, '@@0241_BACKSLASH@@', chr(92));
 end
 $fp$;
 revoke all on function public.film_price(public.films) from public, anon, authenticated, service_role;
@@ -816,12 +930,12 @@ declare
 begin
   select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into got from pg_proc p
    where p.oid = 'public.film_save_scenes(public.films, jsonb)'::regprocedure;
-  if got <> '5d6e6eebe280645e6c5ef186dc48629a' then
+  if got <> '50942d89b6c407fc7438fe158cdd8115' then
     raise exception '0241 end state: film_save_scenes does not hold this file''s body (md5 %)', got;
   end if;
   select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into got from pg_proc p
    where p.oid = 'public.film_price(public.films)'::regprocedure;
-  if got <> '81e7a2dd0701068508e2663b495683cb' then
+  if got <> '3607297484f191d45ff9a1f63a11c5b5' then
     raise exception '0241 end state: film_price does not hold this file''s body (md5 %)', got;
   end if;
   foreach fn in array array['public.film_save_scenes(public.films, jsonb)', 'public.film_price(public.films)',
@@ -872,9 +986,9 @@ end $$;
 -- ───────────────────────────────────────────────────────────────────────────
 -- select
 --   (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
---     where oid = 'public.film_save_scenes(public.films, jsonb)'::regprocedure) = '5d6e6eebe280645e6c5ef186dc48629a' as save_scenes_is_0241s,
+--     where oid = 'public.film_save_scenes(public.films, jsonb)'::regprocedure) = '50942d89b6c407fc7438fe158cdd8115' as save_scenes_is_0241s,
 --   (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
---     where oid = 'public.film_price(public.films)'::regprocedure) = '81e7a2dd0701068508e2663b495683cb' as film_price_is_0241s,
+--     where oid = 'public.film_price(public.films)'::regprocedure) = '3607297484f191d45ff9a1f63a11c5b5' as film_price_is_0241s,
 --   (select count(*) from public.film_scenes where sound_role is not null or dialogue is not null) = 0 as no_scene_has_a_role_yet,
 --   not has_column_privilege('authenticated', 'public.film_scenes', 'dialogue', 'SELECT')
 --     and not has_column_privilege('authenticated', 'public.film_scenes', 'dialogue', 'UPDATE')
