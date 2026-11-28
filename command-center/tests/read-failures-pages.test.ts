@@ -80,6 +80,8 @@ beforeEach(() => {
 describe("command center: a failed read is unknown, not zeros and not healthy", () => {
   const load = async () => (await import("../app/(app)/[channel]/command-center/page")).default();
 
+  // The first case in the file pays for the cold import of the whole command-center page (~1.7 s alone),
+  // which went past Vitest's 5 s default on a 2-core runner shared with another suite.
   it("failed backend", async () => {
     const html = await render(load);
     expect(has(html, en.dashboard.eventStatusUnavailable)).toBe(true);
@@ -99,7 +101,7 @@ describe("command center: a failed read is unknown, not zeros and not healthy", 
     // one unknown per KPI (published today, active agents, errors 24h, videos)
     expect(html.split(esc(en.common.unknown)).length - 1).toBeGreaterThanOrEqual(4);
     expect(html).toContain("data-read-error");
-  });
+  }, 20_000);
 
   it("readable but empty: real zeros, and NOT 'system healthy'", async () => {
     state.client = emptySupabase();

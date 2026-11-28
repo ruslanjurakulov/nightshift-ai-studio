@@ -61,6 +61,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from modules import creative_worker as cw
+from modules import credits as credit_rules
 
 logger = logging.getLogger("film_worker")
 
@@ -348,6 +349,34 @@ class Media:
         return parse_ebur128(res.tail)
 
 
+def without_unused_sound(request: cw.GenerationRequest, adapter: Any,
+                         scene: Optional[Mapping[str, Any]]) -> cw.GenerationRequest:
+    """A clip on a single-price model asks the vendor for no sound unless its scene has lines (Atlas, 28 Nov).
+
+    The film plays such a clip's sound only in a ``dialogue`` scene (modules/film_timeline.py, "A shot's own sound"),
+    and a model that speaks may put unasked words into a scene that has none, so the sound is not asked for at all
+    where the adapter has a switch for it (LTX, Grok Imagine, Vidu, Seedance 2.x send ``generate_audio``/``audio``;
+    Gemini Omni and MiniMax H3 have none, and get nothing). It is never a price: these models' one price does not
+    depend on it (schemas/model_registry.json), and a model priced by its sound (kling-v3, seedance-1.5-pro) already
+    carries the sound the quote priced in ``params.audio``, which is never touched here.
+
+    Today no scene is ``dialogue``: ``film_scenes`` has no ``sound_role`` column and ``FilmRest.scenes`` does not select one, so every
+    such clip is asked for no sound. The column, when it comes (in-clip dialogue, the next pull request), must be selected there
+    too, or a dialogue scene's clip would be made without its lines (tests/test_film_clip_sound.py RolesAreDefaultsToday and the
+    lab's test_a_scene_sound_role_column_never_lands_without_the_worker_reading_it fail first)."""
+    if request.capability not in ("t2v", "i2v") or "audio" in request.params:
+        return request
+    if (scene or {}).get("sound_role") == "dialogue":
+        return request
+    entry, inner = getattr(adapter, "entry", None), getattr(adapter, "adapter", None)
+    # Only a model that makes sound at all (audio_out): a silent model may refuse the field outright.
+    if entry is None or getattr(entry, "priced_by_audio", True) is not False or getattr(entry, "audio_out", False) is not True:
+        return request
+    if request.capability not in tuple(getattr(inner, "audio_capabilities", ()) or ()):
+        return request
+    return replace(request, params={**request.params, "audio": False})
+
+
 def parse_ebur128(text: str) -> Tuple[Optional[float], Optional[float]]:
     """The Summary block of ffmpeg's ebur128 filter: ``I: -16.2 LUFS`` and, under True peak, ``Peak: -1.4 dBFS``."""
     summary = text[text.rfind("Summary:"):] if "Summary:" in text else ""
@@ -488,7 +517,7 @@ class FilmOrchestrator:
             if began.get("began") is False:
                 # 0171 settled the segment itself (the hold is gone, or a refund waits on it): nothing more to do here.
                 return DriveOutcome(sid, "settled_by_db", str(began.get("reason") or ""))
-            if self._run_take(seg, take, lease) == "film_studio_off":
+            if self._run_take(seg, take, lease, scenes.get(str(take.get("scene_id")))) == "film_studio_off":
                 stopped = "film_studio_off"
                 break
         return self._finish(sid, stopped)
@@ -641,7 +670,8 @@ class FilmOrchestrator:
 
     # -- one take ----------------------------------------------------------------
 
-    def _run_take(self, seg: Mapping[str, Any], take: Mapping[str, Any], lease: _Lease) -> str:
+    def _run_take(self, seg: Mapping[str, Any], take: Mapping[str, Any], lease: _Lease,
+                  scene: Optional[Mapping[str, Any]] = None) -> str:
         tid = str(take["id"])
         try:
             tj = self.db.take_job(tid, self.worker_id)
@@ -660,7 +690,7 @@ class FilmOrchestrator:
         job = str(tj["job_id"])
         lease.job_id = job
         try:
-            return self._make(seg, take, tj, job, lease)
+            return self._make(seg, take, tj, job, lease, scene)
         except _TakeFailed as f:
             return self._fail(tid, job, f.code, f.message, f.units_done)
         finally:
@@ -678,7 +708,8 @@ class FilmOrchestrator:
                 logger.warning("take %s: its job's failure was not recorded (%s)", take_id, type(e).__name__)
         return "retried" if isinstance(out, Mapping) and out.get("retry_take_id") else "failed"
 
-    def _make(self, seg, take, tj: Mapping[str, Any], job: str, lease: _Lease) -> str:
+    def _make(self, seg, take, tj: Mapping[str, Any], job: str, lease: _Lease,
+              scene: Optional[Mapping[str, Any]] = None) -> str:
         tid, kind = str(take["id"]), str(take["kind"])
         status, task = str(tj.get("job_status") or ""), tj.get("provider_task_id")
         if status in ("completed", "failed", "cancelled", "expired"):
@@ -713,6 +744,7 @@ class FilmOrchestrator:
             raise _TakeFailed("worker_lost", "the worker stopped during the provider call; it is never submitted twice")
         if kind == "narration":
             return self._narration(seg, take, tj, job, request, adapter, work, lease)
+        request = without_unused_sound(request, adapter, scene)
         request = self._inputs(request, tj, adapter, work)
         self._still_on_sale(request)
         if not self.db.advance_job(job, self.worker_id, "submitting"):
@@ -748,8 +780,15 @@ class FilmOrchestrator:
         modules/creative_worker.py "Still on sale"): a film is priced at start, and its takes run for hours after. Not on sale fails the
         take as ``bad_request`` (the closest word the live view has copy for: the person picks another model and starts again), charged
         0 by 0171; its one retry meets the same answer and fails for good, and the segment settles as takes_failed. Never another model.
-        An answer that cannot be read raises CreativeUnavailable: nothing is sent, and the drive is left for the next claim."""
-        gone = cw.not_on_sale(self.db, request.model, request.capability, request.org_id, previews=False)
+        An answer that cannot be read raises CreativeUnavailable: nothing is sent, and the drive is left for the next claim.
+
+        An operator preview (0139's hidden, ``operator_preview`` row) passes only for the operator's own credits-exempt organization,
+        whose films only a platform admin can start (start_film), and only while the row is still runnable for the take's capability
+        (cw.operator_preview_runnable: hidden, verified, listed, not past its shutdown date; and not switched off). Since 0235 the
+        quote and the start let such a film through for the operator; a customer's film never reaches here with a hidden model, and
+        its takes are still asked with previews off, so a model hidden after its start fails the take as before."""
+        gone = cw.not_on_sale(self.db, request.model, request.capability, request.org_id,
+                              previews=credit_rules.is_exempt(request.org_id))
         if gone is not None:
             code, _ = gone
             raise _TakeFailed("bad_request", f"{request.model} is no longer on sale for {request.capability} ({code}); "
@@ -882,6 +921,9 @@ class FilmOrchestrator:
         provenance = narration_provenance(job, tid, narration) if kind == "narration" else {
             "job_id": job, "film_take_id": tid, "capability": request.capability, "model": request.model,
             "rights": "generated_for_org"}
+        if kind != "narration" and isinstance(request.params.get("audio"), bool):
+            # What the vendor was asked for, beside what the file turns out to carry (the assembly probes that).
+            provenance["audio_requested"] = request.params["audio"]
         aid = str(uuid.uuid5(ASSET_NS, f"{job}:0"))
         try:
             self.media.store_file(files[0], asset_id=aid, org_id=org, provenance=provenance, expect_kind=OUTPUT_KIND[kind])

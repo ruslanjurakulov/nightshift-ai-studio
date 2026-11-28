@@ -16,6 +16,7 @@ import { useMediaUrls } from "@/components/studio-timeline/useTimelineData";
 import { JOB_ERROR_CODES } from "@/lib/job-errors";
 import { utc } from "@/lib/studio/utc";
 import type { LiveNode, RunVideoRef } from "@/lib/studio/liveGraph";
+import type { MasterSound } from "@/lib/studio/masterSound";
 import { nodeName, TONE } from "./StoryBoard";
 
 type T = ReturnType<typeof useI18n>["t"];
@@ -47,6 +48,63 @@ function Output({ node }: { node: LiveNode }) {
   if (m.kind === "image") return <img className="lv-media" src={src} alt="" />;
   if (m.kind === "audio") return <audio className="lv-audio" src={src} controls preload="none" />;
   return <video className="lv-media" src={src} poster={m.thumb ?? undefined} controls preload="metadata" playsInline />;
+}
+
+/**
+ * The finished video's sound, as its file records it (S2): how the loudness was set and what it measured, and the clips whose sound
+ * was paid for or left out. A file without the record reads "unknown", with its cause, never as if all were well (rule 5).
+ */
+function FinalSound({ sound }: { sound: MasterSound }) {
+  const { t, locale } = useI18n();
+  const c = t.studioLive.sound;
+  const loc = locale === "uz" ? "uz-Latn-UZ" : locale;
+  // A number keeps its unit (Pixel L4); a value not recorded is the phrase alone, never "not recorded LU" (Pixel M1).
+  const value = (v: number | null, unit: "lufs" | "dbtp" | "lu") =>
+    v === null ? (
+      <span>{c.notRecorded}</span>
+    ) : (
+      <span className="lv-num">
+        {v.toLocaleString(loc, { maximumFractionDigits: 1 })}
+        {"\u00a0"}
+        <abbr title={c.unitTitles[unit]}>{c.units[unit]}</abbr>
+      </span>
+    );
+  const count = (v: number | null) => (v === null ? c.notRecorded : v.toLocaleString(loc));
+  const measured = (m: { i: number | null; tp: number | null; lra: number | null }) => {
+    const parts = { i: value(m.i, "lufs"), tp: value(m.tp, "dbtp"), lra: value(m.lra, "lu") };
+    return c.measured.split(/(\{i\}|\{tp\}|\{lra\})/).map((piece, k) => {
+      const key = piece.slice(1, -1) as keyof typeof parts;
+      return piece.startsWith("{") && key in parts ? <span key={k}>{parts[key]}</span> : piece;
+    });
+  };
+  const unknown = sound.state === "unknown" ? { read_failed: c.unknownReadFailed, made_before: c.unknownMadeBefore, no_record: c.unknownNoRecord }[sound.cause] : null;
+  return (
+    <div className="lv-final-sound" data-testid="live-final-sound" data-state={sound.state} data-cause={sound.state === "unknown" ? sound.cause : undefined}>
+      <h3>{c.title}</h3>
+      {unknown ? <p className="lv-muted">{unknown}</p> : null}
+      {sound.state === "none" ? <p className="lv-muted">{c.none}</p> : null}
+      {sound.state === "ready" ? (
+        <>
+          <p data-testid="live-final-loudness" data-mode={sound.mode}>
+            {sound.mode === "linear" ? c.linear : sound.mode === "dynamic" ? c.dynamic : sound.mode === "silent" ? c.silent : c.modeUnknown}
+          </p>
+          {sound.mode !== "silent" ? (
+            <p className="lv-muted" data-testid="live-final-measured">
+              {measured(sound.measured)}
+            </p>
+          ) : null}
+          {sound.paidUnused === null || sound.paidUnused > 0 ? (
+            <p data-testid="live-final-paid">{fmt(c.paidUnused, { n: count(sound.paidUnused) })}</p>
+          ) : null}
+          {sound.defaultUnused === null || sound.defaultUnused > 0 ? (
+            <p className="lv-muted" data-testid="live-final-default">
+              {fmt(c.defaultUnused, { n: count(sound.defaultUnused) })}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
 }
 
 export function Details({
@@ -134,6 +192,7 @@ export function Details({
       {node.kind === "final" && node.assetId ? (
         <div className="lv-final" data-testid="live-final">
           <AssetDownloads assetId={node.assetId} preview="ready" />
+          <FinalSound sound={node.sound ?? { state: "unknown", cause: "read_failed" }} />
           {filmId ? (
             <Link className="cv-kbtn" href={path(`/studio?view=timeline&film=${filmId}`)} data-testid="live-open-timeline">
               {c.openTimeline}
