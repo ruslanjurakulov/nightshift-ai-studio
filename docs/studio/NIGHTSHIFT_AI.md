@@ -480,6 +480,22 @@ source text, language, aspect, `target_seconds`). Code: `app/api/brain/film/rout
 - A status other than `ok` (`no_data`, `not_connected`, `refreshing`, `budget_exhausted`, `not_enabled`) is said as such. It is never "no competitors".
 - `research_request_refresh` is called only when the person asks for fresh data.
 
+## Streaming a press (live creation item #3)
+
+- **The switch.** `NIGHTSHIFT_AI_STREAM=off|lab|on`, off by default. Off is the JSON route byte for byte, even when a press sends `stream:true`. `lab` streams only on a server with `NIGHTSHIFT_AI_LAB=1`.
+- **What streams.** `POST /api/brain/turn` with `stream:true` answers `application/x-ndjson` (`lib/brain/stream-events.ts`):
+  - real phases;
+  - `plan.begun`;
+  - one `plan.window` per window that passed every check and the safety floor;
+  - a ping every 10 s;
+  - `end`, carrying the JSON answer's body, status and its `cache-control` / `retry-after`.
+- **Refusals.** A refusal before the first event is plain JSON with its own status.
+- **The socket does not own the work.** A closed tab drops the writes only. The lease, turns, save and quote run to completion, and the panel follows a cut stream through `waitForPlan`.
+- **Cookies (check before turning it on).** A Set-Cookie cannot ride a started stream. The route refreshes the access token before the first byte when it would expire within the work's time (`refreshBeforeStream`). That the refreshed cookie really reaches the browser through Caddy and `next start` is NOT verified: measure it in the lab with `curl -N -i` (item #2), together with line arrival, before the switch goes on.
+- **The lab's fake vendor.** `NIGHTSHIFT_AI_FAKE_BASE_URL` is honoured only with `NIGHTSHIFT_AI_LAB=1`, and it only ever receives the placeholder key `lab-fake-key`. Plain http is accepted only to 127.0.0.1 / localhost.
+  - Set without the lab flag, every turn (the owner's too) is refused as `fake_vendor_unflagged` before a turn is reserved.
+  - The production deploy fails by name if either variable is set.
+
 ## Who gets it, and what it costs
 
 - **The flag.** `NIGHTSHIFT_AI_CHAT=off|orgs|on` and `NIGHTSHIFT_AI_CHAT_ORGS`, on only for the owner's and the demo workspace until reviewed.

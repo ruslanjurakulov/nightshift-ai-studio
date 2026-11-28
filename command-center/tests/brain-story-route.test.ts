@@ -85,7 +85,10 @@ vi.mock("@/lib/server/brain/llm", async () => {
   return { ...real, chatModelConfigured: () => true, callChatModel: (...a: unknown[]) => { llm(...a); return Promise.resolve(state.queue.length ? state.queue.shift()! : state.llm); } };
 });
 
-const { POST } = await import("@/app/api/brain/turn/route");
+const { POST: routePost } = await import("@/app/api/brain/turn/route");
+// The parity suite (tests/helpers/brainStreamParity): JSON as written, or streamed with end.body read as the answer.
+const { viaMode } = await import("./helpers/brainStreamParity");
+const POST = (r: Request) => viaMode(routePost, r);
 const post = (body: unknown) => POST(new Request("https://x/api/brain/turn", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } }));
 const turn = () => post({ action: "turn", session: SESSION, text: "a video like this" });
 const called = (fn: string) => rpc.mock.calls.filter((c) => c[0] === fn);

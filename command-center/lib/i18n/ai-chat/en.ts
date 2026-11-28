@@ -14,6 +14,16 @@ export const aiChatEn = {
   scenarioFacts: "{len} · scenes: {scenes} · characters: {characters}",
   outlineFacts: "{len} · chapters: {chapters} · characters: {characters}",
   planWriting: "Writing the storyboard, chapter by chapter. This can take a minute or two. Nothing is priced until every chapter is written.",
+  /** The streamed plan (LIVE_CREATION_PLAN §3.1): counted from the chapters the server has really finished, never a timer. */
+  planProgress: "{n} of {total} chapters written.",
+  planAllWritten: "All chapters written: {total}.",
+  /** The stream was cut; the plan goes on on the server and is followed through its lease. */
+  planConnectionLost: "Connection lost; still writing on the server, following it…",
+  planSaving: "Saving the storyboard…",
+  planPricing: "Asking for the film's price…",
+  /** The label on text the server has already checked; shown before the price, never as a final, chosen plan. */
+  planWritten: "Written",
+  planChapter: "Chapter {n}: {title}",
   planCost: "Choosing this uses about {about} of your {limit} messages today to write the storyboard (at most {at_most} if a chapter has to be asked again); {left}.",
   /** Counts said with their own plural (Probe M3: "1 are left"); {n} is the number. */
   messageCount: { one: "{n} message", few: "{n} messages", many: "{n} messages", other: "{n} messages" },

@@ -162,7 +162,10 @@ describe("with NIGHTSHIFT_AI_CHAT off the route is not there at all", () => {
     // Was finding 8 (low, information): with the feature OFF everywhere the route still authenticated, read the age cookie, parsed
     // the body, read ai_chat_sessions and answered 401 / 400 / 403, which says the feature ships and whether a session id exists.
     const { GET } = await import("@/app/api/brain/route");
-    const { POST } = await import("@/app/api/brain/turn/route");
+    const { POST: routePost } = await import("@/app/api/brain/turn/route");
+// The parity suite (tests/helpers/brainStreamParity): JSON as written, or streamed with end.body read as the answer.
+const { viaMode } = await import("./helpers/brainStreamParity");
+const POST = (r: Request) => viaMode(routePost, r);
     const post = (b: unknown) => POST(new Request("https://x/api/brain", { method: "POST", body: JSON.stringify(b), headers: { "content-type": "application/json" } }));
     const statuses: number[] = [];
     statuses.push((await GET(new Request("https://x/api/brain"))).status);

@@ -19,7 +19,25 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    // lib/**: unit tests that sit next to their module (lib/agent-*.test.ts, lib/server/agent-provider-adapters.test.ts).
-    include: ["tests/**/*.test.{ts,tsx}", "lib/**/*.test.ts"],
+    projects: [
+      {
+        extends: true,
+        // lib/**: unit tests that sit next to their module (lib/agent-*.test.ts, lib/server/agent-provider-adapters.test.ts).
+        test: { name: "unit", include: ["tests/**/*.test.{ts,tsx}", "lib/**/*.test.ts"] },
+      },
+      {
+        // The parity suite (docs/studio/LIVE_CREATION_PLAN.md §3.11, tests/helpers/brainStreamParity.ts): the brain's route tests
+        // once more, with every POST /api/brain/turn asked as a stream and its `end` read as the answer.
+        extends: true,
+        test: {
+          name: "brain-stream",
+          include: ["tests/brain-*.test.ts", "tests/security-brain-*.test.ts"],
+          env: { BRAIN_PARITY_MODE: "stream" },
+          // These files run twice in one `vitest run`; a test that imports a whole route inside itself (tests/brain-breach.test.ts)
+          // timed out at the default 5 s on a loaded machine while passing alone. Time, not behaviour: the assertions are the same.
+          testTimeout: 20_000,
+        },
+      },
+    ],
   },
 });

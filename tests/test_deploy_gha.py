@@ -253,6 +253,17 @@ class PayloadStepTests(unittest.TestCase):
         self.assertIn("NEXT_PUBLIC_SUPABASE_ANON_KEY is required", proc.stdout)
         self.assertIn("DOMAIN is required", proc.stdout)
 
+    def test_the_labs_switches_fail_a_production_deploy_by_name_never_by_value(self):
+        # The fake-vendor seam (command-center/lib/server/brain/llm.ts) must never be live on the production server.
+        for key, value in (("NIGHTSHIFT_AI_LAB", "1"), ("NIGHTSHIFT_AI_FAKE_BASE_URL", "https://fake-vendor.example")):
+            proc, outputs, _ = self.run_step(**{f"WEBENV_{key}": value})
+            self.assertNotEqual(proc.returncode, 0, key)
+            self.assertNotIn("run", outputs)
+            self.assertIn(f"variable {key} is a lab-only switch and must be empty for production", proc.stdout)
+            self.assertNotIn("fake-vendor.example", proc.stdout + proc.stderr)
+        proc, _, _ = self.run_step(WEBENV_NIGHTSHIFT_AI_LAB="", WEBENV_NIGHTSHIFT_AI_FAKE_BASE_URL="")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+
     def test_domain_is_a_bare_host_name(self):
         proc, _, _ = self.run_step(WEBENV_DOMAIN="https://new.example.com/")
         self.assertNotEqual(proc.returncode, 0)

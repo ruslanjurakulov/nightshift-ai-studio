@@ -190,6 +190,14 @@ describe("the model", () => {
     expect(s.llmCalls).toEqual([]);
   });
 
+  it("the lab's fake-vendor address without the lab flag: refused by name before any turn is reserved (Lens L3)", async () => {
+    vi.stubEnv("NIGHTSHIFT_AI_FAKE_BASE_URL", "http://127.0.0.1:9911");
+    vi.stubEnv("NIGHTSHIFT_AI_LAB", "");
+    expect(await call({ question: "Hello" })).toEqual({ status: 409, body: { error: "model_unavailable", reason: "fake_vendor_unflagged" } });
+    expect(s.rpcCalls.map((c) => c.name)).not.toContain("owner_ai_reserve_turn");
+    expect(s.llmCalls).toEqual([]);
+  });
+
   it("refuses an unconfigured selection without reserving a turn or trying any vendor", async () => {
     vi.stubEnv("AI_CHAT_OPENAI_API_KEY", "");
     expect(await call({ question: "Hello", model: "openai-gpt-6-luna" })).toEqual({

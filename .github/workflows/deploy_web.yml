@@ -250,6 +250,11 @@ jobs:
           # keys are secrets of their own (never the worker's): the web container holds an LLM key only when the owner adds one.
           WEBENV_NIGHTSHIFT_AI_CHAT: ${{ vars.NIGHTSHIFT_AI_CHAT }}
           WEBENV_NIGHTSHIFT_AI_CHAT_ORGS: ${{ vars.NIGHTSHIFT_AI_CHAT_ORGS }}
+          # Streaming the chat's checked steps (LIVE_CREATION_PLAN §3.1): off unless `lab` or `on`. The lab's two switches stay
+          # unset in production; the fake-vendor address without the lab flag refuses every turn by name.
+          WEBENV_NIGHTSHIFT_AI_STREAM: ${{ vars.NIGHTSHIFT_AI_STREAM }}
+          WEBENV_NIGHTSHIFT_AI_LAB: ${{ vars.NIGHTSHIFT_AI_LAB }}
+          WEBENV_NIGHTSHIFT_AI_FAKE_BASE_URL: ${{ vars.NIGHTSHIFT_AI_FAKE_BASE_URL }}
           WEBENV_AI_CHAT_ANTHROPIC_API_KEY: ${{ secrets.AI_CHAT_ANTHROPIC_API_KEY }}
           WEBENV_AI_CHAT_OPENAI_API_KEY: ${{ secrets.AI_CHAT_OPENAI_API_KEY }}
           WEBENV_AI_CHAT_GEMINI_API_KEY: ${{ secrets.AI_CHAT_GEMINI_API_KEY }}
@@ -315,6 +320,12 @@ jobs:
           for key in DOMAIN ACME_EMAIL NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY; do
             var="WEBENV_$key"
             [[ -n "${!var:-}" ]] || errors+=("variable $key is required and empty")
+          done
+          # The security lab's switches never reach production (LIVE_CREATION_PLAN §3.11): the fake-vendor seam would point the
+          # chat at a scripted vendor. Mapped (every example key is), and refused here by name when either is set.
+          for key in NIGHTSHIFT_AI_LAB NIGHTSHIFT_AI_FAKE_BASE_URL; do
+            var="WEBENV_$key"
+            [[ -z "${!var:-}" ]] || errors+=("variable $key is a lab-only switch and must be empty for production; delete the repository variable")
           done
           if [[ -n "$WEBENV_DOMAIN" && ! "$WEBENV_DOMAIN" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]]; then
             errors+=("variable DOMAIN must be a bare host name like new.nightshift-ai.studio (no https://, no slash)")
