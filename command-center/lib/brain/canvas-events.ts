@@ -21,12 +21,14 @@ export type BrainActivityPlan = { windows: number; of: number; chapters_written:
 /**
  * What the server is doing for one conversation. session_id is null ONLY on a conversation's first send, before the server has made
  * the session (Atlas, 28 Nov): its "thinking", and the "end" that closes that same null thinking when the first send fails and no
- * session ever exists (S3, 28 Nov: otherwise the board keeps a planning skeleton beside the panel's error). Every other phase names a
- * real session. No "" sentinel: an empty string reads as an id.
+ * session ever exists (S3, 28 Nov: otherwise the board keeps a planning skeleton beside the panel's error). That end always carries
+ * reason "failed" (Atlas, 28 Nov): a null session never succeeds, and the board must show an error, not a quiet idle (rule 5). Every
+ * other phase names a real session. No "" sentinel: an empty string reads as an id.
  */
 export type BrainActivity =
   | { session_id: string; phase: BrainPhase | "end"; plan?: BrainActivityPlan }
-  | { session_id: null; phase: "thinking" | "end"; plan?: never };
+  | { session_id: null; phase: "thinking"; reason?: never; plan?: never }
+  | { session_id: null; phase: "end"; reason: "failed"; plan?: never };
 
 export type BrainCanvasEvent =
   | { kind: "brief"; detail: { session_id: string; updated_at: string } }
@@ -36,14 +38,18 @@ const PHASES: ReadonlySet<string> = new Set(["thinking", "planning", "saving", "
 
 /**
  * The runtime half of the contract, for the sender and for any listener (S3's canvas): a detail that breaks it is not an activity.
- * A null session on any phase but "thinking" or its closing "end", an empty id, an unknown phase, or a plan with a null session are
- * all refused.
+ * A null session on any phase but "thinking" (no reason) or its closing "end" (reason "failed"), an empty id, an unknown phase, or a
+ * plan with a null session are all refused.
  */
 export function isBrainActivity(d: unknown): d is BrainActivity {
   if (!d || typeof d !== "object") return false;
   const a = d as Record<string, unknown>;
   if (typeof a.phase !== "string" || !PHASES.has(a.phase)) return false;
-  if (a.session_id === null) return (a.phase === "thinking" || a.phase === "end") && a.plan === undefined;
+  if (a.session_id === null) {
+    if (a.plan !== undefined) return false;
+    if (a.phase === "thinking") return a.reason === undefined;
+    return a.phase === "end" && a.reason === "failed";
+  }
   return typeof a.session_id === "string" && a.session_id.length > 0;
 }
 

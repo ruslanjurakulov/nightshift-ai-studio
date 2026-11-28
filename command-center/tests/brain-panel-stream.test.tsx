@@ -231,8 +231,8 @@ describe("Nightshift AI panel: the stream", () => {
     await send({ type: "phase", phase: "thinking" });
     await send({ type: "end", status: 409, body: { error: "model_unavailable" } });
     await act(async () => { ctl!.close(); await new Promise((r) => setTimeout(r, 0)); });
-    await waitFor(() => expect(activity).toContainEqual({ session_id: null, phase: "end" }));
-    expect(activity).toEqual([{ session_id: null, phase: "thinking" }, { session_id: null, phase: "end" }]);
+    await waitFor(() => expect(activity).toContainEqual({ session_id: null, phase: "end", reason: "failed" }));
+    expect(activity).toEqual([{ session_id: null, phase: "thinking" }, { session_id: null, phase: "end", reason: "failed" }]);
   });
 
   it("a server with the stream off answers JSON, and the panel reads it as before", async () => {

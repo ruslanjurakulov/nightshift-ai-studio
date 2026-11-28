@@ -661,7 +661,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (a.streamed && sessionRef.current) dispatchBrainCanvas({ kind: "activity", detail: { session_id: sessionRef.current, phase: "end" } });
     // A first send that ended with no session (model down, a cap): close the null thinking it told the canvas, or the board would keep
     // its planning skeleton beside the panel's error (S3). Only ever after a null thinking actually went out.
-    else if (a.streamed && nullThinkingRef.current) dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "end" } });
+    else if (a.streamed && nullThinkingRef.current) dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "end", reason: "failed" } });
     nullThinkingRef.current = false;
     if (d.quota && typeof d.quota === "object") {
       const q = d.quota as { used: number; limit: number | null; trial_left?: number | null; reserved?: unknown };

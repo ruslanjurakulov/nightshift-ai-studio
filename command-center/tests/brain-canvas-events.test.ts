@@ -4,19 +4,23 @@ import { BRAIN_ACTIVITY_EVENT, dispatchBrainCanvas, isBrainActivity, type BrainA
 
 /**
  * The canvas contract on nightshift:brain-activity (Atlas, 28 Nov): session_id is null only for "thinking" on a conversation's first
- * send. What breaks if these fail: S3's board treating "" or a null session as a real conversation, or drawing a storyboard for nobody.
+ * send, and for the "end" (reason "failed") that closes it when that send made no session. What breaks if these fail: S3's board treating "" or a null session as a real conversation, or drawing a storyboard for nobody.
  */
 
 describe("BrainActivity type", () => {
-  it("allows null only with thinking and its closing end", () => {
+  it("allows null only with thinking and its closing failed end", () => {
     expectTypeOf<{ session_id: null; phase: "thinking" }>().toMatchTypeOf<BrainActivity>();
-    expectTypeOf<{ session_id: null; phase: "end" }>().toMatchTypeOf<BrainActivity>();
+    expectTypeOf<{ session_id: null; phase: "end"; reason: "failed" }>().toMatchTypeOf<BrainActivity>();
+    // @ts-expect-error a null end must say it failed: a quiet idle would hide the error (rule 5)
+    const bad3: BrainActivity = { session_id: null, phase: "end" };
+    // @ts-expect-error a null thinking carries no reason
+    const bad4: BrainActivity = { session_id: null, phase: "thinking", reason: "failed" };
     expectTypeOf<{ session_id: "s1"; phase: "planning" }>().toMatchTypeOf<BrainActivity>();
     // @ts-expect-error a null session cannot be planning
     const bad: BrainActivity = { session_id: null, phase: "planning" };
     // @ts-expect-error a null session carries no plan
     const bad2: BrainActivity = { session_id: null, phase: "thinking", plan: { windows: 1, of: 2, chapters_written: 0, chapters: 2 } };
-    void bad; void bad2;
+    void bad; void bad2; void bad3; void bad4;
   });
 });
 
@@ -24,11 +28,16 @@ describe("isBrainActivity: the runtime guard", () => {
   it.each(["planning", "saving", "pricing"])("refuses a null session on %s", (phase) => {
     expect(isBrainActivity({ session_id: null, phase })).toBe(false);
   });
-  it("accepts null on thinking and on its closing end, refuses either with a plan", () => {
+  it("accepts null on thinking and on its closing failed end, refuses either with a plan", () => {
     expect(isBrainActivity({ session_id: null, phase: "thinking" })).toBe(true);
-    expect(isBrainActivity({ session_id: null, phase: "end" })).toBe(true);
-    expect(isBrainActivity({ session_id: null, phase: "end", plan: { windows: 0, of: 1, chapters_written: 0, chapters: 1 } })).toBe(false);
+    expect(isBrainActivity({ session_id: null, phase: "end", reason: "failed" })).toBe(true);
+    expect(isBrainActivity({ session_id: null, phase: "end", reason: "failed", plan: { windows: 0, of: 1, chapters_written: 0, chapters: 1 } })).toBe(false);
     expect(isBrainActivity({ session_id: null, phase: "thinking", plan: { windows: 0, of: 1, chapters_written: 0, chapters: 1 } })).toBe(false);
+  });
+  it("refuses a null end without reason failed, and a null thinking with any reason", () => {
+    expect(isBrainActivity({ session_id: null, phase: "end" })).toBe(false);
+    expect(isBrainActivity({ session_id: null, phase: "end", reason: "done" })).toBe(false);
+    expect(isBrainActivity({ session_id: null, phase: "thinking", reason: "failed" })).toBe(false);
   });
   it('refuses "" (no sentinel), a missing id, a number and an unknown phase', () => {
     expect(isBrainActivity({ session_id: "", phase: "thinking" })).toBe(false);
@@ -50,6 +59,7 @@ describe("dispatchBrainCanvas", () => {
     expect(dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "planning" } as unknown as BrainActivity })).toBe(false);
     expect(dispatchBrainCanvas({ kind: "activity", detail: { session_id: "", phase: "end" } })).toBe(false);
     expect(dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "saving" } as unknown as BrainActivity })).toBe(false);
+    expect(dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "end" } as unknown as BrainActivity })).toBe(false);
     expect(dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "thinking" } })).toBe(true);
     expect(dispatchBrainCanvas({ kind: "activity", detail: { session_id: "s1", phase: "end" } })).toBe(true);
     window.removeEventListener(BRAIN_ACTIVITY_EVENT, on);
