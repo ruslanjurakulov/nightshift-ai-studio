@@ -18,6 +18,34 @@ import type { ReactNode } from "react";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), back: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
   usePathname: () => "/chronos/editor/p",
+  notFound: () => {
+    throw new Error("notFound");
+  },
+}));
+
+// The editor's server page, with its server-side reads faked: only to see what it loads the music list with, and passes on.
+const server = vi.hoisted(() => ({
+  loadStudioModels: vi.fn<(org: string | null) => Promise<unknown[]>>(async () => []),
+}));
+vi.mock("server-only", () => ({}));
+vi.mock("@/lib/config", async (orig) => ({ ...(await orig<Record<string, unknown>>()), isSupabaseConfigured: true }));
+vi.mock("@/lib/orgs-server", () => ({ getOrgContext: async () => ({ supported: true, current: { id: "0a000000-0000-4000-8000-00000000000a" } }) }));
+vi.mock("@/lib/supabase/server", () => ({ getUser: async () => ({ id: "u1" }), createClient: async () => null }));
+vi.mock("@/lib/i18n/server", async () => {
+  const { dictionaries: d } = await import("@/lib/i18n");
+  return { getDictionary: async () => ({ t: d.en, locale: "en" }) };
+});
+vi.mock("@/lib/creative/registry", () => ({ loadSellableModels: async () => ({ status: "ok", models: [] }) }));
+vi.mock("@/lib/server/ai-tools", () => ({ loadAiToolAvailability: async () => [], loadImproveModels: async () => [] }));
+vi.mock("@/lib/server/creative", () => ({ loadStudioModels: server.loadStudioModels }));
+vi.mock("@/lib/server/editor", () => ({
+  loadEditorVideos: async () => ({ state: "ok", value: [] }),
+  loadEditorSounds: async () => ({ state: "ok", value: [] }),
+  loadEditorImages: async () => ({ state: "ok", value: [] }),
+  loadEditorProject: async (id: string) => ({
+    state: "ok",
+    value: { id, title: "Trip", rev: 1, doc: { tracks: [] }, exports: [], assets: {}, orgId: "0e000000-0000-4000-8000-0000000000e0", multiRatio: false, hires: false },
+  }),
 }));
 
 import { I18nProvider } from "@/lib/i18n/context";
@@ -27,6 +55,8 @@ import { TimelineEditor } from "@/components/editor/TimelineEditor";
 import { MAX_EDITOR_SOUNDS, addSound, newDocForAsset, toDoc, toModel, validateTimeline, type EditorAsset, type TimelineDoc } from "@/lib/editor";
 import { apiErrorMessage, failureReason, type StudioModel } from "@/lib/creative/studio";
 import { resetCreditsLive } from "@/lib/credits-live";
+import EditorProjectPage from "@/app/(app)/[channel]/editor/[id]/page";
+import { Children, isValidElement, type ReactElement } from "react";
 
 const LOCALES: Locale[] = ["en", "ru", "uz"];
 const en = dictionaries.en;
@@ -64,7 +94,11 @@ let quoteAnswer: () => Promise<Response>;
 let jobAnswers: Array<() => Promise<Response>>;
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   vi.useFakeTimers();
+  // jsdom has no media playback; the editor's preview only needs the calls to exist.
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   resetCreditsLive();
   quoteAnswer = () => json({ quote: { credits: 12 } });
   jobAnswers = [() => json({ job: jobRow("running") }), () => json({ job: jobRow("completed", { result_asset_ids: [TRACK] }) })];
@@ -96,7 +130,7 @@ const createCalls = () => calls((u, i) => u === "/api/creative/jobs" && i?.metho
 const bodyOf = (c: unknown[]) => JSON.parse(String((c[1] as RequestInit).body)) as Record<string, unknown>;
 
 function mountPanel(over: Partial<React.ComponentProps<typeof MusicMaker>> = {}, locale: Locale = "en") {
-  const props = { orgId: ORG, models: [LYRIA], canAdd: true, onAdd: vi.fn(() => true), onClose: vi.fn(), ...over };
+  const props = { orgId: ORG, projectId: PID, models: [LYRIA], canAdd: true, onAdd: vi.fn(() => true), onClose: vi.fn(), ...over };
   render(withI18n(<MusicMaker {...props} />, locale));
   return props;
 }
@@ -110,25 +144,25 @@ const why = () => screen.getByTestId("music-why").textContent ?? "";
 // =================================================================================================================================
 describe("the visibility rule: the key exists only while the Studio's list sells a music model here", () => {
   const doc = (): TimelineDoc => toDoc(toModel(newDocForAsset(VIDEO)!));
-  const editor = (aiModels: readonly StudioModel[] | null) =>
-    withI18n(<TimelineEditor projectId={PID} title="Trip" rev={1} doc={doc()} exports={[]} assets={{ [VID]: VIDEO }} videos={[VIDEO]} soundFiles={[]} orgId={ORG} aiModels={aiModels} />);
+  const editor = (musicModels: readonly StudioModel[] | undefined) =>
+    withI18n(<TimelineEditor projectId={PID} title="Trip" rev={1} doc={doc()} exports={[]} assets={{ [VID]: VIDEO }} videos={[VIDEO]} soundFiles={[]} orgId={ORG} aiModels={[UPSCALER]} musicModels={musicModels} />);
   // React's generated ids differ between two mounts; everything else must be the same markup.
-  const markup = (aiModels: readonly StudioModel[] | null) => {
-    const { container, unmount } = render(editor(aiModels));
+  const markup = (musicModels: readonly StudioModel[] | undefined) => {
+    const { container, unmount } = render(editor(musicModels));
     const html = container.innerHTML.replace(/[:«]r[0-9a-z]+[:»]/g, "~id~");
     unmount();
     return html;
   };
 
   it("no sellable music model (today): no Make music key, and the editor's markup is byte-for-byte what it was", () => {
-    for (const models of [null, [], [UPSCALER], [{ ...LYRIA, lock: "not_on_sale" as const }, UPSCALER]]) {
+    for (const models of [undefined, [], [UPSCALER], [{ ...LYRIA, lock: "not_on_sale" as const }, UPSCALER]]) {
       render(editor(models));
       expect(screen.queryByRole("button", { name: tm().open })).toBeNull();
       expect(screen.queryByTestId("music-maker")).toBeNull();
       cleanup();
     }
     // A music model nobody can buy changes nothing at all: no key, no disabled key, no note.
-    expect(markup([{ ...LYRIA, lock: "not_on_sale" }, UPSCALER])).toBe(markup([UPSCALER]));
+    expect(markup([{ ...LYRIA, lock: "not_on_sale" }, UPSCALER])).toBe(markup(undefined));
     expect(quoteCalls()).toHaveLength(0);
   });
 
@@ -377,7 +411,7 @@ describe("confirm, create, and the job", () => {
 // =================================================================================================================================
 describe("in the editor page", () => {
   const editor = (doc: TimelineDoc, assets: Record<string, EditorAsset>) =>
-    withI18n(<TimelineEditor projectId={PID} title="Trip" rev={1} doc={doc} exports={[]} assets={assets} videos={[VIDEO]} soundFiles={[]} orgId={ORG} aiModels={[LYRIA]} />);
+    withI18n(<TimelineEditor projectId={PID} title="Trip" rev={1} doc={doc} exports={[]} assets={assets} videos={[VIDEO]} soundFiles={[]} orgId={ORG} musicModels={[LYRIA]} />);
 
   it("a finished track lands as a music sound at the playhead, and saves as a valid document", async () => {
     render(editor(toDoc(toModel(newDocForAsset(VIDEO)!)), { [VID]: VIDEO }));
@@ -439,6 +473,171 @@ describe("in the editor page", () => {
     await describeMusic();
     fireEvent.click(makeKey());
     for (const b of within(screen.getByTestId("music-maker")).getAllByRole("button")) expect(b.className).toMatch(/min-h-11/);
+  });
+});
+
+// =================================================================================================================================
+describe("the editor page loads the music list for the workspace", () => {
+  const PROJECT_ORG = "0e000000-0000-4000-8000-0000000000e0";
+  function findEditor(node: unknown): ReactElement<Record<string, unknown>> | null {
+    if (!isValidElement(node)) return null;
+    const el = node as ReactElement<Record<string, unknown>>;
+    if (el.type === TimelineEditor) return el;
+    for (const child of Children.toArray(el.props.children as ReactNode)) {
+      const hit = findEditor(child);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  const page = async () =>
+    findEditor(await EditorProjectPage({ params: Promise.resolve({ id: PID }), searchParams: Promise.resolve({}) }));
+
+  it("asks the Studio's loader WITH the project's organization (its locks then see the workspace's purchases), and passes music only", async () => {
+    server.loadStudioModels.mockResolvedValueOnce([UPSCALER, LYRIA, { ...OTHER_MUSIC, lock: "first_purchase" }]);
+    const ed = await page();
+    expect(server.loadStudioModels).toHaveBeenCalledWith(PROJECT_ORG);
+    expect((ed!.props.musicModels as StudioModel[]).map((m) => m.id)).toEqual([LYRIA.id, OTHER_MUSIC.id]);
+    expect((ed!.props.musicModels as StudioModel[])[1].lock).toBe("first_purchase");
+  });
+
+  it("a failed read is no music model (the editor stays as it was), never a crash", async () => {
+    server.loadStudioModels.mockRejectedValueOnce(new Error("db down"));
+    const ed = await page();
+    expect(ed!.props.musicModels).toEqual([]);
+  });
+});
+
+// =================================================================================================================================
+describe("a refresh mid-job, and cancel", () => {
+  const KEY = `nightshift:editor-music:${PID}`;
+  const pend = (project = PID) =>
+    window.sessionStorage.setItem(`nightshift:editor-music:${project}`, JSON.stringify({ jobId: JOB, startedAt: Date.now() - 20_000 }));
+  async function startJob() {
+    await describeMusic();
+    fireEvent.click(makeKey());
+    fireEvent.click(screen.getByRole("button", { name: fmt(tm().confirmGo, { n: "12" }) }));
+    await advance(0);
+  }
+
+  it("the create records the job for this project only, and the finished track clears it", async () => {
+    mountPanel();
+    await startJob();
+    expect(JSON.parse(window.sessionStorage.getItem(KEY)!)).toMatchObject({ jobId: JOB });
+    await advance(6100);
+    expect(window.sessionStorage.getItem(KEY)).toBeNull();
+  });
+
+  it("after a refresh the editor says music is still being made; Show re-adopts the job, adds it on completion, and asks no new price", async () => {
+    pend();
+    jobAnswers = [() => json({ job: jobRow("running") }), () => json({ job: jobRow("completed", { result_asset_ids: [TRACK] }) })];
+    render(
+      withI18n(<TimelineEditor projectId={PID} title="Trip" rev={1} doc={toDoc(toModel(newDocForAsset(VIDEO)!))} exports={[]} assets={{ [VID]: VIDEO }} videos={[VIDEO]} soundFiles={[]} orgId={ORG} musicModels={[LYRIA]} />),
+    );
+    await advance(0);
+    const line = screen.getByTestId("music-pending");
+    expect(line.textContent).toContain(tm().pending);
+    fireEvent.click(within(line).getByRole("button", { name: tm().pendingShow }));
+    await advance(0); // read at once: still running
+    expect(screen.getByTestId("music-status").textContent).toBe(tm().working);
+    expect(screen.getByTestId("music-elapsed").textContent).toBe(fmt(tm().elapsed, { now: "0:20" }));
+    await advance(3000); // completed
+    await advance(10);
+    expect(screen.queryByTestId("music-maker")).toBeNull();
+    expect(screen.queryByTestId("music-pending")).toBeNull();
+    expect(window.sessionStorage.getItem(KEY)).toBeNull();
+    expect(quoteCalls()).toHaveLength(0);
+    expect(createCalls()).toHaveLength(0);
+    expect(calls((u) => u === `/api/media/${TRACK}`)).toHaveLength(1);
+  });
+
+  it("a pending job the route answers 404 for is dropped, said in words, and nothing is added", async () => {
+    pend();
+    jobAnswers = [() => json({ error: "not_found" }, 404)];
+    const p = mountPanel();
+    await advance(0);
+    expect(screen.getByTestId("music-error").textContent).toContain(tm().lost);
+    expect(window.sessionStorage.getItem(KEY)).toBeNull();
+    expect(p.onAdd).not.toHaveBeenCalled();
+  });
+
+  it("another project's pending job is ignored", async () => {
+    pend("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+    render(
+      withI18n(<TimelineEditor projectId={PID} title="Trip" rev={1} doc={toDoc(toModel(newDocForAsset(VIDEO)!))} exports={[]} assets={{ [VID]: VIDEO }} videos={[VIDEO]} soundFiles={[]} orgId={ORG} musicModels={[LYRIA]} />),
+    );
+    await advance(0);
+    expect(screen.queryByTestId("music-pending")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: tm().open }));
+    await advance(3100);
+    expect(calls((u) => u.startsWith("/api/creative/jobs/"))).toHaveLength(0);
+  });
+
+  it("storage that throws breaks nothing: the editor opens, and a track is still made and placed", async () => {
+    const boom = () => {
+      throw new DOMException("denied", "SecurityError");
+    };
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(boom);
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(boom);
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(boom);
+    render(
+      withI18n(<TimelineEditor projectId={PID} title="Trip" rev={1} doc={toDoc(toModel(newDocForAsset(VIDEO)!))} exports={[]} assets={{ [VID]: VIDEO }} videos={[VIDEO]} soundFiles={[]} orgId={ORG} musicModels={[LYRIA]} />),
+    );
+    await advance(0);
+    fireEvent.click(screen.getByRole("button", { name: tm().open }));
+    await startJob();
+    await advance(6100);
+    await advance(10);
+    expect(screen.queryByTestId("music-maker")).toBeNull();
+    expect(calls((u) => u === `/api/media/${TRACK}`)).toHaveLength(1);
+  });
+
+  it("a queued job can be cancelled through the job route; the hold is released and the entry cleared", async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u === "/api/creative/quote") return json({ quote: { credits: 12 } });
+      if (u === "/api/creative/jobs" && init?.method === "POST") return json({ job: jobRow("queued") }, 201);
+      if (u === `/api/creative/jobs/${JOB}` && init?.method === "POST") return json({ job: jobRow("cancelled") });
+      if (u === `/api/creative/jobs/${JOB}`) return json({ job: jobRow("queued") });
+      return json({ error: "failed" }, 502);
+    });
+    const p = mountPanel();
+    await startJob();
+    fireEvent.click(screen.getByTestId("music-cancel"));
+    await advance(0);
+    const posts = calls((u, i) => u === `/api/creative/jobs/${JOB}` && i?.method === "POST");
+    expect(posts).toHaveLength(1);
+    expect(bodyOf(posts[0])).toEqual({ action: "cancel" });
+    expect(screen.getByTestId("music-cancelled").textContent).toBe(en.captions.cancelled);
+    expect(window.sessionStorage.getItem(KEY)).toBeNull();
+    await advance(6100);
+    expect(p.onAdd).not.toHaveBeenCalled();
+  });
+
+  it("a job the provider already started is not cancellable: said so, and the wait goes on", async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u === "/api/creative/quote") return json({ quote: { credits: 12 } });
+      if (u === "/api/creative/jobs" && init?.method === "POST") return json({ job: jobRow("queued") }, 201);
+      if (u === `/api/creative/jobs/${JOB}` && init?.method === "POST") return json({ error: "not_cancellable" }, 409);
+      if (u === `/api/creative/jobs/${JOB}`) return json({ job: jobRow("running") });
+      return json({ error: "failed" }, 502);
+    });
+    mountPanel();
+    await startJob();
+    fireEvent.click(screen.getByTestId("music-cancel"));
+    await advance(0);
+    expect(screen.getByTestId("music-cancel-note").textContent).toBe(en.captions.notCancellable);
+    expect(screen.queryByTestId("music-cancel")).toBeNull();
+    expect(screen.getByTestId("music-status").textContent).toBe(tm().working);
+  });
+
+  it("a running job offers no cancel key (only a queued one can be stopped)", async () => {
+    jobAnswers = [() => json({ job: jobRow("running") })];
+    mountPanel();
+    await startJob();
+    expect(screen.getByTestId("music-cancel")).toBeTruthy();
+    await advance(3000);
+    expect(screen.queryByTestId("music-cancel")).toBeNull();
   });
 });
 

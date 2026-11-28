@@ -37,7 +37,7 @@ import { ImproveWithAi } from "@/components/ai/ImproveWithAi";
 import { isImproveKind } from "@/lib/creative/improve";
 import type { StudioModel } from "@/lib/creative/studio";
 import { VoiceOverRecorder } from "@/components/editor/VoiceOverRecorder";
-import { MusicMaker, musicModelsFrom } from "@/components/editor/MusicMaker";
+import { MusicMaker, musicModelsFrom, readPendingMusic } from "@/components/editor/MusicMaker";
 import { useFullLoadLinks } from "@/components/editor/useFullLoadLinks";
 import { loadDocument } from "@/lib/editor-nav";
 import {
@@ -361,6 +361,7 @@ export function TimelineEditor({
   userId = "",
   aiTools = null,
   aiModels = null,
+  musicModels: musicList = [],
   offerAssetId = null,
   focusPanel = null,
   multiRatio = false,
@@ -389,6 +390,8 @@ export function TimelineEditor({
   aiTools?: readonly string[] | null;
   /** The Studio's models for those tools; null = not known (the Studio picks). */
   aiModels?: readonly StudioModel[] | null;
+  /** The Studio composer's music models, read for this workspace (loadStudioModels(orgId)); empty = no "Make music" key. */
+  musicModels?: readonly StudioModel[];
   /** A finished AI result (a library file id) the Studio sent the person back with: offered as "Add to project". */
   offerAssetId?: string | null;
   /** Open scrolled to a panel ("Improve with AI" → Captions from the library). */
@@ -439,9 +442,14 @@ export function TimelineEditor({
   const [addingSound, setAddingSound] = useState(false);
   /** The voice-over panel. Opening it asks for nothing: the microphone is asked for only when Record is pressed. */
   const [recordingVoice, setRecordingVoice] = useState(false);
-  /** "Make music": offered only while the Studio's own list has a music model sold here (the same list as aiModels). */
+  /** "Make music": offered only while the Studio composer's list has a music model sold to this workspace. */
   const [makingMusic, setMakingMusic] = useState(false);
   const makeMusicButton = useRef<HTMLButtonElement>(null);
+  // A track this tab asked for before a refresh (sessionStorage, per project): read after mounting, never during the server render.
+  const [musicPending, setMusicPending] = useState(false);
+  useEffect(() => {
+    setMusicPending(readPendingMusic(projectId) !== null);
+  }, [projectId]);
   const [addingOverlay, setAddingOverlay] = useState(false);
   const [addingShape, setAddingShape] = useState(false);
   // Why the last "Add to video" was refused by the export's budgets (said politely, in words).
@@ -1326,6 +1334,7 @@ export function TimelineEditor({
 
   function closeMusic() {
     setMakingMusic(false);
+    setMusicPending(readPendingMusic(projectId) !== null);
     // Back to the key that opened it (the panel's own close key and Escape alike).
     setTimeout(() => makeMusicButton.current?.focus(), 0);
   }
@@ -1369,7 +1378,7 @@ export function TimelineEditor({
   }
 
   const audioFull = audioInputs(model) >= MAX_AUDIO_CLIPS;
-  const musicModels = musicModelsFrom(aiModels);
+  const musicModels = musicModelsFrom(musicList);
   const shownTexts = textsAt(model, playhead);
   // "Exports are sold now" is not a failure: the price and its yes appear right below it, so it is said as a note, not an
   // alarm, and the next press of Export is the paid one. The refusal that taught it stays the pinned flow.
@@ -2125,8 +2134,23 @@ export function TimelineEditor({
               onClose={() => setRecordingVoice(false)}
             />
           ) : null}
-          {makingMusic && orgId && musicModels.length > 0 ? (
-            <MusicMaker orgId={orgId} models={musicModels} canAdd={canAddSound(model)} onAdd={onAddMusic} onClose={closeMusic} />
+          {!makingMusic && musicPending && orgId ? (
+            <p role="status" className="m-0 flex flex-wrap items-center gap-2 text-xs text-[var(--color-muted)]" data-testid="music-pending">
+              {t.editorMusic.pending}
+              <button type="button" onClick={() => setMakingMusic(true)} className={`${quietBtn} min-h-11`}>
+                {t.editorMusic.pendingShow}
+              </button>
+            </p>
+          ) : null}
+          {makingMusic && orgId && (musicModels.length > 0 || musicPending) ? (
+            <MusicMaker
+              orgId={orgId}
+              projectId={projectId}
+              models={musicModels}
+              canAdd={canAddSound(model)}
+              onAdd={onAddMusic}
+              onClose={closeMusic}
+            />
           ) : null}
           {addingSound ? (
             <section

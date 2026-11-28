@@ -6312,6 +6312,9 @@ export const en = {
     full: "The timeline has no room for another sound. Remove one, then make music.",
     fullAfter: "The track is ready, but the timeline has no room for another sound. It is in your library: remove a sound, then add it with Add music or sound.",
     noSubstitute: "Nothing else is used to make the music instead.",
+    lost: "The music this page was waiting for can no longer be found, so nothing was added. If it was finished, the track is in your library.",
+    pending: "Music for this project is still being made.",
+    pendingShow: "Show",
     tryAgain: "Try again",
   },
 };

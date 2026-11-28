@@ -6285,6 +6285,9 @@ export const uz: Dictionary = {
     full: "Taymlaynda yana bir ovoz uchun joy yoʻq. Bittasini olib tashlang, soʻng musiqa yarating.",
     fullAfter: "Trek tayyor, lekin taymlaynda yana bir ovoz uchun joy yoʻq. U kutubxonangizda: bitta ovozni olib tashlang, soʻng uni «Musiqa yoki ovoz qoʻshish» orqali qoʻshing.",
     noSubstitute: "Uning oʻrniga musiqa boshqa hech narsa bilan yaratilmaydi.",
+    lost: "Bu sahifa kutgan musiqa endi topilmadi, shuning uchun hech narsa qoʻshilmadi. Agar trek tayyor boʻlgan boʻlsa, u kutubxonangizda.",
+    pending: "Bu loyiha uchun musiqa hali yaratilmoqda.",
+    pendingShow: "Koʻrsatish",
     tryAgain: "Qayta urinish",
   },
 };

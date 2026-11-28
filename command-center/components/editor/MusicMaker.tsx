@@ -62,18 +62,65 @@ function isLyria(id: string): boolean {
   return id.startsWith("google-lyria");
 }
 
+// ── a track asked for before a refresh: this tab's own record of which job to wait for ─────────────────────────────────────
+// sessionStorage, keyed by project, holds only a job id and when it started. It is never trusted for more than "ask about this
+// job": the job is read again through /api/creative/jobs/{id}, under the person's session and RLS (another organization's job
+// reads as 404), and only what that answers is placed. Every access is wrapped: storage throws in private modes and when full,
+// and the editor must work without it.
+const PENDING_PREFIX = "nightshift:editor-music:";
+const JOB_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export interface PendingMusic {
+  jobId: string;
+  startedAt: number;
+}
+
+export function readPendingMusic(projectId: string): PendingMusic | null {
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_PREFIX + projectId);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as { jobId?: unknown; startedAt?: unknown };
+    if (typeof v.jobId !== "string" || !JOB_ID_RE.test(v.jobId)) return null;
+    if (typeof v.startedAt !== "number" || !Number.isFinite(v.startedAt)) return null;
+    return { jobId: v.jobId, startedAt: v.startedAt };
+  } catch {
+    return null;
+  }
+}
+
+function writePendingMusic(projectId: string, v: PendingMusic): void {
+  try {
+    window.sessionStorage.setItem(PENDING_PREFIX + projectId, JSON.stringify(v));
+  } catch {
+    // Without storage a refresh simply does not find the job again; the track still lands in the library.
+  }
+}
+
+function clearPendingMusic(projectId: string): void {
+  try {
+    window.sessionStorage.removeItem(PENDING_PREFIX + projectId);
+  } catch {
+    // Nothing to do: a stale entry is re-read and answered by the job route.
+  }
+}
+
 type Run =
   | { at: "idle" }
   | { at: "confirm" }
   | { at: "starting" }
-  | { at: "working"; jobId: string; since: number }
+  // `adopted`: found again after a refresh, so it is read at once instead of after the first wait.
+  | { at: "working"; jobId: string; since: number; adopted?: boolean }
   | { at: "reading" }
   | { at: "failed"; reason: string }
   | { at: "unreadable" }
-  | { at: "full" };
+  | { at: "full" }
+  | { at: "lost" }
+  | { at: "cancelled" };
 
 export interface MusicMakerProps {
   orgId: string;
+  /** The project this panel places music in: a job waited for across a refresh is kept per project. */
+  projectId: string;
   /** The sellable music models (musicModelsFrom); the editor mounts the panel only when there is at least one. */
   models: readonly StudioModel[];
   /** Whether the project has room for another sound now (lib/editor.ts canAddSound). */
@@ -90,7 +137,7 @@ export interface MusicMakerProps {
  * The finished audio file is read from the library and handed to the editor, which places it at the playhead. A model that stops
  * being available stops the panel: nothing else is offered instead (CLAUDE.md #4).
  */
-export function MusicMaker({ orgId, models, canAdd, onAdd, onClose }: MusicMakerProps) {
+export function MusicMaker({ orgId, projectId, models, canAdd, onAdd, onClose }: MusicMakerProps) {
   const { t, fmt, locale } = useI18n();
   const tm = t.editorMusic;
   const path = useChannelPath();
@@ -107,17 +154,30 @@ export function MusicMaker({ orgId, models, canAdd, onAdd, onClose }: MusicMaker
   // A refusal of the create itself (the quote's own refusals live in `quote`).
   const [refusal, setRefusal] = useState<{ code: string; detail?: string } | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  // The job's last status as read (a queued job may still be cancelled) and what a cancel answered.
+  const [jobStatus, setJobStatus] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelNote, setCancelNote] = useState<string | null>(null);
   const pressing = useRef(false);
   const onAddRef = useRef(onAdd);
   onAddRef.current = onAdd;
 
   useEffect(() => {
+    // A track this tab asked for before a refresh is waited for again, not asked (and paid for) twice.
+    const pending = readPendingMusic(projectId);
+    if (pending) {
+      setNow(Date.now());
+      setRun({ at: "working", jobId: pending.jobId, since: pending.startedAt, adopted: true });
+    }
     box.current?.focus();
+    // once, when the panel opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const words = prompt.trim();
   const paramsKey = JSON.stringify(musicParams(prompt));
   const busy = run.at === "starting" || run.at === "working" || run.at === "reading";
+  const adopted = run.at === "working" && run.adopted === true;
 
   // ── the price: asked of the database only, never computed here ───────────────
   useEffect(() => {
@@ -172,20 +232,38 @@ export function MusicMaker({ orgId, models, canAdd, onAdd, onClose }: MusicMaker
     if (!jobId) return;
     let stopped = false;
     const tick = setInterval(() => setNow(Date.now()), 1000);
-    const poll = setInterval(async () => {
+    const read = async () => {
       let job: StudioJob | undefined;
       try {
         const res = await fetch(`/api/creative/jobs/${encodeURIComponent(jobId)}`, { cache: "no-store" });
         const body = (await res.json().catch(() => ({}))) as { job?: unknown };
-        if (stopped || !res.ok) return;
+        if (stopped) return;
+        if (res.status === 404) {
+          // Not a job this session may read (or no longer one): stop waiting for it, and say so.
+          stopped = true;
+          clearInterval(poll);
+          clearInterval(tick);
+          clearPendingMusic(projectId);
+          setRun({ at: "lost" });
+          return;
+        }
+        if (!res.ok) return;
         job = coerceJobs([body.job])[0];
       } catch {
         return; // the next tick asks again
       }
-      if (!job || stopped || isActiveStatus(job.status)) return;
+      if (!job || stopped) return;
+      setJobStatus(job.status);
+      if (isActiveStatus(job.status)) return;
       stopped = true;
       clearInterval(poll);
       clearInterval(tick);
+      // The job has ended, whichever way: a refresh must not wait for it again.
+      clearPendingMusic(projectId);
+      if (job.status === "cancelled") {
+        setRun({ at: "cancelled" });
+        return;
+      }
       if (job.status !== "completed") {
         setRun({ at: "failed", reason: failureReason(t, job) });
         return;
@@ -201,13 +279,15 @@ export function MusicMaker({ orgId, models, canAdd, onAdd, onClose }: MusicMaker
         return;
       }
       onClose();
-    }, POLL_MS);
+    };
+    const poll = setInterval(() => void read(), POLL_MS);
+    if (adopted) void read();
     return () => {
       stopped = true;
       clearInterval(poll);
       clearInterval(tick);
     };
-    // `t` and `onClose` are read when the job ends, not watched.
+    // `t`, `onClose`, `projectId` and `adopted` are read when the job is, not watched.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
 
@@ -235,6 +315,9 @@ export function MusicMaker({ orgId, models, canAdd, onAdd, onClose }: MusicMaker
       if (res.ok && typeof body.job?.id === "string") {
         const at = Date.now();
         setNow(at);
+        writePendingMusic(projectId, { jobId: body.job.id, startedAt: at });
+        setJobStatus("queued");
+        setCancelNote(null);
         setRun({ at: "working", jobId: body.job.id, since: at });
         void refreshCredits(orgId);
         return;
@@ -249,6 +332,40 @@ export function MusicMaker({ orgId, models, canAdd, onAdd, onClose }: MusicMaker
       setRun({ at: "idle" });
     } finally {
       pressing.current = false;
+    }
+  }
+
+  // ── cancel: the existing job route (POST { action: "cancel" }, 0231's cancel_creative_job), which releases the hold ────────
+  async function cancel() {
+    if (run.at !== "working" || cancelling) return;
+    const id = run.jobId;
+    setCancelling(true);
+    setCancelNote(null);
+    try {
+      const res = await fetch(`/api/creative/jobs/${encodeURIComponent(id)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "cancel" }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { job?: unknown; error?: unknown };
+      const ended = res.ok ? coerceJobs([body.job])[0] : undefined;
+      if (ended && ended.status === "cancelled") {
+        clearPendingMusic(projectId);
+        setRun({ at: "cancelled" });
+        void refreshCredits(orgId);
+      } else if (ended) {
+        // It ended some other way first: the next read of the job says how.
+        setJobStatus(ended.status);
+      } else if (body.error === "not_cancellable") {
+        setJobStatus("running");
+        setCancelNote(t.captions.notCancellable);
+      } else {
+        setCancelNote(apiErrorMessage(t, body.error));
+      }
+    } catch {
+      setCancelNote(apiErrorMessage(t, "failed"));
+    } finally {
+      setCancelling(false);
     }
   }
 
@@ -403,10 +520,29 @@ export function MusicMaker({ orgId, models, canAdd, onAdd, onClose }: MusicMaker
         </p>
       ) : null}
       {run.at === "working" ? <p className={note}>{tm.workingNote}</p> : null}
+      {run.at === "working" && jobStatus === "queued" ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => void cancel()} disabled={cancelling} className={btn} data-testid="music-cancel">
+            {t.captions.cancel}
+          </button>
+        </div>
+      ) : null}
+      {cancelNote ? (
+        <p className="m-0 text-xs text-[var(--color-muted)]" data-testid="music-cancel-note">
+          {cancelNote}
+        </p>
+      ) : null}
+      {run.at === "cancelled" ? (
+        <p className="m-0 text-sm" data-testid="music-cancelled">
+          {t.captions.cancelled}
+        </p>
+      ) : null}
 
-      {run.at === "failed" || run.at === "unreadable" || run.at === "full" ? (
+      {run.at === "failed" || run.at === "unreadable" || run.at === "full" || run.at === "lost" ? (
         <div role="alert" className="flex flex-col gap-1 text-sm text-[var(--color-warn)]" data-testid="music-error">
-          <p className="m-0">{run.at === "failed" ? tm.failed : run.at === "unreadable" ? tm.unreadable : tm.fullAfter}</p>
+          <p className="m-0">
+            {run.at === "failed" ? tm.failed : run.at === "unreadable" ? tm.unreadable : run.at === "lost" ? tm.lost : tm.fullAfter}
+          </p>
           {run.at === "failed" ? <p className="m-0 text-xs">{run.reason}</p> : null}
         </div>
       ) : null}
@@ -423,7 +559,7 @@ export function MusicMaker({ orgId, models, canAdd, onAdd, onClose }: MusicMaker
             </button>
           </div>
         </div>
-      ) : run.at === "failed" || run.at === "unreadable" ? (
+      ) : run.at === "failed" || run.at === "unreadable" || run.at === "lost" || run.at === "cancelled" ? (
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
