@@ -9,7 +9,9 @@ Status: adapter shipped DARK and REGISTRY-ONLY, 2026-11-10. Internal notes. Noth
 | `sonilo-music` | `text-to-music` | `audio.sonilo` | `SONILO_API_KEY` | `terms_review_required` | `music` (new) | a track of 10-120 s from a prompt, one MP3 |
 | `sonilo-video-music` | `video-to-music` | `audio.sonilo` | `SONILO_API_KEY` | `terms_review_required` | `video_music` (new) | music as long as an uploaded MP4 (6 minutes at most), one MP3; the video is not changed |
 
-Both: `api_exposure: web_only`, no `credit_prices` row, prices dated 2026-11-10 and marked ESTIMATE / `confirmed: false`, `attribution: null`. Both are **registry-only** (see "The schema decision"): they are not copied into the database, `tools/probe_models.py` never probes them (named or not), and no job can name them.
+Both: `api_exposure: web_only`, no `credit_prices` row, prices dated 2026-11-10 and marked ESTIMATE / `confirmed: false`, `attribution: null`. Both were **registry-only** when this was written (see "The schema decision"): they were not copied into the database, `tools/probe_models.py` never probed them (named or not), and no job could name them.
+
+Update (after 0228, branch `claude/nsai-s6-music-on`): the database knows `music`, so `sonilo-music` is synced dark (its row is `hidden`, terms-gated and unpriced; `--all` skips it, only a probe that names it runs). `sonilo-video-music` is still registry-only: no migration adds `video_music`.
 
 **Sonilo's own API only.** The API is Sonilo Inc.'s (`api.sonilo.com`, documented at `platform.sonilo.com/docs`; the Terms' DMCA address is 125 Willow Road, Suite 200, Menlo Park, CA 94025). Sonilo is also resold by others (Pika's catalogue lists it; ComfyUI, Scenario and WaveSpeed publish Sonilo nodes or models); none of those is used. The API has **no model field**: an endpoint is the model, and which model version answers is Sonilo's choice and can change without notice (the web site's banner names a "Music 1.5 (beta)"; the API pages name no version).
 
@@ -122,7 +124,7 @@ The registry had no capability for music. The smallest extension that lets a mus
 
 A new capability cannot simply be added to the file, because of how the file reaches the database: `sync_model_registry` is one statement over every row, and migration 0100's `model_registry_capabilities_check` is a closed list. One row with `music` would fail the sync of every model. No migration is added here. Instead:
 
-- `base.REGISTRY_ONLY_CAPABILITIES = {music, video_music}`: the capabilities the database does not list yet.
+- `base.REGISTRY_ONLY_CAPABILITIES = {music, video_music}` (as written; since 0228 it is `{video_music, video_character_swap}`): the capabilities the database does not list yet.
 - `ModelEntry.registry_only` is true for an entry that lists one. `model_registry.sync_rows` leaves such an entry out, so the database never sees it: no row, so no price, no `sellable_models()` result, no job, no probe row.
 - The registry refuses a registry-only entry that is not dark by its own fields (`terms_gate` set, `api_exposure: web_only`, price unconfirmed) or that mixes a registry-only capability with one the database knows (the sync would drop both silently).
 - `tools/probe_models.py` never probes one, named or not: `record_model_probe` could not store the result, and a probe that is not recorded is money spent for nothing. `--all` reports it with the gated models (`gated <id>`); a named one prints why it is skipped (`skipped <id>` in the public log).

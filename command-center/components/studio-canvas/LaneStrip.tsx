@@ -7,11 +7,19 @@
  * the landing animation. It reads no table and knows no card.
  *
  * What it never does: play, render, assemble, export or spend (CLAUDE.md rule 3); its only keys are open/close and the segments.
- * It never draws a guess as a reading (rule 5): a length is measured, or requested and marked "~", or "?" on a hatched pill at a
- * default width; the ruler stops naming times past the first unknown length; a picture is only ever the row's own `thumb`.
+ * It never draws a guess as a reading (rule 5): a length is measured, or requested and marked "~", or planned (a dotted edge and
+ * the word "plan"), or "?" on a hatched pill at a default width; the ruler stops naming times past the first unknown length; a
+ * picture is only ever the row's own `thumb`.
+ *
+ * `master` is one more row drawn after the tracks, at the end of the lane: the video the tracks are assembled into. It is not a
+ * track (nothing is placed on a time scale), and `masterAction` is what the caller puts under it (a download once a file exists).
+ * It stays on screen with the strip closed: on a phone it is the one thing a person came to see.
+ *
+ * A live caller can also: name the strip (`label`), hide its own total when it shows a truer one (`showTotal`), hide the 0:00
+ * flag and the canvas's "nothing renders here" note (`startFlag`, `showNote`), and label pills by their tag (`pillLabel`).
  */
 import { createPortal } from "react-dom";
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { AudioLines, ChevronDown, Film, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { laneTotal, placeTrack, type LaneLength, type LaneRow, type LaneTrack } from "@/lib/studio/lane";
@@ -28,6 +36,10 @@ const PX_PER_S_PHONE = 18;
 const LABEL_EVERY = 5;
 /** A pill narrower than this shows its icon, not its picture: the name needs the room. */
 const THUMB_MIN_W = 128;
+/** A tagged pill narrower than this has no room for its status words beside the tag. */
+const NARROW_PILL_W = 150;
+/** Narrower than this a tag loses its kind (`clip-02.1` → `02.1`): the track already says it, and the number is what matters. */
+const FULL_TAG_W = 100;
 const TRACK_ICON: Record<LaneTrack, LucideIcon> = { video: Film, audio: AudioLines };
 
 function readOpen(key: string, fallback: boolean): boolean {
@@ -52,6 +64,17 @@ function scrollLane(box: HTMLElement, left: number) {
   if (typeof box.scrollTo === "function") box.scrollTo({ left: to, behavior: reducedMotion() ? "auto" : "smooth" });
   else box.scrollLeft = to;
 }
+/** The bottom of whatever is fixed or sticky at the top of the page: a card under it is not on screen for a flight to start from. */
+function headerBottom(): number {
+  let bottom = 0;
+  for (const h of document.querySelectorAll<HTMLElement>("header")) {
+    const pos = getComputedStyle(h).position;
+    if (pos === "fixed" || pos === "sticky") bottom = Math.max(bottom, h.getBoundingClientRect().bottom);
+  }
+  return bottom;
+}
+/** A length on a pill: whole seconds, rounded (6.6 s is 0:07, not 0:06). */
+const dur = (seconds: number) => formatTimecode(Math.round(seconds), "duration");
 const pillOf = (box: HTMLElement, id: string) => Array.from(box.querySelectorAll<HTMLElement>("[data-lane-seg]")).find((el) => el.dataset.laneSeg === id);
 
 type Flight = { key: number; tag: string; track: LaneTrack; fx: number; fy: number; tx: number; ty: number };
@@ -68,6 +91,13 @@ export function LaneStrip({
   iconFor,
   storageKey = LANE_OPEN_KEY,
   testId = "canvas-lane",
+  master,
+  masterAction,
+  label,
+  showTotal = true,
+  startFlag = true,
+  showNote = true,
+  pillLabel = "name",
 }: {
   /** Each track's rows in the order they play. */
   rows: readonly LaneRow[];
@@ -87,6 +117,21 @@ export function LaneStrip({
   iconFor?: (row: LaneRow) => LucideIcon;
   storageKey?: string;
   testId?: string;
+  /** The assembled result, drawn after the tracks (a live film's master). Its `length` is shown as the others are. */
+  master?: LaneRow;
+  /** Under the master: the caller's own control for an existing file (it must not start, render or spend anything). */
+  masterAction?: ReactNode;
+  /** The strip's accessible name (default: the canvas's). */
+  label?: string;
+  /** The bar's own total; a caller that shows a truer one elsewhere turns it off, so the page never shows two. */
+  showTotal?: boolean;
+  /** The fixed 0:00 flag where the lane starts (on a live view it could read as a playhead). */
+  startFlag?: boolean;
+  /** The canvas's "order only, nothing renders" note. */
+  showNote?: boolean;
+  /** What a pill says on its face: its name (the canvas's cards) or its tag (a live film's `clip-02.1`). The name is always in its
+   *  accessible name and title. */
+  pillLabel?: "name" | "tag";
 }) {
   const { t, fmt } = useI18n();
   const c = t.studioCanvas;
@@ -111,7 +156,15 @@ export function LaneStrip({
   // The two tracks run side by side from 0: the known length is the longer one; unknowns are counted, never summed in.
   // "~" (requested) only when the longer track's own sum leans on a requested length.
   const longer = vTotal.seconds >= aTotal.seconds ? vTotal : aTotal;
-  const total = { seconds: longer.seconds, requested: longer.requested, unknown: vTotal.unknown + aTotal.unknown };
+  // A planned length is summed like a known one, so a total that leans on one says "planned", never "known".
+  const longerRows = longer === vTotal ? video : audio;
+  const total = {
+    seconds: longer.seconds,
+    requested: longer.requested,
+    planned: longerRows.some((r) => r.length?.basis === "planned"),
+    unknown: vTotal.unknown + aTotal.unknown,
+  };
+  const anyPlanned = rows.some((r) => r.length?.basis === "planned");
   const empty = rows.length === 0;
   const innerW = Math.ceil(end) + 160;
   const rulerSpan = Math.max(innerW, 2400);
@@ -123,12 +176,27 @@ export function LaneStrip({
   const flightKey = useRef(0);
   const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set());
   const [flights, setFlights] = useState<Flight[]>([]);
-  const ids = rows.map((r) => r.id).join(",");
+  // The master lands too (it pulses: it has no place on the time scale to fly to).
+  const ids = [...rows.map((r) => r.id), ...(master ? [master.id] : [])].join(",");
   const landedKey = landedIds ? landedIds.join(",") : null;
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const fromRef = useRef(flightFrom);
   fromRef.current = flightFrom;
+  // A frame asked for is never cancelled by a re-run (that swallowed a flight whose id was already marked flown); only unmounting
+  // cancels them. The "new" mark clears on its own timer, keyed on the mark, so a re-run cannot leave it stuck.
+  const frames = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    const all = frames.current;
+    return () => {
+      for (const f of all) cancelAnimationFrame(f);
+    };
+  }, []);
+  useEffect(() => {
+    if (fresh.size === 0) return;
+    const clear = window.setTimeout(() => setFresh(new Set()), 1400);
+    return () => window.clearTimeout(clear);
+  }, [fresh]);
   useLayoutEffect(() => {
     const now = new Set(ids ? ids.split(",") : []);
     let added: string[];
@@ -149,31 +217,28 @@ export function LaneStrip({
     }
     if (added.length === 0) return;
     setFresh(new Set(added));
-    const clear = window.setTimeout(() => setFresh(new Set()), 1400);
     const box = scroller.current;
     const last = box ? pillOf(box, added[added.length - 1]) : undefined;
     // A segment landing past the visible end is brought into view, so the person sees where it went.
     if (box && last && (last.offsetLeft < box.scrollLeft || last.offsetLeft + last.offsetWidth > box.scrollLeft + box.clientWidth)) scrollLane(box, last.offsetLeft);
-    let frame = 0;
     if (fly && !reducedMotion() && box) {
-      frame = requestAnimationFrame(() => {
+      const frame = requestAnimationFrame(() => {
+        frames.current.delete(frame);
         const next: Flight[] = [];
         for (const id of added.slice(0, 3)) {
           const row = rowsRef.current.find((r) => r.id === id);
           const to = pillOf(box, id)?.getBoundingClientRect();
           if (!row || !to || to.width === 0) continue;
           const card = fromRef.current?.(id) ?? null;
-          const visible = !!card && card.bottom > 0 && card.top < window.innerHeight && card.right > 0 && card.left < window.innerWidth;
+          // On screen means below the page's fixed header, not just inside the window.
+          const visible = !!card && card.top >= headerBottom() && card.top < window.innerHeight && card.right > 0 && card.left < window.innerWidth;
           const from = visible ? { x: card!.right - 24, y: card!.top + 12 } : { x: to.left + 8, y: to.top - 56 };
           next.push({ key: ++flightKey.current, tag: row.tag, track: row.track, fx: from.x, fy: from.y, tx: to.left + 6, ty: to.top - 22 });
         }
         if (next.length) setFlights((f) => [...f, ...next]);
       });
+      frames.current.add(frame);
     }
-    return () => {
-      window.clearTimeout(clear);
-      cancelAnimationFrame(frame);
-    };
   }, [ids, landedKey, fly]);
 
   // The selected row is kept in view.
@@ -187,9 +252,16 @@ export function LaneStrip({
   const [portal, setPortal] = useState(false);
   useEffect(() => setPortal(true), []);
 
-  const lengthText = (len: LaneLength) => (!len ? "?" : `${len.basis === "requested" ? "~" : ""}${formatTimecode(len.seconds, "duration")}`);
+  const lengthText = (len: LaneLength) =>
+    !len ? "?" : len.basis === "planned" ? fmt(l.lengthPlannedShort, { t: dur(len.seconds) }) : `${len.basis === "requested" ? "~" : ""}${dur(len.seconds)}`;
   const lengthWords = (len: LaneLength) =>
-    !len ? l.lengthUnknown : len.basis === "requested" ? fmt(l.lengthRequested, { t: formatTimecode(len.seconds, "duration") }) : formatTimecode(len.seconds, "duration");
+    !len
+      ? l.lengthUnknown
+      : len.basis === "requested"
+        ? fmt(l.lengthRequested, { t: dur(len.seconds) })
+        : len.basis === "planned"
+          ? fmt(l.lengthPlanned, { t: dur(len.seconds) })
+          : dur(len.seconds);
 
   const pill = (s: LaneRow, index: number, x: number, w: number) => {
     const Icon = iconFor?.(s) ?? TRACK_ICON[s.track];
@@ -199,6 +271,7 @@ export function LaneStrip({
       `s-${s.status}`,
       s.made ? "is-made" : "is-plan",
       !s.length && "is-unk",
+      s.length?.basis === "planned" && "is-planned",
       s.status === "run" && "is-working",
       selected === s.id && "is-sel",
       fresh.has(s.id) && "is-new",
@@ -207,6 +280,9 @@ export function LaneStrip({
       .join(" ");
     const label = fmt(l.seg, { n: index, name: s.name, status: s.statusWords, length: lengthWords(s.length) });
     const art = s.thumb && w >= THUMB_MIN_W;
+    // A narrow tagged pill keeps the whole tag (its ".2" is what tells two shots apart) and the lamp: its icon goes, and its status
+    // words move to its title and accessible name.
+    const roomy = pillLabel === "name" || w >= NARROW_PILL_W;
     return (
       <li key={s.id} className="cv-pill-li" style={{ left: x, width: w }}>
         <button
@@ -225,15 +301,15 @@ export function LaneStrip({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={s.thumb!} alt="" draggable={false} />
             </span>
-          ) : (
+          ) : roomy ? (
             <Icon aria-hidden className="cv-pill-ic" strokeWidth={2} />
-          )}
+          ) : null}
           <span className="cv-pill-txt" aria-hidden>
-            <span className="cv-pill-nm">{s.name}</span>
+            <span className={pillLabel === "tag" ? "cv-pill-nm is-tag" : "cv-pill-nm"}>{pillLabel === "tag" ? (w >= FULL_TAG_W ? s.tag : s.tag.slice(s.tag.indexOf("-") + 1)) : s.name}</span>
             <span className="cv-pill-meta">
               <span className={`cv-lamp is-${s.status}${s.status === "run" ? " is-live" : ""}`} />
               <span className="cv-pill-len">{lengthText(s.length)}</span>
-              {!s.made && <span className="cv-pill-st">{s.statusWords}</span>}
+              {!s.made && roomy && <span className="cv-pill-st">{s.statusWords}</span>}
             </span>
           </span>
         </button>
@@ -244,12 +320,53 @@ export function LaneStrip({
   const ticks: number[] = [];
   for (let s = 0; s * pxPerS <= rulerSpan; s += LABEL_EVERY) ticks.push(s);
   const known = total.seconds > 0 || total.unknown === 0;
-  const totalWords = total.requested ? fmt(l.lengthRequested, { t: formatTimecode(total.seconds, "duration") }) : formatTimecode(total.seconds, "duration");
+  const totalWords = total.planned
+    ? fmt(l.totalPlanned, { t: dur(total.seconds) })
+    : total.requested
+      ? fmt(l.total, { t: fmt(l.lengthRequested, { t: dur(total.seconds) }) })
+      : fmt(l.total, { t: dur(total.seconds) });
+
+  const body = (
+    <div className="cv-lane-body" id={`${testId}-body`}>
+      <div className="cv-lane-heads">
+        <span className="cv-lane-hgap" aria-hidden />
+        <TrackHead track="video" name={l.video} sub={l.videoSub} letter={c.ports.letters.video} />
+        <TrackHead track="audio" name={l.audio} sub={l.audioSub} letter={c.ports.letters.audio} />
+      </div>
+      <div className="cv-lane-scroll" ref={scroller}>
+        <div className="cv-lane-in" style={{ width: innerW }}>
+          <div className="cv-ruler" aria-hidden>
+            {ticks
+              .filter((s) => s * pxPerS < timedUntil)
+              .map((s) => (
+                <i key={s} style={{ left: s * pxPerS }}>
+                  {formatTimecode(s, "duration")}
+                </i>
+              ))}
+            {Number.isFinite(timedUntil) && <span className="cv-ruler-unk" style={{ left: timedUntil }} title={l.untimed} />}
+          </div>
+          {/* Where the lane starts. Nothing plays here, so it never moves. */}
+          {startFlag ? <span className="cv-lane-head" aria-hidden /> : null}
+          <ol className="cv-track t-video" aria-label={l.video}>
+            {video.map((s, i) => pill(s, i + 1, vPlace.places[i].x, vPlace.places[i].w))}
+          </ol>
+          <ol className="cv-track t-audio" aria-label={l.audio}>
+            {audio.map((s, i) => pill(s, i + 1, aPlace.places[i].x, aPlace.places[i].w))}
+          </ol>
+          {empty && (
+            <p className="cv-lane-empty" data-testid="lane-empty">
+              {l.empty}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <section
       className={`cv-lane${phone ? " is-phone" : ""}${open ? "" : " is-closed"}`}
-      aria-label={l.label}
+      aria-label={label ?? l.label}
       data-testid={testId}
       data-open={open ? "true" : "false"}
       style={{ "--pxs": `${pxPerS}px` } as CSSProperties}
@@ -260,20 +377,23 @@ export function LaneStrip({
           <span>{l.title}</span>
         </button>
         {/* Nothing known at all: the words, never a 00:00 that would read as a measurement. */}
-        <span className={!known ? "cv-lane-tc is-unknown" : empty ? "cv-lane-tc is-empty" : "cv-lane-tc"} title={known ? fmt(l.total, { t: totalWords }) : undefined} data-testid="lane-total">
-          {known ? (
-            <>
-              <span aria-hidden>
-                {total.requested ? "~" : ""}
-                {timecode(total.seconds)}
-              </span>
-              <span className="sr-only">{fmt(l.total, { t: totalWords })}</span>
-            </>
-          ) : (
-            l.lengthUnknown
-          )}
-        </span>
-        {total.unknown > 0 && <span className="cv-lane-unk">{fmt(l.totalUnknown, { n: total.unknown })}</span>}
+        {showTotal ? (
+          <span className={!known ? "cv-lane-tc is-unknown" : empty ? "cv-lane-tc is-empty" : "cv-lane-tc"} title={known ? totalWords : undefined} data-testid="lane-total" data-planned={total.planned ? "true" : undefined}>
+            {known ? (
+              <>
+                <span aria-hidden>
+                  {total.requested ? "~" : ""}
+                  {timecode(total.seconds)}
+                  {total.planned ? <span className="cv-lane-plan">{l.planTag}</span> : null}
+                </span>
+                <span className="sr-only">{totalWords}</span>
+              </>
+            ) : (
+              l.lengthUnknown
+            )}
+          </span>
+        ) : null}
+        {showTotal && total.unknown > 0 && <span className="cv-lane-unk">{fmt(l.totalUnknown, { n: total.unknown })}</span>}
         <span className="cv-lane-counts">
           <CountChip track="video" letter={c.ports.letters.video} words={fmt(l.count, { track: l.video, n: video.length })} n={video.length} />
           <CountChip track="audio" letter={c.ports.letters.audio} words={fmt(l.count, { track: l.audio, n: audio.length })} n={audio.length} />
@@ -287,46 +407,30 @@ export function LaneStrip({
         )}
         {open && !empty && (
           <span className="cv-lane-meta is-legend">
-            {l.legendRequested} · {l.legendUnknown}
+            {l.legendRequested} · {anyPlanned ? `${l.legendPlanned} · ` : ""}
+            {l.legendUnknown}
           </span>
         )}
-        <span className="cv-lane-meta is-note">{l.nothingRenders}</span>
+        {showNote ? <span className="cv-lane-meta is-note">{l.nothingRenders}</span> : null}
       </div>
-      {open && (
-        <div className="cv-lane-body" id={`${testId}-body`}>
-          <div className="cv-lane-heads">
-            <span className="cv-lane-hgap" aria-hidden />
-            <TrackHead track="video" name={l.video} sub={l.videoSub} letter={c.ports.letters.video} />
-            <TrackHead track="audio" name={l.audio} sub={l.audioSub} letter={c.ports.letters.audio} />
-          </div>
-          <div className="cv-lane-scroll" ref={scroller}>
-            <div className="cv-lane-in" style={{ width: innerW }}>
-              <div className="cv-ruler" aria-hidden>
-                {ticks
-                  .filter((s) => s * pxPerS < timedUntil)
-                  .map((s) => (
-                    <i key={s} style={{ left: s * pxPerS }}>
-                      {formatTimecode(s, "duration")}
-                    </i>
-                  ))}
-                {Number.isFinite(timedUntil) && <span className="cv-ruler-unk" style={{ left: timedUntil }} title={l.untimed} />}
-              </div>
-              {/* Where the lane starts. Nothing plays here, so it never moves. */}
-              <span className="cv-lane-head" aria-hidden />
-              <ol className="cv-track t-video" aria-label={l.video}>
-                {video.map((s, i) => pill(s, i + 1, vPlace.places[i].x, vPlace.places[i].w))}
-              </ol>
-              <ol className="cv-track t-audio" aria-label={l.audio}>
-                {audio.map((s, i) => pill(s, i + 1, aPlace.places[i].x, aPlace.places[i].w))}
-              </ol>
-              {empty && (
-                <p className="cv-lane-empty" data-testid="lane-empty">
-                  {l.empty}
-                </p>
-              )}
-            </div>
-          </div>
+      {master ? (
+        // The master sits beside the tracks, outside the part that opens and closes: closed, it is still on screen.
+        <div className="cv-lane-row has-master">
+          {open && body}
+          <MasterCell
+            row={master}
+            selected={selected === master.id}
+            fresh={fresh.has(master.id)}
+            onPick={onPick}
+            action={masterAction}
+            label={l.master}
+            length={lengthText(master.length)}
+            // No position number: the master is not one of the track's segments.
+            words={fmt(l.masterSeg, { name: master.name, status: master.statusWords, length: lengthWords(master.length) })}
+          />
         </div>
+      ) : (
+        open && body
       )}
       {portal &&
         flights.length > 0 &&
@@ -372,6 +476,51 @@ function TrackHead({ track, name, sub, letter }: { track: LaneTrack; name: strin
         <span className="cv-th-nm">{name}</span>
         <span className="cv-th-sub">{sub}</span>
       </span>
+    </div>
+  );
+}
+
+/** The film the tracks become, at the end of the lane: its state in words beside the lamp, and the caller's control under it. */
+function MasterCell({
+  row,
+  selected,
+  fresh,
+  onPick,
+  action,
+  label,
+  length,
+  words,
+}: {
+  row: LaneRow;
+  selected: boolean;
+  fresh: boolean;
+  onPick: (id: string) => void;
+  action?: ReactNode;
+  label: string;
+  length: string;
+  words: string;
+}) {
+  return (
+    <div className={`cv-master s-${row.status}${row.made ? " is-made" : " is-plan"}${selected ? " is-sel" : ""}${fresh ? " is-new" : ""}`} role="group" aria-label={label} data-testid="lane-master" data-status={row.status}>
+      <button type="button" className="cv-master-btn" aria-label={words} aria-current={selected ? "true" : undefined} onClick={() => onPick(row.id)} data-testid={`lane-seg-${row.id}`} data-lane-master={row.id}>
+        {row.thumb && row.made ? (
+          <span className="cv-master-art" aria-hidden>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={row.thumb} alt="" draggable={false} />
+          </span>
+        ) : (
+          <Film aria-hidden className="cv-pill-ic" strokeWidth={2} />
+        )}
+        <span className="cv-master-txt" aria-hidden>
+          <span className="cv-master-nm">{row.name}</span>
+          <span className="cv-master-meta">
+            <span className={`cv-lamp is-${row.status}${row.status === "run" ? " is-live" : ""}`} />
+            <span className="cv-master-st">{row.statusWords}</span>
+            {row.made && row.length ? <span className="cv-pill-len">{length}</span> : null}
+          </span>
+        </span>
+      </button>
+      {action ? <div className="cv-master-act">{action}</div> : null}
     </div>
   );
 }
