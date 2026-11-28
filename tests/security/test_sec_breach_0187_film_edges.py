@@ -25,7 +25,8 @@ from test_sec_films_money import MODELS as FILM_MODELS
 MODELS = FILM_MODELS + [
     ("vid-clip-ack", "acme", "video.acme", ["t2v", "i2v"], "model_vid_clip_ack_second", 2, {"durations_s": [5, 10], "end_frame": True}),
     ("img-key-ack", "acme", "image.acme", ["t2i"], "model_img_key_ack_image", 3,
-     {"aspect_ratios": ["16:9", "9:16", "1:1"], "inputs": {"image_refs_max": 6}}),
+     # 0235 (refs path): it takes references on the path a key frame is made on (t2i), or the quote refuses them first.
+     {"aspect_ratios": ["16:9", "9:16", "1:1"], "inputs": {"image_refs_max": 6, "ref_capabilities": ["t2i"]}}),
 ]
 
 

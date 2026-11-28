@@ -504,6 +504,16 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             needed = [c for c in caps if c in getattr(cls, "prompt_required_capabilities", ())]
             if any(c not in words for c in needed):
                 errors.append(_err(mid, f"adapter {m['adapter']} needs words for {needed}: list them in inputs.prompt_required"))
+        # inputs.ref_capabilities is the adapter's reference_capabilities as the database sees them: film_price (0235) refuses a key
+        # frame with references unless it lists t2i, because the adapter refuses references on any other capability at submit, after
+        # the film's hold (a priced film that cannot be made). Stated on every image model, and never other than the adapter's.
+        refs_on = m["inputs"].get("ref_capabilities")
+        if cls is not None and (m["output"] == "image" or refs_on is not None):
+            want = [c for c in getattr(cls, "reference_capabilities", ()) if c in caps]
+            if refs_on is None:
+                errors.append(_err(mid, f"inputs.ref_capabilities is required on an image model: {want} (adapter {m['adapter']})"))
+            elif sorted(refs_on) != sorted(want):
+                errors.append(_err(mid, f"inputs.ref_capabilities must be {want}, what adapter {m['adapter']} sends references on"))
         if any(c in IMAGE_INPUT for c in caps) and m["inputs"]["image_refs_max"] < 1:
             errors.append(_err(mid, "a capability that takes an image needs image_refs_max >= 1"))
         if (UPSCALE in caps) != bool(m.get("upscale_factors")):
