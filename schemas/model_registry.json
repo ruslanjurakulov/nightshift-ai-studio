@@ -3687,7 +3687,7 @@
         "source_url": null,
         "as_of": null,
         "confirmed": false,
-        "note": "rate known from vendor price list; see owner notes. Ideogram v2 upscale bills per OUTPUT megapixel, not per image: never price it per image. Measured rate: unknown until the vendor's own billing for a probe run shows it; never from docs."
+        "note": "rate known from vendor price list; see owner notes. Billed per OUTPUT megapixel, never per image; which model bills which rate is unpublished. Measured rate (the vendor's own billing for a probe run): unknown, none measured yet (probe row 77); a list rate is not a measurement."
       },
       "credit_unit": "model_ideogram_upscale_image",
       "entitlement": "models_image:basic",
