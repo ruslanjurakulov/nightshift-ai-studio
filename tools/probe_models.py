@@ -42,6 +42,7 @@ import argparse
 import logging
 import math
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -151,11 +152,24 @@ class RegistryDB:
             raise RuntimeError(f"{fn}: could not reach the database ({type(e).__name__})") from None
         if r.status_code >= 300:
             hint = " — is migration 0035 applied?" if r.status_code in (404, 400) else ""
-            raise RpcError(f"{fn}: HTTP {r.status_code}{hint}", r.status_code)
+            raise RpcError(f"{fn}: HTTP {r.status_code}{hint}", r.status_code, *_pg_error(r))
         return r.json()
 
     def sync(self, rows: List[dict]) -> int:
-        return int(self.rpc("sync_model_registry", {"p_rows": rows}) or 0)
+        try:
+            return int(self.rpc("sync_model_registry", {"p_rows": rows}) or 0)
+        except RpcError as e:
+            # One row whose capability the database's check does not list fails the whole sync (every model). On a database
+            # without 0228 that is a `music` row: say which migration is missing, not "is 0035 applied?".
+            if e.sqlstate == "23514" and e.constraint_hint == "model_registry_capabilities_check":
+                if any("music" in row.get("capabilities", []) for row in rows):
+                    raise RpcError("sync_model_registry: the database does not know capability music: apply migration 0228 "
+                                   "(supabase/migrations/0228_music_per_request_price.sql), then sync again", e.status,
+                                   e.sqlstate, e.constraint_hint) from None
+                raise RpcError("sync_model_registry: a row names a capability the database's model_registry_capabilities_check "
+                               "does not list: a migration that adds it is missing", e.status, e.sqlstate,
+                               e.constraint_hint) from None
+            raise
 
     def record(self, *, model: str, adapter: str, vendor_model: str, capability: str, ok: bool,
                error_code: Optional[str], error: Optional[str], latency_ms: int,
@@ -181,18 +195,40 @@ class RegistryDB:
 
 
 class RpcError(RuntimeError):
-    """A database refusal, with its HTTP status (the message carries no URL, key or body)."""
+    """A database refusal, with its HTTP status (the message carries no URL, key or body). ``sqlstate`` is PostgREST's ``code``
+    and ``constraint_hint`` the one constraint name this tool asks about, when the body names it: neither is ever printed raw."""
 
-    def __init__(self, message: str, status: int):
+    def __init__(self, message: str, status: int, sqlstate: Optional[str] = None, constraint_hint: Optional[str] = None):
         super().__init__(message)
         self.status = status
+        self.sqlstate = sqlstate
+        self.constraint_hint = constraint_hint
+
+
+#: The constraints a refusal is matched against, by name. Only a name on this list leaves _pg_error: the rest of the body (which
+#: for a CHECK violation holds the failing row) is never kept.
+_KNOWN_CONSTRAINTS = ("model_registry_capabilities_check",)
+
+
+def _pg_error(r):
+    try:
+        body = r.json()
+    except Exception:  # noqa: BLE001 — a body that is not JSON says nothing we act on
+        return None, None
+    if not isinstance(body, dict):
+        return None, None
+    code = body.get("code")
+    code = code if isinstance(code, str) and re.fullmatch(r"[0-9A-Z]{5}", code) else None
+    message = body.get("message") if isinstance(body.get("message"), str) else ""
+    hint = next((c for c in _KNOWN_CONSTRAINTS if f'"{c}"' in message), None)
+    return code, hint
 
 
 # ── one probe ───────────────────────────────────────────────────────────────
 class ProbeResult:
     def __init__(self, model: str, ok: bool, code: Optional[str] = None, message: str = "",
                  latency_ms: int = 0, output_bytes: Optional[int] = None, task_id: Optional[str] = None, note: str = "",
-                 credits: Optional[float] = None):
+                 credits: Optional[float] = None, estimate: Optional[float] = None, estimates: bool = False):
         self.model, self.ok, self.code, self.message = model, ok, code, message
         self.latency_ms, self.output_bytes, self.task_id = latency_ms, output_bytes, task_id
         #: Something an adapter wants printed beside an OK (Vidu's reported credits). Logged, never recorded as an error.
@@ -200,6 +236,12 @@ class ProbeResult:
         #: The vendor's own cost figure for the task, a bare number. --brief prints free text never, so without this the
         #: workflow log (always --brief) could not show the owner the figure a price is checked against.
         self.credits = credits
+        #: The create's own cost estimate (Runway's ``estimatedCost.credits``, the upscale), a bare number; ``estimates``
+        #: says the adapter reads one, so its absence is printed as "none" rather than left out. No column holds it
+        #: (0152's vendor_credits is the billed figure): the log line is its only record. Ungating the upscale needs a
+        #: live run showing it, because the creative seam cancels every task that comes back without one.
+        self.estimate = estimate
+        self.estimates = estimates
 
 
 def probe_image(dest: Path, *, end: bool = False) -> Path:
@@ -330,9 +372,12 @@ def run_probe(entry, *, env: Mapping[str, str], voice_id: Optional[str], workdir
         size = sum(f.stat().st_size for f in files)
         noter = getattr(adapter, "probe_note", None)
         counter = getattr(adapter, "probe_credits", None)
+        estimator = getattr(adapter, "probe_estimate", None)
         return ProbeResult(entry.id, True, latency_ms=int((clock() - started) * 1000),
                            output_bytes=size, task_id=task.task_id, note=noter(task) if callable(noter) else "",
-                           credits=_bare_number(counter(task)) if callable(counter) else None)
+                           credits=_bare_number(counter(task)) if callable(counter) else None,
+                           estimate=_bare_number(estimator(task)) if callable(estimator) else None,
+                           estimates=callable(estimator))
     except AdapterError as e:
         return ProbeResult(entry.id, False, e.code, e.message, int((clock() - started) * 1000),
                            task_id=task.task_id if task else None)
@@ -340,9 +385,16 @@ def run_probe(entry, *, env: Mapping[str, str], voice_id: Optional[str], workdir
 
 def _bare_number(v) -> Optional[float]:
     """Only a finite, non-negative number reaches the brief log: anything else an adapter returns is dropped, never printed."""
-    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0:
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
         return None
-    return float(v)
+    try:
+        # A 400-digit integer is an int that no float holds: isfinite() raises.
+        f = float(v)
+    except OverflowError:
+        return None
+    if not math.isfinite(f) or f < 0:
+        return None
+    return f
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
@@ -485,12 +537,16 @@ def main(argv: Optional[Sequence[str]] = None, *, env: Optional[Mapping[str, str
                 if args.brief:
                     code = res.code if res.code in BRIEF_CODES else "other"
                     extra = f" credits={res.credits:g}" if res.ok and res.credits is not None else ""
+                    if res.ok and res.estimates:
+                        extra += f" estimate={res.estimate:g}" if res.estimate is not None else " estimate=none"
                     # A fixed remedy for the one code whose fix is outside the code and the key (CLAUDE.md #6); never vendor text.
                     hint = " (the vendor API balance is empty: top it up; the key is fine)" if code == E_QUOTA else ""
                     logger.info(f"ok {e.id}{extra}" if res.ok else f"failed {e.id} {code}{hint}")
                     failures += 0 if res.ok else 1
                 elif res.ok:
-                    logger.info(f"OK   {e.id}: {res.output_bytes} bytes in {res.latency_ms} ms" + (f" - {res.note}" if res.note else ""))
+                    est = ("" if not res.estimates else f" - create estimated {res.estimate:g} credits"
+                           if res.estimate is not None else " - create gave no cost estimate")
+                    logger.info(f"OK   {e.id}: {res.output_bytes} bytes in {res.latency_ms} ms" + (f" - {res.note}" if res.note else "") + est)
                 else:
                     failures += 1
                     tail = f" (vendor task {res.task_id} may still finish and bill)" if res.code == "timeout" else ""

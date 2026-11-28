@@ -94,7 +94,14 @@ export function laneOf(state: Graph): LaneModel {
 
 // ── lengths ────────────────────────────────────────────────────────────────────
 
-export type LaneLength = { seconds: number; basis: "measured" | "requested" } | null;
+/**
+ * - measured: the file's own length, as the library read it;
+ * - requested: what a job or take asked for (drawn "~");
+ * - planned: the plan's share of a scene (a live film's slot before its shots are measured), drawn with a dotted edge and the
+ *   word "plan", never like a measurement. Only a live film's reader produces it; the canvas's segmentLength never does.
+ * null is a length nobody measured, asked for or planned (hatched, "?").
+ */
+export type LaneLength = { seconds: number; basis: "measured" | "requested" | "planned" } | null;
 
 // ── what the strip draws ────────────────────────────────────────────────────────
 

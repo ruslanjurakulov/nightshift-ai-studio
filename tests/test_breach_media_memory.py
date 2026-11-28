@@ -489,7 +489,7 @@ class UpscaleFpsProbeTests(unittest.TestCase):
             return subprocess.CompletedProcess(argv, 0, out, b"")
 
         with mock.patch.object(video.shutil, "which", return_value="/usr/bin/ffprobe"), \
-                mock.patch.object(video.subprocess, "run", side_effect=fake_run):
+                mock.patch.object(video, "_bounded_run", side_effect=fake_run):
             for name, demuxer in (("a.mp4", "mov"), ("a.MOV", "mov"), ("a.webm", "matroska"),
                                   ("a.mkv", "matroska"), ("a.bin", None)):
                 with self.subTest(name=name):
