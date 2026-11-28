@@ -36,7 +36,7 @@ import { EMPTY_DNA, dnaFromChannel, type ChannelDna } from "@/lib/channel-dna";
 import type { StudioModel } from "@/lib/creative/studio";
 
 const t = dictionaries.en;
-import { VOICES } from "@/lib/ttsModels";
+import { VOICES } from "@/lib/voices";
 const ORG = "11111111-1111-4111-8111-111111111111";
 const KIT = "55555555-5555-4555-8555-555555555555";
 const KIT2 = "66666666-6666-4666-8666-666666666666";

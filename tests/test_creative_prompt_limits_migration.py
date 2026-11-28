@@ -180,7 +180,10 @@ FILM_HUNKS = [
 ]
 
 HUNKS = {"creative_params_problem": PARAMS_HUNKS, "creative_price": PRICE_HUNKS, "film_price": FILM_HUNKS}
-LATER = sorted(p.name for p in MIG.glob("*.sql") if p.name[:4] > "0218")
+#: 0228 (music per request, S6) replaces creative_params_problem and creative_price on purpose, with one marked hunk each on 0218's
+#: and 0224's bodies; tests/test_music_per_request_migration.py pins that it changes nothing else. Every other later file must not.
+REVIEWED_REPLACERS = ("0228_music_per_request_price.sql",)
+LATER = sorted(p.name for p in MIG.glob("*.sql") if p.name[:4] > "0218" and p.name not in REVIEWED_REPLACERS)
 
 
 class CreativePromptLimitsMigration(unittest.TestCase):
@@ -350,11 +353,13 @@ class CreativePromptLimitsMigration(unittest.TestCase):
         self.assertIn("ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0218.name), MIGRATION_0218.name)", LAB)
         on_0124 = LAB[LAB.index("ON_0124 = ("):]
         on_0124 = on_0124[:on_0124.index(")\n")]
-        # 0218 closes the list, or is followed only by 0219 (which refuses to apply without it), 0224 (on its creative_price) and 0230
-        # (which refuses to apply without 0208, out and back with it), in the order they were applied live: 0218, 0219, 0224, 0230;
+        # 0218 closes the list, or is followed only by 0219 (which refuses to apply without it), 0224 (on its creative_price), 0228 (on
+        # 0224's creative_price and 0218's creative_params_problem) and 0230 (which refuses to apply without 0208, out and back with
+        # it), in this order: 0218, 0219, 0224, 0228, 0230;
         # and 0238 (which refuses to apply without 0230's gate) after 0230.
         self.assertRegex(on_0124, r'"0218_creative_prompt_limits\.sql"(,\s*(#[^\n]*\s*)*"0219_oauth_creative_operator_models\.sql")?'
                                   r'(,\s*(#[^\n]*\s*)*"0224_dated_credit_price\.sql")?'
+                                  r'(,\s*(#[^\n]*\s*)*"0228_music_per_request_price\.sql")?'
                                   r'(,\s*(#[^\n]*\s*)*"0230_geo_gate_allow_list\.sql")?'
                                   r'(,\s*(#[^\n]*\s*)*"0238_country_list_sale_needs_allow_list\.sql")?$')
         # 0218 before 0224 in every list both are in (0224 sits on 0218's creative_price; put back in this order).
@@ -363,6 +368,12 @@ class CreativePromptLimitsMigration(unittest.TestCase):
                         LAB.index('ON_0156 = (*(f for f in ON_0156 if f != "0224_dated_credit_price.sql"), "0224_dated_credit_price.sql")'))
         self.assertLess(LAB.index("ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0218.name), MIGRATION_0218.name)"),
                         LAB.index('ON_0139 = (*(f for f in ON_0139 if f != "0224_dated_credit_price.sql"), "0224_dated_credit_price.sql")'))
+        # 0228 after 0224 in every list both are in (0228's guard accepts only 0224's creative_price).
+        self.assertLess(on_0124.index('"0224_dated_credit_price.sql"'), on_0124.index('"0228_music_per_request_price.sql"'))
+        self.assertLess(LAB.index('ON_0156 = (*(f for f in ON_0156 if f != "0224_dated_credit_price.sql"), "0224_dated_credit_price.sql")'),
+                        LAB.index('ON_0156 = (*(f for f in ON_0156 if f != "0228_music_per_request_price.sql"), "0228_music_per_request_price.sql")'))
+        self.assertLess(LAB.index('ON_0139 = (*(f for f in ON_0139 if f != "0224_dated_credit_price.sql"), "0224_dated_credit_price.sql")'),
+                        LAB.index('ON_0139 = (*(f for f in ON_0139 if f != "0228_music_per_request_price.sql"), "0228_music_per_request_price.sql")'))
         off = LAB[LAB.index("def take_off_0171("):LAB.index("def put_back_0171(")]
         self.assertLess(off.index("take_off_0218(conn)"), off.index("rollback_0171_body("))
         self.assertIn("put_back_0218(", LAB[LAB.index("def put_back_0171("):LAB.index("MIGRATION_0174 =")])

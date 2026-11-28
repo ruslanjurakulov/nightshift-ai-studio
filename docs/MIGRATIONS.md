@@ -3098,6 +3098,42 @@ BR-S6-03; the web half is PR #951.
 - **Tests.** `tests/test_geo_gate_allow_list_migration.py`, `tests/security/test_sec_geo_allowlist_0230.py` and
   `tests/security/test_sec_geo_allowlist_0230_breach.py` (a real PostgreSQL; contract `tests/security/sec_geo_allowlist_0230.py`),
   `command-center/tests/geo-block.test.ts`.
+
+## The Agent Builder draft functions serve platform operators only (0234)
+
+0234 (`0234_agent_drafts_operator_only.sql`, BR-S8-01 in `docs/security/LEDGER.md`) is the database half of the owner's decision of
+28 Nov that the Agent Builder is operators-only until launch; the web half (the page's `guardOperatorPage`, the four routes'
+`requireOperator`) is PR #960. Live on apply: a signed-in person who is not a platform owner or admin can no longer save or delete a
+draft through the database. No draft is deleted, and owners still read what they saved (0130's policies are not touched), but a non-operator can no
+longer delete a draft saved before 0234.
+
+- **The finding.** Both 0130 functions check only sign-in, so any authenticated non-admin saved and deleted drafts straight through
+  PostgREST with the browser key, whatever the web gate said (Breach, in the lab). Revoking EXECUTE from `authenticated` is not the
+  fix: both bind to `auth.uid()`, and the operator's own route calls them with the browser key.
+- **The change.** Both bodies, 0130's verbatim, with one marked check right after the sign-in check: unless
+  `public.is_platform_admin()` (0018; the function the Command Center's `isOperator()` asks) is true, `operator_only` with SQLSTATE
+  42501 (0130's code for `not_authenticated`). NULL is no; an error inside the lookup aborts the call. Refusal order:
+  `not_authenticated` -> `operator_only` -> 0130's own checks. `draftRpcFailure` answers `operator_only` as 403 `forbidden`.
+- **Grants unchanged.** EXECUTE for `authenticated` only, exactly 0130's, stated again and asserted by the end state.
+- **Replaces** `save_agent_workflow_draft(uuid, integer, jsonb)`: 0130's `c5175b042a9118080b0d4f12906c202d` -> 0234's
+  `a95607774a410e65ccdefb1989557946`; `delete_agent_workflow_draft(uuid)`: 0130's `7b72f3679d8e9de439d753738f8b66bc` -> 0234's
+  `5a506ee8e5b1fd93419b2fce831e3093` (0230's fingerprint: `--` comments cut, then white space folded). Folded only, as
+  `rollback_0130` pins them: save `7fe9d1359748e6e311f95678843a6b2e` -> `3ec1e1922060eb771bf57be879d5bfb2`, delete
+  `ef7540b121198f0b79cde9f8975a5c95` -> `2f7e029a513675feeed6aded38622c63`. Refuses any other body, and refuses without 0130 or
+  0018's `is_platform_admin()`. No backslash in the file.
+- **Replay.** The guard accepts 0234's own bodies: a second run writes the same bodies. Replaying 0130 is not possible (it is not
+  idempotent: it stops at its first CREATE TABLE).
+- **`rollback_0130` now refuses** (its guard pins 0130's bodies): apply `rollback_0234` first. The lab's `take_off_0234` /
+  `put_back_0234` (`tests/security/sec_db.py`) do that around the 0130 rollback test.
+- **Number.** 0234, assigned by Atlas (0233 is taken). Needs 0130 and 0018. Independent of 0230.
+- **Undo.** `docs/sql/rollback_0234_agent_drafts_operator_only.sql` (owner-applied): refuses a body that is neither 0234's nor
+  0130's, puts 0130's bodies back verbatim and asserts them and the grants. BR-S8-01 is then open again (the routes still refuse
+  non-operators).
+- **Tests.** `tests/test_agent_drafts_operator_only_migration.py`, `tests/security/test_sec_agent_drafts_operator_only_0234.py` (a
+  real PostgreSQL), `tests/security/test_sec_agent_workflow_drafts.py` (0130's guards, each caller made a platform admin for its
+  rolled-back transaction), `command-center/tests/agent-builder-operator-gate.test.tsx`, `agent-drafts-route.test.ts` and
+  `security-agent-builder-gate-breach.test.tsx`.
+
 ## Only a member spends a workspace's credits, on every path (0226, provisional)
 
 0226 (`0226_org_spender_everywhere.sql`) applies the owner's decision of 22 Nov, which 0215 applied to the film paths, to every other
@@ -3211,6 +3247,90 @@ are replaced, each with marked 0231 hunks, and one policy is added.
   dropped. The rows written stay: they are the record of who cancelled.
 - **Lab.** `tests/security/test_sec_cancel_audit_0231.py` (Breach's round-3 and round-4 pins, the four callers, the reserved key
   namespace, the migration's guard, replay and rollback, sec_db's chain).
+
+## The database knows `music`, and a model priced per request is quoted for one request (0228)
+
+0228 (`0228_music_per_request_price.sql`, stream S6) is **live on apply**. It writes no row and grants nothing, and it puts nothing
+on sale.
+
+- **What it changes.**
+  - `music` is added to 0100's `model_registry_capabilities_check` and `model_probe_runs_capability_check`. That is the only value
+    added.
+  - `creative_params_problem` is 0218's body plus one hunk: music may come without `duration_s`. A duration that is given is still
+    held to 1..60.
+  - `creative_price` is 0224's body plus one hunk, right after the quantity is read, for **music only**:
+    - a music model whose `spec.pricing.unit` is `request` is quoted for a quantity of 1;
+    - **hunk 3**: a music quote with no duration on any other music model is refused with the word `invalid_params` and the detail
+      "<model> is sold by the second: duration_s (a whole number of seconds from 1 to 60) is required". The Studio shows the
+      `invalid_params` copy in en/ru/uz (`lib/i18n/{en,ru,uz}.ts`, the quote refusal reasons); the API and MCP pass the detail.
+  - Every other capability is quoted exactly as 0224 quotes it. BR-0228-01/02: a first build applied the quantity of 1 to every
+    per-request model, before the longest-input checks. A per-request video op would then have skipped `max_source_seconds`, and
+    a 3-region edit would have been quoted as one request (the worker calls the vendor 3 times, and `finish_creative_job` then
+    charges 0). The registry validator also allows `pricing.unit = "request"` only for music and describe.
+- **Why.** Google Lyria 3.5 is "$0.08 per song" and has no duration field (docs/research/lyria-3-5.md). Before 0228, music could only
+  be asked a duration and billed by the second.
+- **Order (enforced).** Apply after S10's 0224 (#945). The drift guard accepts only:
+  - `creative_price` `ea2b58e88fe34ae18b261e5a0fbef435` (0218 plus 0224's line) and `creative_params_problem`
+    `cb7ad6cd459f31259445bedd1a4a0c88` (0218);
+  - or its own bodies on a replay: `33bb0ea77aedd1ffc3df339034adc6d3` and `0570bb5a1f749b7e3d556c87443bf17b`.
+
+  On 0218's `creative_price` alone it refuses and names 0224.
+- **Nothing on sale.**
+  - No credit price is seeded: a music quote is `unpriced` until the owner sets one, after a passing probe and the legal sign-off.
+  - The code keeps `music` in `REGISTRY_ONLY_CAPABILITIES`, so the sync never writes a music row before this file is live. A later
+    small PR removes it once 0228 is confirmed live.
+  - Lyria's registry entry also carries `terms_gate`, `web_only` and `requires_adult`. A vocal-activity check on the returned MP3
+    is a condition of sale that does not exist yet.
+- **Backslash-free.** The `creative_price` body is written with `@@0228_BACKSLASH@@` and put back with `chr(92)`, which is 0224's
+  technique. The end state checks the md5 of what results.
+- **Rollback.** `docs/sql/rollback_0228_music_per_request_price.sql` (owner-applied):
+  - it puts 0218's `creative_params_problem` and 0224's `creative_price` back byte for byte, and takes `music` out of both checks;
+  - it refuses while a `model_registry` row or a `model_probe_runs` row names music. Probe results are append-only, so after a
+    music probe has been recorded the value cannot be taken out again; that is the owner's decision, never the rollback's;
+  - it is harmless where 0228 is not on.
+- **Lab.**
+  - `tests/security/test_sec_music_per_request_0228.py`, with the contract in `tests/security/sec_music_per_request_0228.py`;
+  - `sec_db.take_off_0228` and `put_back_0228` run inside the 0218 chain: `take_off_0224` (and `rollback_0224_body`) take 0228
+    off first, and `put_back_0224` puts it back last.
+  - Static: `tests/test_music_per_request_migration.py`.
+- **Verify** (the SQL editor): the query at the end of the file. Every column should read true.
+
+## Nobody changes the platform roster from a browser (0233)
+
+0233 (`0233_platform_roster_closed.sql`, BR-L-213 in `docs/security/LEDGER.md`) follows the owner's decision that the site has two
+kinds of people, the owner/operator and users, each user owning their own workspace. 0091 closed the workspace side
+(`org_members`). The Command Center's Team page (`/members`, the operator's roster) is gone in the same PR, and this file closes the
+database doors it used.
+
+- **The finding.** In the security lab with every migration up to 0230, `authenticated` could execute `owner_add_member`,
+  `owner_set_member_role` and `owner_remove_member` (0107) and had INSERT, UPDATE and DELETE on `app_members`, with 0007's write
+  policies and 0018's empty-roster bootstrap policy deciding. A signed-in platform owner or admin could still mint an admin or an
+  owner, change a role or remove a person with one REST call, and the direct writes skipped 0107's last-owner, self-change and
+  owner-only checks (BR-S-024, BR-S-029).
+- **Change.** Privileges only. EXECUTE on the three functions is revoked from public, anon and authenticated (0107 had already
+  revoked it from service_role); INSERT, UPDATE and DELETE on `app_members` from anon and authenticated. SELECT stays
+  (`platform_role`, Approvals). Nothing is dropped or replaced: the policies stay and decide nothing without the privilege, RLS stays
+  on, `bind_current_member()` still links a confirmed account to a row the operator added, and every role check in RLS and SQL is
+  unchanged (every user is the owner of their own workspace). Credits, spend and publishing are untouched; friend invites (0092) and
+  referrals are a credits program, not membership, and are untouched.
+- **End state.** The file refuses its whole transaction when any API role can still execute a roster function or write
+  `app_members`, when `authenticated` lost SELECT, when RLS is off, and when 0091's half is open again (org_members writes, or the
+  four invite functions): that message says "apply 0091 again, then this file". It refuses to apply without 0007 or 0107.
+- **Owner step.** None in the app. The operator's roster is changed in the SQL editor from now on
+  (`insert into public.app_members (email, role) values (...)`; keep at least one bound owner with a confirmed address). A fresh
+  project's first owner inserts their own row as `'owner'`, bound to their auth user:
+  `insert into public.app_members (user_id, email, role) select id, email, 'owner' from auth.users where lower(email) = lower('<address>');`
+  (an email-only row binds only once the address is confirmed, 0043; the first row ends the empty-roster owner fallback).
+- **Replay.** Revokes and a read-only check: replay-twice safe. Re-applying 0007, 0018 or 0107 alone re-grants what it revokes;
+  apply 0233 again after them (the lab's `put_back_0233`).
+- **Number.** 0233, assigned for this PR. Needs 0007, 0091 and 0107. Independent of 0224, 0226, 0227, 0230, 0231 and 0232.
+- **Undo.** `docs/sql/rollback_0233_platform_roster_closed.sql` (owner-applied) re-grants exactly what 0233 revoked and asserts it.
+  BR-L-213 is then open again.
+- **Tests.** `tests/test_platform_roster_closed_migration.py`, `tests/security/test_sec_roster_closed_0233.py` (a real PostgreSQL;
+  contract `tests/security/sec_platform_roster_0233.py`). The 0107 tests of the roster functions' own checks
+  (`tests/security/test_sec_owner_safety.py`) take 0233 off inside their rolled-back transaction, since those checks are what a later
+  re-grant would rely on. `tests/security/test_sec_friend_invites.py` pins that a counted friend-invite join adds nobody to a
+  workspace or the roster.
 
 ## A model with a country list may go on sale with its vendor's allow-list, behind 0230's gate (0238)
 
