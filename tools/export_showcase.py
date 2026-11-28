@@ -29,6 +29,15 @@ poster.webp / poster-sm.webp of its first frame; a picture: the two posters), ap
 command-center/lib/site/showcase.json and regenerates command-center/components/site/showcase-assets.ts. The output is not graded
 or retouched: a sample is shown as the model made it.
 
+Provenance (docs/AI_DISCLOSURE.md "Vendor watermarks and provenance", owner decision 2026-11-12): a maker's invisible label is
+always kept, never stripped or replaced, on the site's copies too. MiniMax ships a format-level `AIGC` tag (its signed TC260
+implicit label), and the copies carry the source's metadata as it is (`-map_metadata 0`, ffmpeg's default, stated so no one
+"tidies" it away). The Matroska muxer writes every global tag, but the MP4 muxer silently drops a key it has no atom for unless
+asked (measured with ffmpeg 6.1: without `-movflags use_metadata_tags` the AIGC tag is gone from clip.mp4), and losing it there
+would be stripping by omission, so both MP4s ask. The MP4 copies exported before this flag lack the tag; they were not re-muxed
+(the site's files are not rewritten by hand). scripts/media-bundle-check.mjs allows exactly that signed tag in
+/_next/static/media/ and fails on a vendor name or id anywhere else.
+
 Sound (the owner's decision of 2026-11-22: every video on the site is cinematic and has sound). When ffprobe finds an audio
 stream in the downloaded clip, the two FULL copies keep it: AAC 128 kb/s stereo 48 kHz in clip.mp4, Opus 96 kb/s stereo 48 kHz
 in clip.webm. The clip-sm.* copies stay silent (`-an`): they are the phone and grid files, which autoplay muted (a clip whose
@@ -559,6 +568,10 @@ def _run(argv: Sequence[str]) -> None:
         raise Refusal("transcode_failed", f"{Path(argv[0]).name} exited {proc.returncode}: {tail[0][:200]}")
 
 
+#: Keep the source's tags (the maker's provenance label among them) in every copy: the default, written out (module docstring,
+#: "Provenance"). The MP4 muxer needs use_metadata_tags to write a custom key at all.
+KEEP_METADATA = ["-map_metadata", "0"]
+
 #: The full copies' sound when the source has one (owner decision 2026-11-22). Stereo 48 kHz: what both browsers' decoders expect,
 #: and a mono or 44.1 kHz source is upmixed / resampled rather than refused.
 AAC_AUDIO = ["-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "48000"]
@@ -582,8 +595,8 @@ def video_commands(ffmpeg: str, src: Path, mime: str, out: Path, audio: bool = F
         cut = ["-shortest"] + (["-t", f"{seconds:.3f}"] if seconds and seconds > 0 else [])
         mp4_audio = ["-map", "0:v:0", "-map", "0:a:0"] + cut + AAC_AUDIO if keep else ["-an"]
         webm_audio = ["-map", "0:v:0", "-map", "0:a:0"] + cut + OPUS_AUDIO if keep else ["-an"]
-        cmds.append(base + mp4_audio + ["-vf", scale, "-c:v", "libx264", "-preset", "slow", "-crf", "26" if suffix == "" else "28", "-profile:v", "main", "-movflags", "+faststart", str(out / f"clip{suffix}.mp4")])
-        cmds.append(base + webm_audio + ["-vf", scale, "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "36" if suffix == "" else "38", "-deadline", "good", "-cpu-used", "2", "-row-mt", "1", str(out / f"clip{suffix}.webm")])
+        cmds.append(base + mp4_audio + ["-vf", scale, "-c:v", "libx264", "-preset", "slow", "-crf", "26" if suffix == "" else "28", "-profile:v", "main", "-movflags", "+faststart+use_metadata_tags"] + KEEP_METADATA + [str(out / f"clip{suffix}.mp4")])
+        cmds.append(base + webm_audio + ["-vf", scale, "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "36" if suffix == "" else "38", "-deadline", "good", "-cpu-used", "2", "-row-mt", "1"] + KEEP_METADATA + [str(out / f"clip{suffix}.webm")])
     cmds.append(base + ["-frames:v", "1", "-vf", "scale=1280:-2:flags=lanczos", str(out / "frame0.png")])
     return cmds
 

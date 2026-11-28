@@ -135,3 +135,9 @@ jobs:
       - name: Static chunks carry no vendor routing, vendor map or vendor metering units
         if: ${{ !cancelled() }}
         run: node scripts/vendor-bundle-check.mjs
+      # Anything under /_next/static/media/ can be downloaded from /. A maker's signed implicit label (MiniMax's TC260 AIGC
+      # tag) is kept on purpose (docs/AI_DISCLOSURE.md "Vendor watermarks and provenance") and is the one exemption, matched
+      # by its exact shape; this reads every file byte for byte and fails on a vendor name, job id or provenance key anywhere else.
+      - name: Static media carry no vendor metadata
+        if: ${{ !cancelled() }}
+        run: node scripts/media-bundle-check.mjs
