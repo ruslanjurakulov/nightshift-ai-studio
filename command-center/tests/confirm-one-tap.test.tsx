@@ -123,8 +123,10 @@ function card(over: Partial<ChannelRow> = {}, locale: Locale = "en") {
     locale,
   );
 }
-const autoSwitch = () => screen.getAllByRole("switch")[0];
-const reviewSwitch = () => screen.getAllByRole("switch")[1];
+// hidden: true — while the confirm sheet is open, the page behind is hidden from assistive technology (the shared Radix
+// Dialog marks it aria-hidden, as a modal should), and these tests still need to press and read the switches under it.
+const autoSwitch = () => screen.getAllByRole("switch", { hidden: true })[0];
+const reviewSwitch = () => screen.getAllByRole("switch", { hidden: true })[1];
 
 describe("channel card: auto publish", () => {
   it("turning it ON opens a sheet that says videos publish without asking, and writes nothing yet", () => {

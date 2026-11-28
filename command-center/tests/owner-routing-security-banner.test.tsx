@@ -70,7 +70,9 @@ const variablesCalls = () => h.fetch.mock.calls.filter((c) => c[0] === "/api/set
 describe("PipelineRouting", () => {
   const show = (initial: Record<string, string> = {}) => render(<PipelineRouting initial={initial} configured={[]} githubConfigured />);
   const videoSelect = () => screen.getByLabelText(en.providers.routingVideo) as HTMLSelectElement;
-  const autopilot = () => screen.getByRole("switch", { name: en.providers.routingAutopilot });
+  // hidden: true — while the confirm sheet is open the page behind is aria-hidden (the shared Radix Dialog), and the test
+  // still reads the switch under it.
+  const autopilot = () => screen.getByRole("switch", { name: en.providers.routingAutopilot, hidden: true });
 
   it("a generator change asks first, shows now → new, and writes nothing until confirmed", async () => {
     show();
