@@ -1,0 +1,233 @@
+# S5 benchmark — where we stand against the leaders, and what to fix first
+
+**Internal.** Stream S5 (design & benchmark), 22 Nov 2026. Rule 8 applies: this is the measurement, its own PR; the token and
+component changes that follow are separate PRs that cite it. Nothing here may be copied onto a public page: no vendor price,
+no competitor name, no comparison (owner's rule; `docs/studio/PROGRAM.md`).
+
+Read with: `docs/studio/STUDIO_BENCHMARK.md` (14 Nov, the *interaction* benchmark: steps, waiting, cost display — not
+repeated here), `docs/design/TOKENS.md`, `docs/design/SITE_KREA.md`, `docs/design/APP_KREA.md`.
+
+## How this was measured
+
+- Signed-out public pages only, Chromium (preinstalled Playwright), dark colour scheme, 1440 × 900 and 390 × 844,
+  deviceScaleFactor 2 for the fold shots, 1 for the scroll strips. No sign-in, no form submitted, cookie banners dismissed
+  where a "Dismiss"/"Deny" key existed. Sites: higgsfield.ai, krea.ai, runwayml.com, buzzy.now, openart.ai (and kling.ai, §8), and our own
+  nightshift-ai.studio (`/` and `/pricing`) **as deployed on 22 Nov, i.e. before PR #889** (the deployed site still sets
+  headings in Unbounded; #889 returns the public site to Onest headings and no `ds-skin`).
+- A text census in the page (`getComputedStyle` over every visible text node, counted in words): distinct font sizes, share
+  of words under 14 px, families, the most common corner radii, words per 1000 px of page height.
+- The Studio surfaces were taken from `docs/studio/qa/canvas-ux/` (21 Nov, the live canvas) and
+  `docs/studio/prototype/` (the reference look), plus a mock harness pass of today's components
+  (`docs/design/s5-benchmark/ours/`, §7).
+- Screenshots: `docs/design/s5-benchmark/web/` — `<site>-1440-fold.jpg`, `<site>-390-fold.jpg`, `<site>-1440-scroll.jpg`
+  (four viewports down, side by side), `<site>-1440-full-thumb.jpg`. Lazy, virtualised pages (Higgsfield, OpenArt) render
+  black in a full-page shot; the scroll strips are the evidence for those.
+
+Labels: **[M]** measured here (number given) · **[O]** observed in a screenshot (file named) · **[J]** judgement, argued.
+
+### The census
+
+| | words | distinct sizes | words < 14 px | families on page | most common radii | words / 1000 px |
+| :-- | --: | --: | --: | :-- | :-- | --: |
+| Higgsfield | 2718 | 17 | 4 % | Inter, Space Grotesk, Space Mono | 10, 8, pill | 197 |
+| Krea | 1490 | 21 | 13 % | Suisse Intl | 8, 14, pill | (one-screen fold, lazy below) |
+| Runway | 707 | 10 | 9 % | ABC Normal | 6, 4, 8 | 137 |
+| Buzzy | 256 | 14 | 31 % | Poppins + 5 campaign faces | pill, 16 | 58 |
+| OpenArt | 2657 | 19 | 13 % | system UI, Bricolage Grotesque | 10, 20, pill | 170 |
+| **Nightshift `/`** | 1587 | 16 | 12 % | Onest, Unbounded | 12, 16, 10 | 185 |
+| **Nightshift `/pricing`** | 1973 | 17 | 11 % | Onest, Unbounded | 12, pill, 10 | **269** |
+
+[M] Our pages are not unusual in size count; they are unusual in **how much prose each screen carries** (pricing is the densest
+page measured, 2× Runway) and in **how little of it is picture**. The leaders are media walls with short labels; we are
+paragraphs with a picture beside them.
+
+## Per surface: what the leaders do better
+
+### 1. Public home, first screen (`*-1440-fold.jpg`, `*-390-fold.jpg`)
+
+| Dimension | What the leaders do | What we do | Gap |
+| :-- | :-- | :-- | :-- |
+| Hierarchy | One sentence, one key. Krea: 60 px/400 headline, one line of sub-copy, two pill keys, then a product frame [M, O krea-1440-fold]. Runway: 56 px/400 on a full-bleed film still [M]. | 73.6 px/600 headline in a wide display face over three lines, a 3-line paragraph, a labelled textarea, a key, a 2-line disclaimer, a link [M, O nightshift-1440-fold]. Six things compete in the first screen. | **High.** Too many voices above the fold. |
+| Type | Neutral grotesques at **regular weight (400–500)** for display; size and air do the work, not weight. Tracking −1 to −1.5 % [M Krea, Runway, Buzzy]. Only OpenArt shouts (102 px/900, uppercase). | Heavy (600) wide display at −2 % — reads as "loud template" to the owner (his words on 22 Nov, the reason for #889). | **High**, already being corrected by #889 (Onest). The system below sets the weight and tracking so Onest display does not just become "bold Onest". |
+| Colour | Near-black neutral grounds: `#0f1113`, `#101010`, `#070707`, `#090a0a` [M]. One loud accent at most (Higgsfield lime, Buzzy yellow, OpenArt magenta), used only on the primary key. | Navy ground `#070a14` + electric blue key + lime badges + coloured icon tiles, all in one screen [O]. | **Medium.** A blue-tinted ground reads "dashboard"; neutral near-black reads "cinema". The accent is spent on badges as well as the key. |
+| Motion | Hero is a playing video or a living product frame (Krea's monitor, Buzzy's floating cards, OpenArt's orbiting stills) [O scroll strips]. | A still photo with an overlay [O]. | **High.** A video product with a still hero. |
+| Density at 390 | Krea: headline + 2 keys fit; nothing else [O krea-390-fold]. | Headline, paragraph, textarea and key fill the screen; the disclaimer falls below [O nightshift-390-fold]. | Medium. |
+| Copy tone | Claims about the output ("Pro Video, Made Easy", "Where ideas become visual stories"). | Claims about the process and its honesty ("Nothing runs and nothing is charged here…"). | **[J]** Keep the honesty — it is a rule — but move it next to the key it qualifies, at caption size, not into the hero. |
+
+### 2. Public home, below the fold (`*-1440-scroll.jpg`, `nightshift-1440-howitworks.jpg`)
+
+- **Leaders sell with work, not with explanations.** Higgsfield, OpenArt and Buzzy are walls of outputs (rows of 9:16 and
+  16:9 tiles, category rails: "AI Film", "Branding Ads", "MV", "Explainer") [O scroll strips]. Krea uses a bento grid of
+  capability tiles with one big number or word each ("4K", "22K", "Train") [O krea-1440-scroll].
+- **We explain.** "How it works" is three icon cards with numbers 01–03 and two-line bodies, then a nine-step stepper with
+  a paragraph that mentions "a real file from our repository" [O nightshift-1440-howitworks]. The icon-tile + "01" card is
+  the single most common landing template on the web — this is the part the owner calls "a programmer who just started".
+- **Section rhythm.** Leaders: a one-line section title, then the media [O scroll strips]. Ours: a title, a sub-title, a
+  paragraph, and then cards, so every section opens on a block of text before anything to look at [O howitworks]. Our section headings are 20 px/600 for h2 cards and 73 px for section display — **no middle step**, so a page
+  alternates between shouting and small print [M h1 73.6, h2 20].
+- **Social proof.** OpenArt shows customer logos and "Loved by 10M+" [O openart-1440-scroll]. **We must not** (no logo or
+  number the code cannot back). Our substitute is our own made pieces, labelled as made with Nightshift; we have 17 clips
+  on the home today [M nVideo 17].
+
+### 3. Pricing (`nightshift-pricing-*`)
+
+- Ours is the densest page measured (269 words / 1000 px), 3 % media [M]. Two calculators, plan cards, a
+  "what a credit buys" demo, terms-at-a-glance, FAQ — six modules, each with its own heading style [O full-thumb].
+- Leaders' pricing is not in scope (they sit behind campaigns; Higgsfield and Buzzy run countdown banners) — and we must not
+  imitate those: a countdown or "X cards left" is a claim our code cannot back.
+- **[J] Fix:** one plan row, one calculator, everything else folded into the FAQ; numbers in a tabular display size
+  (`.ds-num` at the display step), not body size.
+
+### 4. Studio canvas (`docs/studio/qa/canvas-ux/*`, `docs/studio/prototype/*`)
+
+| Dimension | Reference (buzzy canvas, agentcut timeline — PROGRAM.md) | Ours today (`first-run-1440-dark-en.png`) | Gap |
+| :-- | :-- | :-- | :-- |
+| Chrome | One floating dock; the canvas is the page. | A 60 px header with **ten** controls (project switcher, Canvas/Timeline, Channel look, search, credits battery, bell, language, theme, display, avatar), a 40 px status strip, a 60 px bottom bar with nine controls [O]. ~160 px of chrome out of 900, about 18 % [O, measured on the screenshot]. | **High.** |
+| Cards | 1 px border, small title *above* the card, the media is the card. | First-run choice cards with an icon tile, title, two-line sub-copy; disabled ones say "Not available yet" in the same size [O]. | Medium — the honesty is right (a model shows only once real), the treatment is a form, not a canvas. |
+| Wires | Soft grey beziers converging into a round "+" merge hub. | Wires exist in FlowBoard; no merge hub [O, code]. | Medium (S3 owns the canvas; finding goes to Atlas). |
+| Type | Small uppercase monospace for labels, regular text for titles. | Onest everywhere at 14–16 px; no monospace role except the timecode prototype. | Medium — needs a mono role token. |
+| Credit display | (reference has none on canvas) | A lime "battery" of bars + number [O]. Ten saturated bars in the header pull the eye more than the work. | Medium. |
+
+### 5. Timeline (`docs/studio/prototype/studio-timeline-1440-dark.png`)
+
+The prototype is already close to the reference: monospace timecode, track headers with coloured badges, saturated pills,
+agent tags. What separates it from the reference: [O]
+- Timecode is 28 px Onest; the reference is a **large monospace in the accent colour** with "/ total" and a status word.
+- Track pills use five saturated hues at full strength *and* coloured borders, plus coloured agent tags on top — the reference
+  keeps one tone per track and lets only the *tag* be loud.
+- Track header labels are sentence case 15 px; reference: small uppercase mono with a dim second line.
+- Gaps between segments are visibly wider than the reference's 1–2 px, so the lane reads as one strip.
+
+### 6. Empty, loading, error, insufficient credits
+
+- Leaders signed out show none of these, so the benchmark is our own Definition of Done. Ours has the right words (the
+  canvas says "Empty canvas · nothing spent"; the Create key says "Nothing spends without a quote"), but **each surface draws
+  its own**: a status strip on the canvas, inline text in the timeline, a toast elsewhere [O, code]. There is no shared
+  empty/loading/error/insufficient-credits component in either primitive layer (gap 1).
+
+## 7. Studio surfaces as they render today (mock harness, `s5-benchmark/ours/`)
+
+How: the real `/[channel]/studio` route in the real `(app)` shell, `next dev` with no Supabase, a throwaway flag that gave
+the layout a mock workspace and balance, every `/api/*` answered by Playwright with fixed data, pictures as flat
+gradients (judge layout, not art). 22 states × 1440/390, dark, `ds-skin`. Files: `<surface>-<state>-<width>-dark.jpg`
+(canvas ×3, brain ×7, timeline ×6, library ×4, pricing ×2). Mock artefacts are marked **(mock?)** — check the real route
+before treating them as product bugs. The round black "N" at the bottom left of every
+shot is the Next.js dev indicator (`next dev`), not product UI.
+
+**Blocking finding (for S1/S3 via Atlas).** At 390, in the Brain's insufficient-credits state, the canvas's floating action
+bar ("Add node / library / Choose a step") sits over the bottom of the panel, on the "Make it 30 s instead" key and the
+Upgrade / Buy credits links [O `brain-ready-insufficient-credits-390-dark.jpg`]. The remedy for a blocked purchase is under
+another control. (Whether scrolling the panel frees it was not tested; the harness reported the keys could not be pressed.)
+
+Measured [M, getComputedStyle]:
+
+| Surface | Sizes on one screen | Radii | Notable |
+| :-- | :-- | :-- | :-- |
+| Canvas | 11, 13, 14, 15, 16, 21 px | 8, 9, 10, 11, 12, 14, 16 (+ 5.6 composer) | ~160 px of chrome (60 app bar with 11 controls, 44 status strip, 56 dock with 10); minimap permanently over the canvas; in-progress card has no progress; failed card's reason truncated with an ellipsis; at 390 a "+" covers the prompt text and the dock overlaps the last row |
+| Brain panel | 13, 14, 15, 16 px (5 sizes in a 300–380 px column) | — | placeholder clipped mid-line; title truncated next to two 44 px keys; answer labels sit at the top of 44 px keys; panel `rgb(10,15,28)` vs bubbles `rgb(15,22,38)` too close to separate; empty state ≈ 650 px of blank column at 1440 |
+| Timeline | **11 px is the main size (~40 elements), some 10 px** vs a 24 px timecode | — | 64 px clips cut labels to "01 · Ha…"; the scene-2 refusal text spills out of its block over the label and ruler; four placeholder tracks at full 78 px height; viewer only ~573 × 322 between a 390 library and 470 inspector; at 390 the primary key wraps to three lines and the "Geolocation by DB-IP" credit sits on the transport bar |
+| Library drawer | 12 px names | 16 (desk), **22** (phone sheet, matches nothing) | names truncated on a gradient; the 32 px "+" covers every picture's corner; loading is one line, no skeleton; when the library read fails, finished canvas cards also say "Result can't be shown" |
+| Credits | — | — | the header pill shows a number with no unit; the short-of-credits key becomes "+ Add credits · need 14 more" and wraps to two lines while the price half still says "24 credits"; the assemble key, disabled, is still bright blue; **three different sentences** explain the hold ("Nothing spends without a quote", the inspector's hold line, the timeline's "The price is the server's quote…"); the assemble refusal reads only "The server will not start this project right now" **(mock?)** |
+
+What is right and must survive any restyle: every state the harness reached has a way forward (Try again, Upgrade plan,
+Add credits); "Not available yet" on controls whose backend is not there; the Brain's insufficient-credits block names
+both server numbers and offers a cheaper option.
+
+These raise gaps 2 (type) and 4 (chrome) and add gaps 9 and 10 below.
+
+## 8. Kling (kling.ai), added 22 Nov at the owner's request
+
+Captured the same way (signed out, Chromium, dark), plus an iPhone 13 emulation. Files: `web/kling-390-fold.jpg`,
+`web/kling-1440-scroll.jpg`, `web/kling-390-scroll.jpg`. The desktop hero is a video that stayed black in headless Chromium,
+so the 1440 hero is described from Atlas's own captures and marked **[A]**. The text census is not usable here: the page
+carries ~49,800 words of hidden text (99 % under 14 px, invisible), so only the visible headings were measured.
+
+**What they do [M, O, A]:**
+
+1. **Hero = film, title, one key.** Full-bleed cinematic video, sound off with a mute toggle [A]; a serif italic display line
+   "All-New Kling 4.0" (PP Editorial New Ultrabold Italic, **58 px / 600** at 1440 [M]); one sub-line "You call the shots"
+   (28 px / 400 [M]); at 1440 one glass prompt bar with a thumbnail and a single black "Create Now" key [A]. On a phone: the
+   video, the title, the sub-line and **one** "Create Now" key — no prompt bar — and the header key becomes "Download App"
+   [O `kling-390-fold.jpg`]. Nothing else on the first screen.
+2. **One section skeleton, repeated.** Centred heading (**39 px / 700** at 1440, 35 px at 390 [M], Google Sans), 3–5 pill
+   tabs or feature titles that switch the media, one large rounded media card, then a single outlined "Try Now →" (36 px high,
+   radius 18 [M]). Very little text per section [O scroll strips].
+3. **Real product on the page.** The Canvas section shows a screenshot of their canvas with its agent side panel, tabbed
+   One-Stop / Create With Agent / Flexible Node Editing [O].
+4. **Cases as proof.** "Industry Applications": category pills, then case cards (title over the video, two-line caption) [O].
+5. **Ground is pure `#000`** [M]; headings white, body small and grey.
+
+**Do not copy** (rule 5 and the owner's rule): partner/"Partnerships" logo walls, "Cannes-Winning" titles, creator
+testimonials, "World's first" — we can back none of them. Their partner wall even names our other benchmark leaders; ours
+names no one.
+
+### Recommendations for our "/" (owner of "/" is #889's agent; routed via Atlas)
+
+Ranked by how much of the gap to first place each closes; each keeps our honesty rules.
+
+1. **First screen = one of our own films + one line + one key.** Use our best real Studio clip full-bleed (sound off, a
+   visible mute and pause key, a still poster under reduced motion — the clip carries the "made with Nightshift" label it
+   already has), the display line, one sub-line, and the prompt bar as the *only* control at ≥ 768 px. On a phone: film, line,
+   one "Start" key; the prompt bar moves to the second screen. The "nothing is charged" note sits under the key at caption
+   size (13 px), not in the hero copy.
+2. **One section skeleton for every section below the fold:** `.ds-section` → centred `.ds-t-display-lg` title (one line) →
+   3–4 `.ds-chip` tabs that switch the media (each tab = one real capability: Idea → film, Canvas, Timeline, Voice) → one large
+   media card (`--ds-r-sheet`) → one quiet "Try it →" key. Remove the icon + "01/02/03" "How it works" cards and the
+   nine-step stepper's paragraphs; the tabs carry the same story with pictures.
+3. **Show the real Studio.** A section with a real screenshot (or a recorded loop) of our canvas with the Brain panel and the
+   lane — the thing no leader can claim: a plan you approve, a price before the press, a private upload at the end. Label
+   it as a recording of the product.
+4. **Cases, honestly.** Category chips (Explainer, Story, Shorts, Ads) over our own sample clips, title over the video and a
+   two-line caption that says what was asked and which model made it. No customer names, no awards, no counts we cannot read.
+5. **Type:** display at weight 500 on the `.ds-t-display-*` roles (Kling's serif italic is not ours to copy; Onest at 500 with
+   tight tracking gives the same calm), section titles at display-lg, body 16/1.6 grey, captions 13. Today's hero is
+   104 px / 600 (Pixel on #889) — about 1.8× Kling's 58 px.
+6. **Ground:** the public site stays without `ds-skin` (owner, #889); if the owner wants the public dark ground to match the
+   app's new neutral near-black (#904), it is one token. Kling's pure `#000` is a choice we do not need: `#0a0b0e` keeps
+   surfaces distinguishable.
+
+S5 implements 5 and the shared section/tab/media-card classes in its follow-up type PR (after #896 and #889 land);
+1–4 are the homepage owner's.
+
+## Ranked gaps — what most separates us from first place
+
+1. **Two primitive layers, and the states half-shared.** `components/ui/` (Panel, Chip, Timecode, StatusLamp, Meter,
+   PriceButton, StepCard … on the older `--ns-*` names) and `components/ds/` (`Button`, plus `.ds-chip`/`.ds-input`/
+   `.ds-toggle` CSS on `--ds-*`) live side by side. Shared states exist for empty (`components/ui.tsx` `EmptyState`), error
+   (`ReadError.tsx` `ErrorState`) and loading (`feedback/Skeleton`, `motion/LoadingGrace`), but four surfaces still draw
+   their own empty state (the timeline's `Empty`, `AdvisoryPanel`'s `Empty`, `EmptyHint`, `EmptyCard`) [M grep], and there
+   is **no shared insufficient-credits, provider-unavailable or session-expired state** [M grep]. → S5 PR "ds states":
+   the three missing states, the existing three moved onto `--ds-*`, one spec for all six.
+   *Correction: the first push of this document said `components/ds/` held only `Button` and implied no shared states
+   existed; `components/ui/` and the shared Empty/Error/Skeleton were missed.*
+2. **Type has no middle.** Display (56–74 px) and body/labels (13–20 px), nothing at 24–40 px; display weight 600 with
+   heavy tracking. Leaders run display at 400–500 with −1 to −1.5 % tracking and a clear 5–6 step scale. → S5 PR
+   "type scale" (Onest display, per #889).
+3. **Prose where the leaders show work.** Home and pricing carry 185–269 words per 1000 px; leaders 58–197 with media
+   walls. → Finding to Atlas for #889 (public homepage owner): a made-with-Nightshift wall, one-line section titles,
+   honesty notes at caption size next to the key they qualify.
+4. **Chrome on the Studio canvas.** ~160 px of bars and 17+ controls around an empty canvas; the reference is one floating
+   dock. → S5 owns shell/rail/header styles; the dock is S3's (lane branch). Finding to Atlas.
+5. **Ground colour reads "dashboard".** Navy-blue ground plus blue key plus lime marks; leaders sit on neutral near-black
+   with one accent. → S5 proposal, **owner's decision** (the navy/neon look is owner-approved; not changed without him):
+   neutral-ish ground `#0a0b0f` family with the same blue key. Shown as an option in the system doc, not shipped.
+6. **No motion language on the public site.** Still hero for a video product. Motion tokens exist (press/panel/page) but
+   nothing for "media reveal" or "living frame". → S5 PR "motion tokens", consumption by #889's owner.
+7. **Timeline polish** (mono timecode in accent, uppercase mono track labels, 1–2 px gaps, one tone per track). → finding
+   to S3 via Atlas; S5 supplies the `--ds-font-mono`, `--ds-track-*` tokens.
+8. **States drawn per surface.** → covered by gap 1 (EmptyState, LoadingState, ErrorState, InsufficientCredits,
+   ProviderUnavailable, SessionExpired as ds components with i18n strings passed in).
+
+9. **The timeline is set too small** (11 px body, 10 px in places) and its refusal text overflows its block. → finding to
+   S3 via Atlas; `SYSTEM.md` sets 12 px uppercase mono for labels and 13 px as the prose floor.
+10. **Floating controls cover content at 390** (dock over the Brain's purchase keys, "+" over prompt text). → the dock and
+    panel go to S3/S1 via Atlas.
+    *Correction: an earlier push listed a round "N" badge over the rail and the library link as ours. It is the Next.js
+    development indicator, present only under `next dev` (the harness); it does not ship. Discard it in every screenshot.*
+
+Gap 10 is the only one that blocks a person from a remedy today; it is reported to Atlas as blocking for the
+Brain/canvas streams regardless of its place in this list, which ranks distance from first place, not urgency.
+
+What we already do better and must keep: prices only from the backend, unknown shown as unknown, "Not available yet" for a
+model that has not answered, private-by-default — none of the leaders' fold screens can say any of that, and their
+countdowns and "X left" banners are exactly what our rules forbid.
