@@ -66,10 +66,11 @@ def is_open(status: str) -> bool:
 
 
 # Any spelling Postgres accepts for a definition: without "or replace", without
-# the schema, or quoted. A later file written one of those ways is the function
-# the database runs, and must not be skipped for an older one (Lens round 3, 6).
+# the schema, quoted, or with spaces around the dot. A later file written one of
+# those ways is the function the database runs, and must not be skipped for an
+# older one (Lens round 3, 6; Lens on #966 for the spaces).
 _DEFINES_CREATIVE_PRICE = re.compile(
-    r'create\s+(or\s+replace\s+)?function\s+("?public"?\.)?"?creative_price"?\s*\(', re.I)
+    r'create\s+(or\s+replace\s+)?function\s+("?public"?\s*\.\s*)?"?creative_price"?\s*\(', re.I)
 _SOURCE_SECOND_CAPS = re.compile(
     r"if cap in \(([^)]*)\) then\s*\n\s*--[^\n]*\n\s*qty := public\.creative_source_seconds")
 
@@ -173,7 +174,10 @@ class SaleGuardHelpers(unittest.TestCase):
                      'create function "creative_price"(',
                      # A quoted schema is as valid as a quoted name (Lens on #955).
                      'create or replace function "public"."creative_price"(',
-                     'CREATE FUNCTION "public".creative_price('):
+                     'CREATE FUNCTION "public".creative_price(',
+                     # Whitespace around the dot is as valid to Postgres (Lens on #966).
+                     'create or replace function public . creative_price(',
+                     'create function "public" ."creative_price" ('):
             with self.subTest(head=head):
                 d = self._migrations({"0100_a.sql": self.SHAPED,
                                       "0200_b.sql": head + "p_org uuid) returns int as $$ select 1 $$;\n"})
