@@ -7,8 +7,6 @@ export const confirmSheetsUz: ConfirmSheetsDictionary = {
   dAfter: "Keyin",
   dVideo: "Video",
   dRequestedBy: "Soʻragan",
-  dAccount: "Akkaunt",
-  dRole: "Rol",
   dKey: "API kaliti",
   dEffect: "Nima oʻzgaradi",
   dAutoPublish: "Avto nashr",
@@ -83,9 +81,4 @@ export const confirmSheetsUz: ConfirmSheetsDictionary = {
   limitKeySet: "Limit qoʻshiladi: kalit unga yetganda toʻxtaydi.",
   limitKeyBlocked: "$0 limit bu kalit bilan qilingan barcha chaqiruvlarni siz uni oshirmaguningizcha bloklaydi.",
   limitCeilingBinds: "Siz {entered} kiritdingiz, lekin tarifingiz chegarasi {cap}, shuning uchun {cap} amal qiladi.",
-
-  claimTitle: "Oʻzingizni egasi qilasizmi?",
-  claimBody:
-    "Siz bu ish maydonining egasi boʻlasiz: kalitlar, provayderlar, kreditlar va jamoaga toʻliq kirish huquqi bilan. Oʻz rolingizni keyin bu yerdan oʻzgartirib boʻlmaydi: buni faqat boshqa ega qila oladi.",
-  claimConfirm: "Ega boʻlish",
 };

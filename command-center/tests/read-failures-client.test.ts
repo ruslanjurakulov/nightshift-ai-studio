@@ -1,7 +1,6 @@
 /**
- * The client-side loads (members rosters, API keys, payment history): a failed
- * read is the error state with Retry — not an empty roster (which would even
- * offer "claim ownership"), "no keys" or "no payments".
+ * The client-side loads (API keys, payment history): a failed read is the
+ * error state with Retry — not "no keys" or "no payments".
  *
  * There is no DOM in this test environment, so hooks are replaced with a tiny
  * runner: state lives in cells, effects run once after the first render, and
@@ -78,27 +77,6 @@ const has = (html: string, text: string) => html.includes(esc(text));
 afterEach(() => {
   h.client = null;
   vi.unstubAllGlobals();
-});
-
-describe("MembersBoard / OrgMembersBoard", () => {
-  it("failed roster read: error state, no 'empty' text, no claim-ownership offer", async () => {
-    h.client = failingSupabase();
-    const { MembersBoard } = await import("../components/members/MembersBoard");
-    const html = await mount(() => createElement(MembersBoard, { myRole: "owner", myEmail: "me@example.com", myUserId: "u1" }));
-    expect(html).toContain("data-read-error");
-    expect(has(html, en.common.retry)).toBe(true);
-    expect(has(html, en.members.empty)).toBe(false);
-    expect(has(html, en.members.claimTitle)).toBe(false);
-  });
-
-  it("readable empty roster keeps the empty text", async () => {
-    h.client = supabaseStub(() => EMPTY);
-    const { MembersBoard } = await import("../components/members/MembersBoard");
-    const html = await mount(() => createElement(MembersBoard, { myRole: "owner", myEmail: "me@example.com", myUserId: "u1" }));
-    expect(html).not.toContain("data-read-error");
-    expect(has(html, en.members.empty)).toBe(true);
-    expect(has(html, en.members.claimTitle)).toBe(true); // control: the offer exists when the roster is really empty
-  });
 });
 
 describe("DeveloperConsole lists", () => {

@@ -23,6 +23,7 @@ vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
 import { CreateStudio } from "@/components/create/CreateStudio";
+import { createPipelineOptions } from "@/lib/server/pipeline-options";
 
 const t = dictionaries.en;
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
@@ -51,7 +52,7 @@ const runs = () => calls.filter((c) => c.url.startsWith("/api/agent/run"));
 const show = (locale: Locale = "en", props: Partial<Parameters<typeof CreateStudio>[0]> = {}) =>
   render(
     <I18nProvider locale={locale}>
-      <CreateStudio channelId="chan-a" githubConfigured agentConfig={null} canRun {...props} />
+      <CreateStudio channelId="chan-a" githubConfigured agentConfig={null} canRun pipeline={props.operator ? createPipelineOptions() : null} {...props} />
     </I18nProvider>,
   );
 

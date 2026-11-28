@@ -16,6 +16,10 @@ fail):
   * the grants: anon and service_role call neither function; no API role writes either table; the table's own CHECK caps a document;
   * the rollback (docs/sql/rollback_0130_agent_workflow_drafts.sql) refuses while plans exist, takes everything out with its override,
     and 0130 applies again after it.
+
+Since 0234 only a platform operator may call either function (test_sec_agent_drafts_operator_only_0234.py attacks that). These tests
+attack 0130's own guards, which 0234 leaves verbatim, so each caller here is made a platform admin for its one rolled-back
+transaction (`acting` below); the race database's caller is one for good.
 """
 
 from __future__ import annotations
@@ -26,15 +30,39 @@ import os
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 
 import psycopg
 import pytest
+from psycopg import sql
 
 import sec_db
 from sec_agent_drafts_0130 import DOCUMENT, SAVE
-from sec_db import ANON, SERVICE, acting, as_superuser, user
+from sec_db import ANON, SERVICE, as_superuser, user
 
 DELETE = "select public.delete_agent_workflow_draft(%s)"
+
+def _promote(conn, who) -> None:
+    """`who` on the platform roster as an admin, so is_platform_admin() (0234's check) is true for them."""
+    if who.role != "authenticated" or not who.uid:
+        return
+    conn.execute("insert into public.app_members (user_id, email, role) select %s, %s, 'admin' "
+                 "where not exists (select 1 from public.app_members where user_id = %s)", [who.uid, who.email, who.uid])
+    conn.execute("update public.app_members set role = 'admin' where user_id = %s and role not in ('owner', 'admin')", [who.uid])
+
+
+@contextmanager
+def acting(conn, who, *, commit: bool = False, also=()):
+    """sec_db.acting, with `who` (and `also`) made platform admins first, as the database owner in the same transaction: rolled
+    back with it unless `commit` (only in the race database, whose caller is an admin for good anyway)."""
+    with conn.transaction(force_rollback=not commit):
+        for w in (who, *also):
+            _promote(conn, w)
+        conn.execute("select set_config('request.jwt.claims', %s, true)", [json.dumps(who.claims())])
+        conn.execute("select set_config('request.jwt.claim.role', %s, true)", [who.role])
+        conn.execute(sql.SQL("set local role {}").format(sql.Identifier(who.role)))
+        yield sec_db.Session(conn)
+
 MIGRATION = sec_db.MIGRATIONS / "0130_agent_workflow_drafts.sql"
 ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0130_agent_workflow_drafts.sql"
 TABLES = ("public.agent_workflow_drafts", "public.agent_workflow_draft_versions")
@@ -64,7 +92,7 @@ def _refused(out, message: str, sqlstate: str = "22023"):
 # ── who may call ────────────────────────────────────────────────────────────
 
 def test_the_owner_saves_versions_and_nobody_else_reads_or_writes_them(conn, sc):
-    with acting(conn, sc.alice.actor) as s:
+    with acting(conn, sc.alice.actor, also=(sc.bob.actor,)) as s:
         draft_id, version = _new(s)
         assert version == 1
         second = _save(s, draft_id, 1)
@@ -419,6 +447,7 @@ def race():
     try:
         who = user("racer", f"racer-{uuid.uuid4().hex[:6]}@example.com")
         _signup(c, who)
+        _promote(c, who)  # the racer is a platform admin in this database for good (0234)
         yield {"dsn": db, "conn": c, "who": who}
     finally:
         c.close()
@@ -525,6 +554,11 @@ def test_the_rollback_refuses_while_plans_exist_then_takes_everything_out_with_i
     _reset(race)
     with acting(race["conn"], race["who"], commit=True) as s:
         _new(s)
+    # rollback_0130 refuses 0234's bodies (it would undo them silently): 0234 comes off first, and goes back on at the end.
+    with pytest.raises(psycopg.Error) as e:
+        _paste(race, _rollback_sql())
+    assert "not 0130's body" in str(e.value), e.value
+    sec_db.take_off_0234(race["conn"])
     with pytest.raises(psycopg.Error) as e:
         _paste(race, _rollback_sql())
     assert "plans exist" in str(e.value), e.value
@@ -544,11 +578,14 @@ def test_the_rollback_refuses_while_plans_exist_then_takes_everything_out_with_i
     _paste(race, _rollback_sql())
     assert _gone(race)
     race["conn"].execute(MIGRATION.read_text(encoding="utf-8"))
+    sec_db.put_back_0234(race["conn"])
+    assert sec_db.has_0234(race["conn"])
 
 
 def test_the_rollback_refuses_a_function_that_is_not_0130s(race):
     _reset(race)
     with as_superuser(race["conn"], commit=False) as s:
+        s.conn.execute(sec_db.rollback_0234_body())  # 0130's bodies, so the tampered one below is the only difference
         body = s.value("select pg_get_functiondef('public.delete_agent_workflow_draft(uuid)'::regprocedure)")
         s.conn.execute(body.replace("if not found then", "if not found and true then"))
         with pytest.raises(psycopg.Error) as e:

@@ -33,6 +33,7 @@ import { dictionaries } from "@/lib/i18n";
 import { GeneratePanel } from "@/components/studio/GeneratePanel";
 import { StudioHome, type AssistantData } from "@/components/studio/StudioHome";
 import { CREATIVE_EXAMPLES, STUDIO_MODES, examplePrompt, isStudioMode, modeDesk } from "@/lib/creative/examples";
+import { exampleModelsFor } from "@/lib/server/creative-examples";
 import { DESK_TOOLS, MEDIA_DESKS } from "@/lib/creative/desks";
 import { PANEL_CAPABILITIES, type StudioModel } from "@/lib/creative/studio";
 import { bannedHits } from "@/lib/marketing-banned";
@@ -47,7 +48,7 @@ const json = (body: unknown, status = 200) =>
 
 const MODELS: StudioModel[] = [
   { id: "pic", displayName: "Picture", capabilities: ["t2i", "edit", "upscale", "remove_bg", "describe"], beta: false },
-  // The id an example was written for (lib/creative/examples.ts): offered here, so the example picks it.
+  // The id an example was written for (lib/server/creative-examples.ts): offered here, so the example picks it.
   { id: "seedream-5.0-pro", displayName: "Picture Pro", capabilities: ["t2i"], beta: false },
   { id: "clip", displayName: "Clip", capabilities: ["t2v", "i2v"], beta: false },
   { id: "voice", displayName: "Voice", capabilities: ["tts", "voice_change", "dub"], beta: false },
@@ -86,6 +87,7 @@ const home = (over: Partial<Parameters<typeof StudioHome>[0]> = {}) => (
   <StudioHome
     orgId={ORG}
     models={MODELS}
+    exampleModels={exampleModelsFor(MODELS)}
     credits={{ state: "unknown" }}
     projects={{ state: "ok", projects: [] }}
     assistant={ASSISTANT}

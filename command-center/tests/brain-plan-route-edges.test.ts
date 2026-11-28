@@ -44,7 +44,7 @@ const exact: Answer = (parts) => ok({ chapters: parts.map((p) => {
   const k = Math.ceil(p.seconds / 30);
   const lens = Array.from({ length: k }, (_, i) => Math.floor(p.seconds / k) + (i < p.seconds % k ? 1 : 0));
   return { id: p.id, scenes: lens.map((d, i) => ({ title: `${p.id}-${i}`, duration_s: d, visual_prompt: `shot of ${p.id}`, character_ids: ["c1"], location_id: "l1",
-    dialogue: i === 0 ? [{ character_id: "c1", line: "Hold the line!" }] : [] })) };
+    dialogue: [] /* wordless: only speech "none" can be planned today (speechAllowed) */ })) };
 }) });
 const shortBy = (n: number): Answer => (parts) => ok({ chapters: parts.map((p) => ({ id: p.id, scenes: [{ title: "x", duration_s: Math.min(30, p.seconds - n), visual_prompt: "v" }] })) });
 
@@ -389,13 +389,13 @@ describe("plan_over_cap at the boundary", () => {
 
 describe("an old stored payload", () => {
   it("scenes that add up are drafted as they are: no plan turn, no vendor call", async () => {
-    setup(60, [], { chapters: [], scenes: [storedScene(20), storedScene(20), storedScene(20, { dialogue: [{ character_id: "c1", line: "Go" }] })] });
+    setup(60, [], { chapters: [], scenes: [storedScene(20), storedScene(20), storedScene(20)] });
     const res = await choose();
     expect(res.status).toBe(200);
     expect(called("ai_chat_reserve_turn")).toHaveLength(0);
     expect(llm).not.toHaveBeenCalled();
     expect(savedScenes().map((s) => s.planned_seconds)).toEqual([20, 20, 20]);
-    expect(savedScenes()[2]).toMatchObject({ clip_params: { audio: true } });
+    expect(savedScenes()[2]).not.toHaveProperty("clip_params");
   });
 
   it("scenes that do not add up and no chapters: an old proposal, said as one (ask again), nothing spent", async () => {

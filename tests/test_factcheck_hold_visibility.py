@@ -259,7 +259,8 @@ class TheCustomerIsToldTheScriptWasHeld(unittest.TestCase):
         self.assertEqual(render_error.code_of(tagged), "held")
 
     def test_the_typescript_code_list_has_the_same_codes_in_the_same_order(self):
-        ts = (ROOT / "command-center" / "lib" / "runBackend.ts").read_text()
+        # The codes live in lib/job-errors.ts (runBackend.ts re-exports them): the browser imports that module alone.
+        ts = (ROOT / "command-center" / "lib" / "job-errors.ts").read_text()
         line = next(ln for ln in ts.splitlines() if ln.startswith("export const JOB_ERROR_CODES"))
         self.assertEqual(tuple(c.strip(' "') for c in line.split("[")[1].split("]")[0].split(",")), render_error.CODES)
 
