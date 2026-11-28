@@ -57,6 +57,12 @@ export async function beginFilmLease(supabase: SupabaseClient, sessionId: string
       }, 429) };
     }
     if (r.error.message === "film_not_found") return { ok: false, reason: "not_found", res: brainJson({ error: "not_found" }, 404) };
+    // More than a plan of this film can need (0232's per-film bound): the route computed it for the length it read, so the film's
+    // length changed meanwhile. Named, with the bound, so the panel can say "check again", never a bare 400.
+    if (r.error.message === "plan_too_long") {
+      const m = /^at most (\d+) turns for this film$/.exec(r.error.details ?? "");
+      return { ok: false, reason: "plan_too_long", res: brainJson({ error: "plan_too_long", limit: m ? Number(m[1]) : null, needed: turns.at_most }, 409) };
+    }
     // Archived, not editable, or it has scenes (0232 asks what filmRefusal asks): the words of the route's own refusal.
     if (r.error.message === "film_not_plannable") {
       return { ok: false, reason: "film_not_editable", res: brainJson({ error: "film_not_editable" }, 409) };

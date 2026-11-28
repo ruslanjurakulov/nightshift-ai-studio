@@ -30,11 +30,13 @@
 --     The routes ask their own worst case: the film route 1 + 2 x windows (the outline call included), the chat's choose 2 x windows
 --     (its outline is the proposal already paid for). Sentinel ran both planners over every length and clip shape: worst 15 and 12, so
 --     the bound covers both and is tight at 90 s (9); command-center/tests/brain-film-lease-bound.test.ts keeps the two in step. A
---     number over the bound is refused (`invalid_params`), never cut down.
+--     number over the bound is refused (`plan_too_long`), never cut down.
 --   * Refusals of the begin, in the order ai_chat_reserve_turn refuses a turn, all on CHARGED numbers: no cap row and no trial left, or
---     a cap of 0 -> chat_plan_required; charged >= cap -> chat_daily_cap (used=N limit=M); everything left held by other plans ->
---     chat_reserved (used=N reserved=R limit=M until=T); else short of p_at_most -> plan_over_cap (left=N needed=M
---     scope=workspace|trial|person). Nothing is written by a refusal.
+--     a cap of 0 -> chat_plan_required; charged >= cap -> chat_daily_cap (used=N limit=M); short of p_at_most only because of
+--     what other plans hold (it fits once they end) -> chat_reserved (used=N reserved=R limit=M until=T scope=workspace|trial|
+--     person); short even then -> plan_over_cap (left=N needed=M scope=workspace|trial|person). Nothing is written by a refusal.
+--     A number over the film's bound is `plan_too_long` (NS409, "at most N turns for this film"): the film changed length while
+--     the plan was being set up, and the remedy is to check again.
 --   * Three bodies replaced, each the earlier one plus marked 0232 lines (md5 guard below):
 --       ai_chat_reserve_turn (0226)  a turn of a conversation whose film plan is running is taken out of its reservation first, then
 --                                    the caps are read as before on the charged count; a turn that finds the rest held is refused
@@ -52,7 +54,9 @@
 --
 -- HOW A RESERVATION IS COUNTED. outstanding = greatest(0, reserved - taken), for a lease that is running AND unexpired AND whose author
 --   is still an editor or above of the workspace (or the workspace is the exempt one): a member removed or demoted mid-plan holds
---   nothing (Breach BR-LEASE-02: nobody could end their lease, and it blocked the workspace for its 320 s). ai_chat_reserved(org) adds
+--   nothing (Breach BR-LEASE-02: nobody could end their lease, and it blocked the workspace for its 320 s). In the credits-exempt
+--   (operator's) workspace every running lease counts, whoever began it, as is_org_spender lets its platform staff spend there.
+--   ai_chat_reserved(org) adds
 --   those up; ai_chat_reserved_by(user) adds up a person's own. A plan's turn first adds 1 to taken (outstanding - 1), then its call
 --   is written (charged + 1): charged + held does not move, and a forgiven outcome (not_sent, refused, ...) leaves it 1 lower. Nothing
 --   is counted twice, and nothing goes below zero (greatest(0, ...) per lease).
@@ -90,7 +94,7 @@
 --   reservation.
 --
 -- GUARD (md5 of the body, whitespace runs read as one space; this file refuses any other body):
---   ai_chat_reserve_turn   e105fa9373fac86e9a36cf4a945a21b4 (0226) -> 51ecb8f5cd0226a0f89a3aa7571c605f
+--   ai_chat_reserve_turn   e105fa9373fac86e9a36cf4a945a21b4 (0226) -> 3a54f4b6d57d159d18b5ba8b33e2183b
 --   ai_chat_plan_end       4df6a1c4054bcacedf971a0b79f997d6 (0226) -> 71c2feb9b1b12295bef680822ab80c91
 --   ai_chat_quota          7c17f9749127303a53d039bbdc15e8c2 (0199) -> 09b69b04c1073ad8e79bbc8107e92f81
 --   and, not replaced but relied on: ai_chat_plan_session 75c679292759d14dc51ba865f32d6f8e (0226), ai_chat_plan_begin
@@ -132,7 +136,7 @@ begin
   end if;
   -- The bodies this file replaces (the earlier one, or this file's own on a replay) and the ones it relies on (exactly as 0226 left them).
   for r in select * from (values
-      ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', 'e105fa9373fac86e9a36cf4a945a21b4', '51ecb8f5cd0226a0f89a3aa7571c605f'),
+      ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', 'e105fa9373fac86e9a36cf4a945a21b4', '3a54f4b6d57d159d18b5ba8b33e2183b'),
       ('public.ai_chat_plan_end(uuid, integer, text, text)', '4df6a1c4054bcacedf971a0b79f997d6', '71c2feb9b1b12295bef680822ab80c91'),
       ('public.ai_chat_quota(uuid)', '7c17f9749127303a53d039bbdc15e8c2', '09b69b04c1073ad8e79bbc8107e92f81'),
       ('public.ai_chat_plan_session(uuid)', '75c679292759d14dc51ba865f32d6f8e', '75c679292759d14dc51ba865f32d6f8e'),
@@ -231,6 +235,13 @@ create or replace function public.ai_chat_reserved_by(p_user uuid) returns integ
   language sql stable security definer set search_path = public, pg_temp as $$
   select coalesce(sum(greatest(0, l.reserved - l.taken)), 0)::integer from public.ai_chat_film_plan_leases l
    where l.created_by = p_user and l.state = 'running' and l.expires_at > now()
+$$;
+
+-- When the last of a person's own holds ends (null: none): what a refusal for their held daily limit says to wait for.
+create or replace function public.ai_chat_reserved_by_until(p_user uuid) returns timestamptz
+  language sql stable security definer set search_path = public, pg_temp as $$
+  select max(l.expires_at) from public.ai_chat_film_plan_leases l
+   where l.created_by = p_user and l.state = 'running' and l.expires_at > now() and l.reserved > l.taken
 $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
@@ -353,8 +364,9 @@ begin
   v_res := public.ai_chat_reserved(s.org_id);
   if v_res > 0 and ((v_cap is null and public.ai_chat_trial_left(s.org_id) - v_res <= 0)
                     or (v_cap > 0 and v_used + v_res >= v_cap)) then
-    perform public.creative_refuse('chat_reserved', format('used=%s reserved=%s limit=%s until=%s', v_used, v_res, coalesce(v_cap::text, ''),
-      coalesce(to_char(public.ai_chat_reserved_until(s.org_id) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')), 'NS429');
+    perform public.creative_refuse('chat_reserved', format('used=%s reserved=%s limit=%s until=%s scope=%s', v_used, v_res,
+      coalesce(v_cap::text, ''), coalesce(to_char(public.ai_chat_reserved_until(s.org_id) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), ''),
+      case when v_cap is null then 'trial' else 'workspace' end), 'NS429');
   end if;
   -- The person's own turns everywhere, and the platform's: under their own locks, after the workspace's, always in this order.
   perform pg_advisory_xact_lock(hashtextextended('ai_chat_user:' || v_user::text, 0));
@@ -364,11 +376,16 @@ begin
      >= st.per_user_daily then
     perform public.creative_refuse('chat_daily_cap', 'your own daily limit across workspaces is reached', 'NS429');
   end if;
-  -- 0232: the person's running film plans hold their turns too (reserved at begin against this same limit), so their other turns
-  -- see them as used. This turn's own take is already out of its reservation (above).
+  -- 0232: the person's running film plans hold their turns too (reserved at begin against this same limit). The check above is
+  -- the only "daily limit reached" (charged turns alone); here what is left is only HELD by their own storyboard being written, so
+  -- it is said as held, with when it comes back (Lens on 0232: rule 6, never "24 hours" for a hold of minutes). This turn's own take
+  -- is already out of its reservation (above).
   if (select count(*) from public.ai_chat_calls c where c.user_id = v_user and c.created_at > now() - interval '24 hours')
      + public.ai_chat_reserved_by(v_user) >= st.per_user_daily then
-    perform public.creative_refuse('chat_daily_cap', 'your own daily limit across workspaces is reached', 'NS429');
+    perform public.creative_refuse('chat_reserved', format('used=%s reserved=%s limit=%s until=%s scope=person',
+      (select count(*) from public.ai_chat_calls c where c.user_id = v_user and c.created_at > now() - interval '24 hours'),
+      public.ai_chat_reserved_by(v_user), st.per_user_daily,
+      coalesce(to_char(public.ai_chat_reserved_by_until(v_user) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')), 'NS429');
   end if;
   perform pg_advisory_xact_lock(hashtextextended('ai_chat_global', 0));
   if (select count(*) from public.ai_chat_calls c where c.created_at > now() - interval '24 hours') >= st.global_daily then
@@ -450,6 +467,8 @@ declare
   v_scope text;
   v_mine integer;
   v_bound integer;
+  v_charged integer;
+  v_held integer;
 begin
   if v_user is null then
     raise exception 'sign in first' using errcode = '42501';
@@ -533,7 +552,7 @@ begin
   -- No more than a plan of this film can need (Breach BR-LEASE-03): refused, never cut down, so a caller's mistake is said.
   v_bound := public.ai_chat_film_plan_max_turns(f.target_seconds);
   if p_at_most > v_bound then
-    perform public.creative_refuse('invalid_params', format('at most %s turns for this film', v_bound));
+    perform public.creative_refuse('plan_too_long', format('at most %s turns for this film', v_bound), 'NS409');
   end if;
 
   -- The workspace, in ai_chat_reserve_turn's order and on its charged numbers, then what other plans hold.
@@ -555,21 +574,30 @@ begin
     v_left := v_cap - v_used - v_res;
     v_scope := 'workspace';
   end if;
-  if v_left <= 0 then
-    perform public.creative_refuse('chat_reserved', format('used=%s reserved=%s limit=%s until=%s', v_used, v_res, coalesce(v_cap::text, ''),
-      coalesce(to_char(public.ai_chat_reserved_until(s.org_id) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')), 'NS429');
-  end if;
   if v_left < p_at_most then
-    perform public.creative_refuse('plan_over_cap', format('left=%s needed=%s scope=%s', v_left, p_at_most, v_scope), 'NS429');
+    -- It would fit once the other plans' holds end: that is a wait of minutes (chat_reserved, with when), never "choose a shorter
+    -- film or come back in 24 hours" (Lens on 0232, rule 6). Short even then: plan_over_cap, with what is left now.
+    if v_res > 0 and v_left + v_res >= p_at_most then
+      perform public.creative_refuse('chat_reserved', format('used=%s reserved=%s limit=%s until=%s scope=%s', v_used, v_res,
+        coalesce(v_cap::text, ''), coalesce(to_char(public.ai_chat_reserved_until(s.org_id) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), ''),
+        v_scope), 'NS429');
+    end if;
+    perform public.creative_refuse('plan_over_cap', format('left=%s needed=%s scope=%s', greatest(0, v_left), p_at_most, v_scope), 'NS429');
   end if;
   -- The person's own daily limit across workspaces (0199's per_user_daily, every outcome counted), less what their running plans
   -- hold: under the person's lock, the last lock taken here, after the workspace's, as ai_chat_reserve_turn takes them.
   perform pg_advisory_xact_lock(hashtextextended('ai_chat_user:' || v_user::text, 0));
   select * into st from public.ai_chat_settings where id;
-  v_mine := st.per_user_daily
-            - (select count(*)::integer from public.ai_chat_calls c where c.user_id = v_user and c.created_at > now() - interval '24 hours')
-            - public.ai_chat_reserved_by(v_user);
+  v_charged := (select count(*)::integer from public.ai_chat_calls c where c.user_id = v_user and c.created_at > now() - interval '24 hours');
+  v_held := public.ai_chat_reserved_by(v_user);
+  v_mine := st.per_user_daily - v_charged - v_held;
   if v_mine < p_at_most then
+    -- As for the workspace: short only because of the person's own other holds is a wait, short even without them is over the cap.
+    if v_held > 0 and v_mine + v_held >= p_at_most then
+      perform public.creative_refuse('chat_reserved', format('used=%s reserved=%s limit=%s until=%s scope=person', v_charged, v_held,
+        st.per_user_daily, coalesce(to_char(public.ai_chat_reserved_by_until(v_user) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')),
+        'NS429');
+    end if;
     perform public.creative_refuse('plan_over_cap', format('left=%s needed=%s scope=person', greatest(0, v_mine), p_at_most), 'NS429');
   end if;
   if v_mine < v_left then
@@ -598,6 +626,7 @@ revoke all on function public.ai_chat_film_plan_max_turns(integer) from public, 
 revoke all on function public.ai_chat_reserved(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.ai_chat_reserved_until(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.ai_chat_reserved_by(uuid) from public, anon, authenticated, service_role;
+revoke all on function public.ai_chat_reserved_by_until(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.ai_chat_quota(uuid) from public, anon, authenticated, service_role;
 grant execute on function public.ai_chat_quota(uuid) to authenticated;
 revoke all on function public.ai_chat_reserve_turn(uuid, text, boolean, text) from public, anon, authenticated, service_role;
@@ -619,7 +648,7 @@ declare
   ro text;
 begin
   for r in select * from (values
-      ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', '51ecb8f5cd0226a0f89a3aa7571c605f'),
+      ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', '3a54f4b6d57d159d18b5ba8b33e2183b'),
       ('public.ai_chat_plan_end(uuid, integer, text, text)', '71c2feb9b1b12295bef680822ab80c91'),
       ('public.ai_chat_quota(uuid)', '09b69b04c1073ad8e79bbc8107e92f81')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
@@ -661,7 +690,8 @@ begin
       ('public.ai_chat_film_plan_max_turns(integer)', false),
       ('public.ai_chat_reserved(uuid)', false),
       ('public.ai_chat_reserved_until(uuid)', false),
-      ('public.ai_chat_reserved_by(uuid)', false)) v(sig, member) loop
+      ('public.ai_chat_reserved_by(uuid)', false),
+      ('public.ai_chat_reserved_by_until(uuid)', false)) v(sig, member) loop
     fn := to_regprocedure(r.sig);
     if fn is null then
       raise exception '0232 end state: % does not exist', r.sig;
@@ -684,7 +714,7 @@ notify pgrst, 'reload schema';
 -- Verify (read-only, run after applying; every row should read true)
 -- select v.sig, md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) = v.want as is_0232s
 --   from (values
---     ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', '51ecb8f5cd0226a0f89a3aa7571c605f'),
+--     ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', '3a54f4b6d57d159d18b5ba8b33e2183b'),
 --     ('public.ai_chat_plan_end(uuid, integer, text, text)', '71c2feb9b1b12295bef680822ab80c91'),
 --     ('public.ai_chat_quota(uuid)', '09b69b04c1073ad8e79bbc8107e92f81')) v(sig, want)
 --   join pg_proc p on p.oid = to_regprocedure(v.sig);

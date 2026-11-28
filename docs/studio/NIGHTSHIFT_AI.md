@@ -276,10 +276,14 @@ source text, language, aspect, `target_seconds`). Code: `app/api/brain/film/rout
   outline call, the chat's choose 2 x windows) reserved under the workspace's cap lock against the workspace's daily cap (or the
   Free trial) and the person's own limit. The number is bounded by the film: at most `least(15, 1 + 2 x ceil(target_seconds / 24))`
   (`ai_chat_film_plan_max_turns`; the TypeScript twin `filmLeaseMaxTurns` and tests/brain-film-lease-bound.test.ts keep both
-  planners under it), refused above it, never cut down. Refusals, on charged numbers and in a turn's own order:
-  `chat_plan_required` (no cap and no trial, or a cap of 0), `chat_daily_cap` (charged at the cap), `chat_reserved` (429, the rest
-  held by other plans: `used`, `reserved`, `limit`, `until`), `plan_over_cap` (429, the real `left`; `scope: trial` on the Free
-  trial, whose remedy is a plan, and `scope: person` for the person's own limit). The plan's own turns come out of its reservation.
+  planners under it), refused above it as `plan_too_long` (409, "the film's length changed while the storyboard was being set
+  up; check again"), never cut down. Refusals, on charged numbers and in a turn's own order: `chat_plan_required` (no cap and no
+  trial, or a cap of 0), `chat_daily_cap` (charged at the cap), and when short of the worst case: `chat_reserved` (429: `used`,
+  `reserved`, `limit`, `until`, `scope`) if it would fit once other plans' holds end, a wait of minutes, else `plan_over_cap` (429,
+  the real `left`; `scope: trial` on the Free trial, whose remedy is a plan, and `scope: person` for the person's own limit). The
+  prechecks of both routes give the same answer before the press. A chat turn that finds the person's own daily limit held by
+  their own storyboard being written is `chat_reserved` with `scope: person` ("your own storyboard being written holds N"), never
+  "your daily limit is reached". The plan's own turns come out of its reservation.
   **"Used" means charged.** A hold is never counted as used: `ai_chat_quota` answers `used` (charged), `reserved` and
   `reserved_until`, the panel's meter shows the held part beside it ("held by a storyboard being written; what it does not need
   comes back by {time}"), and a turn that only finds the rest held is refused `chat_reserved` with Retry and no plans link, never

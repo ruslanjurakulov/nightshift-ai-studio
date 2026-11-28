@@ -2817,23 +2817,25 @@ halfway with its turns spent. Its fix round closes Breach BR-LEASE-01/02/03 on 0
   `film_not_found`) and one a plan could write into (editable, not archived, no scene; else `film_not_plannable`, NS409); 0211's
   lease running (else `plan_not_current`). Another running plan of the film: `plan_running` (detail: its end). The same attempt
   asking again gets the reservation it holds. `at_most` is bounded by the film: `ai_chat_film_plan_max_turns(target_seconds)` =
-  `least(15, 1 + 2 x ceil(t / 24))` (60 s 7, 90 s 9, 180 s and longer 15), `invalid_params` above it, never cut. Then, under the
-  workspace's advisory lock (`ai_chat_reserve_turn`'s) and last the person's, on CHARGED numbers in a turn's order:
-  `chat_plan_required`, `chat_daily_cap` (used=N limit=M), `chat_reserved` (used=N reserved=R limit=M until=T),
-  `plan_over_cap` (left=N needed=M scope=workspace|trial|person). Nothing is written by a refusal. The platform's global limit
-  is not reserved.
+  `least(15, 1 + 2 x ceil(t / 24))` (60 s 7, 90 s 9, 180 s and longer 15); above it `plan_too_long` (NS409, "at most N turns for
+  this film": the length changed while the plan was set up; the routes answer 409 `plan_too_long` with "check again"), never cut.
+  Then, under the workspace's advisory lock (`ai_chat_reserve_turn`'s) and last the person's, on CHARGED numbers in a turn's
+  order: `chat_plan_required`, `chat_daily_cap` (used=N limit=M), and when short of `at_most`: `chat_reserved` (used=N reserved=R
+  limit=M until=T scope=workspace|trial|person) if it would fit once the other holds end, else `plan_over_cap` (left=N needed=M
+  scope=workspace|trial|person). Nothing is written by a refusal. The platform's global limit is not reserved.
 - **A new function, not a new argument on `ai_chat_plan_begin`**: a new argument is a new signature (two PostgREST overloads, or
   the old one dropped under a running app). Riding on 0211's attempt lets 0211's own `plan_end` close both with one added
   statement.
 - **"Used" means charged.** `ai_chat_used` and `ai_chat_trial_left` keep 0199's bodies. What running plans hold is
   `ai_chat_reserved(org)` (internal; a lease counts only while running, unexpired, with something left, and while its author is
-  still an editor or above of the workspace, or the workspace is the exempt one), with `ai_chat_reserved_until(org)` and
-  `ai_chat_reserved_by(user)`.
+  still an editor or above of the workspace, or the workspace is the exempt one, where every running lease counts), with
+  `ai_chat_reserved_until(org)`, `ai_chat_reserved_by(user)` and `ai_chat_reserved_by_until(user)`.
 - **Three bodies replaced** (md5 guard: the earlier body or 0232's own; a body 0226 replaces is refused with "apply 0226 first",
   anything else as "an unknown body ... changed by hand? compare with 0226 before applying"):
-  `ai_chat_reserve_turn` e105fa93… (0226) -> 51ecb8f5… (a turn of a conversation whose film plan runs is taken out of its
+  `ai_chat_reserve_turn` e105fa93… (0226) -> 3a54f4b6… (a turn of a conversation whose film plan runs is taken out of its
   reservation before the caps are read, so it is counted once; a turn that finds the rest held is `chat_reserved`; the person's
-  limit also counts `ai_chat_reserved_by`; the answer adds `reserved`), `ai_chat_plan_end` 4df6a1c4… (0226) -> 71c2feb9… (the
+  limit, held only by their own storyboard, is `chat_reserved` scope=person with `ai_chat_reserved_by_until`, and charged at it
+  stays `chat_daily_cap`; the answer adds `reserved`), `ai_chat_plan_end` 4df6a1c4… (0226) -> 71c2feb9… (the
   film lease of the attempt ends with it; `released` = what was not taken), `ai_chat_quota` 7c17f974… (0199) -> 09b69b04… (adds
   `reserved` and `reserved_until`; `used` stays charged). Relied on unchanged and guarded: `ai_chat_plan_session` 75c67929…,
   `ai_chat_plan_begin` 2002d73e… (0226), `ai_chat_plan_state` c2aede96… (0211).
@@ -2860,7 +2862,7 @@ halfway with its turns spent. Its fix round closes Breach BR-LEASE-01/02/03 on 0
   puts it back (`tests/security/test_sec_film_lease_0232.py`).
 - **Requires** 0166 (films, `film_is_editable`, `film_scenes`), 0199, 0211, 0215 (`is_org_spender`) and 0226.
 - **Undo.** `docs/sql/rollback_0232_ai_chat_film_plan_leases.sql` (owner-applied): the three earlier bodies back verbatim with
-  their grants; the new function, the four helpers and the table dropped (which plans held which film; it references films, so a
+  their grants; the new function, the five helpers and the table dropped (which plans held which film; it references films, so a
   kept one would stop 0166's rollback, and nothing else depends on it). Plans running at that moment lose their lease and
   reservation at once. Turns, calls and conversations are 0199's and stay.
 

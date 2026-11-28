@@ -5,7 +5,8 @@ Breach on #953 (tests/security/test_sec_brain_film_breach.py, command-center/tes
 nothing in the database ties a plan to a FILM (BR-FILM-01/02: 0211's lease is per conversation) and that the up-front cap check
 reserves nothing (BR-FILM-03: two plans at the cap both start, the second stops halfway). These pin what closes both:
 
-* two films of one workspace at the cap: exactly one plan starts, the other is refused `plan_over_cap` with the real `left`;
+* two films of one workspace at the cap: exactly one plan starts; the other is told `chat_reserved` (with when) if it would fit
+  once the first plan's hold ends, `plan_over_cap` with the real `left` if not;
 * a plan's reserved turns block ordinary chat turns past the cap, a plan cannot begin over turns chat already took, and the plan's
   own turns are counted once (out of the reservation), never on top;
 * a plan whose server died gives its unused turns back when its lease expires, the turns it took stay taken, and the next begin's
@@ -188,8 +189,10 @@ def test_two_films_at_the_cap_exactly_one_plan_starts_and_the_other_is_told_what
     assert first.rows[0][0]["reserved"] == 5 and first.rows[0][0]["left"] == 2 and first.rows[0][0]["scope"] == "workspace", first
     before = (used(s, w.org), reserved(s, w.org))
     _, second = plan(s, w.alice, b, w.film_b, 5)
-    assert not second.ok and second.error == "plan_over_cap" and second.sqlstate == "NS429", second
-    assert refusal(s, w.alice, FILM_BEGIN, [b, w.film_b, 5]) == ("plan_over_cap", "left=2 needed=5 scope=workspace")
+    # Two left now, and it would fit once the first plan's hold ends: a wait of minutes, said with when (Lens on 0232, rule 6).
+    assert not second.ok and second.error == "chat_reserved" and second.sqlstate == "NS429", second
+    assert refusal(s, w.alice, FILM_BEGIN, [b, w.film_b, 5]) == (
+        "chat_reserved", f"used={before[0]} reserved=5 limit={before[0] + 7} until={first_expiry(s, w.film_a)} scope=workspace")
     # Refused before anything was written: no lease on the second film, nothing more reserved.
     assert lease_row(s, w.film_b) is None
     assert (used(s, w.org), reserved(s, w.org)) == before
@@ -221,7 +224,7 @@ def test_a_plans_reservation_blocks_other_chat_turns_past_the_cap_and_its_own_tu
     assert not out.ok and out.error == "chat_reserved" and out.sqlstate == "NS429", out
     until = first_expiry(s, w.film_a)
     assert refusal(s, w.colleague, TURN, [chatter, "hello", False, None]) == (
-        "chat_reserved", f"used={cap - 5} reserved=5 limit={cap} until={until}")
+        "chat_reserved", f"used={cap - 5} reserved=5 limit={cap} until={until} scope=workspace")
     # The plan's own turn is one of the five: it passes, counted once (one fewer held, one more charged).
     mine = turn(s, w.alice, planner, "plan it")
     assert mine.ok and mine.rows[0][0]["used"] == cap - 4 and mine.rows[0][0]["reserved"] == 4, mine
@@ -254,10 +257,49 @@ def test_the_persons_own_limit_is_reserved_too(w):
     s.rows("update public.ai_chat_settings set per_user_daily = %s where id returning 1", [mine + 6])
     _, first = plan(s, w.alice, a, w.film_a, 4)
     assert first.ok and first.rows[0][0]["scope"] == "person" and first.rows[0][0]["left"] == 2, first
-    # A second plan of hers finds the four held: two left of her own six, whatever the workspace's cap says.
+    # A second plan of hers finds the four held: two left of her own six, whatever the workspace's cap says. Four fits once the
+    # first hold ends (a wait: chat_reserved, scope person); seven does not even then (plan_over_cap, scope person).
     assert as_(s, w.alice, PLAN_BEGIN, [b]).ok
-    assert refusal(s, w.alice, FILM_BEGIN, [b, w.film_b, 4]) == ("plan_over_cap", "left=2 needed=4 scope=person")
+    message, detail = refusal(s, w.alice, FILM_BEGIN, [b, w.film_b, 4])
+    assert message == "chat_reserved" and detail == f"used={mine} reserved=4 limit={mine + 6} until={first_expiry(s, w.film_a)} scope=person", detail
+    assert refusal(s, w.alice, FILM_BEGIN, [b, w.film_b, 7]) == ("plan_over_cap", "left=2 needed=7 scope=person")
     assert lease_row(s, w.film_b) is None
+
+
+def test_a_persons_chat_turn_that_finds_their_own_limit_held_is_told_chat_reserved_never_the_daily_cap(w):
+    """Lens M1 on 0232: the person's limit, held only by their own storyboard being written, is a wait of minutes. Charged at the
+    limit stays chat_daily_cap ("your own daily limit"); held is chat_reserved, scope person, with when."""
+    s = w.su
+    planner, chat = conversation(s, w.alice, w.org), conversation(s, w.alice, w.org)
+    mine = s.value("select count(*)::integer from public.ai_chat_calls where user_id = %s and created_at > now() - interval '24 hours'",
+                   [w.alice.uid])
+    s.rows("update public.ai_chat_settings set per_user_daily = %s where id returning 1", [mine + 4])
+    assert plan(s, w.alice, planner, w.film_a, 4)[1].ok
+    out = turn(s, w.alice, chat, "hello")
+    assert not out.ok and (out.sqlstate, out.error) == ("NS429", "chat_reserved"), out
+    assert refusal(s, w.alice, TURN, [chat, "hello", False, None]) == (
+        "chat_reserved", f"used={mine} reserved=4 limit={mine + 4} until={first_expiry(s, w.film_a)} scope=person")
+    # The plan's own turn is one of the four: it passes.
+    assert turn(s, w.alice, planner, "go").ok
+    # Charged at the limit is the daily cap, as before 0232.
+    s.rows("update public.ai_chat_settings set per_user_daily = %s where id returning 1", [mine + 1])
+    out = turn(s, w.alice, chat, "hello")
+    assert not out.ok and out.error == "chat_daily_cap", out
+
+
+def test_film_plan_begin_says_chat_reserved_when_it_would_fit_once_holds_end_and_plan_over_cap_when_not(w):
+    """Lens M2 on 0232: cap = used + 12, another plan holds 10, so 2 are left now and 12 once that plan ends. Needing 9 is a wait
+    (chat_reserved, with when); needing 13 is over the cap even then (plan_over_cap, with the 2 left now)."""
+    s = w.su
+    other, mine = conversation(s, w.colleague, w.org), conversation(s, w.alice, w.org)
+    cap = room(s, w.org, 12)
+    f = film(s, w.alice, w.org, 180)
+    assert plan(s, w.colleague, other, w.film_a, 10)[1].ok
+    assert as_(s, w.alice, PLAN_BEGIN, [mine]).ok
+    assert refusal(s, w.alice, FILM_BEGIN, [mine, f, 9]) == (
+        "chat_reserved", f"used={cap - 12} reserved=10 limit={cap} until={first_expiry(s, w.film_a)} scope=workspace")
+    assert refusal(s, w.alice, FILM_BEGIN, [mine, f, 13]) == ("plan_over_cap", "left=2 needed=13 scope=workspace")
+    assert lease_row(s, f) is None and reserved(s, w.org) == 10
 
 
 def test_a_plan_past_its_reservation_is_counted_on_top_and_nothing_goes_below_zero(w):
@@ -434,7 +476,7 @@ def test_film_plan_begin_with_everything_left_held_says_chat_reserved(w):
     assert plan(s, w.alice, a, w.film_a, 5)[1].ok
     assert as_(s, w.colleague, PLAN_BEGIN, [b]).ok
     assert refusal(s, w.colleague, FILM_BEGIN, [b, w.film_b, 3]) == (
-        "chat_reserved", f"used={cap - 5} reserved=5 limit={cap} until={first_expiry(s, w.film_a)}")
+        "chat_reserved", f"used={cap - 5} reserved=5 limit={cap} until={first_expiry(s, w.film_a)} scope=workspace")
 
 
 # ── what a reservation may be ─────────────────────────────────────────────────
@@ -446,7 +488,7 @@ def test_film_plan_begin_accepts_exactly_the_bound_for_each_length(w, seconds, p
     f = film(s, w.alice, w.org, seconds)
     a = conversation(s, w.alice, w.org)
     assert as_(s, w.alice, PLAN_BEGIN, [a]).ok
-    assert refusal(s, w.alice, FILM_BEGIN, [a, f, pinned + 1]) == ("invalid_params", f"at most {pinned} turns for this film")
+    assert refusal(s, w.alice, FILM_BEGIN, [a, f, pinned + 1]) == ("plan_too_long", f"at most {pinned} turns for this film")
     assert lease_row(s, f) is None
     out = as_(s, w.alice, FILM_BEGIN, [a, f, pinned])
     assert out.ok and out.rows[0][0]["reserved"] == pinned, out
@@ -527,9 +569,13 @@ def test_bad_parameters_are_refused(w):
     s = w.su
     a = conversation(s, w.alice, w.org)
     as_(s, w.alice, PLAN_BEGIN, [a])
-    for at_most in (0, -1, 16, 501, None):
+    for at_most in (0, -1, None):
         out = as_(s, w.alice, FILM_BEGIN, [a, w.film_a, at_most])
         assert not out.ok and out.error == "invalid_params", (at_most, out)
+    # Over the film's own bound (15 for 180 s) is named, with the number: plan_too_long, never a generic 400.
+    for at_most in (16, 501):
+        out = as_(s, w.alice, FILM_BEGIN, [a, w.film_a, at_most])
+        assert not out.ok and (out.sqlstate, out.error) == ("NS409", "plan_too_long"), (at_most, out)
 
 
 # ── the file ──────────────────────────────────────────────────────────────────
@@ -641,9 +687,30 @@ def test_each_replaced_body_is_the_earlier_one_with_only_marked_0232_lines_added
         a, b = was[sig].splitlines(), now_[sig].splitlines()
         ops = difflib.SequenceMatcher(a=a, b=b, autojunk=False).get_opcodes()
         assert all(op in ("equal", "insert") for op, *_ in ops), (sig, [o for o in ops if o[0] not in ("equal", "insert")])
-        inserted = [b[j1:j2] for op, _i1, _i2, j1, j2 in ops if op == "insert"]
-        # Every inserted run carries its 0232 comment (difflib may align a run that repeats an earlier check one line off its start).
-        assert inserted and all(any(ln.strip().startswith("-- 0232") for ln in run) for run in inserted), (sig, inserted)
+        runs = [(j1, j2) for op, _i1, _i2, j1, j2 in ops if op == "insert"]
+        assert runs and all(run_is_marked(b, j1, j2) for j1, j2 in runs), (sig, [b[j1:j2] for j1, j2 in runs])
+
+
+def run_is_marked(b, j1, j2) -> bool:
+    """An inserted run b[j1:j2] opens with a 0232 comment, or its unmarked first lines are a pure alignment shift: difflib matched
+    an earlier line (a repeated `end if;`) to the same line at the END of the hunk, so the run starts k lines early. That is so
+    exactly when its k unmarked first lines equal the k lines right after it: moved k lines on, the same run opens with the marked
+    comment and the text is the same. Anything else, an unmarked line put in ahead of the marked comment included, fails."""
+    run = b[j1:j2]
+    k = next((i for i, ln in enumerate(run) if ln.strip().startswith("-- 0232")), None)
+    if k is None:
+        return False
+    return k == 0 or run[:k] == b[j2:j2 + k]
+
+
+def test_the_diff_check_refuses_an_unmarked_line_put_in_before_a_marked_comment():
+    """The check's own pins: a pure shift passes; an unmarked line inserted ahead of the comment, or a run with no comment, fails."""
+    # Earlier: perform, end if, b. Now: perform, end if, -- 0232, y, end if, b; difflib puts the earlier `end if` last.
+    shifted = ["a", "  perform x();", "  end if;", "  -- 0232: x", "  y;", "  end if;", "b"]
+    assert run_is_marked(shifted, 2, 5)
+    sneaked = ["a", "  perform x();", "  perform evil();", "  -- 0232: x", "  y;", "  end if;", "b"]
+    assert not run_is_marked(sneaked, 2, 5)       # an unmarked statement ahead of the marked comment
+    assert not run_is_marked(["a", "  y;", "b"], 1, 2)
 
 
 @pytest.mark.parametrize("name,loud", [("0199_studio_ai_chat.sql", False), ("0211_ai_chat_plan_leases.sql", False),

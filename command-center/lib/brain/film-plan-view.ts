@@ -45,7 +45,7 @@ export function refusalText(w: AiWords, status: number, body: Record<string, unk
   if (status === 401 || e === "unauthorized" || e === "session_expired") return { ...r, signIn: true };
   // The Free trial does not come back by itself: its remedy is a plan, not Check again.
   if (e === "plan_over_cap" && body.scope === "trial") return r;
-  if (e === "chat_daily_cap" || e === "plan_over_cap" || e === "chat_reserved") return { ...r, check: true };
+  if (e === "chat_daily_cap" || e === "plan_over_cap" || e === "chat_reserved" || e === "plan_too_long") return { ...r, check: true };
   return r;
 }
 
@@ -71,9 +71,14 @@ function words(w: AiWords, status: number, body: Record<string, unknown>, via: "
     // 0232: the rest of today's messages are held by a storyboard being written; back by `until` (minutes), never "in 24 hours".
     case "chat_reserved": {
       const at = typeof body.until === "string" ? Date.parse(body.until) : Number.NaN;
-      if (!Number.isFinite(at)) return { text: w.reservedPlain, retry: false };
-      return { text: fmt(w.reserved, { time: new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(at) }), retry: false };
+      const person = body.scope === "person";
+      const n = num(body.reserved);
+      if (!Number.isFinite(at) || (person && n === null)) return { text: person ? w.reservedPersonPlain : w.reservedPlain, retry: false };
+      const time = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(at);
+      return { text: person ? fmt(w.reservedPerson, { n: n as number, time }) : fmt(w.reserved, { time }), retry: false };
     }
+    // The film's own bound on a plan (0232): its length changed while the plan was being set up; checking again re-reads it.
+    case "plan_too_long": return { text: w.planTooLong, retry: false };
     case "plan_over_cap": {
       const most = num(body.needed) ?? "?";
       const left = num(body.left);

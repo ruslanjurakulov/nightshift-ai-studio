@@ -563,10 +563,10 @@ describe("0232: one plan per project, its turns reserved when it begins", () => 
     expect(called("ai_chat_plan_end").at(-1)).toMatchObject({ p_state: "failed", p_reason: "plan_running" });
   });
 
-  it("what is left after other running plans' reservations does not cover it: plan_over_cap with the database's real left", async () => {
+  it("short even once other plans' holds end: plan_over_cap with the database's real left", async () => {
     lease.state.film = "on";
-    lease.state.quota = () => ({ used: 3, limit: 30 });
-    lease.films.set("dddddddd-0000-4000-8000-000000000004", { session: "cccccccc-0000-4000-8000-000000000009", attempt: 1, reserved: 26,
+    lease.state.quota = () => ({ used: 28, limit: 30 });
+    lease.films.set("dddddddd-0000-4000-8000-000000000004", { session: "cccccccc-0000-4000-8000-000000000009", attempt: 1, reserved: 1,
                                                               taken: 0, state: "running", expires: Date.now() + 100_000 });
     const atMost = (await (await read()).json()).turns.at_most as number;
     rpc.mockReset();
@@ -578,6 +578,41 @@ describe("0232: one plan per project, its turns reserved when it begins", () => 
     expect(called("ai_chat_reserve_turn")).toHaveLength(0);
     expect(llm).not.toHaveBeenCalled();
     expect(called("ai_chat_plan_end").at(-1)).toMatchObject({ p_state: "failed", p_reason: "plan_over_cap" });
+  });
+
+  it("short only because other plans hold the rest (it fits once they end): chat_reserved with when, not plan_over_cap", async () => {
+    lease.state.film = "on";
+    lease.state.quota = () => ({ used: 3, limit: 30 });
+    const expires = Date.now() + 100_000;
+    lease.films.set("dddddddd-0000-4000-8000-000000000004", { session: "cccccccc-0000-4000-8000-000000000009", attempt: 1, reserved: 26,
+                                                              taken: 0, state: "running", expires });
+    const res = await press();
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ error: "chat_reserved", used: 3, reserved: 26, limit: 30, until: new Date(expires).toISOString(), scope: "workspace" });
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+  });
+
+  it("the precheck says chat_reserved when held turns are the only reason, plan_over_cap when it would not fit anyway", async () => {
+    const until = new Date(Date.now() + 100_000).toISOString();
+    const atMost = (await (await read()).json()).turns.at_most as number;
+    state.quota = { used: 0, limit: 30, reserved: 30 - atMost + 1, reserved_until: until };
+    let res = await read();
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ error: "chat_reserved", used: 0, reserved: 30 - atMost + 1, limit: 30, until, scope: "workspace" });
+    state.quota = { used: 30 - atMost + 1, limit: 30, reserved: 1, reserved_until: until };
+    res = await read();
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ error: "plan_over_cap", needed: atMost, left: atMost - 2 });
+  });
+
+  it("over the film's own bound (its length changed meanwhile): plan_too_long, 409, with the bound, no turn", async () => {
+    lease.state.film = "on";
+    lease.state.maxTurns = 1;
+    const res = await press();
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "plan_too_long", limit: 1 });
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+    expect(called("ai_chat_plan_end").at(-1)).toMatchObject({ p_state: "failed", p_reason: "plan_too_long" });
   });
 
   it("on the Free trial the refusal says scope trial (its remedy is a plan, not tomorrow)", async () => {

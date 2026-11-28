@@ -12,7 +12,7 @@ from __future__ import annotations
 
 #: (signature, the md5 0232 is written on, 0232's own md5: the same for a body it only relies on).
 GUARD = (
-    ("public.ai_chat_reserve_turn(uuid, text, boolean, text)", "e105fa9373fac86e9a36cf4a945a21b4", "51ecb8f5cd0226a0f89a3aa7571c605f"),
+    ("public.ai_chat_reserve_turn(uuid, text, boolean, text)", "e105fa9373fac86e9a36cf4a945a21b4", "3a54f4b6d57d159d18b5ba8b33e2183b"),
     ("public.ai_chat_plan_end(uuid, integer, text, text)", "4df6a1c4054bcacedf971a0b79f997d6", "71c2feb9b1b12295bef680822ab80c91"),
     ("public.ai_chat_quota(uuid)", "7c17f9749127303a53d039bbdc15e8c2", "09b69b04c1073ad8e79bbc8107e92f81"),
     ("public.ai_chat_plan_session(uuid)", "75c679292759d14dc51ba865f32d6f8e", "75c679292759d14dc51ba865f32d6f8e"),
@@ -37,6 +37,7 @@ def extend(tables: dict, functions: dict) -> None:
         "ai_chat_reserved": SERVICE,
         "ai_chat_reserved_until": SERVICE,
         "ai_chat_reserved_by": SERVICE,
+        "ai_chat_reserved_by_until": SERVICE,
         "ai_chat_film_plan_max_turns": SERVICE,
     })
 

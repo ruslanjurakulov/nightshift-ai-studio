@@ -70,7 +70,8 @@ def test_BR_LEASE_03_a_reservation_is_never_more_than_the_films_own_worst_case(w
     chatter = conversation(s, w.alice, w.org)
     room(s, w.org, 30)  # a creator plan's whole day
     _, begun = plan(s, w.colleague, hog, w.film_b, 30)
-    assert not begun.ok and begun.error == "invalid_params", begun
+    # Named (round 3): the film's own bound, said with its number, never a generic invalid_params 400.
+    assert not begun.ok and (begun.sqlstate, begun.error) == ("NS409", "plan_too_long"), begun
     assert reserved(s, w.org) == 0
     out = as_(s, w.colleague, FILM_BEGIN, [hog, w.film_b, 7])
     assert out.ok and out.rows[0][0]["reserved"] == 7, out

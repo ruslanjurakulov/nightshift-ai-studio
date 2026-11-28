@@ -194,9 +194,13 @@ export async function planPrecheck(supabase: SupabaseClient, film: PlanFilm): Pr
   const until = typeof q.reserved_until === "string" ? q.reserved_until : null;
   if (limit !== null && used !== null && used >= limit) return { ok: false, res: brainJson({ error: "chat_daily_cap", used, limit }, 429) };
   const left = limit !== null ? (used === null ? null : Math.max(0, limit - used - reserved)) : trial === null ? null : Math.max(0, trial - reserved);
-  // Everything left is held by storyboards being written: back within minutes (`until`), never "come back in 24 hours".
-  if (left === 0 && reserved > 0) return { ok: false, res: brainJson({ error: "chat_reserved", used, reserved, limit, until }, 429) };
   if (left !== null && left < turns.at_most) {
+    // Short only because storyboards being written hold the rest (it fits once they end): a wait of minutes, said with `until`,
+    // never "choose a shorter film or come back in 24 hours" (0232's own order, Lens on 0232).
+    const unheld = limit !== null ? (used === null ? null : limit - used) : trial;
+    if (reserved > 0 && unheld !== null && unheld >= turns.at_most) {
+      return { ok: false, res: brainJson({ error: "chat_reserved", used, reserved, limit, until, scope: limit === null ? "trial" : "workspace" }, 429) };
+    }
     return { ok: false, res: brainJson({ error: "plan_over_cap", needed: turns.at_most, about: turns.about, left,
                                           ...(limit === null ? { scope: "trial" } : {}) }, 429) };
   }

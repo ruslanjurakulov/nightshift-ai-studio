@@ -11,6 +11,11 @@ describe("dbRefusal: chat_reserved", () => {
     expect(await res.json()).toEqual({ error: "chat_reserved", used: 12, reserved: 18, limit: 30, until: "2026-11-27T14:05:00Z" });
   });
 
+  it("scope person: the person's own daily limit held by their own storyboard", async () => {
+    const res = dbRefusal({ code: "NS429", message: "chat_reserved", details: "used=40 reserved=4 limit=44 until=2026-11-27T14:05:00Z scope=person" })!;
+    expect(await res.json()).toEqual({ error: "chat_reserved", used: 40, reserved: 4, limit: 44, until: "2026-11-27T14:05:00Z", scope: "person" });
+  });
+
   it("the Free trial has no limit, and a detail it cannot read gives nulls, never zeros", async () => {
     const trial = dbRefusal({ code: "NS429", message: "chat_reserved", details: "used=1 reserved=2 limit= until=" })!;
     expect(await trial.json()).toEqual({ error: "chat_reserved", used: 1, reserved: 2, limit: null, until: null });

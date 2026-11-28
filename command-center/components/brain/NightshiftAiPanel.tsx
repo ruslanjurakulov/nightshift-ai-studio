@@ -451,8 +451,14 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     // 0232: the rest is only held by a storyboard being written; it comes back by `until` (minutes), never "in 24 hours".
     if (e === "chat_reserved") {
       const at = clockOf(d.until);
+      // The person's own daily limit, held by their own storyboard being written: said as theirs, with how many it holds.
+      if (d.scope === "person") {
+        return at && typeof d.reserved === "number" ? fmt(c.errors.chat_reserved_person, { n: d.reserved, time: at }) : c.errors.chat_reserved_person_plain;
+      }
       return at ? fmt(c.errors.chat_reserved, { time: at }) : c.errors.chat_reserved_plain;
     }
+    // More turns than the film's own bound (0232): its length changed while the plan was being set up. Check again re-reads it.
+    if (e === "plan_too_long") return c.errors.plan_too_long;
     if (e === "chat_plan_required") return c.planLocked;
     if (e === "message_too_long") return fmt(c.errors.message_too_long, { max: load.state === "ready" ? load.plan.max_input_chars : 2000 });
     if (e === "short_not_available") return c.shortNotAvailable;

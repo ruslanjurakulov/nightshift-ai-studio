@@ -91,13 +91,42 @@ describe("0232's holds in the Nightshift AI panel", () => {
   });
 });
 
+describe("round 3: the person's own hold and the film's bound", () => {
+  it("a turn told chat_reserved on the person's own limit names their own storyboard and how many it holds, no plans link", async () => {
+    turnReply = { status: 429, body: { error: "chat_reserved", used: 40, reserved: 4, limit: 44, until: UNTIL, scope: "person" } };
+    stub();
+    mount();
+    const box = () => document.getElementById("ns-ai-input") as HTMLTextAreaElement;
+    await waitFor(() => expect(box()?.disabled).toBe(false));
+    await act(async () => {
+      fireEvent.change(box(), { target: { value: "hello there" } });
+      fireEvent.submit(box().closest("form") as HTMLFormElement);
+    });
+    const alert = await screen.findByRole("alert");
+    const at = new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit" }).format(Date.parse(UNTIL));
+    expect(alert.textContent).toContain(en.errors.chat_reserved_person.replace("{n}", "4").replace("{time}", at));
+    expect(screen.queryByRole("link", { name: en.seePlans })).toBeNull();
+  });
+
+  it("the film editor names the person's own hold, and plan_too_long asks to check again", () => {
+    const w = filmStudioStrings("en").canvas.ai;
+    const p = refusalText(w, 429, { error: "chat_reserved", until: UNTIL, reserved: 4, scope: "person" }, "post");
+    expect(p.text.startsWith(w.reservedPerson.split("{n}")[0])).toBe(true);
+    expect(p.text).toContain("4");
+    expect(refusalText(w, 429, { error: "chat_reserved", until: UNTIL, scope: "person" }, "post").text).toBe(w.reservedPersonPlain);
+    const t = refusalText(w, 409, { error: "plan_too_long", limit: 7 }, "post");
+    expect(t).toMatchObject({ text: w.planTooLong, check: true });
+  });
+});
+
 describe("0232's words, in every language", () => {
   it("a hold is never said to come back in 24 hours, in en, ru or uz, in the chat or the film editor", () => {
     for (const lang of ["en", "ru", "uz"] as const) {
       const c = dictionaries[lang].aiChat;
       const w = filmStudioStrings(lang).canvas.ai;
       for (const s of [c.quotaReserved, c.quotaReservedPlain, c.errors.chat_reserved, c.errors.chat_reserved_plain, c.errors.plan_over_cap_trial,
-                       w.reserved, w.reservedPlain, w.overCapTrial]) {
+                       c.errors.chat_reserved_person, c.errors.chat_reserved_person_plain, c.errors.plan_too_long,
+                       w.reserved, w.reservedPlain, w.overCapTrial, w.reservedPerson, w.reservedPersonPlain, w.planTooLong]) {
         expect(s.length).toBeGreaterThan(20);
         expect(s).not.toMatch(/24/);
       }

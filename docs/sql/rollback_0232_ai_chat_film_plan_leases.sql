@@ -4,7 +4,8 @@
 -- WHAT COMES BACK, verbatim: ai_chat_reserve_turn and ai_chat_plan_end as 0226 wrote them and ai_chat_quota as 0199 wrote it, with
 --   their grants. A plan's turns are again counted as they are taken, with nothing reserved (BR-FILM-03 open again), and two
 --   conversations can again plan one film at once (BR-FILM-01/02 open again; the route's own per-person yield stays).
--- WHAT GOES: ai_chat_film_plan_begin, ai_chat_film_plan_max_turns, ai_chat_reserved, ai_chat_reserved_until, ai_chat_reserved_by and
+-- WHAT GOES: ai_chat_film_plan_begin, ai_chat_film_plan_max_turns, ai_chat_reserved, ai_chat_reserved_until, ai_chat_reserved_by,
+--   ai_chat_reserved_by_until and
 --   the ai_chat_film_plan_leases table. Dropped, not kept: it references films, and a kept table would stop 0166's own rollback.
 --   Nothing else depends on it (no view, function or foreign key of another file names it). Plans RUNNING when this is applied lose
 --   their lease and their reservation at once: their remaining turns are then counted as they are taken, as before 0232, and may meet
@@ -19,7 +20,7 @@
 --   3. Asserts the end state.
 --
 -- The bodies (md5, whitespace runs read as one space; 0232 -> earlier):
---   ai_chat_reserve_turn   51ecb8f5cd0226a0f89a3aa7571c605f -> e105fa9373fac86e9a36cf4a945a21b4 (0226)
+--   ai_chat_reserve_turn   3a54f4b6d57d159d18b5ba8b33e2183b -> e105fa9373fac86e9a36cf4a945a21b4 (0226)
 --   ai_chat_plan_end       71c2feb9b1b12295bef680822ab80c91 -> 4df6a1c4054bcacedf971a0b79f997d6 (0226)
 --   ai_chat_quota          09b69b04c1073ad8e79bbc8107e92f81 -> 7c17f9749127303a53d039bbdc15e8c2 (0199)
 --
@@ -35,7 +36,7 @@ declare
   h text;
 begin
   for r in select * from (values
-      ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', '51ecb8f5cd0226a0f89a3aa7571c605f'),
+      ('public.ai_chat_reserve_turn(uuid, text, boolean, text)', '3a54f4b6d57d159d18b5ba8b33e2183b'),
       ('public.ai_chat_plan_end(uuid, integer, text, text)', '71c2feb9b1b12295bef680822ab80c91'),
       ('public.ai_chat_quota(uuid)', '09b69b04c1073ad8e79bbc8107e92f81')) v(sig, want) loop
     select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure(r.sig);
@@ -198,6 +199,7 @@ grant execute on function public.ai_chat_plan_end(uuid, integer, text, text) to 
 
 drop function if exists public.ai_chat_film_plan_begin(uuid, uuid, integer);
 drop function if exists public.ai_chat_film_plan_max_turns(integer);
+drop function if exists public.ai_chat_reserved_by_until(uuid);
 drop function if exists public.ai_chat_reserved_by(uuid);
 drop function if exists public.ai_chat_reserved_until(uuid);
 drop function if exists public.ai_chat_reserved(uuid);
@@ -222,7 +224,8 @@ begin
      or to_regprocedure('public.ai_chat_film_plan_max_turns(integer)') is not null
      or to_regprocedure('public.ai_chat_reserved(uuid)') is not null
      or to_regprocedure('public.ai_chat_reserved_until(uuid)') is not null
-     or to_regprocedure('public.ai_chat_reserved_by(uuid)') is not null then
+     or to_regprocedure('public.ai_chat_reserved_by(uuid)') is not null
+     or to_regprocedure('public.ai_chat_reserved_by_until(uuid)') is not null then
     raise exception 'rollback 0232 end state: an 0232 object is still there';
   end if;
 end $$;

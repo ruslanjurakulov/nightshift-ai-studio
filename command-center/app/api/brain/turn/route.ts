@@ -407,8 +407,14 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
       // What other plans hold (0232's `reserved`; absent before 0232, when nothing can be held) is not left: subtracted here too.
       const used = typeof q.used === "number" ? q.used : null;
       const held = typeof (q as { reserved?: unknown }).reserved === "number" ? Math.max(0, (q as { reserved: number }).reserved) : 0;
-      const left = typeof q.limit === "number" ? (used === null ? null : Math.max(0, q.limit - used - held))
-        : typeof q.trial_left === "number" ? Math.max(0, q.trial_left - held) : null;
+      const unheld = typeof q.limit === "number" ? (used === null ? null : q.limit - used) : typeof q.trial_left === "number" ? q.trial_left : null;
+      const left = unheld === null ? null : Math.max(0, unheld - held);
+      // Short only because storyboards being written hold the rest (it fits once they end): a wait, said with when (0232's order).
+      if (left !== null && left < turns.at_most && held > 0 && unheld !== null && unheld >= turns.at_most) {
+        const until = (q as { reserved_until?: unknown }).reserved_until;
+        return brainJson({ error: "chat_reserved", used, reserved: held, limit: typeof q.limit === "number" ? q.limit : null,
+                           until: typeof until === "string" ? until : null, scope: typeof q.limit === "number" ? "workspace" : "trial" }, 429);
+      }
       if (left !== null && left > 0 && left < turns.at_most) {
         return brainJson({ error: "plan_over_cap", needed: turns.at_most, about: turns.about, left,
                            ...(typeof q.limit === "number" ? {} : { scope: "trial" }) }, 429);

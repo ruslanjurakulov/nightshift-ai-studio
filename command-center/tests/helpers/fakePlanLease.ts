@@ -8,8 +8,8 @@
  * for). With `state.film = "on"`: one running plan per FILM (`plan_running`), riding on the conversation's running 0211 attempt
  * (`plan_not_current` otherwise), its at_most reserved against `state.quota()` on CHARGED numbers, refused in 0232's order:
  * no cap and no trial left, or a cap of 0, `chat_plan_required`; charged at the cap `chat_daily_cap`; the rest held by other plans
- * `chat_reserved`; else short `plan_over_cap` (detail `left=N needed=M scope=workspace|trial`). `state.maxTurns` is the film's
- * bound (`invalid_params` above it), `state.notPlannable` a film no plan may write (`film_not_plannable`). Ended with that attempt by
+ * `chat_reserved` when it would fit once they end; else short `plan_over_cap` (detail `left=N needed=M scope=workspace|trial`).
+ * `state.maxTurns` is the film's bound (`plan_too_long` above it), `state.notPlannable` a film no plan may write (`film_not_plannable`). Ended with that attempt by
  * ai_chat_plan_end, and no longer counted once expired. The test's own ai_chat_reserve_turn asks `outstanding` / `reserved` / `take`
  * to count a plan's turn out of its reservation, as 0232's does.
  */
@@ -81,7 +81,7 @@ export function fakePlanLease() {
         const other = ofSession(sid);
         if (other) return { data: null, error: { code: "NS409", message: "plan_running", details: new Date(other.expires).toISOString() } };
         if (state.maxTurns !== null && atMost > state.maxTurns) {
-          return { data: null, error: { code: "NS400", message: "invalid_params", details: `at most ${state.maxTurns} turns for this film` } };
+          return { data: null, error: { code: "NS409", message: "plan_too_long", details: `at most ${state.maxTurns} turns for this film` } };
         }
         const q = state.quota?.() ?? null;
         let left: number | null = null;
@@ -95,12 +95,15 @@ export function fakePlanLease() {
           } else if (q.limit === 0) return { data: null, error: { code: "NS402", message: "chat_plan_required" } };
           else if (q.used >= q.limit) return { data: null, error: { code: "NS429", message: "chat_daily_cap", details: `used=${q.used} limit=${q.limit}` } };
           else left = q.limit - q.used - held;
-          if (left <= 0) {
-            const until = Math.max(...[...films.values()].filter(live).map((l) => l.expires));
-            return { data: null, error: { code: "NS429", message: "chat_reserved",
-                                          details: `used=${q.used} reserved=${held} limit=${q.limit ?? ""} until=${new Date(until).toISOString()}` } };
+          if (left < atMost) {
+            // It fits once the other plans' holds end: a wait (chat_reserved, with when); short even then: plan_over_cap.
+            if (held > 0 && left + held >= atMost) {
+              const until = Math.max(...[...films.values()].filter(live).map((l) => l.expires));
+              return { data: null, error: { code: "NS429", message: "chat_reserved",
+                                            details: `used=${q.used} reserved=${held} limit=${q.limit ?? ""} until=${new Date(until).toISOString()} scope=${scope}` } };
+            }
+            return { data: null, error: { code: "NS429", message: "plan_over_cap", details: `left=${Math.max(0, left)} needed=${atMost} scope=${scope}` } };
           }
-          if (left < atMost) return { data: null, error: { code: "NS429", message: "plan_over_cap", details: `left=${left} needed=${atMost} scope=${scope}` } };
         }
         films.set(film, { session: sid, attempt: pl.attempt, reserved: atMost, taken: 0, state: "running", expires: pl.expires });
         return { data: { film_id: film, attempt: pl.attempt, reserved: atMost, taken: 0, left: left === null ? null : left - atMost, scope,
