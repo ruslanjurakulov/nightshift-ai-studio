@@ -157,3 +157,76 @@ describe("a long sheet opens at the top", () => {
     expect(dlg.className).toContain("max-h-");
   });
 });
+
+describe("on the shared Radix Dialog (S5 dialogs 2/2)", () => {
+  it("while the work runs, neither Escape nor a press outside closes it or answers no", async () => {
+    // What would break: Radix dismisses on Escape and on an outside press; without the lock check a person could close
+    // the sheet while money moves, and the caller would hear "no" for work that may still succeed.
+    let finish: (v: boolean) => void = () => {};
+    const run = vi.fn(() => new Promise<boolean>((r) => (finish = r)));
+    const done = await open({ title: "t", message: "m", confirmLabel: "Go", run });
+    const sheet = screen.getByRole("alertdialog");
+    await act(async () => {
+      within(sheet).getByRole("button", { name: "Go" }).click();
+    });
+    const esc = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    await act(async () => {
+      document.activeElement!.dispatchEvent(esc);
+      fireEvent.pointerDown(document.body);
+    });
+    expect(screen.getByRole("alertdialog")).toBe(sheet);
+    expect(done).not.toHaveBeenCalled();
+    // The Escape was still spent here: a page-level Escape handler (SectionShell) sees it as handled.
+    expect(esc.defaultPrevented).toBe(true);
+    await act(async () => finish(true));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(done).toHaveBeenCalledWith(true);
+  });
+
+  it("is an alertdialog named by its title and described by its message, with no extra close key", async () => {
+    await open({ title: "Remove ana@x.uz?", message: "She loses access.", confirmLabel: "Remove" });
+    const sheet = screen.getByRole("alertdialog", { name: "Remove ana@x.uz?" });
+    expect(document.getElementById(sheet.getAttribute("aria-describedby")!)?.textContent).toBe("She loses access.");
+    expect(within(sheet).getAllByRole("button").map((b) => b.textContent)).toEqual([en.ux.confirmCancel, "Remove"]);
+  });
+});
+
+describe("a replaced question never receives the old one's answer (Lens on S5 dialogs 2/2)", () => {
+  it("a run that finishes after a second ask replaced its question does not answer the second one", async () => {
+    // What would break: the first ask settles as "no" when a second ask arrives, but its run was still in flight; when it
+    // resolved, it answered the SECOND question "yes" — a confirmation nobody gave.
+    let finishFirst: (v: boolean) => void = () => {};
+    const first: ConfirmOptions = { title: "first", message: "m1", confirmLabel: "Go1", run: () => new Promise<boolean>((r) => (finishFirst = r)) };
+    const second: ConfirmOptions = { title: "second", message: "m2", confirmLabel: "Go2" };
+    const answers: Array<[string, boolean]> = [];
+    function Two() {
+      const { confirm, dialog } = useConfirm();
+      return (
+        <>
+          <button type="button" onClick={async () => answers.push(["first", await confirm(first)])}>
+            ask1
+          </button>
+          <button type="button" onClick={async () => answers.push(["second", await confirm(second)])}>
+            ask2
+          </button>
+          {dialog}
+        </>
+      );
+    }
+    render(<Two />);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "ask1" })));
+    await act(async () => within(screen.getByRole("alertdialog", { name: "first" })).getByRole("button", { name: "Go1" }).click());
+    // A second ask arrives while the first runs (a keyboard command or a timer; the page behind is inert to a pointer).
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "ask2", hidden: true })));
+    expect(answers).toEqual([["first", false]]);
+    await act(async () => finishFirst(true));
+    // The second question is still open and unanswered.
+    expect(screen.getByRole("alertdialog", { name: "second" })).toBeTruthy();
+    expect(answers).toEqual([["first", false]]);
+  });
+
+  it("sits at the bottom of a phone, in thumb reach: the shared Sheet's auto side", async () => {
+    await open({ title: "t", message: "m", confirmLabel: "Go" });
+    expect(screen.getByRole("alertdialog").getAttribute("data-side")).toBe("auto");
+  });
+});
