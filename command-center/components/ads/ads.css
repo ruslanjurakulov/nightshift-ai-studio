@@ -44,7 +44,8 @@
 .ads-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
 .ads-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .ads-check { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 0.9375rem; color: var(--color-fg); overflow-wrap: anywhere; }
-.ads-check input { width: 20px; height: 20px; flex: none; accent-color: var(--ns-amber, var(--color-primary)); }
+/* A ticked box is a person's mark: the selection lime, like a pressed pick above. */
+.ads-check input { width: 20px; height: 20px; flex: none; accent-color: var(--ds-focus); }
 .ads-colour { display: inline-flex; align-items: center; gap: 6px; }
 .ads-colour input[type="color"] { width: 44px; height: 44px; padding: 2px; border: 1px solid var(--color-border); border-radius: var(--ns-r-key, 8px); background: var(--color-panel-2); }
 

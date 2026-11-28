@@ -1,0 +1,321 @@
+{
+ "app/globals.css @media (pointer: coarse), (max-width: 40rem) .studio-chip.tap": [
+  [
+   "min-height: 2.75rem"
+  ]
+ ],
+ "app/globals.css .studio-seg": [
+  [
+   "display: inline-flex",
+   "align-items: center",
+   "gap: 0",
+   "padding: 2px",
+   "border-radius: var(--ns-r-key)",
+   "border: 1px solid var(--color-border)",
+   "background: var(--color-panel)"
+  ]
+ ],
+ "app/globals.css .studio-seg > button": [
+  [
+   "min-height: 36px",
+   "padding: 0 12px",
+   "border-radius: var(--ns-r-chip)",
+   "font-size: var(--ns-t-small)",
+   "color: var(--color-muted)",
+   "transition: background-color var(--ns-dur-1) var(--ns-ease), color var(--ns-dur-1) var(--ns-ease)"
+  ],
+  [
+   "min-height: 40px"
+  ]
+ ],
+ "app/globals.css .studio-seg > button:hover": [
+  [
+   "color: var(--color-fg)"
+  ]
+ ],
+ "app/globals.css .studio-seg > button[aria-pressed=\"true\"]": [
+  [
+   "color: var(--studio-cta-fg)",
+   "background: var(--studio-cta-bg)"
+  ]
+ ],
+ "app/globals.css .studio-chip": [
+  [
+   "display: inline-flex",
+   "align-items: center",
+   "gap: 0.5rem",
+   "min-height: var(--ns-chip-h)",
+   "max-width: 100%",
+   "padding: 0 14px 0 12px",
+   "border-radius: var(--ns-r-key)",
+   "border: 1px solid transparent",
+   "background: var(--ns-key)",
+   "font-size: var(--ns-t-small)",
+   "color: var(--color-muted)",
+   "transition: border-color var(--ns-dur-1) var(--ns-ease), color var(--ns-dur-1) var(--ns-ease), background-color var(--ns-dur-1) var(--ns-ease)"
+  ]
+ ],
+ "app/globals.css .studio-chip[aria-pressed]::before": [
+  [
+   "content: \"\"",
+   "flex-shrink: 0",
+   "width: 6px",
+   "height: 6px",
+   "border-radius: 999px",
+   "box-shadow: inset 0 0 0 1.5px var(--ns-lamp-off)"
+  ]
+ ],
+ "app/globals.css .studio-chip:hover": [
+  [
+   "color: var(--color-fg)",
+   "background: var(--ns-key-hi)"
+  ]
+ ],
+ "app/globals.css .studio-chip[aria-pressed=\"true\"]": [
+  [
+   "color: var(--color-fg)",
+   "border-color: var(--ds-focus)",
+   "background: var(--ds-select-soft)"
+  ]
+ ],
+ "app/globals.css .studio-chip[aria-pressed=\"true\"]::before": [
+  [
+   "background: var(--ds-focus)",
+   "box-shadow: 0 0 0 2px color-mix(in srgb, var(--ds-focus) 25%, transparent)"
+  ]
+ ],
+ "app/globals.css .studio-chip:disabled": [
+  [
+   "opacity: 0.55",
+   "cursor: not-allowed"
+  ]
+ ],
+ "app/globals.css .studio-seg-select": [
+  [
+   "position: relative",
+   "padding-right: 4px"
+  ]
+ ],
+ "app/globals.css .studio-seg-select > select": [
+  [
+   "min-height: 36px",
+   "padding: 0 8px",
+   "border: 0",
+   "background: transparent",
+   "font-size: var(--ns-t-small)",
+   "color: var(--color-fg)",
+   "outline: none"
+  ]
+ ],
+ "app/globals.css .studio-seg-select:focus-within": [
+  [
+   "outline: 2px solid var(--color-primary)",
+   "outline-offset: 2px"
+  ]
+ ],
+ "app/globals.css @media (pointer: coarse), (max-width: 40rem) .studio-seg > button": [
+  [
+   "min-height: 44px"
+  ]
+ ],
+ "app/globals.css @media (pointer: coarse), (max-width: 40rem) .studio-seg-select > select": [
+  [
+   "min-height: 44px"
+  ]
+ ],
+ "app/(app)/app-glass.css :where(body:has(.app-shell)) .studio-chip": [
+  [
+   "--g-tint: var(--glass-tint)",
+   "--g-tint-hover: var(--glass-tint-hover)",
+   "--g-sheen-on: var(--glass-sheen)",
+   "--g-gloss: var(--glass-gloss)",
+   "--g-edge-hi: var(--glass-edge-hi)",
+   "--g-edge-lo: var(--glass-edge-lo)",
+   "--g-rim-hi: var(--glass-rim-hi)",
+   "--g-rim-lo: var(--glass-rim-lo)",
+   "--g-shadow: var(--glass-shadow)",
+   "--g-shadow-hover: var(--glass-shadow-hover)",
+   "--g-bg: radial-gradient(var(--glass-spot) circle at var(--glass-x, 50%) var(--glass-y, 50%), var(--g-sheen), transparent 72%), linear-gradient(180deg, var(--g-gloss), transparent 46%), linear-gradient(var(--g-tint), var(--g-tint))",
+   "--g-ring: inset 0 1px 0 var(--g-rim-hi), inset 1px 0 0 color-mix(in srgb, var(--g-rim-hi) 50%, transparent), inset 0 -1px 0 var(--g-rim-lo), inset -1px 0 0 color-mix(in srgb, var(--g-rim-lo) 50%, transparent)",
+   "--g-edge: var(--g-edge-hi) var(--g-edge-lo) var(--g-edge-lo) var(--g-edge-hi)",
+   "border-width: 1px",
+   "border-style: solid",
+   "border-color: var(--g-edge)",
+   "background: var(--g-bg)",
+   "background-clip: padding-box",
+   "box-shadow: var(--g-ring), var(--g-shadow)",
+   "transition: transform var(--glass-dur) var(--glass-spring), box-shadow var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-1) var(--ns-ease), color var(--ns-dur-1) var(--ns-ease), --g-tint var(--ns-dur-2) var(--ns-ease), --g-sheen var(--ns-dur-2) var(--ns-ease)"
+  ]
+ ],
+ "app/(app)/app-glass.css @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) :where(body:has(.app-shell)) .studio-chip": [
+  [
+   "-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate))",
+   "backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate))"
+  ]
+ ],
+ "app/(app)/app-glass.css @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) :where(body:has(.app-shell)) .studio-seg": [
+  [
+   "-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate))",
+   "backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate))"
+  ]
+ ],
+ "app/(app)/app-glass.css @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) :where(body:has(.app-shell)) .studio-chip": [
+  [
+   "--g-tint: var(--glass-solid)",
+   "--g-tint-hover: var(--ns-key-hi)"
+  ]
+ ],
+ "app/(app)/app-glass.css :where(body:has(.app-shell)) .studio-chip[aria-pressed=\"true\"]": [
+  [
+   "--g-tint: var(--glass-select)",
+   "--g-tint-hover: var(--glass-select)",
+   "--g-edge-hi: var(--ds-focus)",
+   "--g-edge-lo: var(--ds-focus)",
+   "color: var(--color-fg)",
+   "background: var(--g-bg)",
+   "background-clip: padding-box",
+   "border-color: var(--g-edge)"
+  ]
+ ],
+ "app/(app)/app-glass.css :where(body:has(.app-shell)) .studio-chip:hover:not(:disabled):not([aria-disabled=\"true\"]):not([data-disabled=\"true\"])": [
+  [
+   "background: var(--g-bg)",
+   "background-clip: padding-box",
+   "filter: none"
+  ]
+ ],
+ "app/(app)/app-glass.css @media (hover: hover) :where(body:has(.app-shell)) .studio-chip:hover:not(:disabled):not([data-plain]):not([aria-disabled=\"true\"]):not([data-disabled=\"true\"])": [
+  [
+   "--g-tint: var(--g-tint-hover)",
+   "--g-shadow: var(--g-shadow-hover)",
+   "--g-edge-hi: var(--ns-act)",
+   "--g-edge-lo: var(--ns-act)",
+   "color: var(--color-fg)",
+   "background: var(--g-bg)",
+   "background-clip: padding-box",
+   "border-color: var(--g-edge)",
+   "box-shadow: var(--g-ring), var(--g-shadow)"
+  ]
+ ],
+ "app/(app)/app-glass.css @media (hover: hover) :where(body:has(.app-shell)) .studio-chip[aria-pressed=\"true\"]:hover:not(:disabled):not([data-plain]):not([aria-disabled=\"true\"]):not([data-disabled=\"true\"])": [
+  [
+   "--g-edge-hi: var(--ds-focus)",
+   "--g-edge-lo: var(--ds-focus)"
+  ]
+ ],
+ "app/(app)/app-glass.css :where(body:has(.app-shell)) .studio-chip:focus-visible": [
+  [
+   "--g-tint: var(--g-tint-hover)"
+  ]
+ ],
+ "app/(app)/app-glass.css @media (prefers-reduced-motion: no-preference) @media (hover: hover) and (pointer: fine) :where(body:has(.app-shell)) .studio-chip:hover:not(:disabled):not([data-plain]):not([aria-disabled=\"true\"]):not([data-disabled=\"true\"])": [
+  [
+   "--g-sheen: var(--g-sheen-on)"
+  ]
+ ],
+ "app/(app)/app-glass.css @media (prefers-reduced-motion: no-preference) @media (hover: hover) :where(body:has(.app-shell)) .studio-chip:hover:not(:disabled):not([data-plain]):not([aria-disabled=\"true\"]):not([data-disabled=\"true\"])": [
+  [
+   "transform: translateY(-1px)"
+  ]
+ ],
+ "app/(app)/app-glass.css @media (prefers-reduced-motion: no-preference) :where(body:has(.app-shell)) .studio-chip:active:not(:disabled):not([data-plain]):not([aria-disabled=\"true\"]):not([data-disabled=\"true\"])": [
+  [
+   "--g-shadow: var(--glass-press)",
+   "transform: translateY(0) scale(0.98)",
+   "transition-duration: var(--ns-dur-1)"
+  ]
+ ],
+ "app/(app)/app-glass.css :where(body:has(.app-shell)) .studio-chip:is(:disabled, [aria-disabled=\"true\"], [data-disabled=\"true\"])": [
+  [
+   "--g-sheen: transparent",
+   "--g-gloss: transparent",
+   "--g-rim-hi: transparent",
+   "--g-rim-lo: transparent",
+   "--g-shadow: 0 0 #0000",
+   "-webkit-backdrop-filter: none",
+   "backdrop-filter: none",
+   "background: var(--g-bg)",
+   "background-clip: padding-box",
+   "filter: none",
+   "transform: none",
+   "cursor: not-allowed"
+  ],
+  [
+   "--g-tint: transparent",
+   "--g-edge-hi: var(--color-border)",
+   "--g-edge-lo: var(--color-border)",
+   "color: var(--color-muted)",
+   "border-color: var(--color-border)",
+   "box-shadow: none"
+  ]
+ ],
+ "app/(app)/app-glass.css :where(body:has(.app-shell)) .studio-seg": [
+  [
+   "position: relative",
+   "isolation: isolate",
+   "border-color: var(--glass-edge-lo) var(--glass-edge-hi) var(--glass-edge-hi) var(--glass-edge-lo)",
+   "background: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box",
+   "box-shadow: inset 0 1px 2px var(--glass-rim-lo), inset 0 -1px 0 color-mix(in srgb, var(--glass-rim-hi) 60%, transparent)"
+  ]
+ ],
+ "app/(app)/app-glass.css :where(body:has(.app-shell)) .studio-seg > button[aria-pressed=\"true\"]": [
+  [
+   "background: linear-gradient(180deg, var(--glass-gloss), transparent 50%), linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong))",
+   "box-shadow: inset 0 1px 0 var(--glass-rim-hi), inset 0 -2px 0 var(--ds-focus), 0 0 0 1px var(--glass-edge-hi), var(--glass-shadow)"
+  ]
+ ],
+ "app/(app)/app-glass.css @media (hover: hover) :where(body:has(.app-shell)) .studio-seg > button:hover:not(:disabled):not([aria-pressed=\"true\"]):not([aria-disabled=\"true\"])": [
+  [
+   "background: var(--glass-tint-hover)"
+  ]
+ ],
+ "app/(app)/app-glass.css :where(body:has(.app-shell)) .studio-seg > button:disabled": [
+  [
+   "cursor: not-allowed",
+   "opacity: 0.5"
+  ]
+ ],
+ "app/(app)/app-glass.css @media (prefers-reduced-transparency: reduce) :where(body:has(.app-shell)) .studio-chip": [
+  [
+   "-webkit-backdrop-filter: none",
+   "backdrop-filter: none"
+  ]
+ ],
+ "app/(app)/app-glass.css @media (prefers-reduced-transparency: reduce) :where(body:has(.app-shell)) .studio-seg": [
+  [
+   "-webkit-backdrop-filter: none",
+   "backdrop-filter: none"
+  ]
+ ],
+ "app/(app)/app-redesign.css .studio-seg > button[aria-pressed=\"true\"]": [
+  [
+   "color: var(--color-fg)",
+   "font-weight: 600",
+   "background: var(--ns-key-hi)",
+   "box-shadow: inset 0 -2px 0 var(--ds-focus)"
+  ]
+ ],
+ "components/studio/desk.css .desk-size .studio-seg": [
+  [
+   "flex-wrap: wrap"
+  ]
+ ],
+ "components/studio/desk.css .desk-size .studio-seg > button": [
+  [
+   "min-height: 44px",
+   "padding: 0 16px",
+   "font-size: 15px",
+   "white-space: nowrap"
+  ]
+ ],
+ "components/studio/desk.css @media (pointer: coarse), (max-width: 40rem) .desk-composer .studio-chip": [
+  [
+   "min-height: 44px"
+  ]
+ ],
+ "components/studio/desk.css @media (pointer: coarse), (max-width: 40rem) .desk-composer .studio-seg > button": [
+  [
+   "min-height: 44px"
+  ]
+ ]
+}

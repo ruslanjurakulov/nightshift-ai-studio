@@ -1542,7 +1542,9 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 }
 .cv-master.is-made .cv-master-btn { border: 1px solid color-mix(in srgb, var(--go) 60%, var(--rule)); border-left: 2px solid var(--go); background: color-mix(in srgb, var(--go) 10%, var(--key)); }
 .cv-master.s-fail .cv-master-btn { border: 1px solid var(--tally); background: color-mix(in srgb, var(--tally) 10%, transparent); }
-.cv-master.is-sel .cv-master-btn { outline: 2px solid var(--ds-focus); outline-offset: 1px; }
+/* Selected: the key's own inner edge and the select glow; the outline 2px outside is the keyboard's (below). Both lime, so
+   they differ by shape, and a made master keeps its green edge under the mark. */
+.cv-master.is-sel .cv-master-btn { box-shadow: inset 0 0 0 2px var(--ds-focus), var(--ds-glow-select); }
 .cv-master-btn:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
 .cv-master-art { flex: none; width: 56px; height: 32px; overflow: hidden; border-radius: 5px; background: var(--film); }
 .cv-master-art img { width: 100%; height: 100%; object-fit: cover; }
@@ -1551,7 +1553,10 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 .cv-master-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; color: var(--dim); font-size: 13px; }
 .cv-master-st { overflow-wrap: anywhere; }
 .cv-master-act { min-width: 0; font-size: 13px; }
-.cv-pill.is-sel { outline: 2px solid var(--ds-focus); outline-offset: 1px; box-shadow: 0 0 0 5px var(--ds-select-soft), 0 0 18px -4px var(--ds-focus); z-index: 2; }
+/* Selected: the pill's own inner edge in lime, a soft band and the glow outside. Not an outline, and not a ring flush with the
+   edge: the focus ring is a 2px outline 2px off the pill, and a flush 2px ring ran straight into it (measured: one 4px band
+   when a selected pill was focused). Inside, the two stay apart. The border is the pill's status, so it is left alone. */
+.cv-pill.is-sel { box-shadow: inset 0 0 0 2px var(--ds-focus), 0 0 0 4px var(--ds-select-soft), var(--ds-glow-select); z-index: 2; }
 .cv-pill:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
 .cv-pill-art { flex: none; align-self: stretch; width: 64px; margin: 3px 0 3px -1px; overflow: hidden; border-radius: 5px; background: var(--film); }
 .cv-pill-art img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }

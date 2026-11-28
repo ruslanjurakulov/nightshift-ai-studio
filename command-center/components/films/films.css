@@ -103,7 +103,9 @@
 .fs-list-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; }
 .fs-seg { display: inline-flex; gap: 4px; padding: 4px; border-radius: var(--ns-r-key); background: var(--ns-key); }
 .fs-seg button, .fs-seg label { min-height: 40px; padding: 0 14px; border-radius: 9px; border: 0; background: transparent; color: var(--ns-text-dim); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
-.fs-seg [aria-pressed="true"], .fs-seg label:has(input:checked) { background: var(--ns-console); color: var(--ns-text); box-shadow: inset 0 0 0 1px var(--fs-amber), 0 1px 2px rgb(0 0 0 / 0.08); }
+/* A chosen key, row, cell or picture is a person's mark: the app's one selection lime (--ds-focus, --ds-select-soft,
+   --ds-glow-select; SYSTEM.md §4). Amber stays for what it means here otherwise: a step that waits for a person, the drop line. */
+.fs-seg [aria-pressed="true"], .fs-seg label:has(input:checked) { background: var(--ns-console); color: var(--ns-text); box-shadow: inset 0 0 0 1px var(--ds-focus), 0 1px 2px rgb(0 0 0 / 0.08); }
 .fs-seg input { position: absolute; opacity: 0; pointer-events: none; }
 .fs-seg label:has(input:focus-visible) { outline: 2px solid var(--ns-focus); outline-offset: 2px; }
 /* The list's view switches need the same phone target as its other keys. */
@@ -172,7 +174,7 @@
 .fs-dialog { position: fixed; z-index: 61; left: 50%; top: 12vh; transform: translateX(-50%); width: min(560px, calc(100vw - 24px)); max-height: 76vh; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: var(--ns-r-sheet); background: var(--ns-console); }
 .fs-cmds { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .fs-cmd { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 8px 10px; border-radius: 10px; font-size: 15px; cursor: pointer; }
-.fs-cmd[aria-selected="true"] { background: var(--fs-amber-soft); box-shadow: inset 0 0 0 1px var(--fs-amber); }
+.fs-cmd[aria-selected="true"] { background: var(--ds-select-soft); box-shadow: inset 0 0 0 1px var(--ds-focus); }
 .fs-cmd[aria-disabled="true"] { color: var(--ns-text-dim); cursor: not-allowed; }
 .fs-kbd { flex: none; font-family: inherit; font-size: 13px; font-weight: 500; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--ns-rule-strong); background: var(--ns-key); color: var(--ns-text); white-space: nowrap; }
 .fs-keys { margin: 0; display: grid; gap: 8px; }
@@ -180,8 +182,8 @@
 .fs-keys dd { margin: 0; font-size: 14px; }
 .fs-tl-head [data-over="true"] { color: var(--ns-tally); }
 .fs-cell[aria-selected="true"] {
-  background: var(--fs-cell-bg) padding-box, linear-gradient(150deg, var(--fs-amber), rgb(255 181 71 / 0.25) 45%, rgb(255 181 71 / 0.6)) border-box;
-  box-shadow: 0 0 0 1px var(--fs-amber), 0 0 28px -6px var(--fs-amber-light), var(--fs-shadow);
+  background: var(--fs-cell-bg) padding-box, linear-gradient(150deg, var(--ds-focus), color-mix(in srgb, var(--ds-focus) 25%, transparent) 45%, color-mix(in srgb, var(--ds-focus) 60%, transparent)) border-box;
+  box-shadow: 0 0 0 1px var(--ds-focus), var(--ds-glow-select), var(--fs-shadow);
 }
 .fs-cell[data-problem="true"] { background: var(--fs-cell-bg) padding-box, linear-gradient(150deg, var(--ns-caution), transparent 55%) border-box; }
 /* The strip: sprocket rows above and below a 16:9 window. Black in both themes, like film. */
@@ -224,13 +226,15 @@
 .fs-count[data-over="true"] { color: var(--ns-tally); }
 .fs-choice { display: flex; flex-direction: column; gap: 6px; }
 .fs-choice label { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; padding: 10px 12px; border-radius: var(--ns-r-key); border: 1px solid var(--ns-rule); font-size: 14px; line-height: 1.35; cursor: pointer; }
-.fs-choice label:has(input:checked) { border-color: var(--fs-amber); background: var(--fs-amber-soft); }
+.fs-choice label:has(input:checked) { border-color: var(--ds-focus); background: var(--ds-select-soft); }
 .fs-choice label:has(input:disabled) { opacity: 0.55; cursor: not-allowed; }
-.fs-choice input { margin-top: 3px; accent-color: var(--fs-amber); }
+.fs-choice input { margin-top: 3px; accent-color: var(--ds-focus); }
 .fs-pics { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; list-style: none; margin: 0; padding: 0; }
 .fs-pic { position: relative; display: block; width: 100%; aspect-ratio: 1; border-radius: 10px; border: 1px solid var(--ns-rule); background: var(--ns-key); overflow: hidden; padding: 0; cursor: pointer; min-height: 44px; color: var(--ns-text-dim); font-size: 13px; }
 .fs-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.fs-pic[aria-pressed="true"] { border-color: var(--fs-amber); box-shadow: 0 0 0 2px var(--fs-amber); }
+/* The picture fills the key, so an inner edge would sit under it: the mark is the key's own border and the select glow, never a
+   2px ring flush with the edge, which would run into the focus ring 2px off it (both lime). */
+.fs-pic[aria-pressed="true"] { border-color: var(--ds-focus); box-shadow: var(--ds-glow-select); }
 .fs-refs { display: flex; flex-direction: column; gap: 8px; list-style: none; margin: 0; padding: 0; }
 .fs-ref { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 4px 4px 10px; border-radius: var(--ns-r-key); border: 1px solid var(--ns-rule); background: var(--ns-console); font-size: 14px; }
 .fs-ref[data-missing="true"] { border-color: var(--ns-tally); }

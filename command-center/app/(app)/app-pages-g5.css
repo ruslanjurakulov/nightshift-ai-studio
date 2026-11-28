@@ -77,7 +77,8 @@ select.ns-field { padding-right: 12px; }
 }
 .g5-link:hover { text-decoration: underline; }
 .g5-check { display: flex; align-items: center; gap: 12px; min-height: 44px; font-size: 0.9375rem; color: var(--color-fg); }
-.g5-check input { width: 20px; height: 20px; accent-color: var(--ns-act); flex: none; }
+/* A ticked box is a person's mark (lime), not the machine's blue (SYSTEM.md §4). */
+.g5-check input { width: 20px; height: 20px; accent-color: var(--ds-focus); flex: none; }
 
 /* ── Ruled lists: a row has a top rule, the last has a bottom one ─────────── */
 .g5-rows { list-style: none; margin: 0; padding: 0; }

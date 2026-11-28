@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -186,11 +186,150 @@ describe("a thumb's worth on a phone", () => {
     const coarse = rules(GLOBALS).filter((r) => r.at === "@media (pointer: coarse), (max-width: 40rem)");
     const minH = (sel: string) => coarse.filter((r) => r.sels.includes(sel)).flatMap((r) => r.decls);
     expect(minH(".ns-seg > button")).toContain("min-height: 44px");
+    // The large switch sets its own 36px at (0,2,1); the phone rule must name it too, or it stays 36 (it did, at 390px).
+    expect(minH('.ns-seg[data-size="lg"] > button')).toContain("min-height: 44px");
     expect(minH(".ns-chip:not([data-plain])")).toContain("min-height: 44px");
     expect(minH(".ns-chip[data-radio]")).toContain("min-height: 44px");
     expect(minH(".studio-seg > button")).toContain("min-height: 44px");
     expect(minH(":root")).toContain("--ns-chip-h: 44px");
     // The chip's own height still reads the token, so the coarse value above reaches it.
     expect(rules(GLOBALS).find((r) => r.at === "" && r.sels.length === 1 && r.sels[0] === ".ns-chip")!.decls).toContain("min-height: var(--ns-chip-h)");
+  });
+});
+
+describe("one selection colour across the app: lime, never amber", () => {
+  // Every stylesheet the signed-in app loads. The public site (components/site/, the landing's .lp-*) is left out on purpose:
+  // the owner kept it as it looked before 20 November (lib/skin.ts), amber included.
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const e of readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+      const p = `${dir}/${e.name}`;
+      if (e.isDirectory()) walk(p);
+      else if (p.endsWith(".css") && !p.startsWith("components/site/")) files.push(p);
+    }
+  };
+  walk("app");
+  walk("components");
+
+  // A person chose this: pressed, checked, selected, on, a ticked box. aria-current (a place, "you are here") is not a choice.
+  const CHOSEN = /\[(aria-pressed|aria-checked|aria-selected|data-selected|data-on|data-checked)="true"\]|\.is-sel\b|\.is-selected\b|:checked/;
+  const PAINT = /^(color|background|background-color|background-image|border|border-color|border-[a-z]+(-color)?|box-shadow|outline|outline-color|fill|stroke|accent-color)\s*:/;
+  // The amber names and values (the canvas's and the timeline's --amber/--sel are lime by value, but a rule that reads an
+  // "amber" name is one theme edit away from painting amber again), and the machine's blue.
+  const AMBER = /--ns-amber|--amber\b|--amber-|--ns-select\b|--fs-amber|--ns-warm|#f29a1e|#ffa940|#ffb547|\b255 169 64\b|\b242 154 30\b|\b255 181 71\b/i;
+  const BLUE = /--ns-act\b|--ns-act-|--run\b|--ds-accent|--color-primary|--studio-cta-bg|--ns-cta-bg/;
+  // Decided, each for a stated reason, and nothing else:
+  const KEPT: Record<string, string> = {
+    // The intelligence map's lit stage is the machine running (its lamp says "run"), not something a person chose.
+    '.g4 .g4-map-node[data-on="true"]': "machine state",
+    // The Create tabs underline in their own media kind's hue: type identity (SYSTEM.md §4), not a selection colour.
+    '.cs-tab[aria-selected="true"]': "media type hue",
+    '.cs-tab[aria-checked="true"]': "media type hue",
+    // The composer's segment key in globals.css: every app page overrides it (app-redesign.css, app-glass.css: the lime line),
+    // and the composer fixture above pins it as it was.
+    '.studio-seg > button[aria-pressed="true"]': "overridden in the app, pinned",
+    // The design system's own switch (tokens.css) is the primary blue by its spec; it is not one of the amber states.
+    '.ds-toggle[aria-checked="true"]': "the ds switch's spec",
+    // A selected card that is also being made: the selection is the lime inner edge, the blue band is the job running.
+    ".lv-card.is-selected.is-working": "machine state beside the lime mark",
+  };
+
+  const seen = new Set<string>();
+  const offenders = () => {
+    const out: string[] = [];
+    for (const f of files) {
+      for (const r of rules(read(f))) {
+        for (const sel of r.sels) {
+          if (!CHOSEN.test(sel) || /:focus/.test(sel)) continue;
+          const bare = sel.replace(/^:where\(body:has\(\.app-shell\)\) /, "");
+          if (bare in KEPT) {
+            seen.add(bare);
+            continue;
+          }
+          for (const d of r.decls) {
+            if (!PAINT.test(d) && !/^--g-(tint|edge)/.test(d)) continue;
+            if (AMBER.test(d) || BLUE.test(d)) out.push(`${f} ${sel} { ${d} }`);
+          }
+        }
+      }
+    }
+    return out;
+  };
+
+  it("no chosen state anywhere in the app is painted in an amber name or value, or in the machine's blue", () => {
+    expect(files.length).toBeGreaterThan(30);
+    expect(offenders()).toEqual([]);
+    // Every exception still names a rule that exists, so the list cannot quietly outlive what it excused.
+    expect([...seen].sort()).toEqual(Object.keys(KEPT).sort());
+  });
+
+  it("the ones that moved paint the lime tokens", () => {
+    const LIME = /var\(--ds-focus\)|var\(--ds-select-soft\)|var\(--ds-glow-select\)|var\(--sel\)|var\(--sel-soft\)|var\(--glass-select\)/;
+    const want: [string, string][] = [
+      ["components/studio-canvas/studio-canvas.css", ".cv-node.is-sel"],
+      ["components/studio-canvas/studio-canvas.css", ".cv-fcard.is-sel"],
+      ["components/studio-canvas/studio-canvas.css", ".cv-pill.is-sel"],
+      ["components/studio-canvas/studio-canvas.css", ".cv-master.is-sel .cv-master-btn"],
+      ["components/studio-canvas/studio-canvas.css", '.cv-kbtn[aria-pressed="true"]'],
+      ["components/studio-timeline/studio-timeline.css", ".tl-clip.is-sel"],
+      ["components/studio-live/studio-live.css", ".lv-card.is-selected"],
+      ["components/studio/desk.css", '.desk-strip-frame[aria-pressed="true"]'],
+      ["components/studio/desk.css", '.desk-tool[aria-selected="true"]'],
+      ["components/studio/studio-home.css", '.sc-pill[aria-pressed="true"]'],
+      ["components/studio/studio-home.css", '.sh-mode[aria-checked="true"]'],
+      ["components/prompt/start-box.css", '.sb-chip[aria-pressed="true"]'],
+      ["components/films/films.css", '.fs-cell[aria-selected="true"]'],
+      ["components/films/films.css", '.fs-pic[aria-pressed="true"]'],
+      ["components/ads/ads.css", '.ads-pick[aria-pressed="true"]'],
+      ["app/globals.css", '.studio-chip[aria-pressed="true"]'],
+      ["app/globals.css", '.ns-chip[aria-pressed="true"]'],
+      ["app/globals.css", '.usage-switch[data-on="true"]'],
+      ["app/(app)/app-pages-g2.css", '.g2-switch[aria-checked="true"] .g2-switch-track'],
+      ["app/(app)/app-redesign.css", '.studio-seg > button[aria-pressed="true"]'],
+    ];
+    for (const [f, sel] of want) {
+      const decls = rules(read(f)).filter((r) => r.sels.includes(sel)).flatMap((r) => r.decls).filter((d) => PAINT.test(d));
+      expect(decls.length, `${f} ${sel}`).toBeGreaterThan(0);
+      expect(decls.some((d) => LIME.test(d)), `${f} ${sel}: ${decls.join("; ")}`).toBe(true);
+    }
+    // The timeline's selection names are the app's lime, in every theme (no second, hand-picked green on paper).
+    const tl = read("components/studio-timeline/studio-timeline.css");
+    expect(tl).toMatch(/--sel: var\(--ds-focus\);/);
+    expect(tl).toMatch(/--sel-soft: var\(--ds-select-soft\);/);
+    expect(tl).not.toMatch(/--sel: #/);
+  });
+
+  it("no chosen state is drawn as the element's own outline: that shape is the focus ring's", () => {
+    const out: string[] = [];
+    for (const f of files) {
+      for (const r of rules(read(f))) {
+        const sels = r.sels.filter((s) => CHOSEN.test(s) && !/:focus/.test(s));
+        if (!sels.length) continue;
+        const outline = r.decls.find((d) => /^outline\s*:/.test(d) && !/:\s*(none|0)\b/.test(d));
+        if (!outline) continue;
+        // An outline drawn INSIDE a picture the card holds (offset below zero, on a descendant) is the card's own inner edge,
+        // and leaves the card's outline to the ring.
+        const offset = r.decls.find((d) => d.startsWith("outline-offset:"));
+        if (offset && parseFloat(offset.split(":")[1]) < 0 && sels.every((s) => / \S+$/.test(s))) continue;
+        out.push(`${f} ${sels.join(", ")} { ${outline} }`);
+      }
+    }
+    expect(out).toEqual([]);
+    // Where the focus ring sits 2px off the element, a 2px lime ring flush with the edge runs straight into it (one 4px band on a
+    // focused, selected pill, measured in Chromium): those selections are drawn inside the element.
+    const first = (f: string, sel: string) => rules(read(f)).find((r) => r.sels.includes(sel))!.decls.find((d) => d.startsWith("box-shadow:"))!;
+    expect(first("components/studio-canvas/studio-canvas.css", ".cv-pill.is-sel")).toMatch(/^box-shadow: inset 0 0 0 2px var\(--ds-focus\)/);
+    expect(first("components/studio-timeline/studio-timeline.css", ".tl-clip.is-sel")).toMatch(/^box-shadow: inset 0 0 0 2px var\(--sel\)/);
+    expect(first("components/studio-canvas/studio-canvas.css", ".cv-master.is-sel .cv-master-btn")).toMatch(/^box-shadow: inset 0 0 0 2px var\(--ds-focus\)/);
+    expect(first("components/studio-live/studio-live.css", ".lv-card.is-selected")).toMatch(/^box-shadow: inset 0 0 0 2px var\(--ds-focus\)/);
+  });
+
+  it("the lime reads as text and takes its own ink: light #406a00, dark #c8ff2e, the same as --ds-select", () => {
+    const tokens = read("app/tokens.css");
+    const focus = [...tokens.matchAll(/--ds-focus:\s*(#[0-9a-f]{6});/gi)].map((m) => m[1].toLowerCase());
+    const select = [...tokens.matchAll(/--ds-select:\s*(#[0-9a-f]{6});/gi)].map((m) => m[1].toLowerCase());
+    expect(focus).toEqual(["#406a00", "#c8ff2e", "#c8ff2e"]);
+    // --ds-select is held to 4.5:1 as text on all four grounds (ds-tokens.test.tsx); the lit chip's words are --ds-focus.
+    expect(focus).toEqual(select);
   });
 });

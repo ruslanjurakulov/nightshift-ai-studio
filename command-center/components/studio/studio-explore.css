@@ -65,7 +65,9 @@
   border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.5); background: rgba(8, 8, 8, 0.8); color: #fff; font-size: 14px; font-weight: 600;
   white-space: nowrap; cursor: pointer;
 }
-.sx .nx-clip-pause[aria-pressed="true"] { border-color: #ffa940; color: #ffa940; }
+/* Paused is a person's choice: the selection lime. Its dark value, literally: the plate is black in both themes, where the
+   light theme's --ds-focus (#406a00) would be 2:1. */
+.sx .nx-clip-pause[aria-pressed="true"] { border-color: #c8ff2e; color: #c8ff2e; }
 .sx .nx-clip-pause:focus-visible { outline: 3px solid #ffa940; outline-offset: 2px; }
 .sx .nx-clip-pause:not(:focus-visible) {
   position: absolute; width: 1px; height: 1px; min-width: 0; min-height: 0; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); border: 0;

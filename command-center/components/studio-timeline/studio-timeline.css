@@ -14,18 +14,19 @@
   --t-sfx: #ff4fa3;
   --t-amb: #33d6ff;
   --t-cap: #ffd23f;
-  --sel: #c8ff2e;
-  --sel-soft: rgb(200 255 46 / 0.14);
+  /* The selection is the app's one lime (app/tokens.css), which follows the theme itself: #406a00 on paper, not a second green. */
+  --sel: var(--ds-focus);
+  --sel-soft: var(--ds-select-soft);
   --play: #ff3b4e;
 }
 :root[data-theme="light"] .tl-root {
   --t-video: #1f6fe5; --t-narr: #0a7a3a; --t-music: #8a6d00; --t-sfx: #c2186f; --t-amb: #0a7fa0; --t-cap: #8a6d00;
-  --sel: #5a8f00; --sel-soft: rgb(90 143 0 / 0.14); --play: #d1182e;
+  --play: #d1182e;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) .tl-root {
     --t-video: #1f6fe5; --t-narr: #0a7a3a; --t-music: #8a6d00; --t-sfx: #c2186f; --t-amb: #0a7fa0; --t-cap: #8a6d00;
-    --sel: #5a8f00; --sel-soft: rgb(90 143 0 / 0.14); --play: #d1182e;
+    --play: #d1182e;
   }
 }
 
@@ -169,7 +170,10 @@
 .tl-clip.is-v1.is-short .tl-dur { color: var(--tally); font-weight: 600; }
 .tl-clip.is-c1 { background: transparent; border: 1.5px solid var(--c); box-shadow: none; }
 .tl-clip.is-c1 .tl-lb { top: 50%; transform: translateY(-50%); font-weight: 500; color: var(--c); text-shadow: none; }
-.tl-clip.is-sel { outline: 2px solid var(--sel); outline-offset: 1px; box-shadow: 0 0 0 5px var(--sel-soft), 0 0 22px -4px var(--sel); z-index: 3; }
+/* Selected: the clip's own inner edge in lime, a soft band and the glow outside; not an outline. The outline is the keyboard's
+   (2px off the clip, below), and the two are the same lime, so they must differ by shape (docs/design/SYSTEM.md §4); inside,
+   the edge never runs into the ring. */
+.tl-clip.is-sel { box-shadow: inset 0 0 0 2px var(--sel), 0 0 0 4px var(--sel-soft), 0 0 22px -4px var(--sel); z-index: 3; }
 .tl-clip.is-drag { z-index: 4; opacity: 0.85; cursor: grabbing; }
 .tl-clip.has-actor { outline: 2px solid var(--actor); outline-offset: 1px; overflow: visible; }
 .tl-clip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

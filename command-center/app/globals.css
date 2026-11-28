@@ -2390,9 +2390,10 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   border-radius: 50%;
   background: var(--color-muted);
 }
-.usage-switch[data-on="true"] { border-color: var(--ns-amber-ink); }
-.usage-switch[data-on="true"] .usage-switch-lamp { border-color: var(--ns-amber-ink); background: var(--ns-amber); }
-.usage-switch[data-on="true"] .usage-switch-lamp::after { left: 21px; background: #16120a; }
+/* On is a person's choice: the selection lime, and the thumb in the ink made for it (#16120a was 2.9:1 on light lime). */
+.usage-switch[data-on="true"] { border-color: var(--ds-focus); }
+.usage-switch[data-on="true"] .usage-switch-lamp { border-color: var(--ds-focus); background: var(--ds-focus); }
+.usage-switch[data-on="true"] .usage-switch-lamp::after { left: 21px; background: var(--ds-on-select); }
 @media (prefers-reduced-motion: no-preference) {
   .usage-switch-lamp, .usage-switch-lamp::after { transition: left 140ms ease, background-color 140ms ease, border-color 140ms ease; }
 }
@@ -2511,8 +2512,11 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   gap: 0.375rem;
 }
 .ns-seg[data-size="lg"] > button { min-height: 36px; padding: 0 14px; font-size: var(--ns-t-ui); font-weight: 500; }
+/* The large switch's 36px above is (0,2,1) and would beat a bare `.ns-seg > button` here: it is named too, or a phone gets a
+   36px key (measured on the style guide at 390px, 2026-11-28). */
 @media (pointer: coarse), (max-width: 40rem) {
   .ns-seg > button,
+  .ns-seg[data-size="lg"] > button,
   .ns-chip:not([data-plain]),
   .ns-price-button[data-size="md"] { min-height: 44px; }
   .studio-seg > button,

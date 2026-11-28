@@ -93,7 +93,7 @@
 
 /* ── Approvals: the requests are the desk; the switch and the form are ruled ─ */
 .g3-req { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 24px; }
-.g3-switch[role="switch"][aria-checked="true"] { box-shadow: inset 0 -2px 0 var(--ns-amber); color: var(--color-fg); }
+.g3-switch[role="switch"][aria-checked="true"] { box-shadow: inset 0 -2px 0 var(--ds-focus); color: var(--color-fg); }
 .g3-asks { list-style: none; margin: 0; padding: 0; }
 .g3-ask {
   display: grid;

@@ -211,7 +211,8 @@
 .acct-switch-tx { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .acct-switch-nm { font-size: 0.9rem; font-weight: 600; }
 .acct-switch-hint { font-size: 0.75rem; color: var(--color-muted); }
-.acct-switch-check { color: var(--ns-amber, var(--color-primary)); display: inline-flex; }
+/* The tick beside the account a person is in: the selection lime. */
+.acct-switch-check { color: var(--ds-focus); display: inline-flex; }
 .acct-switch-err { margin: 0; padding: 0 0.25rem; font-size: 0.75rem; color: var(--color-warn); }
 
 @media (prefers-reduced-motion: reduce) {

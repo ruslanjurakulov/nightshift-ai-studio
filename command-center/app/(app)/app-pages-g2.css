@@ -200,8 +200,9 @@
   background: var(--color-muted);
   transition: transform var(--ns-dur-2) var(--ns-ease), background-color var(--ns-dur-2) var(--ns-ease);
 }
-.g2-switch[aria-checked="true"] .g2-switch-track { background: var(--ns-amber); border-color: var(--ns-amber); }
-.g2-switch[aria-checked="true"] .g2-switch-thumb { transform: translateX(20px); background: var(--ns-on-amber); }
+/* On: a person turned it on, so the person's lime; the thumb takes the ink made for a lime ground. */
+.g2-switch[aria-checked="true"] .g2-switch-track { background: var(--ds-focus); border-color: var(--ds-focus); }
+.g2-switch[aria-checked="true"] .g2-switch-thumb { transform: translateX(20px); background: var(--ds-on-select); }
 .g2-switch-word { min-width: 2.5rem; }
 
 /* ── A channel: a ruled section with its head, two columns and its facts ──── */
