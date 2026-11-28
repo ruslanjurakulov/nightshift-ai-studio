@@ -1,0 +1,293 @@
+/*
+ * The look of the adopted primitives (components/ui/{Dialog,Sheet,Popover,Tooltip,Tabs,Slider,Command}.tsx), on OUR tokens only.
+ *
+ * shadcn/ui ships its components with a theme of its own (--background, --primary, --muted… mapped to --color-*). Those names
+ * already mean something else here (--color-muted is dim TEXT, shadcn's bg-muted is a SURFACE), so none of its variables is
+ * defined anywhere in this app; every value below is a --ds-* token from app/tokens.css, and both themes follow from them.
+ *
+ * Layered as components so a caller's Tailwind utility (layer utilities, later) can still adjust one box. Motion runs on the
+ * --ds-dur-* tokens, which app/tokens.css sets to 0 under prefers-reduced-motion; the media block at the end also removes the
+ * travel, so a reduced-motion reader sees a panel appear, never move.
+ */
+@layer components {
+  .ui-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--ds-z-overlay);
+    background: var(--ds-scrim);
+  }
+
+  /* Dialog: centred from sm up. A phone takes the Sheet (side="bottom") instead, which the caller chooses. */
+  .ui-dialog {
+    position: fixed;
+    z-index: var(--ds-z-modal);
+    left: 50%;
+    top: 50%;
+    translate: -50% -50%;
+    width: min(100% - 2rem, 560px);
+    max-height: min(80vh, 100dvh - 2rem);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: var(--ds-text);
+    background: var(--ds-surface-1);
+    border: var(--ds-hairline) solid var(--ds-border-strong);
+    border-radius: var(--ds-r-sheet);
+    box-shadow: var(--ds-elev-3);
+    outline: none;
+  }
+
+  .ui-sheet {
+    position: fixed;
+    z-index: var(--ds-z-modal);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: var(--ds-text);
+    background: var(--ds-surface-1);
+    border: var(--ds-hairline) solid var(--ds-border-strong);
+    box-shadow: var(--ds-elev-3);
+    outline: none;
+  }
+  .ui-sheet[data-side="bottom"] {
+    inset-inline: 0;
+    bottom: 0;
+    max-height: 86dvh;
+    border-bottom: 0;
+    border-radius: var(--ds-r-sheet) var(--ds-r-sheet) 0 0;
+    /* A phone's home bar must not sit on the last row. */
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .ui-sheet[data-side="top"] {
+    inset-inline: 0;
+    top: 0;
+    max-height: 86dvh;
+    border-top: 0;
+    border-radius: 0 0 var(--ds-r-sheet) var(--ds-r-sheet);
+  }
+  /* "auto": the bottom sheet on a phone, a centred dialog from 640px, so one component serves both without a JS media query. */
+  .ui-sheet[data-side="auto"] {
+    inset-inline: 0;
+    bottom: 0;
+    max-height: 86dvh;
+    border-bottom: 0;
+    border-radius: var(--ds-r-sheet) var(--ds-r-sheet) 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  @media (min-width: 640px) {
+    .ui-sheet[data-side="auto"] {
+      inset: auto;
+      left: 50%;
+      top: 50%;
+      translate: -50% -50%;
+      width: min(100% - 2rem, 560px);
+      max-height: min(80vh, 100dvh - 2rem);
+      padding-bottom: 0;
+      border-bottom: var(--ds-hairline) solid var(--ds-border-strong);
+      border-radius: var(--ds-r-sheet);
+    }
+  }
+  .ui-sheet[data-side="right"],
+  .ui-sheet[data-side="left"] {
+    inset-block: 0;
+    width: min(100% - 3rem, 420px);
+  }
+  .ui-sheet[data-side="right"] { right: 0; border-right: 0; border-radius: var(--ds-r-sheet) 0 0 var(--ds-r-sheet); }
+  .ui-sheet[data-side="left"] { left: 0; border-left: 0; border-radius: 0 var(--ds-r-sheet) var(--ds-r-sheet) 0; }
+
+  .ui-close {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: var(--ds-r-key);
+    color: var(--ds-muted);
+    background: transparent;
+    transition: background-color var(--ds-dur-press) var(--ds-ease-out), color var(--ds-dur-press) var(--ds-ease-out);
+  }
+  .ui-close:hover { color: var(--ds-text); background: var(--ds-hover); }
+  @media (pointer: coarse) { .ui-close { width: 2.75rem; height: 2.75rem; } }
+
+  /* Above the modal scale (and under toasts and tooltips): a popover opened inside a dialog must not open under its scrim. */
+  .ui-popover,
+  .ui-command-surface {
+    z-index: calc(var(--ds-z-modal) + 50);
+    color: var(--ds-text);
+    background: var(--ds-surface-2);
+    border: var(--ds-hairline) solid var(--ds-border-strong);
+    border-radius: var(--ds-r-panel);
+    box-shadow: var(--ds-elev-2);
+    outline: none;
+  }
+  .ui-popover {
+    width: 18rem;
+    max-width: calc(100vw - 1rem);
+    padding: var(--ds-space-4);
+    transform-origin: var(--radix-popover-content-transform-origin);
+  }
+
+  .ui-tooltip {
+    z-index: var(--ds-z-tooltip);
+    max-width: 18rem;
+    padding: var(--ds-space-1) var(--ds-space-2);
+    font-size: var(--ds-fs-caption);
+    line-height: var(--ds-lh-caption);
+    text-wrap: balance;
+    color: var(--ds-surface-1);
+    background: var(--ds-text);
+    border-radius: var(--ds-r-chip);
+    transform-origin: var(--radix-tooltip-content-transform-origin);
+  }
+  .ui-tooltip-arrow { fill: var(--ds-text); }
+
+  /* Tabs: a pill track with the lit tab on surface-3. Lime stays a person's mark (focus), blue stays the one primary. */
+  .ui-tabs-list {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ds-space-1);
+    padding: 3px;
+    color: var(--ds-muted);
+    background: var(--ds-surface-2);
+    border: var(--ds-hairline) solid var(--ds-border);
+    border-radius: var(--ds-r-pill);
+  }
+  .ui-tabs-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ds-space-2);
+    min-height: var(--ds-control-sm);
+    padding: 0 var(--ds-space-3);
+    font-size: var(--ds-fs-body-sm);
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--ds-text-2);
+    border-radius: var(--ds-r-pill);
+    transition: background-color var(--ds-dur-press) var(--ds-ease-out), color var(--ds-dur-press) var(--ds-ease-out);
+  }
+  .ui-tabs-trigger:hover { color: var(--ds-text); }
+  .ui-tabs-trigger[data-state="active"] { color: var(--ds-text); background: var(--ds-surface-3); box-shadow: var(--ds-elev-1); }
+  .ui-tabs-trigger:disabled { opacity: 0.5; pointer-events: none; }
+  @media (pointer: coarse) { .ui-tabs-trigger { min-height: 2.75rem; } }
+
+  .ui-slider {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 1.5rem;
+    touch-action: none;
+    user-select: none;
+  }
+  .ui-slider[data-disabled] { opacity: 0.5; }
+  .ui-slider-track {
+    position: relative;
+    flex: 1;
+    height: 4px;
+    overflow: hidden;
+    background: var(--ds-surface-3);
+    border-radius: var(--ds-r-pill);
+  }
+  .ui-slider-range { position: absolute; height: 100%; background: var(--ds-accent); }
+  .ui-slider-thumb {
+    display: block;
+    width: 1.125rem;
+    height: 1.125rem;
+    background: var(--ds-surface-1);
+    border: 2px solid var(--ds-accent);
+    border-radius: var(--ds-r-pill);
+    box-shadow: var(--ds-elev-1);
+  }
+  /* The thumb is small; on touch its hit area grows to 44px without growing the drawing. */
+  @media (pointer: coarse) {
+    .ui-slider-thumb { position: relative; }
+    .ui-slider-thumb::after { content: ""; position: absolute; inset: -13px; }
+  }
+
+  .ui-command { display: flex; flex-direction: column; overflow: hidden; color: var(--ds-text); }
+  .ui-command-input-row {
+    display: flex;
+    align-items: center;
+    gap: var(--ds-space-2);
+    padding: 0 var(--ds-space-3);
+    border-bottom: var(--ds-hairline) solid var(--ds-border);
+  }
+  .ui-command-input {
+    flex: 1;
+    min-height: 2.75rem;
+    /* 16px on a phone: iOS zooms the page into any field set smaller. */
+    font-size: 16px;
+    color: var(--ds-text);
+    background: transparent;
+    outline: none;
+  }
+  @media (min-width: 640px) { .ui-command-input { font-size: var(--ds-fs-body-sm); } }
+  .ui-command-input::placeholder { color: var(--ds-muted); }
+  .ui-command-list { max-height: 20rem; overflow-y: auto; overscroll-behavior: contain; padding: var(--ds-space-1); }
+  .ui-command-group [cmdk-group-heading] {
+    padding: var(--ds-space-2) var(--ds-space-2) var(--ds-space-1);
+    font-family: var(--ds-font-mono);
+    font-size: var(--ds-fs-label);
+    letter-spacing: var(--ds-ls-label);
+    text-transform: uppercase;
+    color: var(--ds-muted);
+  }
+  .ui-command-item {
+    display: flex;
+    align-items: center;
+    gap: var(--ds-space-2);
+    min-height: 2.25rem;
+    padding: 0 var(--ds-space-2);
+    font-size: var(--ds-fs-body-sm);
+    border-radius: var(--ds-r-key);
+    cursor: pointer;
+  }
+  .ui-command-item[data-selected="true"] { background: var(--ds-hover); }
+  .ui-command-item[data-disabled="true"] { opacity: 0.5; pointer-events: none; }
+  .ui-command-empty { padding: var(--ds-space-6) var(--ds-space-4); text-align: center; font-size: var(--ds-fs-body-sm); color: var(--ds-muted); }
+  .ui-command-separator { height: 1px; margin: var(--ds-space-1) 0; background: var(--ds-border); }
+
+
+  /* Arriving and leaving. The exit plays only when the caller sets open={false}: Radix then keeps the box mounted until its
+     animation ends. A caller that unmounts the dialog instead (ModelSheet today) closes it at once. */
+  .ui-overlay[data-state="open"] { animation: ui-fade-in var(--ds-dur-panel) var(--ds-ease-out); }
+  .ui-overlay[data-state="closed"] { animation: ui-fade-out var(--ds-dur-panel) var(--ds-ease-exit); }
+  .ui-dialog[data-state="open"],
+  .ui-popover[data-state="open"],
+  .ui-tooltip[data-state="delayed-open"],
+  .ui-tooltip[data-state="instant-open"] { animation: ui-pop-in var(--ds-dur-panel) var(--ds-ease-out); }
+  .ui-dialog[data-state="closed"],
+  .ui-popover[data-state="closed"],
+  .ui-tooltip[data-state="closed"] { animation: ui-pop-out var(--ds-dur-panel) var(--ds-ease-exit); }
+  .ui-sheet[data-state="open"] { animation: ui-sheet-in var(--ds-dur-page) var(--ds-ease-emphasized); }
+  .ui-sheet[data-state="closed"] { animation: ui-sheet-out var(--ds-dur-panel) var(--ds-ease-exit); }
+  .ui-sheet[data-side="bottom"] { --ui-from: translateY(100%); }
+  .ui-sheet[data-side="top"] { --ui-from: translateY(-100%); }
+  .ui-sheet[data-side="right"] { --ui-from: translateX(100%); }
+  .ui-sheet[data-side="left"] { --ui-from: translateX(-100%); }
+  .ui-sheet[data-side="auto"] { --ui-from: translateY(100%); }
+  @media (min-width: 640px) {
+    .ui-sheet[data-side="auto"][data-state="open"] { animation: ui-pop-in var(--ds-dur-panel) var(--ds-ease-out); }
+    .ui-sheet[data-side="auto"][data-state="closed"] { animation: ui-pop-out var(--ds-dur-panel) var(--ds-ease-exit); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ui-overlay, .ui-dialog, .ui-sheet, .ui-popover, .ui-tooltip { animation: none !important; }
+  }
+}
+
+/* Focus rings, unlayered on purpose (as in app/tokens.css): the global :focus-visible in globals.css is unlayered, and an
+   unlayered rule beats every layered one whatever its specificity, so inside the layer these would never paint. The lime ring
+   sits OUTSIDE with a gap, so it never reads as a selection (docs/design/SYSTEM.md §4), and each keeps its own corners: the
+   global rule rounds every ring to 0.35rem, which would square a pill thumb. */
+.ui-close:focus-visible { outline: 3px solid var(--ds-focus); outline-offset: 2px; border-radius: var(--ds-r-key); }
+.ui-tabs-trigger:focus-visible,
+.ui-slider-thumb:focus-visible { outline: 3px solid var(--ds-focus); outline-offset: 2px; border-radius: var(--ds-r-pill); }
+
+@keyframes ui-fade-in { from { opacity: 0; } }
+@keyframes ui-fade-out { to { opacity: 0; } }
+@keyframes ui-pop-in { from { opacity: 0; scale: 0.96; } }
+@keyframes ui-pop-out { to { opacity: 0; scale: 0.96; } }
+@keyframes ui-sheet-in { from { transform: var(--ui-from); } }
+@keyframes ui-sheet-out { to { transform: var(--ui-from); } }
