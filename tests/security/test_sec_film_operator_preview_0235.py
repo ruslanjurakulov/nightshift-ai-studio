@@ -348,7 +348,8 @@ def test_the_two_overloads_are_internal_and_the_three_argument_check_is_unchange
     assert md5(db, SIGS["problem3"]) == "d828ee349aa5da3aa05ea9db4d8f1b94"
     assert md5(db, SIGS["check4"]) == sec_db.FILM_CHECK_MODEL_0235
     assert md5(db, SIGS["problem4"]) == sec_db.FILM_MODEL_PROBLEM_0235
-    assert md5(db, "public.film_price(public.films)") == sec_db.FILM_PRICE_0235
+    # 0236 (next in Atlas's order) replaces this file's film_price with one marked hunk; either is 0235's line of bodies.
+    assert md5(db, "public.film_price(public.films)") in (sec_db.FILM_PRICE_0235, sec_db.FILM_PRICE_0236)
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
         db.svc(f"select public.film_model_problem('{PREVIEW}', array['tts'], 'voice.model', '{EXEMPT}'::uuid)")
 
@@ -381,6 +382,7 @@ def _md5s(c):
 
 def test_a_replay_changes_nothing_and_the_drift_guard_refuses_a_hand_changed_body(scratch):
     with psycopg.connect(scratch, autocommit=True) as c:
+        sec_db.take_off_0236(c)  # 0236 sits on this file's film_price, which this file's replay and rollback refuse otherwise
         before = _md5s(c)
         c.execute(MIGRATION.read_text(encoding="utf-8"))
         assert _md5s(c) == before
@@ -396,6 +398,7 @@ def test_a_replay_changes_nothing_and_the_drift_guard_refuses_a_hand_changed_bod
 
 def test_the_rollback_puts_every_body_back_drops_the_overloads_and_0235_applies_again(scratch):
     with psycopg.connect(scratch, autocommit=True) as c:
+        sec_db.take_off_0236(c)  # 0236 sits on this file's film_price, which this file's rollback refuses otherwise
         after = _md5s(c)
         c.execute(ROLLBACK.read_text(encoding="utf-8"))
         back = _md5s(c)
@@ -415,7 +418,7 @@ def test_the_lab_chain_takes_0235_off_before_0218_and_0215_and_puts_it_back(scra
         sec_db.take_off_0218(c)
         assert not sec_db.has_0235(c) and not sec_db.has_0218(c)
         sec_db.put_back_0218(c)
-        assert sec_db.has_0218(c) and sec_db.has_0235(c)
+        assert sec_db.has_0218(c) and sec_db.has_0235(c) and sec_db.has_0236(c)   # 0236 comes off and back with it
         sec_db.take_off_0215(c)
         assert not sec_db.has_0235(c) and not sec_db.has_0215(c)
         sec_db.put_back_0215(c)
