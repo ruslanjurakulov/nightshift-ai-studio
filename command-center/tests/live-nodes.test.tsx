@@ -44,7 +44,7 @@ afterEach(() => {
 const en = dictionaries.en.liveNodes;
 
 function card(props: Partial<LiveNodeProps> = {}, locale: "en" | "ru" | "uz" = "en") {
-  const all: LiveNodeProps = { kind: "still", state: "queued", title: "Shot 02", ...props };
+  const all: LiveNodeProps = { id: "n1", kind: "still", state: "queued", title: "Shot 02", ...props };
   return render(
     <I18nProvider locale={locale}>
       <LiveNode {...all} />
@@ -58,7 +58,7 @@ describe("LiveNode: only what was measured or computed is shown", () => {
     expect(container.querySelector(".live-node-price")).toBeNull();
     rerender(
       <I18nProvider locale="en">
-        <LiveNode kind="still" state="queued" title="Shot 02" price={12} />
+        <LiveNode id="n1" kind="still" state="queued" title="Shot 02" price={12} />
       </I18nProvider>,
     );
     expect(container.querySelector(".live-node-price")?.textContent).toContain("12");
@@ -74,6 +74,13 @@ describe("LiveNode: only what was measured or computed is shown", () => {
     expect(card({ state: "queued", progress: 0.42 }).container.querySelector("[role=progressbar]")).toBeNull();
   });
 
+  it("never shows a value outside 0..1 as measured (a percent passed by mistake, a -1 'unknown')", () => {
+    for (const progress of [42, -1, Number.NaN, 1.01]) {
+      expect(card({ state: "working", progress }).container.querySelector("[role=progressbar]"), String(progress)).toBeNull();
+      cleanup();
+    }
+  });
+
   it("shows an elapsed timer only with a start time from the server, ticking while the job works", () => {
     vi.useFakeTimers({ toFake: ["setInterval", "Date"] });
     vi.setSystemTime(new Date("2026-11-28T10:00:00Z"));
@@ -86,9 +93,9 @@ describe("LiveNode: only what was measured or computed is shown", () => {
   });
 
   it("shows a queue position only when the provider reported one", () => {
-    expect(card({ state: "queued", queuePosition: null }).container.textContent).not.toContain("queue");
+    expect(card({ state: "queued", queuePosition: null }).container.querySelector(".live-node-note")).toBeNull();
     cleanup();
-    expect(card({ state: "queued", queuePosition: 3 }).container.textContent).toContain("Position 3");
+    expect(card({ state: "queued", queuePosition: 3 }).container.querySelector(".live-node-note")?.textContent).toBe(en.queuePosition.replace("{n}", "3"));
   });
 
   it("runs the edge light and the shimmer only while working", () => {
@@ -101,7 +108,11 @@ describe("LiveNode: only what was measured or computed is shown", () => {
     const { container } = card({ state: "working", phase: "making" });
     expect(container.querySelector("[data-fx=beam]")?.getAttribute("aria-hidden")).toBe("true");
     // The phase word stays readable text; only the light is decoration.
-    expect(container.querySelector("[data-fx=shimmer]")?.textContent).toBe(en.phase.making);
+    const shimmer = container.querySelector("[data-fx=shimmer]")!;
+    expect(shimmer.textContent).toBe(en.phase.making);
+    // The word's colour sits on a wrapper: an unlayered colour on the shimmer itself would paint over its light (Lens).
+    expect(shimmer.className).not.toContain("live-node-word");
+    expect(shimmer.parentElement?.className).toContain("live-node-word");
   });
 
   it("sets a machine's words in mono and the person's title in the UI face", () => {
@@ -116,23 +127,38 @@ describe("LiveNode: only what was measured or computed is shown", () => {
 describe("LiveNode: failed, disabled and short of credits are never dead ends", () => {
   it("a retry without a backend price cannot be pressed and says why", () => {
     const onRetry = vi.fn();
-    card({ state: "failed", failure: { cause: "c", remedy: "r" }, retry: { price: null, onRetry } });
+    card({ state: "failed", failureCause: "c", failureRemedy: "r", retryPrice: null, onRetry });
     const key = screen.getByRole("button", { name: en.failed.retryUnpriced });
     expect((key as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(key);
     expect(onRetry).not.toHaveBeenCalled();
   });
 
+  it("a NaN retry price is no price: the key cannot be pressed", () => {
+    const onRetry = vi.fn();
+    card({ state: "failed", retryPrice: Number.NaN, onRetry });
+    const key = screen.getByRole("button", { name: en.failed.retryUnpriced }) as HTMLButtonElement;
+    expect(key.disabled).toBe(true);
+    fireEvent.click(key);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it("offers no retry key at all when the board offers no retry", () => {
+    card({ state: "failed", failureCause: "c" });
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
   it("a priced retry names its price, and a busy one swallows a second press", () => {
     const onRetry = vi.fn();
-    const { rerender } = card({ state: "failed", failure: { cause: "The provider refused", remedy: "Edit the prompt" }, retry: { price: 40, onRetry } });
+    const { rerender } = card({ state: "failed", failureCause: "The provider refused", failureRemedy: "Edit the prompt", retryPrice: 40, onRetry });
     expect(screen.getByText("The provider refused")).toBeTruthy();
     expect(screen.getByText("Edit the prompt")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /40/ }));
     expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onRetry).toHaveBeenCalledWith("n1");
     rerender(
       <I18nProvider locale="en">
-        <LiveNode kind="still" state="failed" title="Shot 02" retry={{ price: 40, onRetry, busy: true }} />
+        <LiveNode id="n1" kind="still" state="failed" title="Shot 02" retryPrice={40} retryBusy onRetry={onRetry} />
       </I18nProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: /40/ }));
@@ -143,13 +169,26 @@ describe("LiveNode: failed, disabled and short of credits are never dead ends", 
     card({ state: "disabled", reason: "Music is not on this plan yet." });
     expect(screen.getByText("Music is not on this plan yet.")).toBeTruthy();
     cleanup();
-    card({ state: "insufficient", shortfall: { credits: 18, topUpHref: "/acme/credits" } });
+    card({ state: "insufficient", shortfallCredits: 18, topUpHref: "/acme/credits" });
     expect(screen.getByText(/18/)).toBeTruthy();
     expect(screen.getByRole("link", { name: en.insufficient.topUp }).getAttribute("href")).toBe("/acme/credits");
   });
 
+  it("a disabled card with no recorded reason says so, never a blank", () => {
+    card({ state: "disabled" });
+    expect(screen.getByText(en.disabledNoReason)).toBeTruthy();
+  });
+
+  it("links to credits only inside the app", () => {
+    for (const href of ["https://evil.example/pay", "//evil.example", "javascript:alert(1)", "credits"]) {
+      card({ state: "insufficient", shortfallCredits: 5, topUpHref: href });
+      expect(screen.queryByRole("link"), href).toBeNull();
+      cleanup();
+    }
+  });
+
   it("an unknown shortfall still offers the top-up link, and shows no number", () => {
-    const { container } = card({ state: "insufficient", shortfall: { credits: null, topUpHref: "/c" } });
+    const { container } = card({ state: "insufficient", shortfallCredits: null, topUpHref: "/c" });
     expect(screen.getByRole("link", { name: en.insufficient.topUp })).toBeTruthy();
     expect(container.querySelector(".live-node-short p")).toBeNull();
   });
@@ -158,23 +197,29 @@ describe("LiveNode: failed, disabled and short of credits are never dead ends", 
 describe("LiveNode: arrival", () => {
   it("glows and announces once for a watched arrival, then stops", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const { container, rerender } = card({ state: "working" });
+    const { container, rerender } = card({ state: "working", announce: true });
     const node = () => container.querySelector(".live-node")!;
     expect(node().getAttribute("data-landed")).toBeNull();
     rerender(
       <I18nProvider locale="en">
-        <LiveNode kind="still" state="arrived" title="Shot 02" />
+        <LiveNode id="n1" kind="still" state="arrived" title="Shot 02" announce />
       </I18nProvider>,
     );
     expect(node().getAttribute("data-landed")).toBe("true");
+    // Named, so a run of arrivals can be told apart.
     expect(container.querySelector("[role=status]")?.textContent).toContain("ready");
+    expect(container.querySelector("[role=status]")?.textContent).toContain("Shot 02");
     act(() => vi.advanceTimersByTime(LANDED_GLOW_MS + 1));
     expect(node().getAttribute("data-landed")).toBeNull();
     expect(container.querySelector("[role=status]")?.textContent).toBe("");
   });
 
+  it("has no live region of its own unless the board asks: a board announces once, with names", () => {
+    expect(card({ state: "arrived" }).container.querySelector("[role=status]")).toBeNull();
+  });
+
   it("does not glow for a card first read as ready (a refresh)", () => {
-    const { container } = card({ state: "arrived" });
+    const { container } = card({ state: "arrived", announce: true });
     expect(container.querySelector(".live-node")?.getAttribute("data-landed")).toBeNull();
     expect(container.querySelector("[role=status]")?.textContent).toBe("");
   });
@@ -183,18 +228,30 @@ describe("LiveNode: arrival", () => {
     const { container, rerender } = card({ state: "failed" });
     rerender(
       <I18nProvider locale="en">
-        <LiveNode kind="still" state="arrived" title="Shot 02" />
+        <LiveNode id="n1" kind="still" state="arrived" title="Shot 02" />
       </I18nProvider>,
     );
     expect(container.querySelector(".live-node")?.getAttribute("data-landed")).toBeNull();
   });
 
-  it("shows the picture only once it has loaded", () => {
-    const { container } = card({ state: "arrived", media: { src: "data:image/gif;base64,R0lGODlhAQABAAAAACw=", alt: "a still" } });
-    const frame = container.querySelector(".live-node-media")!;
-    expect(frame.getAttribute("data-loaded")).toBeNull();
+  it("shows the picture only once it has loaded, and a new take starts unloaded", () => {
+    const { container, rerender } = card({ state: "arrived", mediaSrc: "data:image/gif;base64,AAAA", mediaAlt: "a still" });
+    const frame = () => container.querySelector(".live-node-media")!;
+    expect(frame().getAttribute("data-loaded")).toBeNull();
     fireEvent.load(screen.getByRole("img", { name: "a still" }));
-    expect(frame.getAttribute("data-loaded")).toBe("true");
+    expect(frame().getAttribute("data-loaded")).toBe("true");
+    rerender(
+      <I18nProvider locale="en">
+        <LiveNode id="n1" kind="still" state="arrived" title="Shot 02" mediaSrc="data:image/gif;base64,BBBB" mediaAlt="a still" />
+      </I18nProvider>,
+    );
+    expect(frame().getAttribute("data-loaded")).toBeNull();
+  });
+
+  it("says when an arrived picture cannot load (an expired link), never an empty wash", () => {
+    card({ state: "arrived", mediaSrc: "https://media.example/expired.jpg", mediaAlt: "a still" });
+    fireEvent.error(screen.getByRole("img", { name: "a still" }));
+    expect(screen.getByText(en.mediaFailed)).toBeTruthy();
   });
 });
 
@@ -202,17 +259,35 @@ describe("LiveNode: the card opens, and its own keys stay its own", () => {
   it("names the open target by the card's title, and a retry does not also open the card", () => {
     const onOpen = vi.fn();
     const onRetry = vi.fn();
-    card({ state: "failed", onOpen, retry: { price: 5, onRetry } });
-    fireEvent.click(screen.getByRole("button", { name: "Open Shot 02" }));
+    card({ state: "failed", onOpen, retryPrice: 5, onRetry });
+    fireEvent.click(screen.getByRole("button", { name: "Shot 02" }));
     expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledWith("n1");
     fireEvent.click(screen.getByRole("button", { name: /5/ }));
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("is an article named by its title", () => {
-    card({ title: "Mara, the keeper", kind: "character" });
+  it("is an article and a heading named by the title alone, also when it opens", () => {
+    card({ title: "Mara, the keeper", kind: "character", onOpen: () => {} });
     expect(screen.getByRole("article", { name: "Mara, the keeper" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 3, name: "Mara, the keeper" })).toBeTruthy();
+  });
+
+  it("keeps xyflow from starting a drag on its own keys", () => {
+    const { container } = card({ state: "failed", onOpen: () => {}, retryPrice: 5, onRetry: () => {} });
+    for (const b of container.querySelectorAll("button")) expect(b.className).toMatch(/\bnodrag\b.*\bnopan\b|\bnopan\b.*\bnodrag\b/);
+  });
+});
+
+describe("LiveNode on a busy board", () => {
+  it("does not re-render when a re-read brings the same values in new objects", () => {
+    // The memo comparator, exercised directly: equal values (a fresh cast array included) compare equal.
+    const cmp = (LiveNode as unknown as { compare: (a: LiveNodeProps, b: LiveNodeProps) => boolean }).compare;
+    const base: LiveNodeProps = { id: "a", kind: "shot", state: "ghost", title: "T", cast: ["Mara"] };
+    expect(cmp(base, { ...base, cast: ["Mara"] })).toBe(true);
+    expect(cmp(base, { ...base, cast: ["Mara", "Ilya"] })).toBe(false);
+    expect(cmp(base, { ...base, state: "queued" })).toBe(false);
   });
 });
 
@@ -228,15 +303,20 @@ describe("kind labels in three languages", () => {
     expect(strings).toMatch(/ʻ/);
   });
 
+  it("numbers a still or clip by its shot", () => {
+    const { container } = card({ kind: "clip", shot: 3, state: "queued" });
+    expect(container.querySelector(".live-node-kind")?.textContent).toBe("Clip · shot 03");
+  });
+
   it("every fixture renders in every language without a missing string", () => {
     for (const locale of ["en", "ru", "uz"] as const) {
-      for (const { id, retryPrice, ...f } of liveFixtures(Date.now())) {
+      for (const f of liveFixtures(Date.now())) {
         const { container } = render(
           <I18nProvider locale={locale}>
-            <LiveNode {...f} retry={retryPrice !== undefined ? { price: retryPrice, onRetry: () => {} } : null} />
+            <LiveNode {...f} onRetry={() => {}} onOpen={() => {}} announce />
           </I18nProvider>,
         );
-        expect(container.textContent, `${locale}/${id}`).not.toMatch(/\{\w+\}|undefined/);
+        expect(container.textContent, `${locale}/${f.id}`).not.toMatch(/\{\w+\}|undefined/);
         cleanup();
       }
     }
@@ -264,6 +344,40 @@ describe("RevealText", () => {
     const { container } = render(<RevealText text="Already saved" reveal={false} />);
     expect(container.querySelector(".live-reveal")?.getAttribute("data-revealing")).toBeNull();
     expect(container.querySelector(".live-reveal-shown")).toBeNull();
+  });
+
+  it("reveals through the frames and ends whole, calling onDone once", () => {
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    const onDone = vi.fn();
+    const text = "Twelve chars";
+    const { container } = render(<RevealText text={text} reveal onDone={onDone} />);
+    act(() => vi.advanceTimersByTime(revealDuration(text.length) / 2));
+    const half = container.querySelector(".live-reveal-shown")?.textContent ?? "";
+    expect(half.length).toBeGreaterThan(0);
+    expect(half.length).toBeLessThan(text.length);
+    act(() => vi.advanceTimersByTime(revealDuration(text.length)));
+    expect(container.querySelector(".live-reveal")?.getAttribute("data-revealing")).toBeNull();
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("never re-types a text it already showed, when the board toggles show-all", () => {
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    const onDone = vi.fn();
+    const { container, rerender } = render(<RevealText text="A brass lamp at frame left" reveal onDone={onDone} />);
+    rerender(<RevealText text="A brass lamp at frame left" reveal instant onDone={onDone} />);
+    rerender(<RevealText text="A brass lamp at frame left" reveal onDone={onDone} />);
+    expect(container.querySelector(".live-reveal")?.getAttribute("data-revealing")).toBeNull();
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("a press skips one text only: the next text on the card still reveals", () => {
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
+    const { container, rerender } = render(<RevealText text="First prompt, long enough" reveal />);
+    fireEvent.click(container.querySelector(".live-reveal")!);
+    rerender(<RevealText text="Second prompt, also long" reveal />);
+    expect(container.querySelector(".live-reveal")?.getAttribute("data-revealing")).toBe("true");
+    // And it starts from nothing, not from the first text's count.
+    expect(container.querySelector(".live-reveal-shown")?.textContent).toBe("");
   });
 
   it("finishes at once on a press, and calls onDone", () => {
@@ -347,6 +461,12 @@ describe("LiveEmpty", () => {
   });
 });
 
+function outsideNoPreference(code: string): string {
+  const from = code.indexOf("@media (prefers-reduced-motion: no-preference)");
+  const to = code.indexOf("@media (prefers-reduced-motion: reduce)");
+  return code.slice(0, from) + code.slice(to);
+}
+
 describe("live.css", () => {
   const css = readFileSync(path.join(process.cwd(), "components/live/live.css"), "utf8");
   const code = css.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -360,7 +480,8 @@ describe("live.css", () => {
   });
 
   it("runs the spring, the draw-in and the flow only for readers who did not ask for less motion", () => {
-    const calm = code.slice(code.indexOf("@media (prefers-reduced-motion: reduce)"));
+    const from = code.indexOf("@media (prefers-reduced-motion: reduce)");
+    const calm = code.slice(from, code.indexOf("\n}\n", from));
     const moving = code.slice(code.indexOf("@media (prefers-reduced-motion: no-preference)"), code.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(moving).toMatch(/live-land 220ms/);
     expect(moving).toMatch(/live-draw 300ms/);
@@ -368,12 +489,27 @@ describe("live.css", () => {
     // Outside the no-preference block nothing scales, draws or flows.
     const outside = code.replace(moving, "");
     expect(outside).not.toMatch(/animation:[^;]*live-(land|draw|flow|sweep)/);
-    expect(calm).toMatch(/live-fade/);
+    expect(calm).toMatch(/animation: live-fade/);
+    expect(calm).not.toMatch(/live-(land|draw|flow|sweep|glow)/);
     expect(calm).toMatch(/\.live-edge-flow \{ display: none; \}/);
+  });
+
+  it("puts the open target over the picture and the card's own keys over the target", () => {
+    expect(code).toMatch(/\.live-node-open::after \{[^}]*z-index: 1/);
+    expect(code).toMatch(/\.live-node :is\(button, a[^)]*\):not\(\.live-node-open\) \{ position: relative; z-index: 2; \}/);
+    // The prompt is lifted only while a press on it means "finish the reveal".
+    expect(code).toMatch(/\.live-node-prompt:has\(\.live-reveal\[data-revealing="true"\]\) \{ position: relative; z-index: 2; \}/);
+  });
+
+  it("caps a long prompt with a wrapper height, not a line-clamp the reveal's grid would override", () => {
+    expect(code).toMatch(/\.live-node-prompt-text \{[^}]*max-height: calc\(4 \* 1\.5em\)/);
+    expect(code).not.toMatch(/line-clamp/);
   });
 
   it("keeps the selection ring when a card glows: the glow is its own layer", () => {
     expect(code).toMatch(/\.live-node\[data-landed="true"\]::before \{ animation: live-glow/);
+    // ...and only for readers who did not ask for less motion.
+    expect(outsideNoPreference(code)).not.toMatch(/live-glow \d/);
     expect(code).not.toMatch(/\.live-node\[data-landed="true"\] \{/);
   });
 });

@@ -5,6 +5,8 @@ export const liveNodesUz: LiveNodesDictionary = {
   kind: {
     script: "Ssenariy",
     shot: "Kadr {n}",
+    shotUnnumbered: "Kadr",
+    ofShot: "{kind} · {n}-kadr",
     character: "Qahramon",
     location: "Joy",
     prop: "Buyum",
@@ -37,7 +39,6 @@ export const liveNodesUz: LiveNodesDictionary = {
   model: "Model",
   price: "{n} {unit}",
   priceLabel: "Narx",
-  open: "Ochish: {name}",
   failed: {
     cause: "Nima boʻldi",
     remedy: "Nima qilish kerak",
@@ -49,8 +50,11 @@ export const liveNodesUz: LiveNodesDictionary = {
     shortfall: "Sizda {n} {unit} yetishmaydi.",
     topUp: "Kredit qoʻshish",
   },
-  ready: "Tayyor: {kind}.",
+  ready: "Tayyor — {kind}: {name}",
   resultAlt: "Natija: {name}",
+  mediaFailed: "Rasm yuklanmadi. Uni qayta koʻrish uchun kartani oching.",
+  disabledNoReason: "Sabab yozib olinmagan.",
+  cast: "Bu kadrda",
   empty: {
     title: "Kanvas boʻsh",
     prompt: "Chatga bitta gap yozing, reja shu yerda paydo boʻladi.",

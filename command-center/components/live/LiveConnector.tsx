@@ -5,7 +5,8 @@
  * It renders a <g> so it can sit inside any SVG: S3's StoryBoard passes it to xyflow as a custom edge, the specimen draws it
  * in a plain <svg>. It is decoration (aria-hidden): the cards say what is connected and what state each is in.
  */
-import type { LiveMediaType } from "./LiveNode";
+import type { LiveMediaType } from "./model";
+import "./live.css";
 
 /** ghost: planned, not made (dashed, quiet). idle: made, nothing moving. flowing: a real job is moving data along it. */
 export type LiveConnectorState = "ghost" | "idle" | "flowing";
@@ -35,8 +36,8 @@ export function LiveConnector({
 }) {
   return (
     <g className="live-edge" data-media={media} data-state={state} data-draw={draw ? "true" : undefined} aria-hidden>
-      {/* pathLength=1 lets the draw-in run on any length with one dash rule. */}
-      <path className="live-edge-line" d={d} pathLength={1} fill="none" />
+      {/* pathLength=1 lets the draw-in run on any length with one dash rule; a ghost is dashed in real units instead. */}
+      <path className="live-edge-line" d={d} pathLength={state === "ghost" ? undefined : 1} fill="none" />
       {state === "flowing" ? <path className="live-edge-flow" d={d} fill="none" /> : null}
     </g>
   );

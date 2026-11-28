@@ -12,7 +12,7 @@ export const SAMPLE_STILL =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b2a4a"/><stop offset="1" stop-color="#e58a4b"/></linearGradient></defs><rect width="320" height="180" fill="url(#s)"/><circle cx="232" cy="118" r="26" fill="#ffd27a"/><path d="M0 140 L70 112 L130 132 L200 104 L320 136 L320 180 L0 180 Z" fill="#0b1324"/><rect x="58" y="70" width="10" height="46" fill="#e6eefc"/><path d="M56 70 h14 l-7 -10 z" fill="#ff5c6c"/></svg>`,
   );
 
-export type LiveFixture = Omit<LiveNodeProps, "onOpen" | "retry"> & { id: string; retryPrice?: number | null };
+export type LiveFixture = Omit<LiveNodeProps, "onOpen" | "onRetry">;
 
 export function liveFixtures(now: number): LiveFixture[] {
   return [
@@ -58,7 +58,8 @@ export function liveFixtures(now: number): LiveFixture[] {
       title: "Shot 01: the lighthouse at dusk",
       prompt: "Wide, a white lighthouse on black rocks at dusk, the sun low over a calm sea.",
       model: "image-model-a",
-      media: { src: SAMPLE_STILL, alt: "A lighthouse on dark rocks at dusk" },
+      mediaSrc: SAMPLE_STILL,
+      mediaAlt: "A lighthouse on dark rocks at dusk",
       selected: true,
     },
     {
@@ -68,10 +69,8 @@ export function liveFixtures(now: number): LiveFixture[] {
       state: "failed",
       title: "Shot 05: the storm reaches the window",
       model: "video-model-b",
-      failure: {
-        cause: "The provider refused this shot's prompt.",
-        remedy: "Change the prompt in Details, then retry this shot only.",
-      },
+      failureCause: "The provider refused this shot's prompt.",
+      failureRemedy: "Change the prompt in Details, then retry this shot only.",
       retryPrice: 40,
     },
     {
@@ -79,7 +78,8 @@ export function liveFixtures(now: number): LiveFixture[] {
       kind: "voice",
       state: "failed",
       title: "Narration, chapter 2",
-      failure: { cause: "The voice provider did not answer in time.", remedy: "Retry when its price is available again." },
+      failureCause: "The voice provider did not answer in time.",
+      failureRemedy: "Retry when its price is available again.",
       retryPrice: null,
     },
     {
@@ -95,7 +95,8 @@ export function liveFixtures(now: number): LiveFixture[] {
       state: "insufficient",
       title: "Assembly",
       price: 60,
-      shortfall: { credits: 18, topUpHref: "#credits" },
+      shortfallCredits: 18,
+      topUpHref: "/all-channels/credits",
     },
   ];
 }

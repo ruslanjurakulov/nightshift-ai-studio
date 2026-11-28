@@ -13,6 +13,8 @@ import { LiveEmpty } from "./LiveEmpty";
 import { liveFixtures } from "./fixtures";
 import { Button } from "@/components/ds/Button";
 
+const noop = () => {};
+
 export function LiveSpecimen() {
   const { t } = useI18n();
   const s = t.liveNodes.specimen;
@@ -27,15 +29,8 @@ export function LiveSpecimen() {
         </Button>
       </div>
       <div key={run} className="flex flex-wrap gap-4">
-        {liveFixtures(now).map(({ id, retryPrice, ...f }, i) => (
-          <LiveNode
-            key={id}
-            {...f}
-            order={i}
-            revealPrompt
-            retry={retryPrice !== undefined ? { price: retryPrice, onRetry: () => {} } : null}
-            onOpen={() => {}}
-          />
+        {liveFixtures(now).map((f, i) => (
+          <LiveNode key={f.id} {...f} order={i} revealPrompt announce headingLevel={4} onOpen={noop} onRetry={noop} />
         ))}
       </div>
       <p className="ds-t-label m-0">{s.connectors}</p>

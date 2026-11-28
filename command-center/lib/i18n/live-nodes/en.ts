@@ -7,6 +7,8 @@ export const liveNodesEn = {
   kind: {
     script: "Script",
     shot: "Shot {n}",
+    shotUnnumbered: "Shot",
+    ofShot: "{kind} · shot {n}",
     character: "Character",
     location: "Location",
     prop: "Prop",
@@ -44,7 +46,6 @@ export const liveNodesEn = {
   model: "Model",
   price: "{n} {unit}",
   priceLabel: "Price",
-  open: "Open {name}",
   failed: {
     cause: "What happened",
     remedy: "What to do",
@@ -57,9 +58,13 @@ export const liveNodesEn = {
     shortfall: "Needs {n} more {unit} than you have.",
     topUp: "Add credits",
   },
-  ready: "Your {kind} is ready.",
+  ready: "{kind} ready: {name}",
   /** The alt text of an arrived picture when the caller has no better one. */
   resultAlt: "Result for {name}",
+  /** An arrived picture whose link no longer loads (signed links expire). */
+  mediaFailed: "The picture could not be loaded. Open the card to see it again.",
+  disabledNoReason: "The reason was not recorded.",
+  cast: "In this shot",
   empty: {
     title: "Your canvas is empty",
     prompt: "Write one sentence in the chat, and the plan will appear here.",

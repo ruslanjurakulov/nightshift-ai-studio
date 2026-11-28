@@ -49,7 +49,7 @@
   opacity: 0;
   box-shadow: 0 0 0 1px var(--ds-success), 0 0 28px -4px color-mix(in srgb, var(--ds-success) 55%, transparent);
 }
-.live-node[data-landed="true"]::before { animation: live-glow 1200ms var(--ds-ease-out) 1 both; }
+/* The glow itself is in the motion blocks below: a 1.2 s fade for most readers, a still ring for the rest. */
 
 .live-node-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .live-node-kind { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ds-text-2); overflow-wrap: anywhere; }
@@ -63,10 +63,14 @@
   cursor: pointer;
   overflow-wrap: anywhere;
 }
-.live-node-open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+/* z-index 1 puts the target above everything positioned in the card that comes later in tree order (the picture, the
+   prompt), so a press on the picture opens the card. Anything a person can press on its own sits above it, at 2. */
+.live-node-open::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
 .live-node-open:focus-visible { outline: none; }
 .live-node:has(.live-node-open:focus-visible) { outline: 3px solid var(--ds-focus); outline-offset: 3px; }
-.live-node .live-node-key, .live-node a, .live-node-prompt { position: relative; z-index: 1; }
+.live-node :is(button, a, input, select, textarea, [tabindex]):not(.live-node-open) { position: relative; z-index: 2; }
+/* The prompt can be pressed only while it reveals (a press finishes it); after that, a press on it opens the card. */
+.live-node-prompt:has(.live-reveal[data-revealing="true"]) { position: relative; z-index: 2; }
 
 .live-node-media {
   position: relative;
@@ -77,6 +81,7 @@
   background: linear-gradient(135deg, color-mix(in srgb, var(--live-hue) 16%, var(--ds-surface-3)), var(--ds-surface-3) 70%);
 }
 .live-node[data-media="audio"] .live-node-media { aspect-ratio: 4 / 1; }
+.live-node-media-note { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 8px 12px; text-align: center; color: var(--ds-text); }
 .live-node-media img {
   display: block;
   width: 100%;
@@ -88,18 +93,16 @@
 
 .live-node-prompt { display: grid; gap: 4px; min-width: 0; }
 .live-node-meta { color: var(--ds-muted); }
+/* A long prompt is read in Details; the card keeps four lines. A height cap on a wrapper, not line-clamp: the reveal inside
+   is a grid (its two copies stacked), and -webkit-line-clamp needs the clamped box itself to be -webkit-box. */
 .live-node-prompt-text {
   margin: 0;
   font-size: var(--ds-fs-caption, 13px);
   line-height: 1.5;
+  max-height: calc(4 * 1.5em);
+  overflow: hidden;
   color: var(--ds-text-2);
   overflow-wrap: anywhere;
-  /* A long prompt is read in Details; the card keeps four lines. */
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
-  line-clamp: 4;
-  overflow: hidden;
 }
 
 .live-node-status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; font-size: var(--ds-fs-caption, 13px); }
@@ -109,7 +112,9 @@
 .live-node-note { margin: 0; overflow-wrap: anywhere; }
 
 .live-node-progress { height: 4px; overflow: hidden; border-radius: var(--ds-r-pill); background: var(--ds-surface-3); }
-.live-node-progress > span { display: block; height: 100%; width: var(--live-progress, 0%); background: var(--ds-accent); transition: width 300ms var(--ds-ease-out); }
+.live-node-progress > span { display: block; height: 100%; width: var(--live-progress, 0%); background: var(--ds-accent); }
+.live-node-cast { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.live-node-cast li { padding: 2px 8px; border: 1px solid var(--ds-border); border-radius: var(--ds-r-pill); font-size: var(--ds-fs-label, 12px); color: var(--ds-text-2); overflow-wrap: anywhere; }
 
 .live-node-fail { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin: 0; padding: 8px 10px; border-radius: var(--ds-r-chip); background: var(--ds-danger-soft); color: var(--ds-text); }
 .live-node-fail dt { color: var(--ds-text-2); font-weight: 600; }
@@ -157,7 +162,8 @@
 .live-edge[data-media="video"] { --live-hue: var(--ds-type-video); }
 .live-edge[data-media="audio"] { --live-hue: var(--ds-type-audio); }
 .live-edge-line { stroke: color-mix(in srgb, var(--live-hue) 70%, var(--ds-border-strong)); stroke-width: 1.5; stroke-linecap: round; }
-.live-edge[data-state="ghost"] .live-edge-line { stroke: var(--ds-border-strong); stroke-dasharray: 0.02 0.02; }
+/* In user units (the ghost path has no pathLength), so a long ghost edge and a short one have the same dashes. */
+.live-edge[data-state="ghost"] .live-edge-line { stroke: var(--ds-border-strong); stroke-dasharray: 3 5; }
 .live-edge-flow { stroke: var(--live-hue); stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 4 10; }
 
 /* ── Empty ────────────────────────────────────────────────────────────────────────────────────────────────────────── */
@@ -191,7 +197,9 @@
   .live-node-media[data-loaded="true"] img { filter: none; transform: none; }
   .live-node[data-state="working"] .live-node-media::after { animation: live-sweep 2.4s ease-in-out infinite; }
   .live-edge[data-draw="true"] .live-edge-line { stroke-dasharray: 1 1; animation: live-draw 300ms var(--ds-ease-out) both; }
-  .live-edge[data-draw="true"][data-state="ghost"] .live-edge-line { stroke-dasharray: 0.02 0.02; animation: live-fade 300ms var(--ds-ease-out) both; }
+  .live-edge[data-draw="true"][data-state="ghost"] .live-edge-line { stroke-dasharray: 3 5; animation: live-fade 300ms var(--ds-ease-out) both; }
+  .live-node[data-landed="true"]::before { animation: live-glow 1200ms var(--ds-ease-out) 1 both; }
+  .live-node-progress > span { transition: width 300ms var(--ds-ease-out); }
   .live-edge-flow { animation: live-flow 900ms linear infinite; }
   /* Moving a card (the picked scenario sliding left): the board sets .live-moving for the move only, so a drag never lags. */
   .live-moving { transition: transform 300ms var(--ds-ease-out); }
@@ -203,9 +211,12 @@
   .live-reveal[data-reveal="on"] { animation: live-fade 200ms linear both; }
   .live-edge[data-draw="true"] { animation: live-fade 200ms linear both; }
   .live-edge-flow { display: none; }
+  /* Completion is a still ring for the glow's moment: nothing pulses. */
+  .live-node[data-landed="true"]::before { opacity: 1; box-shadow: 0 0 0 2px var(--ds-success); }
 }
 /* The board's "show all", or a refresh: no arrival to replay. */
-.live-node[data-instant="true"], .live-node[data-instant="true"] .live-reveal { animation: none; }
+.live-node[data-instant="true"], .live-node[data-instant="true"] .live-reveal, .live-node[data-instant="true"]::before { animation: none; }
+.live-node[data-instant="true"][data-landed="true"]::before { opacity: 1; box-shadow: 0 0 0 2px var(--ds-success); }
 
 @keyframes live-land { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
 @keyframes live-fade { from { opacity: 0; } to { opacity: 1; } }
