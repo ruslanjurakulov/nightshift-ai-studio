@@ -101,9 +101,9 @@ export const PICTURE_OPS = PICTURE_OP_CAPABILITIES;
 export const VIDEO_OPS = VIDEO_OP_CAPABILITIES;
 
 /**
- * The sound tools: a sound effect from a description. Offered like the AI edits: on the Voice desk (and by a link that names it),
- * not in the sidebar's tool rows, because a row there would open a tool nobody can use until the owner has proven and priced a
- * model for it. Nothing here makes it available: the form offers exactly the models the database sells for the capability.
+ * The sound tools: a sound effect from a description. On the Voice desk, not in the sidebar's tool rows, and shown only once a model
+ * is sold for it (offeredTools): until the owner has proven and priced one, no tab, note or form mentions it. Nothing here makes it
+ * available: the form offers exactly the models the database sells for the capability.
  *
  * Music is deliberately not one of them: Lyria's terms (Google APIs Terms 4(a), registry terms_notes) allow it only inside a
  * project's workflow (the editor's music track, the film pipeline), never as a free-standing prompt-to-song tool.
@@ -142,11 +142,13 @@ export function isSoundTool(c: unknown): c is (typeof SOUND_TOOLS)[number] {
 }
 
 /**
- * A tool that is in the composer before anything is sold for it (the AI edits, the sound tools): with no model its form says
- * "not available yet", the plain truth, rather than the generic "no model can make this right now", which reads as an outage.
+ * The tools a composer shows, of the ones it would offer: every tool, except that a sound tool is shown only while at least one
+ * model this workspace is offered makes it (the list the panel already reads: sellable_models(), the owner's switch, the country
+ * rule, the previews). With none, there is no tab, no note and no form: a permanent "not available" tab is a dead end, and the
+ * day a model is sold the tool appears by itself.
  */
-export function awaitsFirstModel(c: unknown): boolean {
-  return isAiEdit(c) || isSoundTool(c);
+export function offeredTools<T extends string>(tools: readonly T[], models: readonly Pick<StudioModel, "capabilities">[]): T[] {
+  return tools.filter((c) => !isSoundTool(c) || models.some((m) => m.capabilities.includes(c)));
 }
 
 /**

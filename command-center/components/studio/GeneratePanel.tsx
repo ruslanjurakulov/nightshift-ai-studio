@@ -39,7 +39,6 @@ import {
   STUDIO_VOICES,
   apiErrorMessage,
   asCreativeError,
-  awaitsFirstModel,
   blockedReason,
   buildParams,
   canQuote,
@@ -62,6 +61,7 @@ import {
   needsSource,
   needsVideo,
   newIdempotencyKey,
+  offeredTools,
   promptRule,
   reframeShapesFor,
   relightLooksFor,
@@ -279,7 +279,12 @@ export function GeneratePanel({
   const { t, fmt, locale } = useI18n();
   const path = useChannelPath();
   // The tools this composer offers: its desk's, or every one.
-  const tools: readonly StudioCapability[] = only && only.length > 0 ? only : desk ? DESK_TOOLS[desk] : PANEL_CAPABILITIES;
+  // A sound tool only while a model is offered for it (offeredTools); `only` is the page's own choice and is taken as given.
+  const tools: readonly StudioCapability[] = useMemo(
+    () => (only && only.length > 0 ? only : offeredTools(desk ? DESK_TOOLS[desk] : PANEL_CAPABILITIES, models)),
+    [only, desk, models],
+  );
+  const mediaTools = useMemo(() => offeredTools(MEDIA_TOOLS, models), [models]);
   // `desk` picks the tools; `arrange` is the desk's own look, which the composer does not use.
   const composer = layout === "composer";
   const arrange: MediaDesk | null = composer ? null : desk;
@@ -815,7 +820,7 @@ export function GeneratePanel({
           ? t.gen.noSoundLengthAuto
           : fmt(t.gen.noSoundLength, { model: current.displayName })
         : fmt(t.gen.noLength, { model: current.displayName })
-      : blocked === "no_model" && awaitsFirstModel(capability)
+      : blocked === "no_model" && isAiEdit(capability)
       ? t.gen.notAvailableYet
       : blocked === "need_words" && current && promptRule(capability) === "optional"
       ? // Optional for the kind, required by this model (registry inputs.prompt_required): say which model and what it needs.
@@ -854,7 +859,7 @@ export function GeneratePanel({
 
   // A tablist: ←/→ (and ↑/↓) move and choose, Home/End jump; one tab stop.
   // On a desk it is the desk's tools; outside one, the tool row under the mode switch.
-  const rowTools: readonly StudioCapability[] = desk ? tools : MEDIA_TOOLS;
+  const rowTools: readonly StudioCapability[] = desk ? tools : mediaTools;
   function onTabKey(e: KeyboardEvent<HTMLButtonElement>, c: StudioCapability) {
     const i = rowTools.indexOf(c);
     const n = rowTools.length;
@@ -1075,7 +1080,7 @@ export function GeneratePanel({
         })}
       />
       <div role="tablist" aria-label={t.gen.toolRowLabel} className="grid grid-cols-3 gap-1">
-        {MEDIA_TOOLS.map(tab)}
+        {mediaTools.map(tab)}
       </div>
     </div>
   );
@@ -1214,7 +1219,7 @@ export function GeneratePanel({
     </div>
   ) : (
     <p className="studio-field p-3 text-sm text-[var(--color-muted)]" data-testid="gen-no-model">
-      {awaitsFirstModel(capability) ? t.gen.notAvailableYet : t.gen.noModels}
+      {isAiEdit(capability) ? t.gen.notAvailableYet : t.gen.noModels}
     </p>
   );
 

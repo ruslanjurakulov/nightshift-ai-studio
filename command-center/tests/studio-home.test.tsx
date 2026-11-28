@@ -35,7 +35,7 @@ import { StudioHome, type AssistantData } from "@/components/studio/StudioHome";
 import { CREATIVE_EXAMPLES, STUDIO_MODES, examplePrompt, isStudioMode, modeDesk } from "@/lib/creative/examples";
 import { exampleModelsFor } from "@/lib/server/creative-examples";
 import { DESK_TOOLS, MEDIA_DESKS } from "@/lib/creative/desks";
-import { PANEL_CAPABILITIES, type StudioModel } from "@/lib/creative/studio";
+import { PANEL_CAPABILITIES, offeredTools, type StudioModel } from "@/lib/creative/studio";
 import { bannedHits } from "@/lib/marketing-banned";
 
 const t = dictionaries.en;
@@ -143,7 +143,7 @@ describe("the mode chips", () => {
     for (const m of MEDIA_DESKS) {
       fireEvent.click(chip(th.modes[m]));
       expect(chip(th.modes[m]).getAttribute("aria-checked")).toBe("true");
-      expect(composerTools()).toEqual(DESK_TOOLS[m].map((c) => `gen-tab-${c}`));
+      expect(composerTools()).toEqual(offeredTools(DESK_TOOLS[m], MODELS).map((c) => `gen-tab-${c}`));
     }
     fireEvent.keyDown(chip(th.modes.enhance), { key: "ArrowLeft" });
     expect(chip(th.modes.voice).getAttribute("aria-checked")).toBe("true");

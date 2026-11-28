@@ -39,6 +39,7 @@ import {
   withTiers,
   type StudioForm,
   type StudioModel,
+  offeredTools,
 } from "@/lib/creative/studio";
 
 const t = dictionaries.en;
@@ -138,7 +139,7 @@ describe("tool tabs", () => {
     const tools = screen.getByRole("tablist", { name: t.gen.toolRowLabel });
     const modeTabs = within(modes).getAllByRole("tab");
     const toolTabs = within(tools).getAllByRole("tab");
-    expect([...modeTabs, ...toolTabs].map((x) => x.textContent)).toEqual(PANEL_CAPABILITIES.map((c) => t.gen.tabs[c]));
+    expect([...modeTabs, ...toolTabs].map((x) => x.textContent)).toEqual(offeredTools(PANEL_CAPABILITIES, MODELS).map((c) => t.gen.tabs[c]));
     expect(modeTabs.filter((x) => x.getAttribute("tabindex") === "0")).toHaveLength(1);
     // No tool is on: the tool row still has one tab stop (its first tab).
     expect(toolTabs.filter((x) => x.getAttribute("tabindex") === "0")).toHaveLength(1);

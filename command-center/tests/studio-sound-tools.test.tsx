@@ -48,6 +48,7 @@ import {
   buildParams,
   isStudioCapability,
   modelLock,
+  offeredTools,
   outputKind,
   prefillFromQuery,
   promptRule,
@@ -163,29 +164,60 @@ describe("Lyria's state today, in the library (no UI)", () => {
 
 // ── the composer ─────────────────────────────────────────────────────────────
 
-describe("with no model on sale (today)", () => {
-  it("Sound effects shows the unavailable state and a disabled key with its reason, and asks nothing", async () => {
-    render(withI18n(<GeneratePanel orgId={ORG} models={[SPEECH]} desk="voice" />));
-    openSfx();
-    expect(screen.getByTestId("gen-no-model").textContent).toBe(t.gen.notAvailableYet);
-    expect(status()).toBe(t.gen.notAvailableYet);
-    expect(press().disabled).toBe(true);
-    // The key's reason is read with it.
-    expect(press().getAttribute("aria-describedby")).toContain("gen-status");
-    // No length is offered for a model that does not exist.
-    expect(screen.queryByRole("group", { name: t.gen.durationLabel })).toBeNull();
-    fireEvent.change(screen.getByLabelText(new RegExp(t.gen.soundWords.sfx)), { target: { value: "rain on a tin roof" } });
-    await new Promise((r) => setTimeout(r, 700));
-    expect(quotes).toEqual([]);
-    expect(creates).toEqual([]);
-    expect(press().textContent).not.toMatch(/\d/);
+describe("with no model on sale (today): the tool is not there at all", () => {
+  const tabIds = () => screen.getAllByRole("tab").map((x) => x.id);
+
+  it("no Sound effect tab on the Voice desk, in the composer's Voice mode, or in the panel's tool row", () => {
+    const desk = render(withI18n(<GeneratePanel orgId={ORG} models={[SPEECH]} desk="voice" />));
+    expect(tabIds()).toEqual(["gen-tab-tts", "gen-tab-voice_change", "gen-tab-dub"]);
+    expect(screen.queryByTestId("gen-no-model")).toBeNull();
+    desk.unmount();
+    const composer = render(withI18n(<GeneratePanel orgId={ORG} models={[SPEECH]} desk="voice" layout="composer" />));
+    expect(tabIds()).not.toContain("gen-tab-sfx");
+    composer.unmount();
+    render(withI18n(<GeneratePanel orgId={ORG} models={[SPEECH]} />));
+    expect(tabIds()).not.toContain("gen-tab-sfx");
+    expect(screen.queryByRole("tab", { name: new RegExp(t.gen.tabs.sfx) })).toBeNull();
   });
 
-  it("no other model is offered in its place: speech is never the sound effect tool's fallback", () => {
-    render(withI18n(<GeneratePanel orgId={ORG} models={[SPEECH]} desk="voice" initial={{ capability: "sfx", model: "speech", prompt: "", aspect: "16:9", duration: 5 }} />));
-    expect(screen.getByRole("tab", { name: new RegExp(t.desk.tools.sfx) }).getAttribute("aria-selected")).toBe("true");
-    expect(screen.queryByTestId("gen-model-name")).toBeNull();
-    expect(screen.getByTestId("gen-no-model").textContent).toBe(t.gen.notAvailableYet);
+  it("the arrow keys wrap past where it would be: left from Speech lands on Dub", () => {
+    render(withI18n(<GeneratePanel orgId={ORG} models={[SPEECH]} desk="voice" />));
+    fireEvent.keyDown(document.getElementById("gen-tab-tts") as HTMLElement, { key: "ArrowLeft" });
+    expect(document.activeElement?.id).toBe("gen-tab-dub");
+  });
+
+  it("?tool=sfx opens the Voice desk on a tool that is sold, never a dead Sound effect form, and asks no sound price", async () => {
+    const prefill = prefillFromQuery("sfx", undefined);
+    expect(deskFromQuery({ tool: "sfx" })).toBe("voice");
+    render(withI18n(<GeneratePanel orgId={ORG} models={[SPEECH]} desk="voice" initial={{ ...prefill!, prompt: "rain on a tin roof" }} />));
+    expect(document.getElementById("gen-tab-sfx")).toBeNull();
+    expect(document.getElementById("gen-tab-tts")?.getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByTestId("gen-no-model")).toBeNull();
+    expect(screen.queryByRole("group", { name: t.gen.durationLabel })).toBeNull();
+    await new Promise((r) => setTimeout(r, 700));
+    expect(quotes.filter((q) => q.capability === "sfx")).toEqual([]);
+    expect(creates).toEqual([]);
+  });
+});
+
+describe("once a sound-effect model is sold: the tab appears by itself", () => {
+  it("last on the Voice desk, reached by wrapping left from Speech", () => {
+    render(withI18n(<GeneratePanel orgId={ORG} models={[SPEECH, SFX]} desk="voice" />));
+    expect(screen.getAllByRole("tab").map((x) => x.id)).toEqual(["gen-tab-tts", "gen-tab-voice_change", "gen-tab-dub", "gen-tab-sfx"]);
+    fireEvent.keyDown(document.getElementById("gen-tab-tts") as HTMLElement, { key: "ArrowLeft" });
+    expect(document.activeElement?.id).toBe("gen-tab-sfx");
+  });
+
+  it("in the panel's tool row, last", () => {
+    render(withI18n(<GeneratePanel orgId={ORG} models={[SPEECH, SFX]} />));
+    const row = within(screen.getByRole("tablist", { name: t.gen.toolRowLabel })).getAllByRole("tab");
+    expect(row.at(-1)?.id).toBe("gen-tab-sfx");
+  });
+
+  it("offeredTools keeps every other tool whatever is sold, and a sound tool only while a model makes it", () => {
+    expect(offeredTools(DESK_TOOLS.voice, [])).toEqual(["tts", "voice_change", "dub"]);
+    expect(offeredTools(DESK_TOOLS.voice, [SFX])).toEqual(["tts", "voice_change", "dub", "sfx"]);
+    expect(offeredTools(DESK_TOOLS.enhance, [])).toEqual(DESK_TOOLS.enhance);
   });
 });
 
