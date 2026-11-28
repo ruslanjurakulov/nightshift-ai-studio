@@ -1,6 +1,6 @@
 /**
- * Role primitives shared by the server (roles.ts) and client components
- * (e.g. MembersBoard). Deliberately free of any server-only import so a
+ * Role primitives shared by the server (roles.ts) and client components.
+ * Deliberately free of any server-only import so a
  * "use client" component can pull in the type and the ordered list without
  * dragging the Supabase server client into the browser bundle.
  */

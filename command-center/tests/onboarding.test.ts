@@ -13,7 +13,6 @@ const FRESH: OnboardingState = {
   routingSet: false,
   youtubeConnected: false,
   hasChannel: false,
-  hasMember: false,
   hasSeries: false,
 };
 
@@ -25,7 +24,6 @@ const FULL: OnboardingState = {
   routingSet: true,
   youtubeConnected: true,
   hasChannel: true,
-  hasMember: true,
   hasSeries: true,
 };
 
@@ -37,22 +35,21 @@ const EXPECTED_ORDER: OnboardingStepKey[] = [
   "routing",
   "youtube",
   "channel",
-  "member",
   "series",
 ];
 
 describe("computeChecklist", () => {
   it("fresh state: every step todo, progress 0%", () => {
     const { items, progress } = computeChecklist(FRESH);
-    expect(items).toHaveLength(9);
+    expect(items).toHaveLength(8);
     expect(items.every((i) => i.done === false)).toBe(true);
-    expect(progress).toEqual({ done: 0, total: 9, pct: 0 });
+    expect(progress).toEqual({ done: 0, total: 8, pct: 0 });
   });
 
   it("fully configured: every step done, progress 100%", () => {
     const { items, progress } = computeChecklist(FULL);
     expect(items.every((i) => i.done === true)).toBe(true);
-    expect(progress).toEqual({ done: 9, total: 9, pct: 100 });
+    expect(progress).toEqual({ done: 8, total: 8, pct: 100 });
   });
 
   it("keeps a stable setup order and gives every step a fixing href", () => {
@@ -61,8 +58,14 @@ describe("computeChecklist", () => {
     expect(items.every((i) => i.href.startsWith("/"))).toBe(true);
   });
 
+  it("no step sends anyone to the removed Team page", () => {
+    // /members only redirects now; a checklist link to it would be a step nobody can complete there.
+    const { items } = computeChecklist(FRESH);
+    expect(items.some((i) => i.href === "/members")).toBe(false);
+  });
+
   it("partial state: only the true signals are done, pct rounds", () => {
-    // Backend wired + signed in + one provider key + a channel = 4 of 9.
+    // Backend wired + signed in + one provider key + a channel = 4 of 8.
     const partial: OnboardingState = {
       ...FRESH,
       supabaseConfigured: true,
@@ -75,7 +78,7 @@ describe("computeChecklist", () => {
     const doneKeys = items.filter((i) => i.done).map((i) => i.key);
     expect(doneKeys).toEqual(["supabase", "signedIn", "provider", "channel"]);
     expect(progress.done).toBe(4);
-    expect(progress.total).toBe(9);
-    expect(progress.pct).toBe(44); // Math.round(4 / 9 * 100) = 44
+    expect(progress.total).toBe(8);
+    expect(progress.pct).toBe(50); // Math.round(4 / 8 * 100) = 50
   });
 });

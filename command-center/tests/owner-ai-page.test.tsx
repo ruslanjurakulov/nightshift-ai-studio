@@ -52,12 +52,14 @@ describe("/owner/ai", () => {
     vi.stubEnv("AI_CHAT_GEMINI_API_KEY", "test-only");
     try {
       const { default: Page } = await import("../app/owner/ai/page");
-      const page = (await Page()) as ReactElement<{ children: ReactElement<{ configuredModels: unknown }> }>;
+      const page = (await Page()) as ReactElement<{ children: ReactElement<{ configuredModels: unknown; preferredModel: unknown }> }>;
       expect(page.props.children.props.configuredModels).toEqual({
         "anthropic-claude-sonnet-5-5": false,
         "openai-gpt-6-luna": false,
         "gemini-3.6-flash": true,
       });
+      // The picker's starting model comes from the server: a constant in the component was a vendor model id in a static chunk.
+      expect(page.props.children.props.preferredModel).toBe("gemini-3.6-flash");
     } finally {
       vi.unstubAllEnvs();
     }

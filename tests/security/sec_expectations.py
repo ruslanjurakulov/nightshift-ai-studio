@@ -891,3 +891,21 @@ sec_geo_allowlist_0230.extend(TABLES, FUNCTIONS)
 import sec_cancel_audit_0231  # noqa: E402
 
 sec_cancel_audit_0231.extend(TABLES, FUNCTIONS)
+
+# Migration 0228 (music per request, S6): no new table or function; creative_price and creative_params_problem stay internal.
+# tests/security/sec_music_per_request_0228.py
+import sec_music_per_request_0228  # noqa: E402
+
+sec_music_per_request_0228.extend(TABLES, FUNCTIONS)
+
+# Migration 0233 (nobody adds, re-roles or removes a person on the platform roster from a browser, BR-L-213): no table, no new
+# function; 0107's three roster functions become SERVICE. tests/security/sec_platform_roster_0233.py
+import sec_platform_roster_0233  # noqa: E402
+
+sec_platform_roster_0233.extend(TABLES, FUNCTIONS)
+
+# Migration 0238 (0142's CHECK narrowed: a country-listed row may go on sale with its vendor's allow-list, behind 0230's gate): no
+# table, no function. tests/security/sec_country_sale_0238.py
+import sec_country_sale_0238  # noqa: E402
+
+sec_country_sale_0238.extend(TABLES, FUNCTIONS)

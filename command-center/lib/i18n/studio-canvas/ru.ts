@@ -201,6 +201,13 @@ export const studioCanvasRu: StudioCanvasDictionary = {
     total: "Известная длина {t}",
     totalUnknown: "+ неизвестно: {n}",
     count: "{track}: {n}",
+    lengthPlanned: "{t}, по плану",
+    lengthPlannedShort: "{t} план",
+    legendPlanned: "план — длина по плану, не измерена",
+    totalPlanned: "Длина по плану {t}",
+    planTag: "план",
+    master: "Итоговое видео",
+    masterSeg: "{name} · {status} · {length}",
   },
   loading: "Открываем холст…",
 };

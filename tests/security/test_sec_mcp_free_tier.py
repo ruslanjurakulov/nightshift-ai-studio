@@ -49,6 +49,7 @@ LATER = [(sec_db.MIGRATION_0236, sec_db.ROLLBACK_0236),
          (sec_db.MIGRATION_0232, sec_db.ROLLBACK_0232),  # 0232 sits on 0226's chat bodies, which 0226's rollback refuses
          (sec_db.MIGRATION_0231, sec_db.ROLLBACK_0231),
          (sec_db.MIGRATION_0226, sec_db.ROLLBACK_0226),
+         (sec_db.MIGRATION_0228, sec_db.ROLLBACK_0228),  # 0228 sits on 0218's creative_params_problem and 0224's creative_price
          (sec_db.MIGRATION_0224, sec_db.ROLLBACK_0224),  # 0224 sits on 0218's creative_price, which 0218's rollback keeps the line of
          (sec_db.MIGRATION_0219, sec_db.ROLLBACK_0219),
          (sec_db.MIGRATION_0218, sec_db.ROLLBACK_0218),

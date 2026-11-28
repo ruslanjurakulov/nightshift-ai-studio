@@ -36,10 +36,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     segments = null;
   }
 
-  // The money columns are 0171's; without them the error words (0166) are still worth having, so a refused read tries once more
+  // The money columns are 0171's (and charge_basis); without them the error words (0166) are still worth having, so a refused read tries once more
   // without the money, and the money then reads as "not recorded".
   let takes: unknown[] | null = null;
-  for (const columns of ["id,error_code,confirmed_credits,charged_credits", "id,error_code"]) {
+  // charge_basis (0171) tells a retry's superseded first attempt from any other superseding (lib/studio/liveGraph pickSlot).
+  for (const columns of ["id,error_code,confirmed_credits,charged_credits,charge_basis", "id,error_code,confirmed_credits,charged_credits", "id,error_code"]) {
     try {
       const t = await gate.supabase.from("film_takes").select(columns).eq("film_id", filmId).limit(MAX_TAKES);
       if (!t.error && Array.isArray(t.data)) {

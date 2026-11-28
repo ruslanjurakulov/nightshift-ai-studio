@@ -11,9 +11,10 @@ import { useChannelPath } from "@/lib/channels-client";
 import { AssetDownloads } from "@/components/media/AssetDownloads";
 import { Lamp } from "@/components/studio-canvas/parts";
 import { useMediaUrls } from "@/components/studio-timeline/useTimelineData";
-import { JOB_ERROR_CODES } from "@/lib/runBackend";
+import { JOB_ERROR_CODES } from "@/lib/job-errors";
 import { useBrainBrief, handoffTarget } from "./useBrainBrief";
 import { ActivityPanel } from "./ActivityPanel";
+import { LiveLane } from "./LiveLane";
 import { utc } from "@/lib/studio/utc";
 import { briefGraph, type Brief, type LiveGraph, type LiveNode, type LiveNodeKind, type LiveStatus, type RunVideoRef, type Activity, type ActivityItem } from "@/lib/studio/liveGraph";
 import { useLiveGraph, type LiveTarget } from "./useLiveGraph";
@@ -44,6 +45,8 @@ const ICONS: Record<LiveNodeKind, LucideIcon> = {
 const TONE: Record<LiveStatus, "ok" | "run" | "fail" | "warn" | "idle"> = {
   draft: "idle",
   waiting: "idle",
+  // Its first attempt failed; the retry has not begun: not fine, not running.
+  retried: "warn",
   working: "run",
   done: "ok",
   failed: "fail",
@@ -175,6 +178,7 @@ function CardView({ data }: NodeProps<Node<CardData, "step">>) {
         type="button"
         className={`lv-card is-${data.node.status}${data.selected ? " is-selected" : ""}`}
         data-testid={`live-node-${data.node.id}`}
+        data-node-id={data.node.id}
         data-status={data.node.status}
         data-lit={data.lit ? "" : undefined}
         aria-pressed={data.selected}
@@ -272,6 +276,7 @@ function List({ graph, selected, onOpen, names, words, prices, lit }: ViewProps)
               type="button"
               className={`lv-card is-${n.status}${selected === n.id ? " is-selected" : ""}`}
               data-testid={`live-node-${n.id}`}
+              data-node-id={n.id}
               data-status={n.status}
               data-lit={lit.has(n.id) ? "" : undefined}
               aria-pressed={selected === n.id}
@@ -629,6 +634,7 @@ export function LiveView({
           {sel ? <Details node={sel} run={run} filmId={target?.kind === "film" ? target.id : null} video={graph.video} onClose={close} /> : null}
         </div>
       ) : null}
+      {target?.kind === "film" && shown && !draft ? <LiveLane load={load} planKey={planKey} stale={stale} selected={selected} onOpen={setSelected} retry={retry} /> : null}
       {graph && activity ? (
         // Below the board, never beside it: a side column narrows the board until its ends fall outside at 1280-1440 (Pixel HIGH).
         <ActivityPanel activity={activity} run={run} />

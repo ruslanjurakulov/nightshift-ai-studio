@@ -21,6 +21,7 @@ vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";
 import { CreateStudio } from "@/components/create/CreateStudio";
+import { createPipelineOptions } from "@/lib/server/pipeline-options";
 import { clearAllCreateAttempts } from "@/lib/create-attempt-store";
 import { toQueueJob } from "@/lib/runBackend";
 import { DEFAULT_ORG_ID } from "@/lib/orgs";
@@ -112,7 +113,8 @@ describe("F8: the provider selects follow the route's customerRun rule", () => {
     const t = dictionaries.en;
     render(
       <I18nProvider locale="en">
-        <CreateStudio channelId="chan-a" githubConfigured agentConfig={null} canRun userId="5b0c2f6e-1d44-4c2e-9b1f-0a7e2d9c3e11" orgId={orgId} backend="queue" operator={operator} />
+        {/* The lists are given in every case: the form's own rule must still hide them (the page sends them less often). */}
+        <CreateStudio channelId="chan-a" githubConfigured agentConfig={null} canRun userId="5b0c2f6e-1d44-4c2e-9b1f-0a7e2d9c3e11" orgId={orgId} backend="queue" operator={operator} pipeline={createPipelineOptions()} />
       </I18nProvider>,
     );
     await screen.findByText(/120/);

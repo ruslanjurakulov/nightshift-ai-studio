@@ -2,7 +2,8 @@ import "server-only";
 import { fetchWithTimeout } from "@/lib/server/fetch-timeout";
 import { PROVIDER_SECRET_NAMES } from "../providers";
 import { IMAGE_PROVIDERS } from "@/lib/imageProviders";
-import { isTtsModel, isVoiceId } from "@/lib/ttsModels";
+import { isTtsModel } from "@/lib/ttsModels";
+import { isVoiceId } from "@/lib/voices";
 
 /**
  * Writing GitHub Actions Repository Secrets — forward, never store.
@@ -32,14 +33,20 @@ export const isGithubConfigured = Boolean(GITHUB_TOKEN && GITHUB_REPO);
  * endpoint at SUPABASE_SERVICE_KEY or at any other secret the workflow trusts
  * and silently replace it. Anything not named here is refused.
  */
-const FIXED_NAMES = new Set([
+/** The YouTube secrets the new-channel wizard names and saves. The page passes them as props: no secret name may sit in a
+ *  static chunk (scripts/vendor-bundle-check.mjs reads the names from this object). */
+export const YOUTUBE_SECRET_NAMES = {
+  dataKey: "YOUTUBE_DATA_API_KEY",
+  clientSecret: "YOUTUBE_CLIENT_SECRET_JSON",
+  token: "YOUTUBE_TOKEN_JSON",
+  channelId: "YOUTUBE_CHANNEL_ID",
+} as const;
+
+const FIXED_NAMES = new Set<string>([
   "GEMINI_API_KEY",
   "PEXELS_API_KEY",
   "ELEVENLABS_API_KEY",
-  "YOUTUBE_DATA_API_KEY",
-  "YOUTUBE_CLIENT_SECRET_JSON",
-  "YOUTUBE_TOKEN_JSON",
-  "YOUTUBE_CHANNEL_ID",
+  ...Object.values(YOUTUBE_SECRET_NAMES),
   // Alert channel credentials (see lib/server/alerts.ts). The Slack incoming
   // webhook URL and the Resend API key are sealed here and read at runtime by
   // whatever sends the notification (the Actions pipeline, or the web "Send

@@ -237,6 +237,10 @@ class SoniloMusicAdapter(SafeResultMixin, HttpAdapter):
             out.append("Sonilo takes no negative prompt")
         if request.input_images or request.end_image:
             out.append("a picture does not apply to music")
+        if request.text_language is not None:
+            # BR-L-209: the bridge passes a music job's language since Lyria (creative_adapters.capability_request). Sonilo has no
+            # language field, so a language sent here would be paid for and ignored (rule 4): refused instead.
+            out.append("Sonilo has no language setting: a sung language is refused, not ignored")
         d = request.duration_s
         if cap == MUSIC:
             if not request.prompt.strip():

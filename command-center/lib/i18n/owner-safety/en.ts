@@ -34,23 +34,6 @@ export const ownerSafetyEn = {
   dCredits: "Credits",
   dCost: "Approximate cost",
   costAbout: "about {usd}",
-  // Team
-  memberAddTitle: "Give {email} the role “{role}”?",
-  memberAddBody: "They can sign in with this email and use the access below right away. New role: {cap}",
-  memberAddConfirm: "Add person",
-  memberAdded: "{email} added as {role}.",
-  memberRemoveTitle: "Remove {email} from the team?",
-  memberRemoveBody: "They lose access right away. You can invite them again later.",
-  memberRemoveConfirm: "Remove person",
-  memberRemoved: "{email} removed.",
-  roleChangeTitle: "Change the role of {email}?",
-  roleChangeBody: "Their access changes right away. New role: {cap}",
-  roleChangeConfirm: "Change role",
-  roleChanged: "{email} is now: {role}.",
-  dPerson: "Person",
-  dRole: "Role",
-  blockSelf:
-    "You cannot change or remove your own access here. Ask another owner to do it, so you are never locked out.",
   // Provider top-ups
   topupTitle: "Record {amount} paid to {provider}?",
   topupBody:
