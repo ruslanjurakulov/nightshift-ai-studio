@@ -103,7 +103,7 @@ export const studioLiveEn = {
       } as Record<string, string>,
       generic: "The assembly failed.",
       remedyAgain: "Start the project again.",
-      remedyOurs: "Nothing for you to do; we're notified.",
+      remedyOurs: "This is on our side, not yours. Starting again now would fail the same way.",
     },
     master: {
       name: "Final video",

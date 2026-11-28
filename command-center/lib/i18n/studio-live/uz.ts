@@ -104,7 +104,7 @@ export const studioLiveUz: StudioLiveDictionary = {
       } as Record<string, string>,
       generic: "Yigʻish muvaffaqiyatsiz tugadi.",
       remedyAgain: "Loyihani qaytadan boshlang.",
-      remedyOurs: "Sizdan hech narsa talab qilinmaydi: bizga xabar berildi.",
+      remedyOurs: "Sabab bizning tomonda, sizda emas. Hozir qayta boshlansa, xuddi shu xato boʻladi.",
     },
     master: {
       name: "Yakuniy video",

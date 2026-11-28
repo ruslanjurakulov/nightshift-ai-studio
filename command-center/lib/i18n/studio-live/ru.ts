@@ -104,7 +104,7 @@ export const studioLiveRu: StudioLiveDictionary = {
       } as Record<string, string>,
       generic: "Сборка не удалась.",
       remedyAgain: "Запустите проект заново.",
-      remedyOurs: "Вам ничего делать не нужно: мы уже знаем.",
+      remedyOurs: "Причина на нашей стороне, не на вашей. Если запустить заново сейчас, будет та же ошибка.",
     },
     master: {
       name: "Итоговое видео",
