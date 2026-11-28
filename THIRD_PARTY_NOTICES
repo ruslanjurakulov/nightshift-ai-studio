@@ -18,6 +18,14 @@ adapted into prompt text and TypeScript types.
 Where: command-center/lib/brain/prompt.ts (PLAN_SYSTEM_PROMPT, "How you shoot"), command-center/lib/brain/logic.ts (the shot
 spec types), command-center/lib/brain/plan.ts (the checks of those rules).
 
+Also taken (character reference sheets): the three portrait prompts of agents/character_portraits_generator.py
+(prompt_template_front, prompt_template_side, prompt_template_back) and its order (the front from words, the side and the back
+from the front); the reference rules of agents/reference_image_selector.py (at most 8 pictures, at most one view per character,
+the view the shot shows, "Image N" counted from 0 by position in the selected list), re-written as deterministic code rather than
+a language-model call; and the per-scene character with its own features of interfaces/character.py (CharacterInScene).
+
+Where: command-center/lib/brain/ref-sheets.ts (sheetPrompt, planSheets, selectRefs, wantedView).
+
 License:
 
 MIT License
