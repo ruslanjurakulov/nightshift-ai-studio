@@ -402,6 +402,28 @@ def test_the_sheets_have_their_own_budget_a_turn_is_measured_alone(w):
     assert not out.ok and out.sqlstate == "NS400" and "brief_too_large" in out.error, out
 
 
+def test_a_paid_turn_is_never_left_pending_by_sheets_near_their_cap(w):
+    """Atlas on BR-SW-08: sheets at their cap, then a turn whose BRIEF with them is far over 0199's old 262144 (191 KB + 250 KB).
+    The turn's own BRIEF fits 0199's 262144, so finish_turn records the call as 'ok', stores the turn, and keeps the sheets: no
+    sheets can make a paid turn roll back, so no refusal before the vendor call is needed for them."""
+    full = [sheet(f"c{i}", views=[view(n, prompt="p" * 1450) for n in ("front", "side", "back")]) for i in range(40)]
+    assert as_(w.su, w.alice, SAVE, [w.sid, j(full), j([]), None]).ok
+    become(w.su, None)
+    sheets_bytes = w.su.value("select octet_length((brief -> 'ref_sheets')::text) from public.ai_chat_sessions where id = %s", [w.sid])
+    assert 180000 < sheets_bytes <= 196608, sheets_bytes
+    call = w.su.value("insert into public.ai_chat_calls (org_id, user_id, session_id, model, outcome) "
+                      "values (%s, %s, %s, 'anthropic-claude-sonnet-5-5', 'pending') returning id", [w.org, w.alice.uid, w.sid])
+    turn = {**BASE_BRIEF, "notes": "n" * 250000}
+    assert len(json.dumps(turn)) + sheets_bytes > 262144
+    out = as_(w.su, w.alice, "select public.ai_chat_finish_turn(%s, 'ok', 1, 1, 'hi', null, null, 'ready', %s::jsonb, null)",
+              [call, json.dumps(turn)])
+    assert out.ok, out
+    become(w.su, None)
+    assert w.su.value("select outcome from public.ai_chat_calls where id = %s", [call]) == "ok"
+    b = stored(w.su, w.sid)
+    assert b["notes"] == turn["notes"] and len(b["ref_sheets"]) == 40
+
+
 def test_the_brief_check_counts_the_sheets_apart_and_still_holds_the_turn_to_262144(w):
     become(w.su, None)
     defs = dict(w.su.rows("select conname, pg_get_constraintdef(oid) from pg_constraint "
