@@ -40,6 +40,7 @@ export function ChannelCard({
   queued,
   videos,
   vault,
+  tokenSecret,
   dna,
   canControl = false,
   publishReleased = false,
@@ -55,6 +56,11 @@ export function ChannelCard({
   videos: number;
   /** Set for a customer organization's channel: its Vault connection panel. */
   vault?: Omit<ChannelTokenPanelProps, "channelId">;
+  /**
+   * The GitHub secret this channel's token belongs in (lib/server/github-secrets.ts channelTokenSecret), for the operator's
+   * path, when there is no `vault`. Computed on the server: the name is our infrastructure's, so no static chunk builds it.
+   */
+  tokenSecret?: string;
   /** The channel's DNA card (components/channels/ChannelDnaSection), when the page has it. */
   dna?: ReactNode;
   /**
@@ -478,11 +484,11 @@ export function ChannelCard({
             {credential?.detail && <p className="g2-note">{credential.detail}</p>}
             {/* The GitHub-secret hint is the operator's path; a customer channel
                 connects in the panel below instead. */}
-            {credential?.status !== "connected" && !vault && (
+            {credential?.status !== "connected" && !vault && tokenSecret && (
               <p className="g2-note">
                 {fmt(t.channels.connectHint, {
                   id: channel.channel_id,
-                  secret: secretName(channel),
+                  secret: tokenSecret,
                 })}
               </p>
             )}
@@ -625,9 +631,3 @@ function credentialLabel(status: string, t: Dict): string {
   return t.channels.notConnected;
 }
 
-/** The GitHub secret this channel's token belongs in — mirrors
- *  modules/channel_credentials.env_var_name. A name, not a value. */
-function secretName(channel: ChannelRow): string {
-  const key = channel.credential_ref?.ref || channel.channel_id;
-  return "CHRONOS_YT_TOKEN_" + key.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-}

@@ -12,6 +12,7 @@ import { fmt } from "@/lib/i18n";
 import type { ChannelRow } from "@/lib/types";
 import { isValidChannelId, slugifyChannelId } from "@/lib/channels";
 import { voiceOwners } from "@/lib/channel-voices";
+import { secretRefSuffix } from "@/lib/secret-ref";
 
 /**
  * Guided channel creation.
@@ -105,7 +106,15 @@ export function AddChannelWizard({
   keyNames: { gemini: string; pexels: string; eleven: string } | null;
   /** The YouTube secrets' names (lib/server/github-secrets.ts), for every viewer: the Data API key field also verifies the
    *  channel (/api/setup/youtube), which a customer can do, and the client-secret field shows its name as the hint. */
-  youtubeNames: { dataKey: string; clientSecret: string; channelId: string };
+  youtubeNames: {
+    dataKey: string;
+    clientSecret: string;
+    channelId: string;
+    /** The per-channel token secret's prefix (CHANNEL_TOKEN_SECRET_PREFIX): with the typed ref, the name the token is saved
+     *  under. The platform operator's only (the page passes it after isOperator(); /api/setup/secrets lets no one else write
+     *  it): absent, the wizard draws no token field and points to the Channels page, where a customer connects YouTube. */
+    tokenPrefix?: string | null;
+  };
   orgId?: string | null;
   /** The caller administers the operator's own organization: the database then
    *  stamps the confirmation from this lookup (migration 0086). */
@@ -168,10 +177,11 @@ export function AddChannelWizard({
 
   const effectiveId = idTouched ? channelId : slugifyChannelId(name);
   const idValid = isValidChannelId(effectiveId);
-  const secret = useMemo(() => {
-    const key = credentialRef || effectiveId || "channel";
-    return "CHRONOS_YT_TOKEN_" + key.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-  }, [credentialRef, effectiveId]);
+  const tokenPrefix = youtubeNames.tokenPrefix ?? null;
+  const secret = useMemo(
+    () => (tokenPrefix ? tokenPrefix + secretRefSuffix(credentialRef || effectiveId || "channel") : null),
+    [credentialRef, effectiveId, tokenPrefix],
+  );
 
   // Ask the server whether forwarding is wired up at all, so the keys step can
   // say what is missing instead of failing at the last click.
@@ -234,7 +244,7 @@ export function AddChannelWizard({
     if (keyNames && elevenKey.trim()) out[keyNames.eleven] = elevenKey.trim();
     if (ytDataKey.trim()) out[youtubeNames.dataKey] = ytDataKey.trim();
     if (clientSecretJson.trim()) out[youtubeNames.clientSecret] = clientSecretJson.trim();
-    if (tokenJson.trim()) out[secret] = tokenJson.trim();
+    if (secret && tokenJson.trim()) out[secret] = tokenJson.trim();
     const yt = info?.channelId || youtubeChannelId.trim();
     if (yt) out[youtubeNames.channelId] = yt;
     return out;
@@ -431,7 +441,7 @@ export function AddChannelWizard({
           </div>
         )}
         <p className="g2-note">
-          {fmt(t.channels.connectHint, { id: effectiveId, secret })}
+          {secret ? fmt(t.channels.connectHint, { id: effectiveId, secret }) : t.channels.connectHintVault}
         </p>
         <button
           type="button"
@@ -694,17 +704,19 @@ export function AddChannelWizard({
                 className={inputClass}
               />
             </Field>
-            <Field label={t.channels.keyToken} hint={fmt(t.channels.keyTokenHint, { secret })}>
-              <textarea
-                value={tokenJson}
-                onChange={(e) => setTokenJson(e.target.value)}
-                rows={2}
-                spellCheck={false}
-                autoComplete="off"
-                placeholder='{"refresh_token":"…"}'
-                className={inputClass}
-              />
-            </Field>
+            {secret && (
+              <Field label={t.channels.keyToken} hint={fmt(t.channels.keyTokenHint, { secret })}>
+                <textarea
+                  value={tokenJson}
+                  onChange={(e) => setTokenJson(e.target.value)}
+                  rows={2}
+                  spellCheck={false}
+                  autoComplete="off"
+                  placeholder='{"refresh_token":"…"}'
+                  className={inputClass}
+                />
+              </Field>
+            )}
           </>
         )}
 
@@ -761,7 +773,7 @@ export function AddChannelWizard({
             )}
 
             <p className="g2-note">
-              {fmt(t.channels.connectHint, { id: effectiveId || "…", secret })}
+              {secret ? fmt(t.channels.connectHint, { id: effectiveId || "…", secret }) : t.channels.connectHintVault}
             </p>
           </>
         )}

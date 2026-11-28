@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { postOperator } from "@/lib/operator-post";
@@ -20,7 +20,7 @@ import {
   type Lang,
   type Texts,
 } from "@/lib/marketing-posts";
-import { bannedHits, type BannedHit } from "@/lib/marketing-banned";
+import { bannedHitsIn, compileBanned, type BannedHit, type BannedList } from "@/lib/marketing-banned-match";
 import { marketingFailureText, unitCount } from "@/lib/marketing-text";
 import type { ConfirmOptions } from "@/components/feedback/ConfirmDialog";
 import { TelegramPreview } from "@/components/marketing/TelegramPreview";
@@ -41,14 +41,18 @@ type Done = { tone: "created" | "existing" | "existingDifferent"; id: string | n
  * approves on the card like every other post.
  *
  * Banned wording is shown, never enforced: the database cannot read docs/news/banned-claims.json, so this page checks the texts
- * against a copy of the list (lib/marketing-banned.ts) and the owner decides. The sheet repeats the hits.
+ * against a copy of the list (lib/marketing-banned.ts, server-only: it names vendors, so the page passes it as the `banned` prop
+ * instead of this chunk carrying it) and the owner decides. The sheet repeats the hits.
  */
 export function NewPostPanel({
   origin,
+  banned,
   confirm,
   refresh,
 }: {
   origin: string | null;
+  /** The banned wording and provider names, from the page (lib/marketing-banned.ts is server-only). */
+  banned: BannedList;
   confirm: Confirm;
   refresh: () => void;
 }) {
@@ -91,6 +95,7 @@ export function NewPostPanel({
         // A new form is a new screen: it makes its own request id once, and closing it throws that id away.
         <NewPostForm
           origin={origin}
+          banned={banned}
           confirm={confirm}
           onClose={() => {
             after.current = "button";
@@ -135,11 +140,13 @@ function hitFound(m: Dict, hit: BannedHit): string {
 
 function NewPostForm({
   origin,
+  banned,
   confirm,
   onClose,
   onDone,
 }: {
   origin: string | null;
+  banned: BannedList;
   confirm: Confirm;
   onClose: () => void;
   onDone: (d: Done) => void;
@@ -148,6 +155,7 @@ function NewPostForm({
   const m = t.marketing;
   // Made ONCE per screen and sent with every attempt: a double tap or a retry names the same post (the database keys on it).
   const [requestId] = useState(newRequestId);
+  const compiled = useMemo(() => compileBanned(banned), [banned]);
   const [draft, setDraft] = useState<Texts>({ uz: "", ru: "", en: "" });
   const [choice, setChoice] = useState("");
   const [typed, setTyped] = useState("");
@@ -169,7 +177,7 @@ function NewPostForm({
   const problem = textsProblem(texts);
   // The sender would refuse text shaped like a key or an address, or a message over 4096 UTF-16 units (an emoji counts two).
   const refusal = problem === null && !linkBad ? senderRefusal(texts, sendLink, origin, false, true) : null;
-  const hits = bannedHits(texts);
+  const hits = bannedHitsIn(texts, compiled);
   const blocked = problem !== null || linkBad || refusal !== null;
 
   const problemText =

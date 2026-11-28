@@ -29,6 +29,7 @@ import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 import { StateBlock } from "@/components/states/StateBlock";
 import { TelegramPreview } from "@/components/marketing/TelegramPreview";
 import { NewPostPanel } from "@/components/marketing/NewPostPanel";
+import type { BannedList } from "@/lib/marketing-banned-match";
 
 const ENDPOINT = "/api/marketing";
 const TONE: Record<PostStatus, LampTone> = {
@@ -67,6 +68,7 @@ export function MarketingBoard({
   channel,
   origin,
   nowMs,
+  banned,
   gateOn = null,
 }: {
   settings: MarketingSettings;
@@ -78,6 +80,8 @@ export function MarketingBoard({
   channel: string | null;
   origin: string | null;
   nowMs: number;
+  /** The New post form's banned wording and provider names (lib/marketing-banned.ts is server-only: it names vendors). */
+  banned: BannedList;
 }) {
   const { t, locale } = useI18n();
   const m = t.marketing;
@@ -95,7 +99,7 @@ export function MarketingBoard({
       {dialog}
       <PosterPanel settings={settings} channel={channel} gateOn={gateOn} confirm={confirm} refresh={refresh} />
 
-      <NewPostPanel origin={origin} confirm={confirm} refresh={refresh} />
+      <NewPostPanel origin={origin} banned={banned} confirm={confirm} refresh={refresh} />
 
       <section className="panel flex flex-col gap-2 p-4 sm:p-5" aria-labelledby="mk-last-title">
         <h2 id="mk-last-title" className="t-section">

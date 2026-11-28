@@ -789,6 +789,7 @@ describe("the new files hold no service key and no control that sends or tests",
     "components/marketing/NewPostPanel.tsx",
     "components/marketing/TelegramPreview.tsx",
     "lib/marketing-banned.ts",
+    "lib/marketing-banned-match.ts",
   ];
   const read = (f: string) => readFileSync(join(__dirname, "..", f), "utf8");
 

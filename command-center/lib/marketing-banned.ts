@@ -1,3 +1,6 @@
+import "server-only";
+import { compileBanned, bannedHitsIn, type BannedList } from "@/lib/marketing-banned-match";
+
 /**
  * The banned wording of a public post, checked on the New post form (docs/news/banned-claims.json).
  *
@@ -9,9 +12,12 @@
  * reads the JSON and FAILS if this copy differs by one pattern, rule or provider name, and runs the cases of
  * tests/fixtures/marketing_banned_cases.json, which tests/test_marketing_banned_fixture.py runs through the real Python checker: the
  * two regular-expression dialects cannot drift apart unseen.
+ *
+ * Server-only: BANNED_PROVIDER_NAMES is a list of the vendors we use or considered, which is exactly what the site must not show,
+ * and a client import put it in the marketing page's static chunk (downloadable by anyone, operator page or not). The page hands
+ * the lists to the form as a prop (BANNED_LIST); the matching itself is lib/marketing-banned-match.ts. scripts/vendor-bundle-check.mjs
+ * reads the names from here and fails the build if the list is in any chunk.
  */
-import { LANGS, type Lang } from "@/lib/marketing-posts";
-
 /** Rule id -> the patterns (Python `re` syntax, matched case-insensitively on the normalised text). `why` is worded in lib/i18n/marketing. */
 export const BANNED_RULES: readonly { id: string; patterns: readonly string[] }[] = [
   {
@@ -107,65 +113,17 @@ export const BANNED_PROVIDER_NAMES: readonly string[] = [
   "meta", "muse image",
 ];
 
-// Python's \b, \w and \s are Unicode-aware; JavaScript's \b and \w are ASCII-only, so a Cyrillic word would never match a `\b…\b`
-// pattern. Build the same boundary and word class from Unicode properties (the same as the sender mirror in lib/marketing-posts.ts).
-const W = "[\\p{L}\\p{N}_]";
-const BOUNDARY = `(?:(?<=${W})(?!${W})|(?<!${W})(?=${W}))`;
+/** Both lists, for the marketing page to hand the New post form as a prop (the operator's own RSC payload, no static chunk). */
+export const BANNED_LIST: BannedList = { rules: BANNED_RULES, providerNames: BANNED_PROVIDER_NAMES };
 
-function compile(source: string): RegExp {
-  return new RegExp(source.replace(/\\b/g, BOUNDARY).replace(/\\w/g, W), "iu");
-}
-
-const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-const COMPILED_RULES = BANNED_RULES.map((r) => ({ id: r.id, res: r.patterns.map(compile) }));
-const COMPILED_PROVIDERS = BANNED_PROVIDER_NAMES.map((name) => ({
-  id: `provider:${name}`,
-  re: new RegExp(`(?<![\\p{L}\\p{N}_-])${escapeRe(name)}(?![\\p{L}\\p{N}_-])`, "iu"),
-}));
+const COMPILED = compileBanned(BANNED_LIST);
 
 /**
- * The same normalisation as the Python checker (casefold, the Uzbek apostrophes to ', ё to е), plus NFKC first so a ligature such as
- * "ﬁ" reads as "fi" (Python's casefold does that too; JavaScript's toLowerCase does not).
+ * The rules (and provider names) the texts trip, each with where, against the full list. Server code and tests; the form uses
+ * bannedHitsIn() over the prop.
  */
-export function normaliseForBanned(text: string): string {
-  // The apostrophes first: NFKC would turn the acute accent ´ into a space and a combining mark.
-  return text.replace(/[ʻʼ‘’`´]/g, "'").normalize("NFKC").toLowerCase().replace(/ё/g, "е");
+export function bannedHits(texts: Parameters<typeof bannedHitsIn>[0]) {
+  return bannedHitsIn(texts, COMPILED);
 }
 
-export interface BannedHit {
-  /** A rule id (free, unlimited, ...) or `provider:<name>`. */
-  id: string;
-  /** Where it was found: the language and the words that matched, as the owner typed them (lower-cased). */
-  found: { lang: Lang; text: string }[];
-}
-
-/**
- * The rules (and provider names) the texts trip, each with where. Checked per language; the worker checks the three joined, which
- * can only differ for a phrase that runs across two languages. An empty list means this page's list found nothing, not that the post
- * is safe to say.
- */
-export function bannedHits(texts: Partial<Record<Lang, string>>): BannedHit[] {
-  const hits = new Map<string, BannedHit>();
-  const add = (id: string, lang: Lang, text: string) => {
-    const hit = hits.get(id) ?? { id, found: [] };
-    if (!hit.found.some((f) => f.lang === lang && f.text === text)) hit.found.push({ lang, text });
-    hits.set(id, hit);
-  };
-  for (const lang of LANGS) {
-    const raw = texts[lang];
-    if (typeof raw !== "string" || raw === "") continue;
-    const t = normaliseForBanned(raw);
-    for (const rule of COMPILED_RULES) {
-      for (const re of rule.res) {
-        const m = re.exec(t);
-        if (m) add(rule.id, lang, m[0].trim().slice(0, 60));
-      }
-    }
-    for (const p of COMPILED_PROVIDERS) {
-      const m = p.re.exec(t);
-      if (m) add(p.id, lang, m[0]);
-    }
-  }
-  return [...hits.values()];
-}
+export { normaliseForBanned, type BannedHit } from "@/lib/marketing-banned-match";

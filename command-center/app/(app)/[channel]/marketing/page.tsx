@@ -7,6 +7,7 @@ import { guardOperatorPage } from "@/lib/auth/org-roles";
 import { createClient } from "@/lib/supabase/server";
 import { marketingPostsOn, marketingTargets, readMarketing } from "@/lib/server/marketing";
 import { readOwnerSecurity } from "@/lib/server/owner-reads";
+import { BANNED_LIST } from "@/lib/marketing-banned";
 import "../../app-pages-g5.css";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +67,7 @@ export default async function MarketingPage() {
           origin={origin}
           nowMs={Date.now()}
           gateOn={gateOn}
+          banned={BANNED_LIST}
         />
       )}
     </div>

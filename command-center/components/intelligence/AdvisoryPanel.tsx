@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import type { PriceConfigHints } from "@/lib/server/price-config-hints";
 import { useRealtimeEvents } from "@/lib/useRealtimeEvents";
 import type { ChannelScope } from "@/lib/channels";
 import { useI18n } from "@/lib/i18n/context";
@@ -65,10 +66,14 @@ function Empty({ label }: { label: string }) {
 export function AdvisoryPanel({
   initial,
   scope,
+  operatorHints = null,
 }: {
   initial: SystemEventRow[];
   /** The page's channel scope — live events outside it are dropped. */
   scope: ChannelScope;
+  /** The operator's wording, naming the variable to set (lib/server/price-config-hints.ts); null for anyone else and in
+   *  Uzbek, who read the dictionary's "not priced yet". */
+  operatorHints?: Pick<PriceConfigHints, "spendOverview" | "sponsor"> | null;
 }) {
   const { t } = useI18n();
   const { events } = useRealtimeEvents(initial, "advisory-intelligence", scope);
@@ -226,7 +231,7 @@ export function AdvisoryPanel({
               label={t.ops.advSponsorVideos}
               value={sponsor.measuredVideos === null ? "N/A" : String(sponsor.measuredVideos)}
             />
-            <p className="g4-note mt-2">{t.ops.advSponsorHint}</p>
+            <p className="g4-note mt-2">{operatorHints?.sponsor ?? t.ops.advSponsorHint}</p>
           </>
         )}
       </Card>
@@ -319,7 +324,7 @@ export function AdvisoryPanel({
               />
             ))}
             <p className="g4-note mt-2">
-              {spendOv.anyUnpriced ? t.ops.advSpendOvUnpriced : t.ops.advSpendOvHint}
+              {spendOv.anyUnpriced ? (operatorHints?.spendOverview ?? t.ops.advSpendOvUnpriced) : t.ops.advSpendOvHint}
             </p>
           </>
         )}

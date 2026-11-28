@@ -24,6 +24,7 @@
  * Python twin for pricing work from a terminal is tools/unit_economics.py.
  */
 
+import { priceEnvVar } from "@/lib/server/price-env";
 import type { CostRowLite } from "@/lib/billing";
 import { percentile } from "@/lib/stats";
 
@@ -129,12 +130,9 @@ export interface UnitEconomicsOptions {
 }
 
 const DAY_MS = 86_400_000;
-const PRICE_ENV_PREFIX = "CHRONOS_PRICE_";
-
-/** The env var modules/cost_ledger.py reads for `unit` — keep in step with price_env_var(). */
-export function priceEnvVar(unit: string): string {
-  return PRICE_ENV_PREFIX + unit.toUpperCase();
-}
+// The variable's name lives in server-only code: no browser needs our cost configuration's naming. Re-exported for the
+// server callers and tests that read it from here; a client component may only import types from this module.
+export { priceEnvVar };
 
 function text(v: string | null | undefined): string | null {
   const s = typeof v === "string" ? v.trim() : "";

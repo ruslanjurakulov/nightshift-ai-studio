@@ -4,6 +4,7 @@ import { PROVIDER_SECRET_NAMES } from "../providers";
 import { IMAGE_PROVIDERS } from "@/lib/imageProviders";
 import { isTtsModel } from "@/lib/ttsModels";
 import { isVoiceId } from "@/lib/voices";
+import { secretRefSuffix } from "@/lib/secret-ref";
 
 /**
  * Writing GitHub Actions Repository Secrets — forward, never store.
@@ -58,8 +59,15 @@ const FIXED_NAMES = new Set<string>([
   ...PROVIDER_SECRET_NAMES,
 ]);
 
+/**
+ * The prefix of a channel's publishing-token secret, CHRONOS_YT_TOKEN_<REF>. Our infrastructure's naming, not a value: the
+ * Channels pages pass it (or a whole name) to their client components as a prop, so no static chunk carries it
+ * (scripts/vendor-bundle-check.mjs reads it from here).
+ */
+export const CHANNEL_TOKEN_SECRET_PREFIX = "CHRONOS_YT_TOKEN_";
+
 /** Per-channel publishing tokens: CHRONOS_YT_TOKEN_<REF>. */
-const PER_CHANNEL = /^CHRONOS_YT_TOKEN_[A-Z0-9_]{1,64}$/;
+const PER_CHANNEL = new RegExp(`^${CHANNEL_TOKEN_SECRET_PREFIX}[A-Z0-9_]{1,64}$`);
 
 export function isWritableSecretName(name: string): boolean {
   return FIXED_NAMES.has(name) || PER_CHANNEL.test(name);
@@ -67,10 +75,7 @@ export function isWritableSecretName(name: string): boolean {
 
 /** The GitHub secret name for a channel's credential ref, as the bot reads it. */
 export function channelTokenSecret(ref: string): string {
-  return (
-    "CHRONOS_YT_TOKEN_" +
-    ref.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "")
-  );
+  return CHANNEL_TOKEN_SECRET_PREFIX + secretRefSuffix(ref);
 }
 
 type PublicKey = { key_id: string; key: string };
