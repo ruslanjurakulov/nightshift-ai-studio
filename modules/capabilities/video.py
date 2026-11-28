@@ -1223,9 +1223,9 @@ def video_fps(path: str, *, timeout: int = 30) -> Optional[float]:
 #: every stream that is kept fits where it already was.
 _COPY_MUXERS = {".mp4": "mp4", ".mov": "mov", ".webm": "webm", ".mkv": "matroska"}
 #: The bitstream filter that writes an H.264 / HEVC sample as Annex B start
-#: codes, so MPEG-TS (whose demuxer runs the full parser) cuts it into one
-#: packet per access unit.
-_ANNEXB = {"h264": "h264_mp4toannexb", "hevc": "hevc_mp4toannexb"}
+#: codes, and the raw elementary-stream format whose demuxer runs the full
+#: parser over them, which cuts the stream into one packet per access unit.
+_ANNEXB = {"h264": ("h264_mp4toannexb", "h264"), "hevc": ("hevc_mp4toannexb", "hevc")}
 
 
 def ffmpeg_exe() -> Optional[str]:
@@ -1246,7 +1246,9 @@ def ffmpeg_exe() -> Optional[str]:
 class Normalized:
     """What the upscale prepared from a member's file. ``path`` is uploaded
     and nothing else is. ``parsed`` (H.264 / HEVC only) is the same picture
-    with each access unit its own sample: it is counted, never uploaded."""
+    with each access unit its own sample: its FRAMES are counted (its timing
+    is made up by the raw demuxer and means nothing), and it is never
+    uploaded."""
 
     path: Path
     parsed: Optional[Path] = None
@@ -1270,12 +1272,14 @@ def normalize_for_upload(src: Path, reading: FrameReading, work: Path, *, timeou
 
     A remux to MP4 does NOT split several access units packed into one sample
     (measured with ffmpeg 6.1.1: Breach's h264p8.mp4 stays 150 samples with
-    or without ``h264_mp4toannexb``); MPEG-TS does, because its demuxer runs
-    the full parser (1200). The TS round trip also drops the display matrix
-    (a phone's portrait rotation: measured, rotation=90 gone) and the edit
-    list (a cut's preroll), so its file is only COUNTED (``parsed``): the
-    upload is the plain copy, and the adapter refuses it unless both hold the
-    same frames, which makes the copy one sample per access unit.
+    or without ``h264_mp4toannexb``). A demuxer that runs the full parser
+    does: the raw Annex B stream read back gives 1200 (ffmpeg 6.1.1 and the
+    imageio-ffmpeg 7.0.2 of the Probe models runner alike). MPEG-TS splits
+    them too, but drops the display matrix (a phone's rotation=90 was gone)
+    and the imageio 7.0.2 build segfaults opening any MPEG-TS file (measured
+    2026-11-28). The raw stream keeps no timing, so it is only COUNTED
+    (``parsed``): the upload is the plain copy, and the adapter refuses it
+    when the parser finds more frames than the copy has samples.
 
     Every ffmpeg runs under ``ffmpeg_limits.run`` (address-space limit,
     MALLOC_ARENA_MAX, the refusal watch, a deadline) with the frame cap and
@@ -1330,19 +1334,22 @@ def normalize_for_upload(src: Path, reading: FrameReading, work: Path, *, timeou
          *(["-write_tmcd", "0"] if muxer in ("mp4", "mov") else []), "-f", muxer, str(copy)])
     if not copy.is_file() or copy.stat().st_size == 0:
         raise AdapterError(E_BAD_REQUEST, _REWRITE_FAILED)
-    bsf = _ANNEXB.get(str(reading.codec or ""))
-    if bsf is None:
+    split = _ANNEXB.get(str(reading.codec or ""))
+    if split is None:
         # Any other codec is decoded and counted by read_frames (VP9
         # superframes, packed B-frames), or is intra-only (ProRes).
         return Normalized(copy)
+    bsf, raw = split
     # A folder of their own: a member's file may itself be named parsed.mp4.
     count = work / "count"
     count.mkdir()
-    ts, parsed = count / "parsed.ts", count / "parsed.mp4"
+    stream, parsed = count / f"parsed.{raw}", count / "parsed.mp4"
     run([*head, "-f", demuxer, *cap, "-i", str(copy), "-map", "0:v:0", "-c", "copy",
-         "-bsf:v", bsf, "-f", "mpegts", str(ts)])
-    run([*head, "-f", "mpegts", *cap, "-i", str(ts), "-map", "0:v:0", "-c", "copy", "-f", "mp4", str(parsed)])
-    ts.unlink(missing_ok=True)
+         "-bsf:v", bsf, "-f", raw, str(stream)])
+    # MP4 again so the count is read the way every copy is, with or without
+    # ffprobe (the container read).
+    run([*head, "-f", raw, *cap, "-i", str(stream), "-map", "0:v:0", "-c", "copy", "-f", "mp4", str(parsed)])
+    stream.unlink(missing_ok=True)
     if not parsed.is_file() or parsed.stat().st_size == 0:
         raise AdapterError(E_BAD_REQUEST, _REWRITE_FAILED)
     return Normalized(copy, parsed)
@@ -1467,6 +1474,29 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
                                               f"{self.MAX_FPS:.0f} frames a second or fewer")
         return fps
 
+    def _same_access_units(self, copy: FrameReading, parsed: FrameReading) -> None:
+        """The parser's count (each access unit its own packet) against the
+        copy's samples. Only the frames: the raw stream has no timing, so the
+        rate is the parser's frames over the COPY's picture length, which is
+        what the ceiling was checked against. Fewer access units than samples
+        (a field-coded stream kept a field to a sample) only overstates the
+        bill the member is quoted, and passes."""
+        frames = parsed.frames if not parsed.refusal else None
+        if frames is None or copy.frames is None or not copy.seconds:
+            raise AdapterError(E_BAD_REQUEST, "the frames of this video could not be counted, so its upscale cannot "
+                                              "be priced; export it again as H.264 MP4")
+        if frames <= copy.frames + 1:
+            return
+        rate = frames / copy.seconds
+        if rate > self.MAX_FPS + 0.5:
+            # Breach's h264p8: 1200 frames in 150 samples over 5 s, 240 a second.
+            raise AdapterError(E_BAD_REQUEST, f"this video runs at {rate:.0f} frames a second of picture; the "
+                                              f"upscale takes up to {self.MAX_FPS:.0f}, so export it again at "
+                                              f"{self.MAX_FPS:.0f} frames a second or fewer")
+        raise AdapterError(E_BAD_REQUEST, f"this video keeps several frames in one sample ({frames} frames in "
+                                          f"{copy.frames} samples), so it cannot be priced by what its container "
+                                          "says; export it again (re-encoded) and upscale the new copy")
+
     @staticmethod
     def _same_picture(a: FrameReading, b: FrameReading) -> bool:
         """Two readings of one picture agree: frames within the one frame of
@@ -1534,21 +1564,7 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
             copy = self.fps_of(str(norm.path))
             self._priceable(copy)
             if norm.parsed is not None:
-                parsed = self.fps_of(str(norm.parsed))
-                # The parser's count is the frames a decoder meets: over the
-                # ceiling is the ordinary refusal, at 240 a second for
-                # Breach's h264p8 (150 samples read as 30).
-                self._priceable(parsed)
-                # Frames only: MPEG-TS carries no edit list, so the parsed
-                # file's length is the media's, not the edited one's (a cut
-                # keeps its preroll: 105 frames, 2.0 s in the copy, 3.5 s
-                # parsed). Equal frames is what makes the copy one sample per
-                # access unit; its rate was checked over its own length above.
-                if parsed.frames is None or copy.frames is None or abs(parsed.frames - copy.frames) > 1:
-                    raise AdapterError(E_BAD_REQUEST, f"this video keeps several frames in one sample "
-                                                      f"({parsed.frames} frames in {copy.frames} samples), so it "
-                                                      "cannot be priced by what its container says; export it "
-                                                      "again (re-encoded) and upscale the new copy")
+                self._same_access_units(copy, self.fps_of(str(norm.parsed)))
             if not self._same_picture(source, copy):
                 raise AdapterError(E_BAD_REQUEST, f"the copy prepared for the upscale holds {copy.frames} frames in "
                                                   f"{copy.seconds or 0:.1f} seconds where the file reads "

@@ -9,9 +9,11 @@ price. ``-c copy`` to MPEG-TS splits it back into 1200 packets.
 
 Measured before the change (ffmpeg 6.1.1): a remux MP4 -> MP4 keeps 150
 samples with or without ``h264_mp4toannexb``; MP4 -> TS -> MP4 writes 1200,
-but the TS round trip drops the display matrix (rotation=90 is gone). So the
-upload copy is the plain remux and the TS file is only counted; the two must
-hold the same frames.
+but drops the display matrix (rotation=90 is gone), and the imageio-ffmpeg
+7.0.2 build of the Probe models runner segfaults opening any TS file. The raw
+Annex B stream read back splits them as well (1200, both versions) but keeps
+no timing. So the upload copy is the plain remux and the raw stream is only
+counted; the parser may not find more frames than the copy has samples.
 
 What would break: a packed file submitted at the container's rate; a
 re-encode slipped in (CLAUDE.md #4); a file other than the measured copy
@@ -358,7 +360,7 @@ class NormalizedUploadPins(_Tmp):
         with mock.patch.object(video.ffmpeg_limits, "run", side_effect=watch):
             norm = video.normalize_for_upload(clip, video.read_frames(str(clip)), self.work())
         self.assertTrue(norm.parsed)
-        self.assertEqual(len(seen), 3, "the copy, then the TS that splits access units, then its count")
+        self.assertEqual(len(seen), 3, "the copy, then the raw stream that splits access units, then its count")
         for argv, kw in seen:
             with self.subTest(argv=argv[-1]):
                 self.assertGreater(kw["timeout_s"], 0)
@@ -442,9 +444,18 @@ class CopyCheckPins(_Tmp):
     def test_a_copy_read_over_the_ceiling_is_refused(self):
         self.assertRefused("takes up to 60", self.R(), self.R(rate=240.0, avg=240.0))
 
-    def test_a_parsed_count_that_differs_from_the_copy_is_refused(self):
+    def test_a_parsed_count_above_the_copys_samples_is_refused(self):
+        # The raw stream's timing is the demuxer's 25 fps default: never read.
         self.assertRefused("keeps several frames in one sample (120 frames in 60 samples)", self.R(), self.R(),
-                           parsed=self.R(120, 3.0, rate=40.0))
+                           parsed=self.R(120, 4.8, rate=25.0))
+        self.assertRefused("runs at 240 frames a second", self.R(), self.R(), parsed=self.R(480, 19.2, rate=25.0))
+        self.assertRefused("could not be counted", self.R(), self.R(),
+                           parsed=video.FrameReading(refusal="anything"))
+
+    def test_a_parser_that_finds_fewer_frames_than_samples_passes(self):
+        # A field-coded stream kept a field to a sample: the quote overstates, never understates.
+        err, calls = self._run(self.R(), self.R(), parsed=self.R(30, 1.2, rate=25.0))
+        self.assertIsNone(err, err and err.message)
 
 
 class BoundedProbePins(unittest.TestCase):
