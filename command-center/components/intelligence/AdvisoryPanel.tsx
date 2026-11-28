@@ -65,10 +65,14 @@ function Empty({ label }: { label: string }) {
 export function AdvisoryPanel({
   initial,
   scope,
+  unpricedHint = null,
 }: {
   initial: SystemEventRow[];
   /** The page's channel scope — live events outside it are dropped. */
   scope: ChannelScope;
+  /** The operator's wording for unpriced costs, naming the variable to set (lib/server/price-config-hints.ts); null for
+   *  anyone else, who reads the dictionary's "not priced yet". */
+  unpricedHint?: string | null;
 }) {
   const { t } = useI18n();
   const { events } = useRealtimeEvents(initial, "advisory-intelligence", scope);
@@ -319,7 +323,7 @@ export function AdvisoryPanel({
               />
             ))}
             <p className="g4-note mt-2">
-              {spendOv.anyUnpriced ? t.ops.advSpendOvUnpriced : t.ops.advSpendOvHint}
+              {spendOv.anyUnpriced ? (unpricedHint ?? t.ops.advSpendOvUnpriced) : t.ops.advSpendOvHint}
             </p>
           </>
         )}

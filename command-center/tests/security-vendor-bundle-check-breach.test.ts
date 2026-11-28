@@ -15,15 +15,27 @@ import { afterEach, describe, expect, it } from "vitest";
  * very build). The others are what a serializer or a later refactor writes. Controls first, so a red case cannot be a
  * harness that never ran the script.
  *
- * Three forms Breach found are not caught by the fix round of #956 and are not tests here (a skipped test is a test that
- * says nothing): the interned model ids, and the provider map as [slug, name] entries or { slug, name } objects. They are
- * listed for the guard PR in tests/security-vendor-bundle-check-pr3.todo.md.
+ * The forms Breach found that the fix round of #956 did not catch (the interned model ids, the provider map as [slug, name]
+ * entries or { slug, name } objects, model ids and prompts split at run time) are the PR 3 block below, each with a
+ * legitimate look-alike that must stay clean. What the script still cannot catch is written in its header comment.
  */
 const CC = process.cwd();
 const SCRIPT = path.join(CC, "scripts", "vendor-bundle-check.mjs");
 // The signed-in screens' sources too (lib/providers.ts, lib/imageProviders.ts, …): the script reads its patterns from them.
-const { SIGNED_IN_SOURCES } = (await import("../scripts/vendor-bundle-check.mjs")) as { SIGNED_IN_SOURCES: string[] };
-const SOURCES = ["lib/effects/effects.json", "lib/effects/catalog.ts", "lib/server/provider-names.ts", "lib/server/ledger-units.ts", ...SIGNED_IN_SOURCES];
+const { SIGNED_IN_SOURCES, PLAIN_SOURCES, BANNED_LIST_MIN, MAP_PAIRS_MIN } = (await import("../scripts/vendor-bundle-check.mjs")) as {
+  SIGNED_IN_SOURCES: string[];
+  PLAIN_SOURCES: string[];
+  BANNED_LIST_MIN: number;
+  MAP_PAIRS_MIN: number;
+};
+const SOURCES = [
+  "lib/effects/effects.json",
+  "lib/effects/catalog.ts",
+  "lib/server/provider-names.ts",
+  "lib/server/ledger-units.ts",
+  ...SIGNED_IN_SOURCES,
+  ...PLAIN_SOURCES,
+];
 const roots: string[] = [];
 
 type Fx = { id: string; models: string[]; prompt: string; slotHint: string | null };
@@ -37,6 +49,9 @@ const EARLY_SLOT = EFFECTS.find((e) => e.prompt.includes("{subject}") && e.promp
 const PROVIDERS = [...readFileSync(path.join(CC, "lib/server/provider-names.ts"), "utf8").matchAll(/^\s*([a-z0-9_]+):\s*"([^"]+)",/gm)].map(
   (m) => [m[1], m[2]] as const,
 );
+const BANNED = [
+  ...(readFileSync(path.join(CC, "lib/marketing-banned.ts"), "utf8").match(/export const BANNED_PROVIDER_NAMES[^=]*=\s*\[([\s\S]*?)\];/)?.[1] ?? "").matchAll(/"([^"]+)"/g),
+].map((m) => m[1]);
 const UNITS = [...readFileSync(path.join(CC, "lib/server/ledger-units.ts"), "utf8").matchAll(/"([a-z][a-z0-9_]*)"/g)].map((m) => m[1]);
 
 function fakeBuild(): string {
@@ -167,5 +182,122 @@ describe("breach #956: forms vendor-bundle-check misses (each must exit 1)", () 
     expect(byId(LONG.id)).toBeTruthy();
     expect(PROVIDERS.length).toBeGreaterThanOrEqual(8);
     expect(UNITS.length).toBeGreaterThanOrEqual(5);
+  });
+});
+
+// PR 3: the forms #956 listed for the guard PR. Each is built from the real data, the way a minifier, a serializer or a
+// refactor would write it.
+const [M0, M1] = LONG.models;
+const half = (id: string) => [id.slice(0, Math.ceil(id.length / 2)), id.slice(Math.ceil(id.length / 2))] as const;
+const q = (v: string) => JSON.stringify(v);
+// Two effect models that are NOT consecutive in any effect's order: a picker may list ids side by side in its own order.
+const ALL_MODELS = [...new Set(EFFECTS.flatMap((e) => e.models))];
+const follows = (a: string, b: string) => EFFECTS.some((e) => e.models.some((m, i) => m === a && e.models[i + 1] === b));
+const UNORDERED = ALL_MODELS.flatMap((a) => ALL_MODELS.filter((b) => b !== a && !follows(a, b) && !follows(b, a)).map((b) => [a, b] as const))[0];
+// The longest literal part of a prompt, cut into pieces shorter than the 30-character window.
+const PART = LONG.prompt.split(/\{[^}]*\}/).sort((a, b) => b.length - a.length)[0];
+const pieces = (text: string, n: number) => [...text.matchAll(new RegExp(`[\\s\\S]{1,${n}}`, "g"))].map((m) => m[0]);
+
+describe("breach #956 / PR 3: forms vendor-bundle-check now catches (each must exit 1)", () => {
+  const cases: [string, string, () => string][] = [
+    [
+      // Form 1, the todo's own example: each id interned in a variable, so no two quoted ids are adjacent.
+      "interned model ids (var v0=…,v1=…; x=[v0,v1])",
+      "static/chunks/200-interned.js",
+      () => `var v0=${q(M0)},v1=${q(M1)};x=[v0,v1]`,
+    ],
+    ["an interned id next to a quoted one", "static/chunks/200-mixed.js", () => `var v0=${q(M0)};x={models:[v0,${q(M1)}]}`],
+    [
+      // Form 2: the whole display map as [slug, name] tuples.
+      "the provider map as new Map([[slug, name], …])",
+      "static/chunks/201-map.js",
+      () => `P=new Map(${JSON.stringify(PROVIDERS.map(([k, v]) => [k, v]))})`,
+    ],
+    ["the provider map as Object.entries, serialized", "static/chunks/201-entries.js", () => `e=JSON.parse(${q(JSON.stringify(PROVIDERS))})`],
+    [
+      // Form 3: the display map as an array of objects, under the keys a refactor would pick.
+      "the provider map as [{ slug, name }, …]",
+      "static/chunks/202-objects.js",
+      () => `L=${JSON.stringify(PROVIDERS.map(([slug, name]) => ({ slug, name })))}`,
+    ],
+    ["the provider map as [{ name, id }, …], name first", "static/chunks/202-objects-rev.js", () => `L=[${PROVIDERS.map(([k, v]) => `{name:${q(v)},id:${q(k)}}`).join(",")}]`],
+    [
+      // Form 4: runtime-split strings, the shapes a build can still evaluate.
+      'model ids split into ["…","…"].join("")',
+      "static/chunks/203-join.js",
+      () => `x=[${JSON.stringify(half(M0))}.join(""),${JSON.stringify(half(M1))}.join("")]`,
+    ],
+    ["model ids split into a + chain", "static/chunks/203-plus.js", () => `x=[${half(M0).map(q).join("+")},${half(M1).map(q).join(" + ")}]`],
+    ["a model id as a template literal over a literal", "static/chunks/203-tpl.js", () => `x=[\`${half(M0)[0]}\${${q(half(M0)[1])}}\`,${q(M1)}]`],
+    ["a model id as a template literal over an interned piece", "static/chunks/203-tpl-var.js", () => `var s=${q(half(M0)[1])};x=[\`${half(M0)[0]}\${s}\`,${q(M1)}]`],
+    ["the model order as one string, split at run time", "static/chunks/203-split.js", () => `o=${q(LONG.models.join(","))}.split(",")`],
+    ["the model order as one space-separated string", "static/chunks/203-split-sp.js", () => `o=${q(LONG.models.join(" "))}.split(" ")`],
+    ["a prompt cut into 12-character + pieces", "static/chunks/204-prompt.js", () => `p=${pieces(PART, 12).map(q).join("+")}`],
+    ["a prompt cut into pieces and joined", "static/chunks/204-prompt-join.js", () => `p=${JSON.stringify(pieces(PART, 10))}.join("")`],
+    [
+      // C3: the marketing board's banned names, the vendors' own, as lib/marketing-banned.ts wrote them into the page chunk.
+      "the marketing board's banned provider name list",
+      "static/chunks/app/(app)/[channel]/marketing/page-x.js",
+      () => `let a=${JSON.stringify(BANNED)};`,
+    ],
+    ["the banned names, in another order and case", "static/chunks/205-banned.js", () => `b=${JSON.stringify(BANNED.slice(0, BANNED_LIST_MIN).reverse().map((n) => n.toUpperCase()))}`],
+    [
+      // C1: the dictionary sentence that named the per-unit cost variable to every signed-in page.
+      "the per-unit cost variable's prefix in dictionary copy",
+      "static/chunks/3425-dict.js",
+      () => 'advSpendOvUnpriced:"Some costs are quantities only — set CHRONOS_PRICE_<UNIT> for each provider and the dollar figures fill in."',
+    ],
+    [
+      // C2: the Channels screens built the per-channel token secret's name in the browser.
+      "the per-channel token secret's prefix building a name",
+      "static/chunks/app/(app)/[channel]/channels/page-x.js",
+      () => 'function s(e){return"CHRONOS_YT_TOKEN_"+e.toUpperCase().replace(/[^A-Z0-9]+/g,"_")}',
+    ],
+  ];
+
+  it.each(cases)("catches %s", (_label, rel, text) => {
+    const root = fakeBuild();
+    put(root, rel, text());
+    const r = run(root);
+    expect(r.out).not.toContain("clean");
+    expect(r.code).toBe(1);
+  });
+});
+
+describe("PR 3 negative controls: legitimate code that looks like those forms stays clean (each must exit 0)", () => {
+  const cases: [string, () => string][] = [
+    // A picker may intern ids; the routing is only an effect's own consecutive order.
+    ["two interned model ids in an order no effect uses", () => `var a=${q(UNORDERED[0])},b=${q(UNORDERED[1])};x=[a,b]`],
+    // A Studio model id is shown by design; assembling ONE id is not a model order.
+    ["one model id assembled from pieces", () => `id=${half(M0).map(q).join("+")};y=\`${half(M1)[0]}\${${q(half(M1)[1])}}\``],
+    // A minifier's ordinary output: class names, joins and templates over values known only at run time.
+    ["ordinary concatenation, joins and templates", () => 'c="btn "+"btn-primary";k=["a","b"].join(" ");w=`${e}px`;u="/api/"+t+"/x";[n,r]=useState(0)'],
+    // Destructuring a state pair is not an array of data, even when the names are bound once elsewhere.
+    ["a destructuring target", () => `var e=${q(M0)};const[e2,t]=[1,2];[e,t]=f()`],
+    // Copy naming a vendor or two (MAP_PAIRS_MIN), as entries or objects too.
+    ["fewer than MAP_PAIRS_MIN self-named pairs as entries and objects", () => `m=new Map([["openai","OpenAI"]]);o=[{id:"google",name:"Google"}]`],
+    // A model picker's makers: fewer than BANNED_LIST_MIN banned names side by side.
+    ["fewer than BANNED_LIST_MIN banned names together", () => `k=${JSON.stringify(BANNED.slice(0, BANNED_LIST_MIN - 1))}`],
+    // The dictionary's generic sentence that replaced the variable's name.
+    ["the generic 'not priced yet' copy", () => 'advSpendOvUnpriced:"Some costs are quantities only: their price per unit is not set yet, so those dollar figures read as unknown, not zero."'],
+    // The YouTube secrets the wizard still names for every viewer (#958) are not the per-channel prefix.
+    ["a CHRONOS_ word that is not one of the prefixes", () => 's="CHRONOS_YT";t="MY_CHRONOS_PRICE"'],
+  ];
+
+  it.each(cases)("%s", (_label, text) => {
+    const root = fakeBuild();
+    put(root, "static/chunks/300-legit.js", text());
+    const r = run(root);
+    expect(r.out).toContain("clean");
+    expect(r.code).toBe(0);
+  });
+
+  it("the fixtures use real data: a non-routing pair exists and the banned list is read", () => {
+    expect(UNORDERED).toBeTruthy();
+    expect(BANNED.length).toBeGreaterThanOrEqual(BANNED_LIST_MIN * 5);
+    // Names, not the rules' regular expressions read by a regex that missed the list.
+    expect(BANNED.every((n) => /^[a-z][a-z .-]*$/.test(n))).toBe(true);
+    expect(PART.length).toBeGreaterThan(40);
+    expect(MAP_PAIRS_MIN).toBeGreaterThan(1);
   });
 });

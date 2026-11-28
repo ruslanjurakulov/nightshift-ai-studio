@@ -33,6 +33,7 @@ vi.mock("@/components/feedback/ToastProvider", () => ({
 }));
 
 import { MarketingBoard } from "../components/marketing/MarketingBoard";
+import { BANNED_LIST } from "../lib/marketing-banned";
 
 const m = en.marketing;
 const ID = "11111111-2222-3333-4444-555555555555";
@@ -58,7 +59,7 @@ const row = (over: Record<string, unknown> = {}): MarketingPost =>
   })!;
 
 const show = (posts: ListedPost[] = [row()], settings: MarketingSettings = SETTINGS, channel: string | null = "@nightshift_test") =>
-  render(<MarketingBoard settings={settings} posts={posts} truncated={false} channel={channel} origin="https://nightshift-ai.studio" nowMs={NOW} />);
+  render(<MarketingBoard settings={settings} posts={posts} truncated={false} channel={channel} origin="https://nightshift-ai.studio" nowMs={NOW} banned={BANNED_LIST} />);
 
 const sheet = () => screen.getByRole("alertdialog");
 const tap = async (el: HTMLElement) => {
@@ -110,7 +111,7 @@ describe("the preview", () => {
   });
 
   it("without a known site address the link is left out of the count and the total says 'at least'", () => {
-    render(<MarketingBoard settings={SETTINGS} posts={[row()]} truncated={false} channel={null} origin={null} nowMs={NOW} />);
+    render(<MarketingBoard settings={SETTINGS} posts={[row()]} truncated={false} channel={null} origin={null} nowMs={NOW} banned={BANNED_LIST} />);
     expect(screen.getByText(/Whole message: at least \d+ of 4096/)).toBeTruthy();
     expect(screen.getByText(/the site address is not known to this page/)).toBeTruthy();
   });
@@ -134,7 +135,7 @@ describe("the poster", () => {
       [false, m.poster.gate.off, m.poster.gate.offNote],
       [null, m.poster.gate.unknown, m.poster.gate.unknownNote],
     ] as const) {
-      render(<MarketingBoard settings={SETTINGS} posts={[row()]} truncated={false} channel="@nightshift_test" origin={null} nowMs={NOW} gateOn={gate} />);
+      render(<MarketingBoard settings={SETTINGS} posts={[row()]} truncated={false} channel="@nightshift_test" origin={null} nowMs={NOW} banned={BANNED_LIST} gateOn={gate} />);
       expect(document.querySelector("[data-gate]")!.textContent).toBe(shown);
       expect(screen.getByText(note)).toBeTruthy();
       cleanup();

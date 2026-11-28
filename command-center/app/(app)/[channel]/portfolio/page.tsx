@@ -15,6 +15,8 @@ import { parseRevenueTracked } from "@/lib/advisory";
 import { portfolioTotals, type ChannelEconomicsInput } from "@/lib/portfolio";
 import type { SystemEventRow, VideoCostRow, VideoRow } from "@/lib/types";
 import { uploadedOnly } from "@/lib/heldVideos";
+import { isOperator } from "@/lib/auth/org-roles";
+import { priceConfigHints } from "@/lib/server/price-config-hints";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -47,8 +49,10 @@ function pct(value: number | null, dash: string, digits = 1): string {
  */
 export default async function PortfolioPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const dash = t.common.dash;
+  // The variable that prices a unit is named to the operator only, from the server (lib/server/price-config-hints.ts).
+  const operatorHint = (await isOperator()) ? (priceConfigHints(locale)?.portfolio ?? null) : null;
 
   const { channels, selection, notMigrated, scope: viewScope } = await getChannelContext();
   // The current organization's channels only. Per-channel figures are keyed
@@ -127,7 +131,7 @@ export default async function PortfolioPage() {
         </section>
       ) : !anyMoney ? (
         <section className="ns-desk g2-desk">
-          <EmptyState>{t.portfolio.notConfigured}</EmptyState>
+          <EmptyState>{operatorHint ?? t.portfolio.notConfigured}</EmptyState>
         </section>
       ) : (
         <>

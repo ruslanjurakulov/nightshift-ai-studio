@@ -10,6 +10,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { getChannelScope } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import type { SystemEventRow } from "@/lib/types";
+import { isOperator } from "@/lib/auth/org-roles";
+import { priceConfigHints } from "@/lib/server/price-config-hints";
 import "../../app-pages-g4.css";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +19,10 @@ export const revalidate = 0;
 
 export default async function AdvisoryIntelligencePage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const scope = await getChannelScope();
+  // Named to the operator only, from the server: the shared dictionary ships to every signed-in page.
+  const unpricedHint = (await isOperator()) ? (priceConfigHints(locale)?.spendOverview ?? null) : null;
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
@@ -43,7 +47,7 @@ export default async function AdvisoryIntelligencePage() {
           <ErrorState />
         </Panel>
       ) : (
-        <AdvisoryPanel initial={events} scope={scope} />
+        <AdvisoryPanel initial={events} scope={scope} unpricedHint={unpricedHint} />
       )}
     </div>
   );

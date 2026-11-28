@@ -32,6 +32,9 @@ import type {
   VideoRow,
 } from "@/lib/types";
 import { uploadedOnly } from "@/lib/heldVideos";
+import { isOperator } from "@/lib/auth/org-roles";
+import { priceConfigHints } from "@/lib/server/price-config-hints";
+import { priceEnvVar } from "@/lib/unitEconomics";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -51,6 +54,10 @@ export default async function MeasurePage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t, locale } = await getDictionary();
   const scope = await getChannelScope();
+  // The variables that price a unit are our pipeline's configuration: named only to the operator, here on the server (the
+  // shared dictionary, a static chunk every signed-in page loads, says only that a price is not set).
+  const operator = await isOperator();
+  const operatorHints = operator ? priceConfigHints(locale) : null;
 
   const supabase = await createClient();
   let costs: VideoCostRow[] = [];
@@ -177,17 +184,19 @@ export default async function MeasurePage() {
           {cost.unpricedUnits.length > 0 && (
             <Panel title={t.measure.unpricedTitle}>
               <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap gap-2">
-                  {cost.unpricedUnits.map((unit) => (
-                    <code
-                      key={unit}
-                      className="tnum rounded border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2 py-1 text-sm text-[var(--color-warn)]"
-                    >
-                      CHRONOS_PRICE_{unit.toUpperCase()}
-                    </code>
-                  ))}
-                </div>
-                <p className="g4-note">{t.measure.unpricedHint}</p>
+                {operator && (
+                  <div className="flex flex-wrap gap-2">
+                    {cost.unpricedUnits.map((unit) => (
+                      <code
+                        key={unit}
+                        className="tnum rounded border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2 py-1 text-sm text-[var(--color-warn)]"
+                      >
+                        {priceEnvVar(unit)}
+                      </code>
+                    ))}
+                  </div>
+                )}
+                <p className="g4-note">{operatorHints?.measure ?? t.measure.unpricedHint}</p>
               </div>
             </Panel>
           )}

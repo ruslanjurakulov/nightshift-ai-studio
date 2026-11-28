@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import "../../../app-pages-g2.css";
 import { AddChannelWizard } from "@/components/channels/AddChannelWizard";
 import { secretNameOf } from "@/lib/providers";
-import { YOUTUBE_SECRET_NAMES } from "@/lib/server/github-secrets";
+import { CHANNEL_TOKEN_SECRET_PREFIX, YOUTUBE_SECRET_NAMES } from "@/lib/server/github-secrets";
 import { getDictionary } from "@/lib/i18n/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { readChannelPrefill } from "@/lib/welcome";
@@ -87,6 +87,7 @@ export default async function NewChannelPage({
             dataKey: YOUTUBE_SECRET_NAMES.dataKey,
             clientSecret: YOUTUBE_SECRET_NAMES.clientSecret,
             channelId: YOUTUBE_SECRET_NAMES.channelId,
+            tokenPrefix: CHANNEL_TOKEN_SECRET_PREFIX,
           }}
         />
       </details>

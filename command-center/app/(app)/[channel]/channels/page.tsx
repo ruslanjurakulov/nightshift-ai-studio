@@ -21,6 +21,7 @@ import { uploadedOnly } from "@/lib/heldVideos";
 import { getOrgContext } from "@/lib/orgs-server";
 import { isPlatformAdmin, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { fetchTokenStatuses } from "@/lib/server/channel-tokens";
+import { channelTokenSecret } from "@/lib/server/github-secrets";
 import { YOUTUBE_OAUTH_SCOPES, isGoogleOAuthConfigured } from "@/lib/server/google-oauth";
 import { latestLiveVerdicts, operatorYoutubeState, parseVaultResult } from "@/lib/channel-tokens";
 import { fetchSocialAccounts } from "@/lib/server/social-accounts";
@@ -211,6 +212,8 @@ export default async function ChannelsPage({
                 canControl={atLeast(orgRole, "admin")}
                 canEdit={canEditDna}
                 canLowerAiLabel={canLowerAiLabel}
+                // The operator's GitHub-secret path, only where the card draws it (no vault panel): named here, on the server.
+                tokenSecret={tokens && role ? undefined : channelTokenSecret(channel.credential_ref?.ref || channel.channel_id)}
                 vault={
                   tokens && role
                     ? {

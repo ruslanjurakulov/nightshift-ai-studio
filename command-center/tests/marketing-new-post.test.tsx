@@ -33,6 +33,7 @@ vi.mock("@/components/feedback/ToastProvider", () => ({
 }));
 
 import { MarketingBoard } from "../components/marketing/MarketingBoard";
+import { BANNED_LIST } from "../lib/marketing-banned";
 
 const m = en.marketing;
 const ID = "11111111-2222-3333-4444-555555555555";
@@ -61,7 +62,7 @@ const row = (over: Record<string, unknown> = {}): MarketingPost =>
   })!;
 
 const show = (posts: ListedPost[] = [], origin: string | null = "https://nightshift-ai.studio") =>
-  render(<MarketingBoard settings={SETTINGS} posts={posts} truncated={false} channel="@nightshift_test" origin={origin} nowMs={NOW} />);
+  render(<MarketingBoard settings={SETTINGS} posts={posts} truncated={false} channel="@nightshift_test" origin={origin} nowMs={NOW} banned={BANNED_LIST} />);
 
 const sheet = () => screen.getByRole("alertdialog");
 const tap = async (el: HTMLElement) => {

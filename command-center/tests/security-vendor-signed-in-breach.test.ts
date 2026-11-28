@@ -20,14 +20,15 @@ import { TTS_MODEL_LABELS, TTS_PICKER_MODELS } from "@/lib/ttsModels";
  */
 const CC = process.cwd();
 const SCRIPT = path.join(CC, "scripts", "vendor-bundle-check.mjs");
-const { SIGNED_IN_SOURCES } = (await import("../scripts/vendor-bundle-check.mjs")) as { SIGNED_IN_SOURCES: string[] };
+const { SIGNED_IN_SOURCES, PLAIN_SOURCES } = (await import("../scripts/vendor-bundle-check.mjs")) as { SIGNED_IN_SOURCES: string[]; PLAIN_SOURCES: string[] };
 const SOURCES = ["lib/effects/effects.json", "lib/effects/catalog.ts", "lib/server/provider-names.ts", "lib/server/ledger-units.ts", ...SIGNED_IN_SOURCES];
 const roots: string[] = [];
 
 function fakeBuild(over: Record<string, string> = {}): string {
   const root = mkdtempSync(path.join(tmpdir(), "breach-958-"));
   roots.push(root);
-  for (const rel of SOURCES) {
+  // PLAIN_SOURCES too (read for a prefix, not server-only, so not in the server-only cases below).
+  for (const rel of [...SOURCES, ...PLAIN_SOURCES]) {
     mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
     if (rel in over) writeFileSync(path.join(root, rel), over[rel]);
     else copyFileSync(path.join(CC, rel), path.join(root, rel));

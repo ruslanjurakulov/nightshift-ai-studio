@@ -64,7 +64,7 @@ function readSource() {
   // Identity pairs (anthropic: "anthropic") say nothing about routing and would match innocent maps elsewhere.
   const routed = pairs.filter(([k, v]) => k !== v);
 
-  // Floors from the file as it is today (13 verified URLs, 21 vendors, 3 renamed): far below them, the regexes above no
+  // Floors from the file (15 distinct billing URLs, 21 vendors, 3 renamed on 28 Nov 2026): far below them, the regexes above no
   // longer read the file, and a pass would be a pass over an empty list.
   if (urls.length < 10) fail2(`read only ${urls.length} billing URLs from lib/billing.ts — its shape changed.`);
   if (pairs.length < 15 || routed.length < 3) fail2(`read only ${pairs.length} REGISTRY_BILLING entries (${routed.length} routed) — its shape changed.`);

@@ -12,6 +12,7 @@ import { fmt } from "@/lib/i18n";
 import type { ChannelRow } from "@/lib/types";
 import { isValidChannelId, slugifyChannelId } from "@/lib/channels";
 import { voiceOwners } from "@/lib/channel-voices";
+import { secretRefSuffix } from "@/lib/secret-ref";
 
 /**
  * Guided channel creation.
@@ -105,7 +106,14 @@ export function AddChannelWizard({
   keyNames: { gemini: string; pexels: string; eleven: string } | null;
   /** The YouTube secrets' names (lib/server/github-secrets.ts), for every viewer: the Data API key field also verifies the
    *  channel (/api/setup/youtube), which a customer can do, and the client-secret field shows its name as the hint. */
-  youtubeNames: { dataKey: string; clientSecret: string; channelId: string };
+  youtubeNames: {
+    dataKey: string;
+    clientSecret: string;
+    channelId: string;
+    /** The per-channel token secret's prefix (CHANNEL_TOKEN_SECRET_PREFIX): with the typed ref, the name the token is saved
+     *  under. A prop, not a literal here, so the static chunk does not carry our secret naming. */
+    tokenPrefix: string;
+  };
   orgId?: string | null;
   /** The caller administers the operator's own organization: the database then
    *  stamps the confirmation from this lookup (migration 0086). */
@@ -168,10 +176,10 @@ export function AddChannelWizard({
 
   const effectiveId = idTouched ? channelId : slugifyChannelId(name);
   const idValid = isValidChannelId(effectiveId);
-  const secret = useMemo(() => {
-    const key = credentialRef || effectiveId || "channel";
-    return "CHRONOS_YT_TOKEN_" + key.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-  }, [credentialRef, effectiveId]);
+  const secret = useMemo(
+    () => youtubeNames.tokenPrefix + secretRefSuffix(credentialRef || effectiveId || "channel"),
+    [credentialRef, effectiveId, youtubeNames.tokenPrefix],
+  );
 
   // Ask the server whether forwarding is wired up at all, so the keys step can
   // say what is missing instead of failing at the last click.
