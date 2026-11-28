@@ -1,4 +1,4 @@
--- rollback_0237_provider_spend_failed_calls.sql — puts 0106's owner_provider_spend back (a failed_call row's quantity is then
+-- rollback_0240_provider_spend_failed_calls.sql — puts 0106's owner_provider_spend back (a failed_call row's quantity is then
 -- summed into units again). Owner-applied, one transaction. No backslash anywhere in this file.
 begin;
 set local lock_timeout = '5s';
@@ -10,7 +10,7 @@ begin
   select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p
    where p.oid = 'public.owner_provider_spend(integer)'::regprocedure;
   if h is null or h <> all (array['dc5aaeb7ce9899dee21104238a0fada5', '893a14eadc947b7065556c2d67b07530']) then
-    raise exception 'rollback 0237 found an owner_provider_spend(integer) that is neither 0106''s body nor 0237''s (md5 %)', h;
+    raise exception 'rollback 0240 found an owner_provider_spend(integer) that is neither 0106''s body nor 0240''s (md5 %)', h;
   end if;
 end $$;
 
@@ -99,7 +99,7 @@ begin
   select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p
    where p.oid = 'public.owner_provider_spend(integer)'::regprocedure;
   if h is distinct from 'dc5aaeb7ce9899dee21104238a0fada5' then
-    raise exception 'rollback 0237: owner_provider_spend is not 0106''s body (md5 %)', h;
+    raise exception 'rollback 0240: owner_provider_spend is not 0106''s body (md5 %)', h;
   end if;
 end $$;
 

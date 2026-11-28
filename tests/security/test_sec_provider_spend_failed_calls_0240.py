@@ -1,11 +1,11 @@
-"""Migration 0237: a vendor call that delivered nothing is never counted as units used in owner_provider_spend (0106).
+"""Migration 0240: a vendor call that delivered nothing is never counted as units used in owner_provider_spend (0106).
 
 What would break:
 
 * a failed_call row (PR #964: a creative or film call that failed, timed out or answered without a file; its quantity is what was
   ASKED) summed into ``units`` as though it were used, or read as priced, or making the day's usd a number;
 * a day of failed calls only reading 0 units instead of unknown;
-* 0237 applied over a body that is neither 0106's nor its own, or its rollback not putting 0106's back;
+* 0240 applied over a body that is neither 0106's nor its own, or its rollback not putting 0106's back;
 * the function losing its security definer, search_path or grants on the way.
 
 Every world is built inside one transaction that is rolled back.
@@ -24,10 +24,10 @@ from sec_db import REPO, acting, as_superuser
 D = Decimal
 SPEND = "select * from public.owner_provider_spend(%s)"
 COLUMNS = ["day", "provider", "usd", "usd_priced", "unpriced_rows", "units", "unit", "runs"]
-MIGRATION = REPO / "supabase" / "migrations" / "0237_provider_spend_failed_calls.sql"
-ROLLBACK = REPO / "docs" / "sql" / "rollback_0237_provider_spend_failed_calls.sql"
+MIGRATION = REPO / "supabase" / "migrations" / "0240_provider_spend_failed_calls.sql"
+ROLLBACK = REPO / "docs" / "sql" / "rollback_0240_provider_spend_failed_calls.sql"
 BODY_0106 = "dc5aaeb7ce9899dee21104238a0fada5"
-BODY_0237 = "893a14eadc947b7065556c2d67b07530"
+BODY_0240 = "893a14eadc947b7065556c2d67b07530"
 FOLDED = ("select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), "
           "'[[:space:]]+', ' ', 'g')) from pg_proc p where p.oid = 'public.owner_provider_spend(integer)'::regprocedure")
 
@@ -61,9 +61,9 @@ def _sql(path):
     return "\n".join(ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip() not in ("begin;", "commit;"))
 
 
-def test_the_live_body_is_0237s(conn):
+def test_the_live_body_is_0240s(conn):
     with as_superuser(conn, commit=False) as su:
-        assert su.value(FOLDED) == BODY_0237
+        assert su.value(FOLDED) == BODY_0240
 
 
 def test_the_files_hold_no_backslash_and_no_double_dash_inside_a_literal():
@@ -120,7 +120,7 @@ def test_a_customer_is_still_refused_inside_the_function(conn, sc):
     assert not out.ok and out.sqlstate == "42501", out
 
 
-def test_the_rollback_puts_0106s_body_back_and_0237_applies_again(conn, sc):
+def test_the_rollback_puts_0106s_body_back_and_0240_applies_again(conn, sc):
     with as_superuser(conn, commit=False) as su:
         su.conn.execute(_sql(ROLLBACK))
         assert su.value(FOLDED) == BODY_0106
@@ -129,11 +129,11 @@ def test_the_rollback_puts_0106s_body_back_and_0237_applies_again(conn, sc):
         before = mine(conn, sc.operator, "lab-fc4")[(_day(), "lab-fc4")]["units"]
         assert before == D("20")   # the finding, back under 0106: the asked seconds counted as used
         su.conn.execute(_sql(MIGRATION))
-        assert su.value(FOLDED) == BODY_0237
+        assert su.value(FOLDED) == BODY_0240
         assert mine(conn, sc.operator, "lab-fc4")[(_day(), "lab-fc4")]["units"] == D("10")
 
 
-def test_0237_refuses_a_body_it_does_not_know(conn):
+def test_0240_refuses_a_body_it_does_not_know(conn):
     with as_superuser(conn, commit=False) as su:
         su.conn.execute("create or replace function public.owner_provider_spend(p_days integer default 30) "
                         "returns table (day text, provider text, usd numeric, usd_priced numeric, unpriced_rows bigint, "

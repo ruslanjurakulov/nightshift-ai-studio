@@ -3259,7 +3259,7 @@ on sale.
   - Static: `tests/test_music_per_request_migration.py`.
 - **Verify** (the SQL editor): the query at the end of the file. Every column should read true.
 
-## A failed vendor call is not counted as units used in the owner's provider spend (0237)
+## A failed vendor call is not counted as units used in the owner's provider spend (0240)
 
 - **Why.** Since PR #964 every call that reached a vendor writes one `creative_job_costs` row, including the calls that failed,
   timed out, answered without a file or were abandoned: `price_source = 'failed_call'`, `usd_estimate` NULL, `quantity` = what was
@@ -3272,13 +3272,13 @@ on sale.
 - **The app** keeps `failed_call` rows out of every rate-card estimate (`lib/billing.ts` studioUse, `lib/owner-analytics/runway.ts`)
   and shows them as "failed calls, billing unknown" (en / ru / uz); they keep the spend total unknown.
 - **Guard.** md5 of the body with comments cut and white space folded (0230's fold): 0106's `dc5aaeb7ce9899dee21104238a0fada5` ->
-  0237's `893a14eadc947b7065556c2d67b07530`; any other body is refused. A Verify block raises when the body, the security definer,
+  0240's `893a14eadc947b7065556c2d67b07530`; any other body is refused. A Verify block raises when the body, the security definer,
   the search_path or the grants are not as written. No backslash in the file or its rollback.
-- **Lab.** `tests/security/test_sec_provider_spend_failed_calls_0237.py` (the finding reproduced under 0106 and gone under 0237,
+- **Lab.** `tests/security/test_sec_provider_spend_failed_calls_0240.py` (the finding reproduced under 0106 and gone under 0240,
   the rollback and the re-apply, the guard, the grants).
-- **Replay.** Re-running 0106 puts its body back (it has no guard); apply 0237 again after.
+- **Replay.** Re-running 0106 puts its body back (it has no guard); apply 0240 again after.
 - **Requires** 0106, 0037 and 0018.
-- **Undo.** `docs/sql/rollback_0237_provider_spend_failed_calls.sql` (owner-applied): 0106's body back, asserted by its md5.
+- **Undo.** `docs/sql/rollback_0240_provider_spend_failed_calls.sql` (owner-applied): 0106's body back, asserted by its md5.
 - **Rows already written.** Every reader keys on `price_source = 'failed_call'`, so the rows #964 wrote before this change
   read the same way (a failed picture written with quantity 0 is unknown, never a measured $0). A delivered row written twice
   for one film call (#964's resume window) is not dropped by any reader: the only safe key needs `creative_jobs.payer` and
