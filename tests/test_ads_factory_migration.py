@@ -221,6 +221,7 @@ class Numbering(unittest.TestCase):
         # 0214 (voice_language_problem: one new service-only read function, no table; replaces no body, names nothing these
         # pin) was reviewed the same way.
         # 0227 changes model terms and the audit allow-list, outside these pins.
+        # 0230 replaces only 0208's creative_jobs_geo_gate (the allow-list read), outside these pins.
         # 0226 (only a member spends: one marked hunk in twenty-eight bodies, 0133's request_brand_scan among them; no table, no
         # grant, nothing of 0131's) was reviewed the same way: it names nothing these pin.
         # 0232 (one storyboard plan per film, its turns reserved) was reviewed the same way: one closed table, one function and two

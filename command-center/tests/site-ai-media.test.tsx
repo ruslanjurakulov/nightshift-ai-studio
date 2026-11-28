@@ -37,7 +37,9 @@ vi.mock("@/lib/site/showcase.json", async () => {
 });
 vi.mock("@/components/site/showcase-assets", async () => {
   const { FIXTURE_FILES, FIXTURE_JOB } = await import("./fixtures/showcase-entry");
-  return { SHOWCASE_FILES: { ...FIXTURE_FILES, "0d0d0d0d-1111-4222-8333-444455556666": FIXTURE_FILES[FIXTURE_JOB], "4e85c7e4-fd1a-4771-97ee-66c1fb853367": FIXTURE_FILES[FIXTURE_JOB] } };
+  const { SHOWCASE_ENTRIES, showcaseCard } = await import("@/lib/site/showcase");
+  // The client slice of the same stand-in data file, as the generator would write it (lib/site/showcase.ts showcaseCard).
+  return { SHOWCASE_FILES: { ...FIXTURE_FILES, "0d0d0d0d-1111-4222-8333-444455556666": FIXTURE_FILES[FIXTURE_JOB], "4e85c7e4-fd1a-4771-97ee-66c1fb853367": FIXTURE_FILES[FIXTURE_JOB] }, SHOWCASE_CARDS: SHOWCASE_ENTRIES.map(showcaseCard) };
 });
 // The hero's line as it is before its id is set (`ai` null), so the fixture's `slot: "hero"` export fills it; every other slot names a
 // real job that is not in this fixture data, so it shows its stock fallback here.

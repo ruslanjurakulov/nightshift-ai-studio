@@ -188,6 +188,7 @@ class Numbering(unittest.TestCase):
         # 0214 (voice_language_problem: one new service-only read function, no table; replaces no body, names nothing these
         # pin) was reviewed the same way.
         # 0227 changes model terms and the audit allow-list, outside these pins.
+        # 0230 replaces only 0208's creative_jobs_geo_gate (the allow-list read), outside these pins.
         # 0226 (only a member spends: one marked hunk in twenty-eight bodies, 0133's request_brand_scan among them, a refusal before
         # anything is held; grants and every other line kept) was reviewed the same way: it names nothing else these pin
         # (tests/security/test_sec_org_spender_0226.py pins the hunk).

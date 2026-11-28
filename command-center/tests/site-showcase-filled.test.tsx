@@ -15,7 +15,9 @@ vi.mock("@/lib/site/showcase.json", async () => {
 });
 vi.mock("@/components/site/showcase-assets", async () => {
   const { FIXTURE_FILES } = await import("./fixtures/showcase-entry");
-  return { SHOWCASE_FILES: FIXTURE_FILES };
+  const { SHOWCASE_ENTRIES, showcaseCard } = await import("@/lib/site/showcase");
+  // The client slice of the same stand-in data file, as the generator would write it (lib/site/showcase.ts showcaseCard).
+  return { SHOWCASE_FILES: FIXTURE_FILES, SHOWCASE_CARDS: SHOWCASE_ENTRIES.map(showcaseCard) };
 });
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
