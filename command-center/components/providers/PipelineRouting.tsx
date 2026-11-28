@@ -45,6 +45,7 @@ export function PipelineRouting({
   initial,
   configured,
   githubConfigured,
+  routingSetupHint = null,
   defaults,
   vars,
   videoProviders,
@@ -60,6 +61,8 @@ export function PipelineRouting({
   /** Secret names GitHub reports as set — used to warn when a key is missing. */
   configured: string[];
   githubConfigured: boolean;
+  /** The operator's sentence naming the forwarding variables (lib/server/config-hints.ts), or null for the dictionary's. */
+  routingSetupHint?: string | null;
   /** The pipeline's defaults (config.py), from the server: a vendor id here would ship in this page's static chunk. */
   defaults: RoutingDefaults;
   /** The routing variables' names, from the server (lib/server/pipeline-options.ts): one of them names the b-roll vendor. */
@@ -97,7 +100,7 @@ export function PipelineRouting({
    * the pipeline will still use.
    */
   async function save(variables: Vars): Promise<string | null> {
-    if (!githubConfigured) return t.providers.routingNotConfigured;
+    if (!githubConfigured) return routingSetupHint ?? t.providers.routingNotConfigured;
     setState("saving");
     setErrorKey("failed");
     const out = await postOperator("/api/setup/variables", { variables });
@@ -199,7 +202,7 @@ export function PipelineRouting({
         <p className="g2-sub max-w-[80ch]">{t.providers.routingHint}</p>
       </div>
 
-      {!githubConfigured && <p className="g2-warn">{t.providers.routingNotConfigured}</p>}
+      {!githubConfigured && <p className="g2-warn">{routingSetupHint ?? t.providers.routingNotConfigured}</p>}
 
       <div className="flex flex-col">
         {/* Video generator */}

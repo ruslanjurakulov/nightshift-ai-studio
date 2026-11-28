@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { marketingPostsOn, marketingTargets, readMarketing } from "@/lib/server/marketing";
 import { readOwnerSecurity } from "@/lib/server/owner-reads";
 import { BANNED_LIST } from "@/lib/marketing-banned";
+import { configHints } from "@/lib/server/config-hints";
 import "../../app-pages-g5.css";
 
 export const dynamic = "force-dynamic";
@@ -25,9 +26,12 @@ export const revalidate = 0;
  * re-sends or tests a post; the worker posts after an approval, only while the poster is on.
  */
 export default async function MarketingPage() {
-  await guardOperatorPage();
-  const { t } = await getDictionary();
+  const operator = await guardOperatorPage();
+  const { t, locale } = await getDictionary();
   const m = t.marketing;
+  // The server's own setting names, for the operator the guard above let through (false: no Supabase, no one to check) (the shared dictionary says the same
+  // thing in plain words: it is a static chunk every signed-in page loads).
+  const hints = operator ? (configHints(locale)?.marketing ?? null) : null;
   const head = <PageHeader icon="marketing" title={m.title} subtitle={m.subtitle} />;
 
   if (!marketingPostsOn()) {
@@ -35,7 +39,7 @@ export default async function MarketingPage() {
       <div className="rhythm ns-open g5-page">
         {head}
         <StateBlock tone="idle" title={m.off.title}>
-          {m.off.body}
+          {hints?.off ?? m.off.body}
         </StateBlock>
       </div>
     );
@@ -68,6 +72,7 @@ export default async function MarketingPage() {
           nowMs={Date.now()}
           gateOn={gateOn}
           banned={BANNED_LIST}
+          hints={hints}
         />
       )}
     </div>

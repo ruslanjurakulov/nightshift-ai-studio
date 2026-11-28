@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { en } from "../lib/i18n/en";
+import { configHints } from "../lib/server/config-hints";
 import { esc } from "./helpers/supabaseStub";
 import { recordingSupabase, type Res } from "./helpers/recordingStub";
 
@@ -77,6 +78,9 @@ const stub = () => recordingSupabase((name) => results[name] ?? { data: [], erro
 const asked = (st: ReturnType<typeof stub>) => new Set(st.log.map((q) => q.table));
 const has = (html: string, text: string) => html.includes(esc(text));
 const m = en.marketing;
+// The page is behind guardOperatorPage (true here): it shows the operator's sentences, which name the server's settings
+// (lib/server/config-hints.ts); the shared dictionary's own sentences do not.
+const hints = configHints("en")!.marketing;
 
 beforeEach(() => {
   s.guardCalls = 0;
@@ -101,7 +105,8 @@ describe("with the switch off the page is a note and reads nothing", () => {
     expect(s.guardCalls).toBe(1);
     expect(st.log).toHaveLength(0);
     expect(has(html, m.off.title)).toBe(true);
-    expect(has(html, m.off.body)).toBe(true);
+    expect(has(html, hints.off)).toBe(true);
+    expect(html).toContain("NIGHTSHIFT_MARKETING_POSTS");
     // nothing of the board
     expect(has(html, m.poster.title)).toBe(false);
     expect(has(html, "A new feature.")).toBe(false);
@@ -274,14 +279,15 @@ describe("with the switch on", () => {
     s.client = stub().client;
     const html = await page();
     expect(html).toContain("-1001234567890");
-    expect(has(html, m.poster.channelUnknown)).toBe(false);
+    expect(has(html, hints.channelUnknown)).toBe(false);
   });
 
   it("a channel with a name too short for the deploy ({4,31}) is unknown, and the unknown line says 'not a valid'", async () => {
     vi.stubEnv("MARKETING_TELEGRAM_CHAT", "@abcd");
     s.client = stub().client;
     const html = await page();
-    expect(has(html, m.poster.channelUnknown)).toBe(true);
+    expect(has(html, hints.channelUnknown)).toBe(true);
+    expect(hints.channelUnknown).toMatch(/not a valid @name/);
     expect(m.poster.channelUnknown).toMatch(/not a valid @name/);
   });
 
@@ -295,7 +301,7 @@ describe("with the switch on", () => {
     vi.stubEnv("MARKETING_TELEGRAM_CHAT", "https://t.me/whatever");
     s.client = stub().client;
     const html = await page();
-    expect(has(html, m.poster.channelUnknown)).toBe(true);
+    expect(has(html, hints.channelUnknown)).toBe(true);
     expect(html).not.toContain("t.me/whatever");
   });
 

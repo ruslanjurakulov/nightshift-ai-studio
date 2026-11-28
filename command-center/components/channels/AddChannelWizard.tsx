@@ -99,6 +99,7 @@ export function AddChannelWizard({
   initialLanguage = null,
   keyNames,
   youtubeNames,
+  keysSetupHint = null,
 }: {
   /** The GitHub secret names of the three vendor keys this wizard can save, from the page (lib/providers.ts is server-only: no
    *  secret name may sit in a static chunk). Shown under each field and used as the key of the save. Null for anyone but the
@@ -116,6 +117,8 @@ export function AddChannelWizard({
     tokenPrefix?: string | null;
   };
   orgId?: string | null;
+  /** The operator's sentence naming the forwarding variables (lib/server/config-hints.ts), or null for the dictionary's. */
+  keysSetupHint?: string | null;
   /** The caller administers the operator's own organization: the database then
    *  stamps the confirmation from this lookup (migration 0086). */
   canConfirm?: boolean;
@@ -668,7 +671,7 @@ export function AddChannelWizard({
             </p>
             {ghConfigured === false ? (
               <p className="g2-warn">
-                {t.channels.keysNotConfigured}
+                {keysSetupHint ?? t.channels.keysNotConfigured}
               </p>
             ) : (
               ghRepo && (

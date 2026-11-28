@@ -40,10 +40,11 @@ export function RunNowButton({
   canRun = true,
   userId = "",
   orgId = null,
+  setupHint = null,
 }: {
   /** The scoped channel's id, or null when "All channels" is selected. */
   channelId: string | null;
-  /** Whether on-demand runs are wired (GITHUB_SECRETS_TOKEN/REPO present). */
+  /** Whether on-demand runs are wired (lib/server/run-backend.ts isRunNowConfigured). */
   githubConfigured: boolean;
   /** "panel" = the Agents card; "inline" = a bare button for an action row. */
   variant?: "panel" | "inline";
@@ -57,6 +58,8 @@ export function RunNowButton({
   userId?: string;
   /** The open organization when the page knows it: part of what the stored key is for. */
   orgId?: string | null;
+  /** The operator's sentence naming the variables runs need (lib/server/config-hints.ts), or null for the dictionary's. */
+  setupHint?: string | null;
 }) {
   const { t, locale } = useI18n();
   const [phase, setPhase] = useState<Phase>("idle");
@@ -438,7 +441,7 @@ export function RunNowButton({
       </div>
 
       {!githubConfigured ? (
-        <p className="text-sm text-[var(--color-warn)]">{t.agents.runNotConfigured}</p>
+        <p className="text-sm text-[var(--color-warn)]">{setupHint ?? t.agents.runNotConfigured}</p>
       ) : !channelId ? (
         <p className="text-sm text-[var(--color-warn)]">{t.agents.runPickChannel}</p>
       ) : !canRun ? (

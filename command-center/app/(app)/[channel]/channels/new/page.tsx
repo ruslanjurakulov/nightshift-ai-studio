@@ -8,6 +8,7 @@ import { AddChannelWizard } from "@/components/channels/AddChannelWizard";
 import { secretNameOf } from "@/lib/providers";
 import { CHANNEL_TOKEN_SECRET_PREFIX, YOUTUBE_SECRET_NAMES } from "@/lib/server/github-secrets";
 import { getDictionary } from "@/lib/i18n/server";
+import { configHints } from "@/lib/server/config-hints";
 import { getOrgContext } from "@/lib/orgs-server";
 import { readChannelPrefill } from "@/lib/welcome";
 import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
@@ -34,7 +35,7 @@ export default async function NewChannelPage({
   const word = parseConnectWord(firstOf(sp.connect));
   const platform = firstOf(sp.platform);
   const connectResult = word && isConnectPlatform(platform) ? { platform, word } : null;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const path = await getChannelPath();
   const org = await getOrgContext();
   // The operator's own organization confirms its channels from the lookup in
@@ -91,6 +92,7 @@ export default async function NewChannelPage({
             // The token secret's naming is the operator's: a customer connects YouTube on the Channels page (Vault).
             tokenPrefix: operator ? CHANNEL_TOKEN_SECRET_PREFIX : null,
           }}
+          keysSetupHint={operator ? (configHints(locale)?.channels.keys ?? null) : null}
         />
       </details>
     </div>

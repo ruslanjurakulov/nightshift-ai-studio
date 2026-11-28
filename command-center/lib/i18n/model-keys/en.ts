@@ -12,7 +12,7 @@ export const modelKeysEn = {
   nothingStored: "Nothing is stored. The key is checked with the vendor and dropped; it is not saved, logged or shown again.",
   off: {
     title: "Model API keys are switched off",
-    body: "The server switch NIGHTSHIFT_MODEL_KEYS is not “on”, so this page reads nothing and no key can be checked. Nothing was changed.",
+    body: "The server switch for this page is not “on”, so this page reads nothing and no key can be checked. Nothing was changed.",
   },
 
   status: {

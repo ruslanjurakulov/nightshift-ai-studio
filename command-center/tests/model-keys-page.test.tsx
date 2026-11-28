@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { en } from "../lib/i18n/en";
+import { configHints } from "../lib/server/config-hints";
 
 vi.mock("server-only", () => ({}));
 const s = vi.hoisted(() => ({
@@ -92,8 +93,18 @@ describe("with the switch off the page is a note and reads nothing", () => {
     expect(s.createClient).not.toHaveBeenCalled();
     expect(s.github.calls).toBe(0);
     expect(has(html, m.off.title)).toBe(true);
-    expect(has(html, m.off.body)).toBe(true);
+    // The owner the guards let through reads which server variable is off (server-only copy, lib/server/config-hints.ts).
+    expect(has(html, configHints("en")!.modelKeysOff)).toBe(true);
+    expect(html).toContain("NIGHTSHIFT_MODEL_KEYS");
     expect(html).not.toMatch(/<input|<button|type="password"/);
+  });
+
+  it("a page the guard could not vouch for (no Supabase) says it in plain words, naming no variable", async () => {
+    delete process.env.NIGHTSHIFT_MODEL_KEYS;
+    s.mayRead = false;
+    const html = await page();
+    expect(has(html, m.off.body)).toBe(true);
+    expect(html).not.toContain("NIGHTSHIFT_MODEL_KEYS");
   });
 });
 

@@ -14,7 +14,7 @@ export const marketingEn = {
 
   off: {
     title: "Marketing posts are switched off",
-    body: "The server switch NIGHTSHIFT_MARKETING_POSTS is not “on”, so this page reads nothing and no post can be approved. Nothing was changed.",
+    body: "The server switch for marketing posts is not “on”, so this page reads nothing and no post can be approved. Nothing was changed.",
   },
   unsupported: "The database part of this page is not installed yet (migration 0108). Nothing was changed.",
   failed: "The posts could not be read, so nothing is shown rather than a guess. Try again.",
@@ -37,9 +37,9 @@ export const marketingEn = {
     waiting: "{n} approved and waiting for the worker",
     waitingUnknown: "Approved and waiting: unknown",
     serverNote:
-      "This is the database switch. The server switch NIGHTSHIFT_MARKETING_POSTS and the worker must be on as well; this page cannot see whether the worker is running.",
+      "This is the database switch. The server switch for marketing posts and the worker must be on as well; this page cannot see whether the worker is running.",
     channel: "Channel",
-    channelUnknown: "unknown: MARKETING_TELEGRAM_CHAT on this server is missing or is not a valid @name or chat id",
+    channelUnknown: "unknown: the channel setting on this server is missing or is not a valid @name or chat id",
     gate: {
       title: "Second-factor gate in the database",
       on: "On",
@@ -144,8 +144,8 @@ export const marketingEn = {
   // The named fix for each failure code (the closed list of migration 0108).
   fix: {
     blocked: "Telegram says the bot is not an administrator of the channel, or was removed. Add the bot as an administrator with only “Post messages”, then ask for a new draft.",
-    bad_request: "Telegram refused this post or the channel name. Check the channel name in MARKETING_TELEGRAM_CHAT and the text; this post will not be tried again.",
-    not_configured: "Telegram refused the bot token. Replace the secret TELEGRAM_CHANNEL_BOT_TOKEN (never paste it here) and deploy again. Nothing was posted.",
+    bad_request: "Telegram refused this post or the channel name. Check the server's channel setting and the text; this post will not be tried again.",
+    not_configured: "Telegram refused the bot token. Replace the bot token secret on the server (never paste it here) and deploy again. Nothing was posted.",
     rate_limited: "Telegram asked the bot to wait. It will try again by itself.",
     network: "Telegram could not be reached. Nothing left this server. It will try again by itself.",
     http_5xx: "Telegram had a server error and may have posted it anyway. Check the channel; do not resend.",
@@ -257,7 +257,7 @@ export const marketingEn = {
     button: "Approve…",
     aria: "Approve this post for publishing: {source}",
     needPosterOn: "Switch the poster on first, then approve.",
-    needChannel: "The channel is not known to this page, so nothing can be approved here. Check MARKETING_TELEGRAM_CHAT (a valid @name or chat id) and deploy again.",
+    needChannel: "The channel is not known to this page, so nothing can be approved here. Check the server's channel setting (a valid @name or chat id) and deploy again.",
     blockedTooLong: "This post is too long for one message, so it cannot be approved. Shorten it with Edit first.",
     blockedUnsafe: "This post contains text shaped like a key or an e-mail address, which the sender refuses, so it cannot be approved. Change it with Edit first.",
     blockedOther: "The sender would refuse this post ({code}), so it cannot be approved. Change it with Edit first.",

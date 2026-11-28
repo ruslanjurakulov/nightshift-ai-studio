@@ -29,6 +29,10 @@
  *   - our configuration's naming: the per-unit cost variables' prefix CHRONOS_PRICE_ and the sponsor CPM variable
  *     (lib/server/price-env.ts), which the shared dictionary carried in four sentences, and the token secret's prefix
  *     CHRONOS_YT_TOKEN_ (lib/server/github-secrets.ts), which the Channels screens built names with. Flagged in any form.
+ *   - our deployment's configuration names (lib/server/config-env.ts: GITHUB_SECRETS_TOKEN, GOOGLE_OAUTH_CLIENT_SECRET,
+ *     MEDIA_URL_SECRET, NIGHTSHIFT_MODEL_SWITCH, DODO_PRODUCT_*, …), which the shared dictionary carried in setup sentences on
+ *     a dozen screens. Flagged as whole names (and the prefixes as the start of one); lib/server/config-hints.ts names them to
+ *     the operator.
  *
  * In what shapes (PR 3 of the sweep added all but the first; tests/security-vendor-bundle-check-breach.test.ts and
  * tests/security-vendor-sweep3-breach.test.ts hold a failing case and a legitimate look-alike for each):
@@ -107,6 +111,8 @@ export const SIGNED_IN_SOURCES = [
   "lib/marketing-banned.ts",
   // Our pricing configuration's names (CHRONOS_PRICE_, CHRONOS_SPONSORSHIP_CPM_USD).
   "lib/server/price-env.ts",
+  // Our deployment's configuration names (GITHUB_SECRETS_TOKEN, MEDIA_URL_SECRET, NIGHTSHIFT_MODEL_SWITCH, …): PR 4 of the sweep.
+  "lib/server/config-env.ts",
 ];
 /** How many banned provider names side by side as array elements make it the list: three could be a model picker's makers. */
 export const BANNED_LIST_MIN = 4;
@@ -256,6 +262,18 @@ function readSignedIn() {
     fail2("lib/server/price-env.ts no longer exports CHRONOS_PRICE_ and the sponsor variable, or CHANNEL_TOKEN_SECRET_PREFIX (lib/server/github-secrets.ts) is no longer a CHRONOS_*_ literal — their shape changed.");
   }
 
+  // Our deployment's configuration names (lib/server/config-env.ts): every exported string, the way price-env.ts is read. A name
+  // ending in "_" is a prefix (DODO_PRODUCT_<PACK>), flagged as the start of any longer name; the rest are whole names. The
+  // shared dictionary carried twenty of them in setup sentences; lib/server/config-hints.ts now names them to the operator.
+  const configSrc = src("lib/server/config-env.ts");
+  const configEnv = [...configSrc.matchAll(/export const [A-Z0-9_]+\s*=\s*"([A-Z][A-Z0-9_]+)"/g)].map((m) => m[1]);
+  // Floor from the file as it is today (21 names): far below it, the regex no longer reads the file.
+  if (configEnv.length < 18 || !configEnv.includes("GITHUB_SECRETS_TOKEN")) {
+    fail2(`read only ${configEnv.length} configuration names from lib/server/config-env.ts — its shape changed.`);
+  }
+  const configNames = configEnv.filter((n) => !n.endsWith("_"));
+  const configEnvPrefixes = configEnv.filter((n) => n.endsWith("_"));
+
   const exBlock = examplesSrc.match(/EXAMPLE_MODELS[^=]*=\s*\{([\s\S]*?)\};/);
   const exampleModels = exBlock ? [...exBlock[1].matchAll(/^\s*([a-z0-9_]+):\s*"([^"]+)",?\s*$/gm)].map((m) => ({ id: m[1], model: m[2] })) : [];
   if (exampleModels.length < 4) fail2(`read only ${exampleModels.length} EXAMPLE_MODELS from lib/server/creative-examples.ts — its shape changed.`);
@@ -274,7 +292,8 @@ function readSignedIn() {
     ttsModels,
     exampleModels,
     bannedNames,
-    configPrefixes: [...priceNames, tokenPrefix],
+    configPrefixes: [...priceNames, tokenPrefix, ...configEnvPrefixes],
+    configNames,
   };
 }
 
@@ -358,7 +377,7 @@ export function patterns(source) {
 }
 
 /** The signed-in screens' patterns: [label, RegExp]. Empty when the source has none of the fields (a caller of the old shape). */
-function signedInPatterns({ configPrefixes = [], bannedNames = [], createOptions = [], routingVariables = [], secretNames = [], keyPages = [], defaultModels = [], studioIds = [], agentKeys = [], agentStates = [], developers = [], ttsModels = [], exampleModels = [] }) {
+function signedInPatterns({ configPrefixes = [], configNames = [], bannedNames = [], createOptions = [], routingVariables = [], secretNames = [], keyPages = [], defaultModels = [], studioIds = [], agentKeys = [], agentStates = [], developers = [], ttsModels = [], exampleModels = [] }) {
   const out = [];
   const key = (k) => new RegExp(`(?<![\\w$])${Q}?${escape(k)}${Q}?\\s*:`);
   if (secretNames.length > 0) {
@@ -370,6 +389,8 @@ function signedInPatterns({ configPrefixes = [], bannedNames = [], createOptions
   for (const n of secretNames) out.push([`secret name ${n}`, new RegExp(`(?<![A-Za-z0-9_])${escape(n)}(?![A-Za-z0-9_])`)]);
   // A prefix in any form: "CHRONOS_PRICE_<UNIT>" in copy, "CHRONOS_YT_TOKEN_"+ref in code.
   for (const p of configPrefixes) out.push([`configuration name ${p}*`, new RegExp(`(?<![A-Za-z0-9_])${escape(p)}`)]);
+  // A whole name, not a longer one that contains it (NEXT_PUBLIC_PADDLE_API_KEY is not PADDLE_API_KEY; HTTP_STATUS is nothing).
+  for (const n of configNames) out.push([`configuration name ${n}`, new RegExp(`(?<![A-Za-z0-9_])${escape(n)}(?![A-Za-z0-9_])`)]);
   for (const v of routingVariables) out.push([`routing variable ${v}`, new RegExp(`(?<![A-Za-z0-9_])${escape(v)}(?![A-Za-z0-9_])`)]);
   for (const u of keyPages) out.push([`vendor key page ${u}`, new RegExp(urlPattern(u))]);
   const studio = new Set(studioIds);
@@ -673,6 +694,14 @@ function selfTestSignedIn(source, scan, has) {
     must(`n=${JSON.stringify(p)}+k.toUpperCase()`, `configuration name ${p}`, `the configuration prefix ${p} building a name`);
   }
   for (const v of source.routingVariables) must(`{[${JSON.stringify(v)}]:"1"}`, `routing variable ${v}`, `the routing variable ${v}`);
+  for (const n of source.configNames) {
+    must(`x:"Set ${n} on the server."`, `configuration name ${n}`, `the configuration name ${n} inside copy`);
+    must(`e.env[${JSON.stringify(n)}]`, `configuration name ${n}`, `the configuration name ${n} as a key`);
+  }
+  // Negative control: an ordinary ALL_CAPS constant, and a longer public name that ends in one of ours, are not our configuration.
+  for (const text of ['r="HTTP_STATUS"', 'x:"NEXT_PUBLIC_PADDLE_API_KEY_HINT"', "PAYMENTS_PROVIDERS_LIST"]) {
+    if (scan(text).some((h) => h.startsWith("configuration name "))) fail2(`self-test: ${text} is flagged as a configuration name.`);
+  }
 }
 
 function main() {
@@ -784,7 +813,7 @@ function main() {
     process.exit(1);
   }
   console.log(
-    `vendor-bundle-check: ${scanned}; ${list.single.length} patterns + the provider map + the Create video options (${source.effects.length} effects, ${source.providers.length} providers, ${source.units.length} ledger units, ${source.vendorUnits.length} vendor-named; ${source.secretNames.length} secret names, ${source.keyPages.length} key pages, ${source.agentStates.length} agent registry states, ${source.ttsModels.length} narration models, ${source.exampleModels.length} example models, ${source.bannedNames.length} banned provider names, ${source.configPrefixes.length} configuration prefixes): clean.`,
+    `vendor-bundle-check: ${scanned}; ${list.single.length} patterns + the provider map + the Create video options (${source.effects.length} effects, ${source.providers.length} providers, ${source.units.length} ledger units, ${source.vendorUnits.length} vendor-named; ${source.secretNames.length} secret names, ${source.keyPages.length} key pages, ${source.agentStates.length} agent registry states, ${source.ttsModels.length} narration models, ${source.exampleModels.length} example models, ${source.bannedNames.length} banned provider names, ${source.configPrefixes.length} configuration prefixes, ${source.configNames.length} configuration names): clean.`,
   );
 }
 

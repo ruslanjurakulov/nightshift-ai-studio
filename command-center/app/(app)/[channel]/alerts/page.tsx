@@ -12,6 +12,7 @@ import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/gith
 import { readVariables } from "@/lib/server/github-variables";
 import { ALERT_SECRET_NAMES, deriveAlertConfig } from "@/lib/server/alerts";
 import { getDictionary } from "@/lib/i18n/server";
+import { configHints } from "@/lib/server/config-hints";
 import { ownerTime } from "@/lib/format";
 import { ErrorState } from "@/components/ReadError";
 import { BOT_KIND_PATTERN, ownerAlerts } from "@/lib/alert-count";
@@ -128,7 +129,7 @@ export default async function AlertsPage() {
         </div>
 
         <div className="mt-8 flex flex-col gap-4 border-t border-[var(--ns-rule)] pt-6">
-          <p className="g4-note">{t.alerts.setupNote}</p>
+          <p className="g4-note">{(mayReadGithub ? configHints(locale)?.alerts : null) ?? t.alerts.setupNote}</p>
           {isAdmin && <SendTestAlert />}
         </div>
       </section>

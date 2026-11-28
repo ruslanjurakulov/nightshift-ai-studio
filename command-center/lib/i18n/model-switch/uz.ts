@@ -8,7 +8,7 @@ export const modelSwitchUz: ModelSwitchDictionary = {
     "Vendorning hisobidagi mablagʻ tugaganida yoki vendor ishlamayotganida provayderni yoki bitta modelni oʻchiring. Odamlarga u koʻrsatilmay qoladi va siz uni qayta yoqmaguningizcha uni ishga tushirib boʻlmaydi. Hech qachon biror model boshqasi bilan almashtirilmaydi.",
   off: {
     title: "Model almashtirgichlari oʻchirilgan",
-    body: "NIGHTSHIFT_MODEL_SWITCH server almashtirgichi «on» emas, shuning uchun bu sahifa hech narsa oʻqimaydi va almashtirgichni oʻzgartirib boʻlmaydi. Hech narsa oʻzgarmadi.",
+    body: "Bu boʻlimning server almashtirgichi «on» emas, shuning uchun bu sahifa hech narsa oʻqimaydi va almashtirgichni oʻzgartirib boʻlmaydi. Hech narsa oʻzgarmadi. Yoqish uchun dasturchiga ayting.",
   },
   ownerOnly: "Model almashtirgichlaridan faqat platforma egasi foydalana oladi. Hech narsa oʻzgarmadi.",
   unsupported: "Model almashtirgichlarining maʼlumotlar bazasi qismi hali oʻrnatilmagan (0124-migratsiya). Hech narsa oʻzgarmadi.",

@@ -9,6 +9,7 @@ import { createPipelineOptionsFor } from "@/lib/server/pipeline-options";
 import { exampleModelsFor } from "@/lib/server/creative-examples";
 import { CreateStudio } from "@/components/create/CreateStudio";
 import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
+import { configHints } from "@/lib/server/config-hints";
 import { atLeast } from "@/lib/auth/roles";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
 import { isOperatorOrg } from "@/lib/channel-tokens";
@@ -162,6 +163,8 @@ export default async function CreatePage({
       orgId={genOrgId}
       // The per-run model choices name our vendors and their model ids: built here and sent only when the form will draw them.
       pipeline={createPipelineOptionsFor({ operator: frame, orgId: genOrgId })}
+      // Why runs are off, naming the server's variables: drawn only in the operator's frame, from server-only copy.
+      setupHint={frame && !isRunNowConfigured ? (configHints(locale)?.runs ?? null) : null}
     />
   );
 

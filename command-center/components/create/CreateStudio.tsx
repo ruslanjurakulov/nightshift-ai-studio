@@ -73,6 +73,7 @@ export function CreateStudio({
   userId = "",
   orgId = null,
   pipeline = null,
+  setupHint = null,
 }: {
   channelId: string | null;
   githubConfigured: boolean;
@@ -98,6 +99,8 @@ export function CreateStudio({
   userId?: string;
   /** The open organization when the page knows it: part of what the stored key is for. */
   orgId?: string | null;
+  /** The operator's sentence naming the variables runs need (lib/server/config-hints.ts), or null for the dictionary's. */
+  setupHint?: string | null;
   /** The operator's per-run video, image and narration model choices, from the server (lib/server/pipeline-options.ts) and
    *  only for the operator: the lists name our vendors and their model ids, and this module is in the customers' create
    *  page chunk. Null = no choice is drawn, whatever `operator` says. */
@@ -525,7 +528,7 @@ export function CreateStudio({
             : !githubConfigured
               ? // The environment variable names are the operator's; a customer reads a plain sentence.
                 operator
-                ? t.create.notConfigured
+                ? (setupHint ?? t.create.notConfigured)
                 : f.unavailable
               : t.create.needsAdmin}
         </p>

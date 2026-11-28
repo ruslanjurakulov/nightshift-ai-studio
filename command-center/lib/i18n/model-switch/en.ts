@@ -13,7 +13,7 @@ export const modelSwitchEn = {
     "Turn a provider, or one model, off while its vendor balance is empty or the vendor is down. People stop being offered it and cannot start it until you turn it on again. Nothing is ever replaced by another model.",
   off: {
     title: "Model switches are switched off",
-    body: "The server switch NIGHTSHIFT_MODEL_SWITCH is not “on”, so this view reads nothing and no switch can be changed. Nothing was changed.",
+    body: "The server switch for this view is not “on”, so this view reads nothing and no switch can be changed. Nothing was changed.",
   },
   ownerOnly: "Only the platform owner can use the model switches. Nothing was changed.",
   unsupported: "The database part of the model switches is not installed yet (migration 0124). Nothing was changed.",

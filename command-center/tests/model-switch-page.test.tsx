@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { en } from "../lib/i18n/en";
+import { configHints } from "../lib/server/config-hints";
 import { esc } from "./helpers/supabaseStub";
 
 vi.mock("server-only", () => ({}));
@@ -101,7 +102,9 @@ describe("the owner's switches view", () => {
       const browse = await page();
       expect(browse, String(v)).not.toContain(esc(en.modelSwitch.viewSwitch));
       const html = await page({ view: "switch" });
-      expect(html).toContain(esc(en.modelSwitch.off.body));
+      // The view is the operator's alone, so it names the server variable, from server-only copy (lib/server/config-hints.ts).
+      expect(html).toContain(esc(configHints("en")!.modelSwitchOff));
+      expect(html).toContain("NIGHTSHIFT_MODEL_SWITCH");
       expect(html).not.toContain("SECRETNOTE");
       expect(state.calls).not.toContain("owner_model_switches");
     }

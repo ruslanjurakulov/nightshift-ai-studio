@@ -43,7 +43,8 @@ import {
   type MarketingPost,
   type Texts,
 } from "../lib/marketing-posts";
-import { fixText, marketingFailureText, marketingRefusalText, pluralForm, refusalMeansStale, sendNote, unitCount } from "../lib/marketing-text";
+import { fixText, marketingFailureText, marketingRefusalText, pluralForm, refusalMeansStale, sendNote, unitCount, withMarketingHints } from "../lib/marketing-text";
+import { configHints } from "../lib/server/config-hints";
 
 const ROOT = join(__dirname, "..", "..");
 const sql = readFileSync(join(ROOT, "supabase", "migrations", "0108_marketing_posts.sql"), "utf8");
@@ -655,8 +656,12 @@ describe("what the page says about a send", () => {
 
   it("each failed code names its fix", () => {
     expect(note("failed", "blocked")!.lines.join(" ")).toMatch(/not an administrator/);
-    expect(note("failed", "not_configured")!.lines.join(" ")).toMatch(/TELEGRAM_CHANNEL_BOT_TOKEN/);
-    expect(note("failed", "bad_request")!.lines.join(" ")).toMatch(/MARKETING_TELEGRAM_CHAT/);
+    // The shared dictionary says which setting in words; the operator's page names the variable (withMarketingHints).
+    expect(note("failed", "not_configured")!.lines.join(" ")).toMatch(/bot token secret/);
+    expect(note("failed", "bad_request")!.lines.join(" ")).toMatch(/channel setting/);
+    const hinted = { marketing: withMarketingHints(en.marketing, configHints("en")!.marketing) };
+    expect(sendNote(hinted, { status: "failed", lastErrorCode: "not_configured" }, { sent: "", next: null }, true, "")!.lines.join(" ")).toMatch(/TELEGRAM_CHANNEL_BOT_TOKEN/);
+    expect(sendNote(hinted, { status: "failed", lastErrorCode: "bad_request" }, { sent: "", next: null }, true, "")!.lines.join(" ")).toMatch(/MARKETING_TELEGRAM_CHAT/);
     for (const code of ["blocked", "bad_request", "not_configured", "rate_limited", "network", "http_5xx", "unconfirmed", "expired"]) {
       for (const loc of ["en", "ru", "uz"] as const) {
         expect((dicts[loc].marketing.fix as Record<string, string>)[code], `${loc}.fix.${code}`).toBeTruthy();

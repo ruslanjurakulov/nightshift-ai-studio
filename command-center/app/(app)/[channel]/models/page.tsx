@@ -9,6 +9,7 @@ import { ModelDiscovery } from "@/components/models/ModelDiscovery";
 import { ModelSwitchBoard } from "@/components/models/ModelSwitchBoard";
 import { ModelBudgetBoard } from "@/components/models/ModelBudgetBoard";
 import { isOperator } from "@/lib/auth/org-roles";
+import { configHints } from "@/lib/server/config-hints";
 import { viewingAsOperator } from "@/lib/server/owner-view";
 import { resolvePlatformRole } from "@/lib/auth/roles";
 import { modelSwitchOn, readModelSwitches } from "@/lib/server/model-switch";
@@ -60,7 +61,7 @@ export default async function ModelsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const c = t.modelDiscovery;
   const operator = await isOperator();
   // What the default (browse) view DRAWS: the whole registry, provider names and the views bar only in the Owner account. The
@@ -164,7 +165,8 @@ export default async function ModelsPage({
 
   if (switchView) {
     // The owner's switches (0124). Off by default: with the server variable off nothing is read.
-    if (!switchOn) return note(t.modelSwitch.off.body);
+    // switchView is the operator's alone (above), so the server variable's name may be said here, from server-only copy.
+    if (!switchOn) return note(configHints(locale)?.modelSwitchOff ?? t.modelSwitch.off.body);
     if (!isOwner) return note(t.modelSwitch.ownerOnly);
     const read = await readModelSwitches(supabase);
     if (read.status === "not_enabled") return note(t.modelSwitch.unsupported);

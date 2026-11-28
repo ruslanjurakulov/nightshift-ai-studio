@@ -18,7 +18,8 @@ import Link from "next/link";
 import { customVoiceEnabled } from "@/lib/custom-voice";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { RunNowButton } from "@/components/agents/RunNowButton";
-import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
+import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
+import { configHints } from "@/lib/server/config-hints";
 import { atLeast } from "@/lib/auth/roles";
 import { Figures } from "@/components/g4/Section";
 import "../../app-pages-g4.css";
@@ -73,7 +74,9 @@ function deriveAgents(events: SystemEventRow[]): AgentSummary[] {
 
 export default async function AgentsPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
+  // Why Run now is off, naming the server's variables: only for the operator, from server-only copy.
+  const runSetupHint = !isRunNowConfigured && (await isOperator()) ? (configHints(locale)?.runs ?? null) : null;
   // Scope channel-owned queries to the selected channel (view control;
   // RLS still decides what may be read at all).
   const { selection, channels, scope } = await getChannelContext();
@@ -121,6 +124,7 @@ export default async function AgentsPage() {
       <RunNowButton
         channelId={scopedChannel?.channel_id ?? null}
         githubConfigured={isRunNowConfigured}
+        setupHint={runSetupHint}
         canRun={canRun}
         userId={user?.id ?? ""}
       />

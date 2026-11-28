@@ -55,6 +55,29 @@ export function refusalMeansStale(code: unknown): boolean {
   );
 }
 
+/**
+ * The operator's sentences for the marketing page that name the server's configuration (lib/server/config-hints.ts builds
+ * them, server-only). The shared dictionary says the same thing without the variable names; the page is operator-only, so it
+ * passes these and the board shows them instead.
+ */
+export interface MarketingConfigHints {
+  serverNote: string;
+  channelUnknown: string;
+  needChannel: string;
+  fix: { bad_request: string; not_configured: string };
+}
+
+/** The marketing dictionary with the operator's configuration sentences in place of the plain ones (unchanged without them). */
+export function withMarketingHints(m: Dictionary["marketing"], hints: MarketingConfigHints | null | undefined): Dictionary["marketing"] {
+  if (!hints) return m;
+  return {
+    ...m,
+    poster: { ...m.poster, serverNote: hints.serverNote, channelUnknown: hints.channelUnknown },
+    approve: { ...m.approve, needChannel: hints.needChannel },
+    fix: { ...m.fix, ...hints.fix },
+  };
+}
+
 /** The named fix for the code a failed or lost send left on a post (the closed list of 0108). */
 export function fixText(t: Pick<Dictionary, "marketing">, code: string): string {
   const fix = t.marketing.fix as Record<string, string>;

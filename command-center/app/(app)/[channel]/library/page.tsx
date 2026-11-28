@@ -10,6 +10,8 @@ import { atLeast } from "@/lib/auth/roles-shared";
 import { parseView } from "@/components/media/libraryView";
 import { loadAiToolAvailability, loadImproveModels } from "@/lib/server/ai-tools";
 import { imageEditorEnabled } from "@/lib/imageEditor/flag";
+import { isOperator } from "@/lib/auth/org-roles";
+import { configHints } from "@/lib/server/config-hints";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -36,7 +38,7 @@ export default async function LibraryPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const org = await getOrgContext();
   const header = (name: string) => (
     <PageHeader icon="library" title={t.media.title} subtitle={fmt(t.media.subtitle, { org: name })} />
@@ -70,6 +72,8 @@ export default async function LibraryPage({
         aiTools={aiTools}
         aiModels={aiModels}
         imageEditor={imageEditorEnabled()}
+        // Why previews are off, naming the signing variable: for the operator only, and only when it is missing.
+        noSigningHint={!lib.host.signing && (await isOperator()) ? (configHints(locale)?.mediaNoSigning ?? null) : null}
       />
     </div>
   );

@@ -7,7 +7,7 @@ export const modelKeysUz: ModelKeysDictionary = {
   nothingStored: "Hech narsa saqlanmaydi. Kalit yetkazib beruvchida tekshiriladi va tashlab yuboriladi: u saqlanmaydi, jurnalga yozilmaydi va qayta koʻrsatilmaydi.",
   off: {
     title: "Model API kalitlari oʻchirilgan",
-    body: "NIGHTSHIFT_MODEL_KEYS server kaliti “on” emas, shuning uchun bu sahifa hech narsa oʻqimaydi va kalitni tekshirib boʻlmaydi. Hech narsa oʻzgarmadi.",
+    body: "Bu sahifaning server kaliti “on” emas, shuning uchun bu sahifa hech narsa oʻqimaydi va kalitni tekshirib boʻlmaydi. Hech narsa oʻzgarmadi. Yoqish uchun dasturchiga ayting.",
   },
 
   status: {

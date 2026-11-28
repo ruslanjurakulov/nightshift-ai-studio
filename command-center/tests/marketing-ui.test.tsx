@@ -34,6 +34,7 @@ vi.mock("@/components/feedback/ToastProvider", () => ({
 
 import { MarketingBoard } from "../components/marketing/MarketingBoard";
 import { BANNED_LIST } from "../lib/marketing-banned";
+import { configHints } from "../lib/server/config-hints";
 
 const m = en.marketing;
 const ID = "11111111-2222-3333-4444-555555555555";
@@ -432,11 +433,44 @@ describe("what happened to a send", () => {
 
   it.each([
     ["blocked", /not an administrator of the channel/],
-    ["not_configured", /TELEGRAM_CHANNEL_BOT_TOKEN/],
-    ["bad_request", /MARKETING_TELEGRAM_CHAT/],
+    ["not_configured", /Replace the bot token secret on the server/],
+    ["bad_request", /Check the server's channel setting/],
   ])("a failed send with %s names its fix", (code, re) => {
     show([row({ status: "failed", last_error_code: code, approved_at: "2026-10-17T11:00:00Z", updated_at: "2026-10-17T12:00:00Z" })]);
     expect(screen.getAllByText(re).length).toBeGreaterThanOrEqual(1);
+  });
+
+  // The page passes the operator's sentences (it is behind guardOperatorPage): with them, the fix names the server's setting.
+  it.each([
+    ["not_configured", /TELEGRAM_CHANNEL_BOT_TOKEN/],
+    ["bad_request", /MARKETING_TELEGRAM_CHAT/],
+  ])("with the operator's hints, a failed send with %s names the variable to fix", (code, re) => {
+    const hints = configHints("en")!.marketing;
+    render(
+      <MarketingBoard
+        settings={SETTINGS}
+        posts={[row({ status: "failed", last_error_code: code, approved_at: "2026-10-17T11:00:00Z", updated_at: "2026-10-17T12:00:00Z" })]}
+        truncated={false}
+        channel={null}
+        origin="https://nightshift-ai.studio"
+        nowMs={NOW}
+        banned={BANNED_LIST}
+        hints={hints}
+      />,
+    );
+    expect(screen.getAllByText(re).length).toBeGreaterThanOrEqual(1);
+    // The poster panel and the approve block read the same hints (a context, not a prop per card).
+    expect(screen.getAllByText(/MARKETING_TELEGRAM_CHAT on this server is missing/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/NIGHTSHIFT_MARKETING_POSTS and the worker/).length).toBe(1);
+  });
+
+  it("without the hints, no card names a server variable", () => {
+    const { container } = show(
+      [row({ status: "failed", last_error_code: "not_configured", approved_at: "2026-10-17T11:00:00Z", updated_at: "2026-10-17T12:00:00Z" })],
+      SETTINGS,
+      null,
+    );
+    expect(container.textContent).not.toMatch(/TELEGRAM_CHANNEL_BOT_TOKEN|MARKETING_TELEGRAM_CHAT|NIGHTSHIFT_MARKETING_POSTS/);
   });
 
   it("a sent post shows when, and the last send says none when nothing was settled", () => {

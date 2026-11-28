@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { createContext, useContext, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
@@ -23,13 +23,26 @@ import {
   type PostStatus,
   type Texts,
 } from "@/lib/marketing-posts";
-import { marketingFailureText, refusalMeansStale, sendNote, unitCount } from "@/lib/marketing-text";
+import { marketingFailureText, refusalMeansStale, sendNote, unitCount, withMarketingHints, type MarketingConfigHints } from "@/lib/marketing-text";
 import { useConfirm, type ConfirmOptions } from "@/components/feedback/ConfirmDialog";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 import { StateBlock } from "@/components/states/StateBlock";
 import { TelegramPreview } from "@/components/marketing/TelegramPreview";
 import { NewPostPanel } from "@/components/marketing/NewPostPanel";
 import type { BannedList } from "@/lib/marketing-banned-match";
+
+// The operator's configuration sentences reach every card through this, rather than as a prop through each of them.
+const MarketingHints = createContext<MarketingConfigHints | null>(null);
+
+function useMarketingDict<T extends { marketing: Parameters<typeof withMarketingHints>[0] }>(t: T, hints: MarketingConfigHints | null): T {
+  return useMemo(() => (hints ? { ...t, marketing: withMarketingHints(t.marketing, hints) } : t), [t, hints]);
+}
+
+/** useI18n(), with the marketing sentences the page's operator hints replace. */
+function useMarketingText() {
+  const { t, locale } = useI18n();
+  return { t: useMarketingDict(t, useContext(MarketingHints)), locale };
+}
 
 const ENDPOINT = "/api/marketing";
 const TONE: Record<PostStatus, LampTone> = {
@@ -70,6 +83,7 @@ export function MarketingBoard({
   nowMs,
   banned,
   gateOn = null,
+  hints = null,
 }: {
   settings: MarketingSettings;
   posts: ListedPost[];
@@ -82,8 +96,12 @@ export function MarketingBoard({
   nowMs: number;
   /** The New post form's banned wording and provider names (lib/marketing-banned.ts is server-only: it names vendors). */
   banned: BannedList;
+  /** The operator's sentences that name the server's settings (lib/server/config-hints.ts), from the page after its operator
+   *  guard; null keeps the dictionary's plain ones (an Uzbek page, a test). */
+  hints?: MarketingConfigHints | null;
 }) {
-  const { t, locale } = useI18n();
+  const { t: base, locale } = useI18n();
+  const t = useMarketingDict(base, hints);
   const m = t.marketing;
   const router = useRouter();
   const { confirm, dialog } = useConfirm();
@@ -95,59 +113,61 @@ export function MarketingBoard({
   const others = posts.filter(isOtherPost).length;
 
   return (
-    <div className="flex flex-col gap-4" aria-busy={pending}>
-      {dialog}
-      <PosterPanel settings={settings} channel={channel} gateOn={gateOn} confirm={confirm} refresh={refresh} />
+    <MarketingHints.Provider value={hints}>
+      <div className="flex flex-col gap-4" aria-busy={pending}>
+        {dialog}
+        <PosterPanel settings={settings} channel={channel} gateOn={gateOn} confirm={confirm} refresh={refresh} />
 
-      <NewPostPanel origin={origin} banned={banned} confirm={confirm} refresh={refresh} />
+        <NewPostPanel origin={origin} banned={banned} confirm={confirm} refresh={refresh} />
 
-      <section className="panel flex flex-col gap-2 p-4 sm:p-5" aria-labelledby="mk-last-title">
-        <h2 id="mk-last-title" className="t-section">
-          {m.lastSend.title}
-        </h2>
-        {last === null ? (
-          <p className="text-sm text-[var(--color-muted)]">{m.lastSend.none}</p>
-        ) : (
-          isOtherPost(last) ? <LastSendOther post={last} when={when} /> : <LastSend post={last} settings={settings} when={when} />
+        <section className="panel flex flex-col gap-2 p-4 sm:p-5" aria-labelledby="mk-last-title">
+          <h2 id="mk-last-title" className="t-section">
+            {m.lastSend.title}
+          </h2>
+          {last === null ? (
+            <p className="text-sm text-[var(--color-muted)]">{m.lastSend.none}</p>
+          ) : (
+            isOtherPost(last) ? <LastSendOther post={last} when={when} /> : <LastSend post={last} settings={settings} when={when} />
+          )}
+        </section>
+
+        {pending && (
+          <p role="status" className="text-xs text-[var(--color-muted)]">
+            {m.refreshing}
+          </p>
         )}
-      </section>
 
-      {pending && (
-        <p role="status" className="text-xs text-[var(--color-muted)]">
-          {m.refreshing}
-        </p>
-      )}
+        {others > 0 && (
+          <p role="note" className="text-xs text-[var(--color-muted)]" data-other-notice="">
+            {fmt(m.other.notice, { n: others })}
+          </p>
+        )}
 
-      {others > 0 && (
-        <p role="note" className="text-xs text-[var(--color-muted)]" data-other-notice="">
-          {fmt(m.other.notice, { n: others })}
-        </p>
-      )}
-
-      {sorted.length === 0 ? (
-        <StateBlock tone="idle" title={m.empty.title}>
-          {m.empty.body}
-        </StateBlock>
-      ) : (
-        <ul className="flex flex-col gap-4" aria-label={m.title}>
-          {sorted.map((p) => (
-            <li key={p.id}>
-              {isOtherPost(p) ? (
-                <OtherCard post={p} nowMs={nowMs} />
-              ) : (
-                <PostCard post={p} settings={settings} channel={channel} origin={origin} nowMs={nowMs} confirm={confirm} refresh={refresh} />
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {truncated && <p className="text-xs text-[var(--color-muted)]">{fmt(m.truncated, { n: posts.length })}</p>}
-    </div>
+        {sorted.length === 0 ? (
+          <StateBlock tone="idle" title={m.empty.title}>
+            {m.empty.body}
+          </StateBlock>
+        ) : (
+          <ul className="flex flex-col gap-4" aria-label={m.title}>
+            {sorted.map((p) => (
+              <li key={p.id}>
+                {isOtherPost(p) ? (
+                  <OtherCard post={p} nowMs={nowMs} />
+                ) : (
+                  <PostCard post={p} settings={settings} channel={channel} origin={origin} nowMs={nowMs} confirm={confirm} refresh={refresh} />
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {truncated && <p className="text-xs text-[var(--color-muted)]">{fmt(m.truncated, { n: posts.length })}</p>}
+      </div>
+    </MarketingHints.Provider>
   );
 }
 
 function LastSend({ post, settings, when }: { post: MarketingPost; settings: MarketingSettings; when: (iso: string | null) => string }) {
-  const { t } = useI18n();
+  const { t } = useMarketingText();
   const m = t.marketing;
   const at = when(post.sentAt ?? post.updatedAt);
   const headline = post.status === "sent" ? m.lastSend.sent : post.status === "failed" ? m.lastSend.failed : m.lastSend.dead;
@@ -167,7 +187,7 @@ function LastSend({ post, settings, when }: { post: MarketingPost; settings: Mar
 
 /** The last settled post when it is one this page version does not know: its status as the database says it, and nothing about a channel. */
 function LastSendOther({ post, when }: { post: OtherPost; when: (iso: string | null) => string }) {
-  const { t } = useI18n();
+  const { t } = useMarketingText();
   const m = t.marketing;
   return (
     <div className="flex flex-col gap-1.5">
@@ -200,7 +220,7 @@ function PosterPanel({
   confirm: Confirm;
   refresh: () => void;
 }) {
-  const { t } = useI18n();
+  const { t } = useMarketingText();
   const m = t.marketing;
   const [reason, setReason] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -358,7 +378,7 @@ function PostCard({
   confirm: Confirm;
   refresh: () => void;
 }) {
-  const { t, locale } = useI18n();
+  const { t, locale } = useMarketingText();
   const m = t.marketing;
   const [mode, setMode] = useState<Mode>("view");
   const [draft, setDraft] = useState<Texts>(post.texts);
@@ -698,7 +718,7 @@ function PostCard({
  * Nothing here calls the route.
  */
 function OtherCard({ post, nowMs }: { post: OtherPost; nowMs: number }) {
-  const { t, locale } = useI18n();
+  const { t, locale } = useMarketingText();
   const m = t.marketing;
   const when = (iso: string | null) => ownerTime(iso, locale, nowMs);
   const titleId = `mk-post-${post.id}`;

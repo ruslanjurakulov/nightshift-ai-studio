@@ -130,6 +130,7 @@ export function MediaLibrary({
   aiTools = null,
   aiModels = null,
   imageEditor = false,
+  noSigningHint = null,
 }: {
   orgId: string;
   /** The AI tools sold here (lib/server/ai-tools); null = not known. Drives the tiles' "Improve with AI". */
@@ -138,6 +139,8 @@ export function MediaLibrary({
   aiModels?: readonly StudioModel[] | null;
   /** NIGHTSHIFT_IMAGE_EDITOR as the server read it; passed on to the viewer's "Edit" link. Default off. */
   imageEditor?: boolean;
+  /** The operator's sentence naming the signing variable (lib/server/config-hints.ts), or null for the dictionary's. */
+  noSigningHint?: string | null;
   initial?: MediaLibraryData | null;
   /** The view named by the address (?kind=&q=&sort=), read on the server so the first paint already has it. */
   initialView?: LibraryView;
@@ -880,7 +883,7 @@ export function MediaLibrary({
       )}
       {!canUpload && <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{tm.noHost}</div>}
       {canUpload && !data.host.signing && (
-        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{tm.noSigning}</div>
+        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{noSigningHint ?? tm.noSigning}</div>
       )}
       {readFailed && (
         <div role="alert" className="panel p-5 sm:p-6 text-sm text-[var(--color-fail)]">

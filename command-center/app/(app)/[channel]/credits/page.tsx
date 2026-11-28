@@ -14,6 +14,7 @@ import { atLeast } from "@/lib/auth/roles-shared";
 import { getOrgContext } from "@/lib/orgs-server";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
+import { configHints } from "@/lib/server/config-hints";
 import { UNIT_USD, chargePerUnit, coerceTransactions, inviteCardShown, isCreditExempt } from "@/lib/credits";
 import { creditsEnforced, readCreditAccount, readCreditPriceList, readCreditPrices } from "@/lib/server/credits";
 import { buyAccess, paddleClient, paddleConfig } from "@/lib/paddle";
@@ -116,6 +117,8 @@ export default async function CreditsPage() {
   const exempt = isCreditExempt(orgId);
   const showInvite = inviteCardShown(org.current, inviteRead.state);
   const platformAdmin = admin.data === true;
+  // The operator tools below name the server's credit and payment variables, from server-only copy, for the platform admin only.
+  const creditHints = platformAdmin ? (configHints(locale)?.credits ?? null) : null;
   // The editor needs the base rates, margins and notes: the raw list, which
   // the database (0084) shows a platform owner/admin only. Never read for
   // anyone else, so a member's page never carries a margin.
@@ -274,11 +277,15 @@ export default async function CreditsPage() {
       {platformAdmin && (
         <>
           <p className="tnum text-xs text-[var(--color-muted)]">
-            {creditsEnforced ? t.credits.enforcedOn : t.credits.enforcedOff}
+            {creditsEnforced ? t.credits.enforcedOn : (creditHints?.enforcedOff ?? t.credits.enforcedOff)}
           </p>
           {!(dodoMode ? dodo : paddleConfig) && !exempt && (
             <p className="tnum text-xs text-[var(--color-muted)]">
-              {dodoTestOnly ? t.credits.buy.testOnlyDodo : dodoMode ? t.credits.buy.notConfiguredDodo : t.credits.buy.notConfigured}
+              {dodoTestOnly
+                ? (creditHints?.testOnlyDodo ?? t.credits.buy.testOnlyDodo)
+                : dodoMode
+                  ? (creditHints?.notConfiguredDodo ?? t.credits.buy.notConfiguredDodo)
+                  : (creditHints?.buyNotConfigured ?? t.credits.buy.notConfigured)}
             </p>
           )}
           {rpcActive ? (

@@ -7,6 +7,7 @@ import { guardOperatorPage } from "@/lib/auth/org-roles";
 import { requireRole } from "@/lib/auth/roles";
 import { isGithubConfigured, listSecretNamesComplete } from "@/lib/server/github-secrets";
 import { modelKeysOn } from "@/lib/server/model-keys";
+import { configHints } from "@/lib/server/config-hints";
 import { ALL_ENV_NAMES, buildCards } from "@/lib/model-keys";
 import "../../app-pages-g5.css";
 
@@ -26,7 +27,7 @@ export const revalidate = 0;
 export default async function ModelKeysPage() {
   const mayReadGithub = await guardOperatorPage();
   if (!(await requireRole("owner"))) notFound();
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const m = t.modelKeys;
   const head = <PageHeader icon="modelKeys" title={m.title} subtitle={m.subtitle} />;
 
@@ -35,7 +36,8 @@ export default async function ModelKeysPage() {
       <div className="rhythm ns-open g5-page">
         {head}
         <StateBlock tone="idle" title={m.off.title}>
-          {m.off.body}
+          {/* The switch's name is the server's: named to the operator the guards above let through, never in the dictionary. */}
+          {(mayReadGithub ? configHints(locale)?.modelKeysOff : null) ?? m.off.body}
         </StateBlock>
       </div>
     );

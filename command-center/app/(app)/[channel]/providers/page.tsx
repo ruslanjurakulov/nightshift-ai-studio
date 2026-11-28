@@ -9,6 +9,7 @@ import { readVariables } from "@/lib/server/github-variables";
 import { isGoogleOAuthConfigured } from "@/lib/server/google-oauth";
 import { getDictionary } from "@/lib/i18n/server";
 import { guardOperatorPage } from "@/lib/auth/org-roles";
+import { configHints } from "@/lib/server/config-hints";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -28,7 +29,10 @@ export default async function ProvidersPage({
   // The operator's own key names and routing, read with the server's GitHub
   // token: signed out → /login, anyone else → 404, before any read (BR-H-001).
   const mayReadGithub = await guardOperatorPage();
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
+  // The setup sentences that name the server's variables: for the operator the guard let through, from server-only copy (the
+  // shared dictionary is a static chunk every signed-in page loads, and says the same in plain words).
+  const hints = mayReadGithub ? (configHints(locale)?.providers ?? null) : null;
   const { channel } = await params;
   const { yt } = await searchParams;
   // The vendor lists are server-only (a static chunk is downloadable by anyone): the board and the routing panel get them
@@ -62,7 +66,7 @@ export default async function ProvidersPage({
         : ytStatus === "no_refresh"
           ? t.providers.ytNoRefresh
           : ytStatus === "not_configured"
-            ? t.providers.ytNotConfigured
+            ? (hints?.ytNotConfigured ?? t.providers.ytNotConfigured)
             : ytStatus === "forbidden"
               ? t.providers.ytForbidden
               : t.providers.ytFailed
@@ -86,7 +90,7 @@ export default async function ProvidersPage({
               {t.providers.ytConnect}
             </a>
           ) : (
-            <span className="g2-note tnum">{t.providers.ytSetup}</span>
+            <span className="g2-note tnum">{hints?.ytSetup ?? t.providers.ytSetup}</span>
           )}
         </div>
         {ytMsg && (
@@ -96,13 +100,14 @@ export default async function ProvidersPage({
         )}
       </section>
 
-      <ProvidersBoard groups={groups} configured={configured} githubConfigured={isGithubConfigured} />
+      <ProvidersBoard groups={groups} configured={configured} githubConfigured={isGithubConfigured} githubHint={hints?.github ?? null} />
 
       {/* Which generator the pipeline actually uses — writes GH Actions vars. */}
       <PipelineRouting
         initial={routingVars}
         configured={configured}
         githubConfigured={isGithubConfigured}
+        routingSetupHint={hints?.routing ?? null}
         videoProviders={routing.video}
         imageGenerators={routing.image}
         defaults={routing.defaults}

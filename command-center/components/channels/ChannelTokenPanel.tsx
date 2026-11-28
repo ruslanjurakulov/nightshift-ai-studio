@@ -31,6 +31,9 @@ export interface ChannelTokenPanelProps {
    *  what the bot reported (`operatorState`: connected / expired / not connected). */
   operator?: boolean;
   operatorState?: OperatorYoutubeState;
+  /** The operator's sentences naming the Google OAuth variables (lib/server/config-hints.ts), for a viewer who is the
+   *  operator; absent, the dictionary's plain ones (a customer cannot set them, and the shared dictionary must not name them). */
+  setupHints?: { needsClient: string; oauthNotConfigured: string } | null;
 }
 
 /**
@@ -48,6 +51,7 @@ export function ChannelTokenPanel({
   oauthConfigured,
   requiredScopes,
   operator = false,
+  setupHints = null,
   operatorState,
 }: ChannelTokenPanelProps) {
   const { t, locale } = useI18n();
@@ -163,7 +167,7 @@ export function ChannelTokenPanel({
           )}
           {(expired || needsClient) && (
             <p className="g2-warn" role="alert">
-              {needsClient ? tt.needsClientHint : tt.expiredHint}
+              {needsClient ? (setupHints?.needsClient ?? tt.needsClientHint) : tt.expiredHint}
             </p>
           )}
           {viaSecret && <p className="g2-note">{tt.viaSecret}</p>}
@@ -204,7 +208,7 @@ export function ChannelTokenPanel({
             )}
             {!actions.connect && !actions.disconnect && (
               <span className="g2-note">
-                {atLeast(role, "admin") && !oauthConfigured ? tt.oauthNotConfigured : tt.viewerHint}
+                {atLeast(role, "admin") && !oauthConfigured ? (setupHints?.oauthNotConfigured ?? tt.oauthNotConfigured) : tt.viewerHint}
               </span>
             )}
           </div>

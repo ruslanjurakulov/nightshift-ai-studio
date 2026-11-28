@@ -9,7 +9,7 @@ export const marketingUz: MarketingDictionary = {
 
   off: {
     title: "Marketing postlari oʻchirilgan",
-    body: "NIGHTSHIFT_MARKETING_POSTS server kaliti “on” emas, shuning uchun bu sahifa hech narsani oʻqimaydi va post tasdiqlab boʻlmaydi. Hech narsa oʻzgarmadi.",
+    body: "Marketing postlarining server kaliti “on” emas, shuning uchun bu sahifa hech narsa oʻqimaydi va postni tasdiqlab boʻlmaydi. Hech narsa oʻzgarmadi. Yoqish uchun dasturchiga ayting.",
   },
   unsupported: "Bu sahifaning maʼlumotlar bazasi qismi hali oʻrnatilmagan (0108-migratsiya). Hech narsa oʻzgarmadi.",
   failed: "Postlarni oʻqib boʻlmadi, shuning uchun taxmin emas, hech narsa koʻrsatilmaydi. Qayta urinib koʻring.",
@@ -32,9 +32,9 @@ export const marketingUz: MarketingDictionary = {
     waiting: "Tasdiqlangan va ishchini kutayotgan: {n}",
     waitingUnknown: "Tasdiqlangan va kutayotgan: nomaʼlum",
     serverNote:
-      "Bu maʼlumotlar bazasidagi kalit. NIGHTSHIFT_MARKETING_POSTS server kaliti va ishchi ham yoqilgan boʻlishi kerak; bu sahifa ishchi ishlayotganini koʻra olmaydi.",
+      "Bu maʼlumotlar bazasidagi kalit. Marketing postlarining server kaliti va ishchi ham yoqilgan boʻlishi kerak; bu sahifa ishchi ishlayotganini koʻra olmaydi.",
     channel: "Kanal",
-    channelUnknown: "nomaʼlum: bu serverda MARKETING_TELEGRAM_CHAT yoʻq yoki yaroqli @nom yoki chat raqami emas",
+    channelUnknown: "nomaʼlum: bu serverda kanal sozlamasi yoʻq yoki yaroqli @nom yoki chat raqami emas",
     gate: {
       title: "Maʼlumotlar bazasidagi ikkinchi omil",
       on: "Yoqilgan",
@@ -137,8 +137,8 @@ export const marketingUz: MarketingDictionary = {
 
   fix: {
     blocked: "Telegram botning kanal administratori emasligini yoki olib tashlanganini aytmoqda. Botni faqat “Xabar joylash” huquqi bilan administrator qilib qoʻshing va yangi qoralama soʻrang.",
-    bad_request: "Telegram bu postni yoki kanal nomini rad etdi. MARKETING_TELEGRAM_CHAT dagi kanal nomini va matnni tekshiring; bu post qayta urinilmaydi.",
-    not_configured: "Telegram bot tokenini rad etdi. TELEGRAM_CHANNEL_BOT_TOKEN sirini almashtiring (uni bu yerga hech qachon qoʻymang) va qaytadan joylashtiring. Hech narsa nashr qilinmadi.",
+    bad_request: "Telegram bu postni yoki kanal nomini rad etdi. Dasturchiga ayting, serverdagi kanal sozlamasini tekshirsin; matnni ham tekshiring. Bu post qayta urinilmaydi.",
+    not_configured: "Telegram bot tokenini rad etdi. Dasturchiga ayting, serverdagi bot tokeni sirini almashtirsin (uni bu yerga hech qachon qoʻymang) va qaytadan joylashtirsin. Hech narsa nashr qilinmadi.",
     rate_limited: "Telegram botdan kutishni soʻradi. U oʻzi yana urinib koʻradi.",
     network: "Telegramga ulanib boʻlmadi. Bu serverdan hech narsa chiqmadi. U oʻzi yana urinib koʻradi.",
     http_5xx: "Telegramda server xatosi boʻldi va u postni baribir chiqargan boʻlishi mumkin. Kanalni tekshiring; qayta yubormang.",
@@ -250,7 +250,7 @@ export const marketingUz: MarketingDictionary = {
     button: "Tasdiqlash…",
     aria: "Bu postni nashr uchun tasdiqlash: {source}",
     needPosterOn: "Avval nashr qilgichni yoqing, keyin tasdiqlang.",
-    needChannel: "Sahifaga kanal nomaʼlum, shuning uchun bu yerda hech narsani tasdiqlab boʻlmaydi. MARKETING_TELEGRAM_CHAT ni (yaroqli @nom yoki chat raqami) tekshiring va qaytadan joylashtiring.",
+    needChannel: "Sahifaga kanal nomaʼlum, shuning uchun bu yerda hech narsani tasdiqlab boʻlmaydi. Dasturchiga ayting, serverdagi kanal sozlamasini (yaroqli @nom yoki chat raqami) tekshirsin va qaytadan joylashtirsin.",
     blockedTooLong: "Post bitta xabar uchun juda uzun, shuning uchun uni tasdiqlab boʻlmaydi. Avval “Tahrirlash” bilan qisqartiring.",
     blockedUnsafe: "Postda kalitga yoki e-pochta manziliga oʻxshagan matn bor, yuboruvchi uni rad etadi, shuning uchun tasdiqlab boʻlmaydi. Avval “Tahrirlash” bilan oʻzgartiring.",
     blockedOther: "Yuboruvchi bu postni rad etgan boʻlardi ({code}), shuning uchun uni tasdiqlab boʻlmaydi. Avval “Tahrirlash” bilan oʻzgartiring.",

@@ -35,10 +35,13 @@ export function ProvidersBoard({
   groups,
   configured,
   githubConfigured,
+  githubHint = null,
 }: {
   groups: { category: ProviderCategory; items: ProviderDef[] }[];
   configured: string[];
   githubConfigured: boolean;
+  /** The operator's sentence naming the forwarding variables (lib/server/config-hints.ts), or null for the dictionary's. */
+  githubHint?: string | null;
 }) {
   const { t } = useI18n();
   const [set, setSet] = useState<Set<string>>(() => new Set(configured));
@@ -76,7 +79,7 @@ export function ProvidersBoard({
 
       {!githubConfigured && (
         <p className="g2-warn border-l-2 border-[var(--color-warn)] pl-3" role="status">
-          {t.providers.githubNotConfigured}
+          {githubHint ?? t.providers.githubNotConfigured}
         </p>
       )}
 

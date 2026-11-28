@@ -22,6 +22,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { isOperator, isPlatformAdmin, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { fetchTokenStatuses } from "@/lib/server/channel-tokens";
 import { channelTokenSecret } from "@/lib/server/github-secrets";
+import { configHints } from "@/lib/server/config-hints";
 import { YOUTUBE_OAUTH_SCOPES, isGoogleOAuthConfigured } from "@/lib/server/google-oauth";
 import { latestLiveVerdicts, operatorYoutubeState, parseVaultResult } from "@/lib/channel-tokens";
 import { fetchSocialAccounts } from "@/lib/server/social-accounts";
@@ -51,7 +52,7 @@ export default async function ChannelsPage({
   searchParams: Promise<{ yt?: string; social?: string; platform?: string }>;
 }) {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const sp = await searchParams;
   const ytResult = parseVaultResult(sp.yt);
   const socialWord = parseSocialResult(sp.social);
@@ -85,6 +86,9 @@ export default async function ChannelsPage({
 
   const stats = channelStats(channels, videos, snapshots);
   const operator = await isOperator();
+  // The Google OAuth variables' names, for the operator only (server-only copy; the shared dictionary says it in plain words).
+  const channelHints = operator ? configHints(locale)?.channels : null;
+  const tokenSetupHints = channelHints ? { needsClient: channelHints.needsClient, oauthNotConfigured: channelHints.oauthNotConfigured } : null;
 
   // A customer organization connects its own channels here (migration 0022); the
   // operator connects his own the same way (migration 0115) — Connect / Reconnect
@@ -223,6 +227,7 @@ export default async function ChannelsPage({
                         role,
                         oauthConfigured: isGoogleOAuthConfigured,
                         requiredScopes: YOUTUBE_OAUTH_SCOPES,
+                        setupHints: tokenSetupHints,
                         ...(operatorOrg
                           ? {
                               operator: true,
