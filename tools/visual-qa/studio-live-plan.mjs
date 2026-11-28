@@ -183,10 +183,11 @@ async function flow() {
   page.on("pageerror", (e) => errors.push(String(e.message).slice(0, 200)));
   const state = { brief: null, sessionReads: 0, handoffs: 0, allowStart: false };
   await stubBrain(page, state);
-  // Every new document after the first load is a reload (the measured "before": location.assign to ?view=live).
+  // Every main-frame document request after the first load is a reload (the measured "before": location.assign to ?view=live).
+  // Not framenavigated: Chromium also fires it for a same-document history.replaceState, which is not a reload.
   const docs = [];
-  page.on("framenavigated", (f) => {
-    if (f === page.mainFrame()) docs.push({ t: Date.now() - T0.v, url: f.url() });
+  page.on("request", (q) => {
+    if (q.isNavigationRequest() && q.frame() === page.mainFrame()) docs.push({ t: Date.now() - T0.v, url: q.url() });
   });
 
   const T0 = { v: Date.now() };
