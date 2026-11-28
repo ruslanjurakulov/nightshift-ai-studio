@@ -251,6 +251,13 @@ export const PARAM_KEYS = [
   "image_size",
 ] as const;
 
+/**
+ * The tools whose every model takes no words, though the database still lets a prompt key through for them: picture upscale's
+ * one model, Ideogram's Topaz Standard V2, whose adapter refuses words rather than drop them. The Studio's box offers none for
+ * these (lib/creative/studio promptRule) and the quote and create routes refuse them (lib/creative/route-around wordsNotTaken).
+ */
+export const WORDLESS_CAPABILITIES: readonly string[] = ["upscale"];
+
 /** Codes the routes answer with. Each has a sentence in lib/i18n `creative.errors`. */
 export const CREATIVE_ERRORS = [
   "unauthorized",
@@ -295,6 +302,9 @@ export const CREATIVE_ERRORS = [
   // The model needs words for this tool (registry inputs.prompt_required) and none were sent: refused at the quote and the
   // create, before anything is held, instead of failing at the adapter after the press.
   "prompt_required",
+  // The tool takes no words (picture upscale: lib/creative/route-around WORDLESS_CAPABILITIES) and some were sent: refused at the
+  // quote and the create, before anything is held, instead of failing at the adapter after the press.
+  "prompt_not_taken",
   // 0218: refused at the quote, before anything is held. A prompt longer than the model's own limit (counted the way the worker
   // counts: an emoji is two), a negative prompt on a model whose adapter would drop it, and a seed (no model receives one yet).
   "prompt_too_long",

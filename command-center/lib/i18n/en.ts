@@ -3858,6 +3858,7 @@ export const en = {
       model_temporarily_off: "This model is temporarily unavailable. Nothing was charged. Choose another model, or try again later.",
       country_blocked: "This model is not available in your region. Nothing was charged. Choose another model from the list.",
       country_unverified: "This model can only be used in supported regions, and we could not confirm yours. Nothing was charged. Turn off any VPN or proxy and reload the page, or choose another model.",
+      prompt_not_taken: "Picture upscale takes no words: clear the prompt, then the price is shown. Nothing was charged.",
       prompt_required: "This model needs words for this: describe the motion or the shot, then the price is shown. Nothing was charged.",
       prompt_too_long: "The prompt is longer than this model takes (an emoji counts as two characters). Shorten it. Nothing was charged.",
       negative_prompt_not_supported: "This model does not take a negative prompt. Remove it, or choose a model that takes one. Nothing was charged.",
