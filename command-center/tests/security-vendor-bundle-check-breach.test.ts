@@ -22,9 +22,8 @@ import { afterEach, describe, expect, it } from "vitest";
 const CC = process.cwd();
 const SCRIPT = path.join(CC, "scripts", "vendor-bundle-check.mjs");
 // The signed-in screens' sources too (lib/providers.ts, lib/imageProviders.ts, …): the script reads its patterns from them.
-const { SIGNED_IN_SOURCES, PLAIN_SOURCES, BANNED_LIST_MIN, MAP_PAIRS_MIN } = (await import("../scripts/vendor-bundle-check.mjs")) as {
+const { SIGNED_IN_SOURCES, BANNED_LIST_MIN, MAP_PAIRS_MIN } = (await import("../scripts/vendor-bundle-check.mjs")) as {
   SIGNED_IN_SOURCES: string[];
-  PLAIN_SOURCES: string[];
   BANNED_LIST_MIN: number;
   MAP_PAIRS_MIN: number;
 };
@@ -34,7 +33,6 @@ const SOURCES = [
   "lib/server/provider-names.ts",
   "lib/server/ledger-units.ts",
   ...SIGNED_IN_SOURCES,
-  ...PLAIN_SOURCES,
 ];
 const roots: string[] = [];
 
@@ -232,6 +230,8 @@ describe("breach #956 / PR 3: forms vendor-bundle-check now catches (each must e
     ["a model id as a template literal over an interned piece", "static/chunks/203-tpl-var.js", () => `var s=${q(half(M0)[1])};x=[\`${half(M0)[0]}\${s}\`,${q(M1)}]`],
     ["the model order as one string, split at run time", "static/chunks/203-split.js", () => `o=${q(LONG.models.join(","))}.split(",")`],
     ["the model order as one space-separated string", "static/chunks/203-split-sp.js", () => `o=${q(LONG.models.join(" "))}.split(" ")`],
+    // Lens L3: the same pieces inside a grouping paren.
+    ["model ids joined inside a grouping paren", "static/chunks/203-paren.js", () => `x=[(${half(M0).map(q).join("+")}),${q(M1)}]`],
     ["a prompt cut into 12-character + pieces", "static/chunks/204-prompt.js", () => `p=${pieces(PART, 12).map(q).join("+")}`],
     ["a prompt cut into pieces and joined", "static/chunks/204-prompt-join.js", () => `p=${JSON.stringify(pieces(PART, 10))}.join("")`],
     [
@@ -281,7 +281,12 @@ describe("PR 3 negative controls: legitimate code that looks like those forms st
     // The dictionary's generic sentence that replaced the variable's name.
     ["the generic 'not priced yet' copy", () => 'advSpendOvUnpriced:"Some costs are quantities only: their price per unit is not set yet, so those dollar figures read as unknown, not zero."'],
     // The YouTube secrets the wizard still names for every viewer (#958) are not the per-channel prefix.
-    ["a CHRONOS_ word that is not one of the prefixes", () => 's="CHRONOS_YT";t="MY_CHRONOS_PRICE"'],
+    ["a CHRONOS_ word that is not one of the prefixes", () => 's="CHRONOS_YT";t="MY_CHRONOS_PRICE_X"'],
+    // Lens M1: a parameter that shadows a module-level name holds the caller's value, not the module's literal.
+    ["a function parameter shadowing an interned id", () => `let n=${q(M0)};x.map(function(n,r){return[n,r]});let r=${q(M1)};`],
+    ["an arrow parameter shadowing an interned id", () => `let n=${q(M0)};x.map((n,r)=>[n,r]);let r=${q(M1)};`],
+    ["catch and for-of variables shadowing interned ids", () => `let e=${q(M0)},t=${q(M1)};try{f()}catch(e){g([e,t])}for(const t of y)h([e,t])`],
+    ["a destructured name shadowing an interned id", () => `var a=${q(M0)},b=${q(M1)};function f(){const[a,b]=g();return[a,b]}`],
   ];
 
   it.each(cases)("%s", (_label, text) => {
@@ -299,5 +304,40 @@ describe("PR 3 negative controls: legitimate code that looks like those forms st
     expect(BANNED.every((n) => /^[a-z][a-z .-]*$/.test(n))).toBe(true);
     expect(PART.length).toBeGreaterThan(40);
     expect(MAP_PAIRS_MIN).toBeGreaterThan(1);
+  });
+});
+
+// SW3-1: what the compiler actually writes. next's own SWC, at this build's browser target, turns a template literal into
+// .concat(); each source below is compiled here, so the guard is tested against the compiler's output, not a guess at it.
+const { transform } = (await import("next/dist/build/swc")) as unknown as {
+  transform: (src: string, opts: Record<string, unknown>) => Promise<{ code: string }>;
+};
+const swc = async (src: string) =>
+  (await transform(src, { jsc: { target: "es5", parser: { syntax: "ecmascript" }, minify: { compress: true, mangle: true } }, minify: true, module: { type: "es6" } }))
+    .code;
+const bt = (s: string) => "`" + s + "`";
+
+describe("SW3-1: sources compiled by next's SWC (each must exit 1)", () => {
+  const [slug, name] = PROVIDERS.find(([k, v]) => v.toLowerCase().replace(/[^a-z0-9]/g, "") !== k)!;
+  const cases: [string, string][] = [
+    ["the per-unit cost prefix from a template", `const KIND="PRICE"; export const priceEnvVar=(u)=>${bt("CHRONOS_${KIND}_${u.toUpperCase()}")};`],
+    ["the token secret prefix from a template", `const P="YT_TOKEN"; export const s=(e)=>${bt("CHRONOS_${P}_${e}")};`],
+    ["an effect's order with an id from a template", `const MAKER=${q(half(M0)[0])}; export const ORDER=[${bt("${MAKER}" + half(M0)[1])},${q(M1)}];`],
+    ["a provider pair whose name comes from a template", `const A=${q(half(name)[0])}; export const M={${slug}:${bt("${A}" + half(name)[1])}};`],
+  ];
+  it.each(cases)("catches %s", async (_label, src) => {
+    const code = await swc(src);
+    expect(code).toContain(".concat(");
+    const root = fakeBuild();
+    put(root, "static/chunks/500-swc.js", code);
+    const r = run(root);
+    expect(r.out).not.toContain("clean");
+    expect(r.code).toBe(1);
+  });
+
+  it("and an ordinary compiled template stays clean (exit 0)", async () => {
+    const root = fakeBuild();
+    put(root, "static/chunks/500-swc.js", await swc(`export const c=(s,n)=>[${bt("btn-${s}")},${bt("/api/videos/${n}")}];`));
+    expect(run(root).code).toBe(0);
   });
 });

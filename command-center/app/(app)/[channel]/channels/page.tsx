@@ -19,7 +19,7 @@ import type {
 } from "@/lib/types";
 import { uploadedOnly } from "@/lib/heldVideos";
 import { getOrgContext } from "@/lib/orgs-server";
-import { isPlatformAdmin, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
+import { isOperator, isPlatformAdmin, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { fetchTokenStatuses } from "@/lib/server/channel-tokens";
 import { channelTokenSecret } from "@/lib/server/github-secrets";
 import { YOUTUBE_OAUTH_SCOPES, isGoogleOAuthConfigured } from "@/lib/server/google-oauth";
@@ -84,6 +84,7 @@ export default async function ChannelsPage({
   }
 
   const stats = channelStats(channels, videos, snapshots);
+  const operator = await isOperator();
 
   // A customer organization connects its own channels here (migration 0022); the
   // operator connects his own the same way (migration 0115) — Connect / Reconnect
@@ -212,8 +213,8 @@ export default async function ChannelsPage({
                 canControl={atLeast(orgRole, "admin")}
                 canEdit={canEditDna}
                 canLowerAiLabel={canLowerAiLabel}
-                // The operator's GitHub-secret path, only where the card draws it (no vault panel): named here, on the server.
-                tokenSecret={tokens && role ? undefined : channelTokenSecret(channel.credential_ref?.ref || channel.channel_id)}
+                // The operator's GitHub-secret path, for the operator only and only where the card draws it (no vault panel).
+                tokenSecret={operator && !(tokens && role) ? channelTokenSecret(channel.credential_ref?.ref || channel.channel_id) : undefined}
                 vault={
                   tokens && role
                     ? {

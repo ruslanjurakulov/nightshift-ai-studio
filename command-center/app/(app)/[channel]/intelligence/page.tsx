@@ -22,7 +22,7 @@ export default async function AdvisoryIntelligencePage() {
   const { t, locale } = await getDictionary();
   const scope = await getChannelScope();
   // Named to the operator only, from the server: the shared dictionary ships to every signed-in page.
-  const unpricedHint = (await isOperator()) ? (priceConfigHints(locale)?.spendOverview ?? null) : null;
+  const operatorHints = (await isOperator()) ? priceConfigHints(locale) : null;
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
@@ -47,7 +47,11 @@ export default async function AdvisoryIntelligencePage() {
           <ErrorState />
         </Panel>
       ) : (
-        <AdvisoryPanel initial={events} scope={scope} unpricedHint={unpricedHint} />
+        <AdvisoryPanel
+          initial={events}
+          scope={scope}
+          operatorHints={operatorHints ? { spendOverview: operatorHints.spendOverview, sponsor: operatorHints.sponsor } : null}
+        />
       )}
     </div>
   );

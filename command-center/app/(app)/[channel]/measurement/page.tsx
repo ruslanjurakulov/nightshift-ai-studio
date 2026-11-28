@@ -34,7 +34,7 @@ import type {
 import { uploadedOnly } from "@/lib/heldVideos";
 import { isOperator } from "@/lib/auth/org-roles";
 import { priceConfigHints } from "@/lib/server/price-config-hints";
-import { priceEnvVar } from "@/lib/unitEconomics";
+import { priceEnvVar } from "@/lib/server/price-env";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;

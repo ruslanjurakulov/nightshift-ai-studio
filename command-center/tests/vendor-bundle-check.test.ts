@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it } from "vitest";
 const CC = process.cwd();
 const SCRIPT = path.join(CC, "scripts", "vendor-bundle-check.mjs");
 // The signed-in screens' sources too (lib/providers.ts, lib/imageProviders.ts, …): the script reads its patterns from them.
-const { SIGNED_IN_SOURCES, PLAIN_SOURCES } = (await import("../scripts/vendor-bundle-check.mjs")) as { SIGNED_IN_SOURCES: string[]; PLAIN_SOURCES: string[] };
+const { SIGNED_IN_SOURCES } = (await import("../scripts/vendor-bundle-check.mjs")) as { SIGNED_IN_SOURCES: string[] };
 const SOURCES = ["lib/effects/effects.json", "lib/effects/catalog.ts", "lib/server/provider-names.ts", "lib/server/ledger-units.ts", ...SIGNED_IN_SOURCES];
 const roots: string[] = [];
 
@@ -21,8 +21,7 @@ const effects = JSON.parse(readFileSync(path.join(CC, "lib/effects/effects.json"
 function fakeBuild(over: Record<string, string> = {}): string {
   const root = mkdtempSync(path.join(tmpdir(), "vendor-check-"));
   roots.push(root);
-  // PLAIN_SOURCES too (read for a prefix, not server-only, so not in the server-only cases below).
-  for (const rel of [...SOURCES, ...PLAIN_SOURCES]) {
+  for (const rel of SOURCES) {
     mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
     if (rel in over) writeFileSync(path.join(root, rel), over[rel]);
     else copyFileSync(path.join(CC, rel), path.join(root, rel));

@@ -25,30 +25,39 @@
  *     model -> languages table (lib/ttsLanguages.ts) and the model each Studio example was written for
  *     (lib/server/creative-examples.ts);
  *   - the marketing board's banned provider names (lib/marketing-banned.ts BANNED_PROVIDER_NAMES): the list IS the vendors' names.
- *     Flagged as BANNED_LIST_MIN of them side by side as array elements; the New post form gets the list as a prop;
- *   - our configuration's naming: the per-unit cost variables' prefix CHRONOS_PRICE_ (lib/unitEconomics.ts), which the shared
- *     dictionary carried in three sentences, and the per-channel token secret's prefix CHRONOS_YT_TOKEN_
- *     (lib/server/github-secrets.ts), which the Channels screens built names with. Flagged in any form.
+ *     Flagged as BANNED_LIST_MIN of them side by side as array elements or in one literal; the New post form gets the list as a prop;
+ *   - our configuration's naming: the per-unit cost variables' prefix CHRONOS_PRICE_ and the sponsor CPM variable
+ *     (lib/server/price-env.ts), which the shared dictionary carried in four sentences, and the token secret's prefix
+ *     CHRONOS_YT_TOKEN_ (lib/server/github-secrets.ts), which the Channels screens built names with. Flagged in any form.
  *
- * In what shapes (PR 3 of the sweep added the last four; tests/security-vendor-bundle-check-breach.test.ts holds a failing case
- * and a legitimate look-alike for each):
+ * In what shapes (PR 3 of the sweep added all but the first; tests/security-vendor-bundle-check-breach.test.ts and
+ * tests/security-vendor-sweep3-breach.test.ts hold a failing case and a legitimate look-alike for each):
  *
  *   - as written: adjacent quoted array elements, key:"value" pairs, a value inside longer copy;
- *   - the provider map as [slug, name] entries (new Map([...]), Object.entries serialized) and as objects holding the slug and
- *     the name as two values under any keys ({slug,name}, {name,id});
- *   - an effect's model order as ONE string a split() turns back into the list ("a,b", "a b", "a|b");
+ *   - the provider map as [slug, name] entries (new Map([...]), Object.entries serialized), as objects holding the slug and
+ *     the name as two values under any keys ({slug,name}, {name,id}), reversed ({"Black Forest Labs":"bfl"}) and as a switch
+ *     (case"bfl":return"Black Forest Labs");
+ *   - an effect's model order as ONE string a split() turns back into the list ("a,b", "a b", "a|b"), or in copy with an
+ *     arrow between two choices ("a → b", "a -> b", "a > b");
+ *   - the banned names inside one string or regex literal, separated by | or , (a precompiled matcher, a split string);
  *   - split, interned or concatenated strings, through reassemble(): a `+` chain of pieces, an array of pieces joined, a
  *     template literal whose every ${…} is a piece, and an array literal of pieces, where a piece is a string literal or an
- *     identifier assigned exactly once in its file to one (var v0="runway-gen4.5",v1="minimax-h3";x=[v0,v1]).
+ *     identifier declared exactly once in its file, by assigning it one (var v0="runway-gen4.5",v1="minimax-h3";x=[v0,v1]);
+ *     and the compiler's own form of a template literal, a .concat() chain, and the literal prefix of a .concat() or a
+ *     .join() whose later pieces are known only at run time.
  *
  * What is NOT caught, and cannot be by reading text (a pass is not a proof for these):
  *
  *   - a value that exists only at run time: fetched, decoded (atob, a char-code array, a reversed or shifted string), indexed
  *     out of a larger table (s.slice(3,9)), or computed by any function call other than join();
- *   - an identifier assigned more than once in its file (a minifier reuses e, t, n across scopes): which value a use holds is a
- *     scope question, so it is not resolved, and an interned id held in such a name reads as nothing;
+ *   - an identifier declared more than once in its file (a minifier reuses e, t, n across scopes, as variables and as
+ *     parameters): which value a use holds is a scope question, so it is not resolved, and an interned id held in such a
+ *     name reads as nothing;
  *   - a template literal or `+` chain with any piece that is not a literal or a once-bound identifier (a parameter, a property
  *     read): only its literal runs are joined, and a prompt whose every literal run is shorter than PROMPT_WINDOW is missed;
+ *   - an effect's order in shapes with no two choices side by side: a fallback map ({"a":"b","b":"c"}), Map entries with a rank
+ *     ([["a",0],["b",1]]), objects ([{id:"a"},{id:"b"}]). Each is a pattern over arbitrary keys and values that ordinary
+ *     picker code also writes, so a pattern for it would fail legitimate builds;
  *   - one or two provider pairs that are just a name written properly (openai:"OpenAI"; MAP_PAIRS_MIN), fewer than
  *     BANNED_LIST_MIN banned names together, one model id alone (a Studio model id is shown by design);
  *   - pages rendered per request (see below): their RSC payloads are not files in the build.
@@ -96,9 +105,9 @@ export const SIGNED_IN_SOURCES = [
   "lib/server/github-variables.ts",
   // The marketing board's banned provider names: the list is the vendor identities themselves (PR 3 of the sweep).
   "lib/marketing-banned.ts",
+  // Our pricing configuration's names (CHRONOS_PRICE_, CHRONOS_SPONSORSHIP_CPM_USD).
+  "lib/server/price-env.ts",
 ];
-/** Sources read for a value that is not itself secret enough to be server-only (a prefix the server code builds names from). */
-export const PLAIN_SOURCES = ["lib/unitEconomics.ts"];
 /** How many banned provider names side by side as array elements make it the list: three could be a model picker's makers. */
 export const BANNED_LIST_MIN = 4;
 /** How many of the Create form's video options (id and label side by side) in one file make it the list. */
@@ -236,12 +245,16 @@ function readSignedIn() {
   const bannedNames = bannedBlock ? [...bannedBlock[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]) : [];
   if (bannedNames.length < 20) fail2(`read only ${bannedNames.length} BANNED_PROVIDER_NAMES from lib/marketing-banned.ts — its shape changed.`);
 
-  // Our configuration's naming, which the browser never needs: the per-unit cost variables' prefix (lib/unitEconomics.ts) and
+  // Our configuration's naming, which the browser never needs: the per-unit cost variables' prefix (lib/server/price-env.ts) and
   // the per-channel token secret's (lib/server/github-secrets.ts). Each was a literal in a chunk every signed-in page loads.
-  const priceSrc = readFileSync(path.join(ROOT, "lib", "unitEconomics.ts"), "utf8");
-  const pricePrefix = priceSrc.match(/const PRICE_ENV_PREFIX\s*=\s*"(CHRONOS_[A-Z0-9_]+_)"/)?.[1];
+  // Every CHRONOS_* constant of lib/server/price-env.ts (the per-unit cost prefix, the sponsor CPM variable, and whatever is
+  // added there), and the token secret's prefix.
+  const priceSrc = src("lib/server/price-env.ts");
+  const priceNames = [...priceSrc.matchAll(/export const [A-Z0-9_]+\s*=\s*"(CHRONOS_[A-Z0-9_]+)"/g)].map((m) => m[1]);
   const tokenPrefix = ghSecretsSrc.match(/export const CHANNEL_TOKEN_SECRET_PREFIX\s*=\s*"(CHRONOS_[A-Z0-9_]+_)"/)?.[1];
-  if (!pricePrefix || !tokenPrefix) fail2("PRICE_ENV_PREFIX (lib/unitEconomics.ts) or CHANNEL_TOKEN_SECRET_PREFIX (lib/server/github-secrets.ts) is no longer a CHRONOS_*_ literal — their shape changed.");
+  if (priceNames.length < 2 || !priceNames.includes("CHRONOS_PRICE_") || !tokenPrefix) {
+    fail2("lib/server/price-env.ts no longer exports CHRONOS_PRICE_ and the sponsor variable, or CHANNEL_TOKEN_SECRET_PREFIX (lib/server/github-secrets.ts) is no longer a CHRONOS_*_ literal — their shape changed.");
+  }
 
   const exBlock = examplesSrc.match(/EXAMPLE_MODELS[^=]*=\s*\{([\s\S]*?)\};/);
   const exampleModels = exBlock ? [...exBlock[1].matchAll(/^\s*([a-z0-9_]+):\s*"([^"]+)",?\s*$/gm)].map((m) => ({ id: m[1], model: m[2] })) : [];
@@ -261,7 +274,7 @@ function readSignedIn() {
     ttsModels,
     exampleModels,
     bannedNames,
-    configPrefixes: [pricePrefix, tokenPrefix],
+    configPrefixes: [...priceNames, tokenPrefix],
   };
 }
 
@@ -291,11 +304,12 @@ export function patterns(source) {
     }
     for (let i = 0; i + 1 < e.models.length; i++) {
       const [a, b] = [e.models[i], e.models[i + 1]];
-      // As array elements, or inside ONE string a split(",") / split(" ") turns back into the list ("a,b", "a b").
+      // As array elements, or inside ONE string a split(",") / split(" ") turns back into the list ("a,b", "a b"), or in copy
+      // with an arrow between them ("a → b", "a -> b", "a > b").
       const bare = (m) => `(?<![\\w.-])${escape(m)}(?![\\w.-])`;
       single.push([
         `effect ${e.id} model order (${a} then ${b})`,
-        new RegExp(`${Q}${escape(a)}${Q}\\s*,\\s*${Q}${escape(b)}${Q}|${bare(a)}(?:\\s*[,|;]\\s*|\\s+)${bare(b)}`),
+        new RegExp(`${Q}${escape(a)}${Q}\\s*,\\s*${Q}${escape(b)}${Q}|${bare(a)}(?:\\s*(?:[,|;>]|->|→)\\s*|\\s+)${bare(b)}`),
       ]);
     }
     // The prompt, filled or not: a window from any part between its slots. A filled prompt keeps every part.
@@ -325,6 +339,10 @@ export function patterns(source) {
           `\\[\\s*${slug}\\s*,\\s*${name}\\s*\\]`,
           inObject(slug, name),
           inObject(name, slug),
+          // Reversed, a name -> slug lookup: {"Black Forest Labs":"bfl"}.
+          `${name}\\s*:\\s*${slug}`,
+          // A switch instead of a lookup object: case"bfl":return"Black Forest Labs".
+          `case\\s*${slug}\\s*:\\s*return\\s*${name}`,
         ].join("|"),
       ),
       // A pair whose name is not just its slug written properly (bfl -> Black Forest Labs) is the map's own: one is enough.
@@ -345,7 +363,9 @@ function signedInPatterns({ configPrefixes = [], bannedNames = [], createOptions
   const key = (k) => new RegExp(`(?<![\\w$])${Q}?${escape(k)}${Q}?\\s*:`);
   if (secretNames.length > 0) {
     out.push(["secretName: key", key("secretName")]);
-    out.push(["defaultModel: key", key("defaultModel")]);
+    // The key with a literal value that is not a Studio model id: a picker's own default is a Studio id, shown by design.
+    const studioAlt = studioIds.length > 0 ? `(?!${Q}(?:${studioIds.map(escape).join("|")})${Q})` : "";
+    out.push(["defaultModel: key", new RegExp(`(?<![\\w$])${Q}?defaultModel${Q}?\\s*:\\s*${studioAlt}${Q}`)]);
   }
   for (const n of secretNames) out.push([`secret name ${n}`, new RegExp(`(?<![A-Za-z0-9_])${escape(n)}(?![A-Za-z0-9_])`)]);
   // A prefix in any form: "CHRONOS_PRICE_<UNIT>" in copy, "CHRONOS_YT_TOKEN_"+ref in code.
@@ -376,6 +396,9 @@ function signedInPatterns({ configPrefixes = [], bannedNames = [], createOptions
   if (bannedNames.length >= BANNED_LIST_MIN) {
     const n = `${Q}(?:${bannedNames.map(escape).join("|")})${Q}`;
     out.push(["marketing banned provider name list", new RegExp(`${n}(?:\\s*,\\s*${n}){${BANNED_LIST_MIN - 1}}`, "i")]);
+    // The same list inside ONE string or regex literal, the names separated by | or , (a precompiled matcher, a split string).
+    const b = `(?:${bannedNames.map(escape).join("|")})`;
+    out.push(["marketing banned provider name list", new RegExp(`(?<![\\w-])${b}(?:\\s*[|,]\\s*${b}){${BANNED_LIST_MIN - 1}}(?![\\w-])`, "i")]);
   }
   // Three of the Create form's video ids as adjacent array elements, in any order: the option list without its names.
   if (createOptions.length >= 3) {
@@ -403,13 +426,27 @@ const PIECE = `(?:${STR}|${IDENT})`;
 const PIECE_RE = new RegExp(PIECE, "g");
 
 /**
- * Identifiers assigned exactly once in the text, and that once to a string literal (`v0="runway-gen4.5"` in `var v0=…,v1=…`):
- * what a minifier writes when it interns a repeated string. A name assigned twice (a minifier reuses `e`, `t` across scopes)
- * is not resolved: which value an occurrence holds is a scope question this script does not answer.
+ * Identifiers declared exactly once in the text, by an assignment of a string literal (`v0="runway-gen4.5"` in
+ * `var v0=…,v1=…`): what a minifier writes when it interns a repeated string. Every other way a name is declared counts too
+ * (a function or arrow parameter, catch(x), for(let x of …), a destructuring target, a `var x;` with no value), so a name
+ * declared twice is unknown: a minifier reuses `n`, `r` across scopes, and a parameter that shadows a module-level `n` must
+ * not be read as its literal (let n="…";x.map(function(n,r){return[n,r]})). Which value a use holds is a scope question this
+ * script does not answer.
  */
 export function stringBindings(text) {
   const count = new Map();
-  for (const m of text.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*=(?![=>])/g)) count.set(m[1], (count.get(m[1]) ?? 0) + 1);
+  const bump = (name) => count.set(name, (count.get(name) ?? 0) + 1);
+  const namesIn = (list) => {
+    for (const m of list.replace(new RegExp(STR, "g"), "").matchAll(/(?<![\w$.])[A-Za-z_$][\w$]*/g)) bump(m[0]);
+  };
+  for (const m of text.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*=(?![=>])/g)) bump(m[1]);
+  // Parameter lists (a function, an arrow, catch; an if(...){ is counted too, which only makes a name unknown sooner).
+  for (const m of text.matchAll(/\(([^()]*)\)\s*(?:=>|\{)/g)) namesIn(m[1]);
+  for (const m of text.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*=>/g)) bump(m[1]);
+  // Destructuring targets, declared or assigned: [e,t]=…, {a:b,c}=….
+  for (const m of text.matchAll(/([[{][^[\]{}]*[\]}])\s*=(?![=>])/g)) namesIn(m[1]);
+  // Declarations with no value at all (var a,b;) and a for-of / for-in variable.
+  for (const m of text.matchAll(/\b(?:var|let|const)\s+((?:[A-Za-z_$][\w$]*\s*,\s*)*[A-Za-z_$][\w$]*)(?=\s*(?:[;)\n]|$)|\s+(?:of|in)\b)/g)) namesIn(m[1]);
   const out = new Map();
   for (const m of text.matchAll(new RegExp(`(?<![\\w$.])([A-Za-z_$][\\w$]*)\\s*=\\s*(${STR})(?=\\s*(?:[,;)}\\]]|$))`, "gm"))) {
     if (count.get(m[1]) === 1) out.set(m[1], m[2].slice(1, -1));
@@ -436,13 +473,53 @@ function quoted(value) {
  *   - a template literal whose every ${…} is a literal or a once-bound identifier: `runway-${"gen4.5"}` -> "runway-gen4.5";
  *   - an array of such pieces joined: ["runway-","gen4.5"].join("") -> "runway-gen4.5";
  *   - a `+` chain, each run of such pieces in it: "runway-"+"gen4.5"+x -> "runway-gen4.5"+x;
- *   - in an array literal (not a destructuring target), each once-bound identifier: [v0,v1] -> ["runway-gen4.5","minimax-h3"].
+ *   - in an array literal (not a destructuring target), each once-bound identifier: [v0,v1] -> ["runway-gen4.5","minimax-h3"];
+ *   - a .concat() chain, which is how SWC writes a template literal for this build's browsers:
+ *     "".concat("runway","-gen4.5") -> "runway-gen4.5", "CHRONOS_".concat("PRICE","_").concat(n.toUpperCase()) ->
+ *     "CHRONOS_PRICE_".concat(n.toUpperCase()): the literal prefix up to the first argument that is not a piece;
+ *   - a join with run-time elements, its literal prefix: ["CHRONOS","PRICE",e].join("_") -> "CHRONOS_PRICE_"+[e].join("_");
+ *   - a grouping paren around one literal: [("runway-"+"gen4.5"),"minimax-h3"] -> ["runway-gen4.5","minimax-h3"].
  *
  * Anything that needs a value only known at run time (a parameter, a fetch, a computed index) is left as it is.
  */
+/** Top-level comma-separated parts of an argument or element list (strings and nested brackets kept whole). */
+function splitTop(list) {
+  const parts = [];
+  let depth = 0;
+  let quote = null;
+  let cur = "";
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i];
+    if (quote) {
+      cur += c;
+      if (c === "\\") cur += list[++i] ?? "";
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") quote = c;
+    else if ("([{".includes(c)) depth++;
+    else if (")]}".includes(c)) depth--;
+    if (c === "," && depth === 0) {
+      parts.push(cur.trim());
+      cur = "";
+    } else cur += c;
+  }
+  if (cur.trim() !== "") parts.push(cur.trim());
+  return parts;
+}
+
+/** The value of a part that is exactly one piece (a literal or a once-bound identifier), else null. */
+function partValue(part, bindings) {
+  return new RegExp(`^(?:${STR})$`).test(part) || /^[A-Za-z_$][\w$]*$/.test(part) ? pieceValue(part, bindings) : null;
+}
+
+// Nested brackets, two levels deep: enough for n.toUpperCase() or f(a(b)) as one argument.
+const NEST = String.raw`(?:[^()]|\((?:[^()]|\([^()]*\))*\))*`;
 export function reassemble(text, bindings = stringBindings(text)) {
   const templateWithSubs = /`(?:[^`\\$]|\\.|\$(?!\{))*(?:\$\{[^{}`]*\}(?:[^`\\$]|\\.|\$(?!\{))*)+`/g;
-  const joinRe = new RegExp(`\\[\\s*(${PIECE}(?:\\s*,\\s*${PIECE})*)\\s*,?\\s*\\]\\.join\\(\\s*(${STR})?\\s*\\)`, "g");
+  const joinRe = new RegExp(`\\[((?:[^[\\]()]|\\(${NEST}\\))*)\\]\\.join\\(\\s*(${STR})?\\s*\\)`, "g");
+  const concatRe = new RegExp(`(${PIECE})((?:\\.concat\\(${NEST}\\))+)`, "g");
+  const groupRe = new RegExp(`(?<![\\w$)\\]])\\(\\s*(${STR})\\s*\\)`, "g");
   const chainRe = new RegExp(`${PIECE}(?:\\s*\\+\\s*${PIECE})+`, "g");
   // One element too: a one-model effect's `models:[v0]`.
   const arrayRe = new RegExp(`\\[\\s*${PIECE}(?:\\s*,\\s*${PIECE})*\\s*\\](?!\\s*=(?!=))`, "g");
@@ -461,10 +538,34 @@ export function reassemble(text, bindings = stringBindings(text)) {
       return ok ? (quoted(value) ?? whole) : whole;
     });
     out = out.replace(joinRe, (whole, list, sep) => {
-      const values = pieces(list).map((p) => pieceValue(p, bindings));
-      if (values.some((v) => v === null)) return whole;
-      return quoted(values.join(sep === undefined ? "," : sep.slice(1, -1))) ?? whole;
+      const parts = splitTop(list);
+      const glue = sep === undefined ? "," : sep.slice(1, -1);
+      const values = parts.map((p) => partValue(p, bindings));
+      const lead = values.findIndex((v) => v === null);
+      if (lead === -1) return quoted(values.join(glue)) ?? whole;
+      if (lead === 0) return whole;
+      // Literals, then a run-time element: the prefix is known (["CHRONOS","PRICE",e].join("_") -> "CHRONOS_PRICE_"+…).
+      const prefix = quoted(values.slice(0, lead).join(glue) + glue);
+      return prefix === null ? whole : `${prefix}+[${parts.slice(lead).join(",")}].join(${sep ?? ""})`;
     });
+    out = out.replace(concatRe, (whole, head, tail) => {
+      const first = pieceValue(head, bindings);
+      if (first === null) return whole;
+      const args = [];
+      for (const m of tail.matchAll(new RegExp(`\\.concat\\((${NEST})\\)`, "g"))) args.push(...splitTop(m[1]));
+      let value = first;
+      let i = 0;
+      for (; i < args.length; i++) {
+        const v = partValue(args[i], bindings);
+        if (v === null) break;
+        value += v;
+      }
+      if (i === 0) return whole;
+      const lit = quoted(value);
+      if (lit === null) return whole;
+      return i === args.length ? lit : `${lit}.concat(${args.slice(i).join(",")})`;
+    });
+    out = out.replace(groupRe, "$1");
     out = out.replace(chainRe, (whole) => {
       const parts = pieces(whole);
       const runs = [];
@@ -623,8 +724,19 @@ function main() {
     [`L=${JSON.stringify(p.map((x) => ({ slug: x.slug, name: x.name })))}`, "provider display map", "the provider map as { slug, name } objects"],
     [`L=${JSON.stringify(p.map((x) => ({ name: x.name, id: x.slug })))}`, "provider display map", "the provider map as { name, id } objects"],
     [`B=${JSON.stringify(source.bannedNames)}`, "marketing banned provider name list", "the marketing board's banned provider names"],
+    [`R=/\\b(?:${source.bannedNames.join("|")})\\b/i`, "marketing banned provider name list", "the banned names as one regex"],
+    // What next's SWC emits for a template literal at this build's target (tests/security-vendor-bundle-check-breach.test.ts
+    // compiles real sources to the same shape): .concat() chains.
+    [`export var ORDER=["".concat(${cut(m0).map((x) => JSON.stringify(x)).join(",")}),${JSON.stringify(m1)}];`, `effect ${e0.id} model order`, "a model id from a compiled template"],
+    ['export var f=function(n){return"CHRONOS_".concat("PRICE","_").concat(n.toUpperCase())};', "configuration name CHRONOS_PRICE_", "the cost prefix from a compiled template"],
+    ['f=function(e){return["CHRONOS","PRICE",e.toUpperCase()].join("_")}', "configuration name CHRONOS_PRICE_", "the cost prefix joined with a run-time piece"],
+    [`t=${JSON.stringify(`Tries ${e0.models.join(" → ")}`)}`, `effect ${e0.id} model order`, "the model order in arrow copy"],
+    [`R=${JSON.stringify(Object.fromEntries(p.map((x) => [x.name, x.slug])))}`, "provider display map", "the provider map reversed"],
+    [`function n(e){switch(e){${p.map((x) => `case${JSON.stringify(x.slug)}:return ${JSON.stringify(x.name)};`).join("")}}}`, "provider display map", "the provider map as a switch"],
   ];
   for (const [text, label, what] of forms) if (!has(scan(text), label)) fail2(`self-test: ${what} is not caught.`);
+  // And the false positive SW3-6 found: a Studio picker's own default (a Studio model id) is not an image generator's.
+  if (has(scan(`P={defaultModel:${JSON.stringify(source.studioIds[0])}}`), "defaultModel: key")) fail2("self-test: a Studio model id under defaultModel: is flagged.");
   selfTestSignedIn(source, scan, has);
 
   if (!existsSync(STATIC)) fail2(".next/static not found — run `next build` first.");

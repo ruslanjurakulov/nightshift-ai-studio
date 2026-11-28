@@ -51,6 +51,7 @@ export default async function NewChannelPage({
     ? (await requireRole("admin")) !== null
     : atLeast(role, "admin");
   const canSocial = Boolean(org.supported && org.current) && atLeast(role, "editor");
+  const operator = await isOperator();
 
   return (
     <div className="rhythm ns-open mx-auto w-full max-w-3xl">
@@ -82,12 +83,13 @@ export default async function NewChannelPage({
           initialLanguage={prefill.language}
           // Secret names are server-only (lib/providers.ts): the vendor keys' names go to the platform operator alone, the only
           // one /api/setup/secrets lets write them (anyone else's wizard then draws no field for them).
-          keyNames={(await isOperator()) ? { gemini: secretNameOf("gemini"), pexels: secretNameOf("pexels"), eleven: secretNameOf("elevenlabs") } : null}
+          keyNames={operator ? { gemini: secretNameOf("gemini"), pexels: secretNameOf("pexels"), eleven: secretNameOf("elevenlabs") } : null}
           youtubeNames={{
             dataKey: YOUTUBE_SECRET_NAMES.dataKey,
             clientSecret: YOUTUBE_SECRET_NAMES.clientSecret,
             channelId: YOUTUBE_SECRET_NAMES.channelId,
-            tokenPrefix: CHANNEL_TOKEN_SECRET_PREFIX,
+            // The token secret's naming is the operator's: a customer connects YouTube on the Channels page (Vault).
+            tokenPrefix: operator ? CHANNEL_TOKEN_SECRET_PREFIX : null,
           }}
         />
       </details>
