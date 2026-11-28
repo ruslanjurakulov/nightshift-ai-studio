@@ -133,6 +133,32 @@ describe("details", () => {
     expect(within(fin).getByTestId("live-open-timeline").getAttribute("href")).toBe(`/alpha/studio?view=timeline&film=${FILM}`);
   });
 
+  it("the final video says what its file recorded about its sound, and unknown when it recorded nothing (rule 5)", async () => {
+    const done = [seg({ status: "settled", assembly_status: "completed", assembly_asset_id: MP4 })];
+    const sound = {
+      mix_format: 2, status: "mastered", clip_stem_shots: 1,
+      master_loudness: { mode: "dynamic", status: "dynamic (linear not possible)", measured: { I: -18.2, TP: -3, LRA: 14, thresh: -29 } },
+      scenes: [{ scene: 1, role: "muted", source: "chosen", clip_sound: ["muted"], sound_paid: [true], file_sound: [true] }],
+    };
+    for (const [master, state] of [[{ asset_id: MP4, sound }, "ready"], [{ asset_id: MP4, sound: null }, "unknown"], [null, "unknown"]] as const) {
+      cleanup();
+      answer = live({ film: film("ready"), segments: done, takes: [], master });
+      render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+      await screen.findByTestId("live-list");
+      fireEvent.click(node("final"));
+      const box = screen.getByTestId("live-final-sound");
+      expect(box.getAttribute("data-state")).toBe(state);
+      if (state === "ready") {
+        expect(within(box).getByTestId("live-final-loudness").textContent).toBe(c.sound.dynamic);
+        expect(box.textContent).toContain("Measured before: -18.2 LUFS, true peak -3 dBTP, range 14 LU.");
+        expect(within(box).getByTestId("live-final-paid").textContent).toBe("Shots whose sound was already paid for and is not used in this video: 1.");
+      } else {
+        expect(box.textContent).toContain(c.sound.unknown);
+        expect(box.textContent).not.toContain(c.sound.linear);
+      }
+    }
+  });
+
   it("a done picture shows in the details (an image has a thumbnail and no play link); Escape closes and focus returns to the step", async () => {
     const PIC = "a1000000-0000-4000-8000-0000000000a1";
     answer = (url) =>

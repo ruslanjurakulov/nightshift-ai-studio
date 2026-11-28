@@ -5,6 +5,7 @@
  * here ever starts, retries or prices anything (rule 3): the view only reads.
  */
 import { chosenClip, chosenKeyframe, chosenShots, coerceTimelineFilm, narrationTake, type TakeMedia, type TimelineFilm } from "@/lib/studio/timeline";
+import { coerceMasterSound, type MasterSound } from "@/lib/studio/masterSound";
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
 const num = (v: unknown): number | null => {
@@ -51,6 +52,8 @@ export interface LiveNode {
   error?: string | null;
   /** upload: the privacy the uploader recorded (video.published metadata), or null when it was not recorded. */
   privacy?: string | null;
+  /** final: what the finished file records about its sound (lib/studio/masterSound.ts); unknown when not recorded. */
+  sound?: MasterSound;
   /** Draft nodes: the price the backend already gave for this step, or null (no number is guessed). */
   price?: number | null;
   /** Draft reference nodes: the generated reference picture, once there is one. */
@@ -122,6 +125,8 @@ export interface FilmReading {
   errors: TakeErrors;
   /** films.pause_reason: where the worker records why a segment's assembly failed (S6's contract). */
   pauseReason?: string | null;
+  /** The newest master's sound record (the live route's `master`), for the final node. Undefined or null: unknown. */
+  master?: { assetId: string; sound: MasterSound } | null;
   /** film_json's events (0166 film_events, the newest 50) as raw rows: filmGraph numbers their scenes. */
   rawEvents?: { rows: Record<string, unknown>[]; total: number | null } | null;
 }
@@ -232,6 +237,11 @@ export function coerceFilmLive(raw: unknown): FilmReading | null {
     money,
     errors,
     pauseReason: filmRow ? str(filmRow.pause_reason) : null,
+    master: (() => {
+      const m = rec(r.master);
+      const assetId = m ? str(m.asset_id) : null;
+      return m && assetId ? { assetId, sound: coerceMasterSound(m.sound) } : null;
+    })(),
     rawEvents: rows ? { rows, total } : null,
   };
 }
@@ -435,7 +445,12 @@ export function filmGraph(r: FilmReading): LiveGraph {
   // The final video is the assembly's file: there only when the segment recorded one.
   const finalAsset = seg?.assemblyAssetId ?? null;
   const final: LiveStatus = r.segments === null ? "unknown" : finalAsset ? "done" : asm === "failed" || asm === "stopped" ? "stopped" : asm === "done" ? "unknown" : "waiting";
-  nodes.push({ id: "final", kind: "final", status: final, assetId: finalAsset, col: 6, row: mid });
+  const sound: MasterSound | undefined = finalAsset
+    ? r.master && r.master.assetId === finalAsset
+      ? r.master.sound
+      : { state: "unknown" }
+    : undefined;
+  nodes.push({ id: "final", kind: "final", status: final, assetId: finalAsset, ...(sound ? { sound } : {}), col: 6, row: mid });
   edges.push({ from: "assembly", to: "final" });
 
   const settled = ["ready", "failed", "cancelled", "archived"].includes(fs) && nodes.every((n) => TERMINAL.has(n.status) || n.status === "unknown");

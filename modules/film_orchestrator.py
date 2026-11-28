@@ -349,7 +349,12 @@ def without_unused_sound(request: cw.GenerationRequest, adapter: Any,
     where the adapter has a switch for it (LTX, Grok Imagine, Vidu, Seedance 2.x send ``generate_audio``/``audio``;
     Gemini Omni and MiniMax H3 have none, and get nothing). It is never a price: these models' one price does not
     depend on it (schemas/model_registry.json), and a model priced by its sound (kling-v3, seedance-1.5-pro) already
-    carries the sound the quote priced in ``params.audio``, which is never touched here."""
+    carries the sound the quote priced in ``params.audio``, which is never touched here.
+
+    Today no scene is ``dialogue``: ``film_scenes`` has no ``sound_role`` column and ``FilmRest.scenes`` does not select one, so every
+    such clip is asked for no sound. The column, when it comes (in-clip dialogue, the next pull request), must be selected there
+    too, or a dialogue scene's clip would be made without its lines (tests/test_film_clip_sound.py RolesAreDefaultsToday and the
+    lab's test_a_scene_sound_role_column_never_lands_without_the_worker_reading_it fail first)."""
     if request.capability not in ("t2v", "i2v") or "audio" in request.params:
         return request
     if (scene or {}).get("sound_role") == "dialogue":

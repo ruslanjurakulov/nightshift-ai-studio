@@ -17,6 +17,7 @@ import { ActivityPanel } from "./ActivityPanel";
 import { utc } from "@/lib/studio/utc";
 import { briefGraph, type Brief, type LiveGraph, type LiveNode, type LiveNodeKind, type LiveStatus, type RunVideoRef, type Activity, type ActivityItem } from "@/lib/studio/liveGraph";
 import { useLiveGraph, type LiveTarget } from "./useLiveGraph";
+import type { MasterSound } from "@/lib/studio/masterSound";
 import "@/components/studio-canvas/studio-canvas.css";
 import "./studio-live.css";
 
@@ -307,6 +308,36 @@ function Output({ node }: { node: LiveNode }) {
   return <video className="lv-media" src={src} poster={m.thumb ?? undefined} controls preload="metadata" playsInline />;
 }
 
+/**
+ * The finished video's sound, as its file records it (S2): how the loudness was set and what it measured, and the shots whose sound
+ * was paid for or left out. A file without the record reads "unknown", never as if all were well (rule 5).
+ */
+function FinalSound({ sound }: { sound: MasterSound }) {
+  const { t, locale } = useI18n();
+  const c = t.studioLive.sound;
+  const n = (v: number | null) =>
+    v === null ? c.notRecorded : v.toLocaleString(locale === "uz" ? "uz-Latn-UZ" : locale, { maximumFractionDigits: 1 });
+  return (
+    <div className="lv-final-sound" data-testid="live-final-sound" data-state={sound.state}>
+      <h3>{c.title}</h3>
+      {sound.state === "unknown" ? <p className="lv-muted">{c.unknown}</p> : null}
+      {sound.state === "none" ? <p className="lv-muted">{c.none}</p> : null}
+      {sound.state === "ready" ? (
+        <>
+          <p data-testid="live-final-loudness" data-mode={sound.mode}>
+            {sound.mode === "linear" ? c.linear : sound.mode === "dynamic" ? c.dynamic : sound.mode === "silent" ? c.silent : c.modeUnknown}
+          </p>
+          {sound.mode !== "silent" ? (
+            <p className="lv-muted">{fmt(c.measured, { i: n(sound.measured.i), tp: n(sound.measured.tp), lra: n(sound.measured.lra) })}</p>
+          ) : null}
+          {sound.paidUnused > 0 ? <p data-testid="live-final-paid">{fmt(c.paidUnused, { n: sound.paidUnused })}</p> : null}
+          {sound.defaultUnused > 0 ? <p className="lv-muted">{fmt(c.defaultUnused, { n: sound.defaultUnused })}</p> : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function Details({
   node,
   run,
@@ -382,6 +413,7 @@ function Details({
       {node.kind === "final" && node.assetId ? (
         <div className="lv-final" data-testid="live-final">
           <AssetDownloads assetId={node.assetId} preview="ready" />
+          <FinalSound sound={node.sound ?? { state: "unknown" }} />
           {filmId ? (
             <Link className="cv-kbtn" href={path(`/studio?view=timeline&film=${filmId}`)} data-testid="live-open-timeline">
               {c.openTimeline}

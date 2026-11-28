@@ -51,5 +51,20 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     }
   }
 
-  return NextResponse.json({ film: read.raw, segments, takes }, { headers: NO_STORE });
+  // The finished file's own record of its sound (S2: modules/film_assembly.py sound_record, on the master's provenance), for the
+  // final video's panel. Only that one key is read. A read that fails, or a master without it, is null: the view says "unknown".
+  let master: { asset_id: string; sound: unknown } | null = null;
+  const newest = (segments ?? []).find((s) => typeof (s as { assembly_asset_id?: unknown }).assembly_asset_id === "string") as
+    | { assembly_asset_id: string }
+    | undefined;
+  if (newest) {
+    try {
+      const m = await gate.supabase.from("media_assets").select("id,sound:provenance->sound").eq("id", newest.assembly_asset_id).maybeSingle();
+      if (!m.error && m.data) master = { asset_id: newest.assembly_asset_id, sound: (m.data as { sound?: unknown }).sound ?? null };
+    } catch {
+      master = null;
+    }
+  }
+
+  return NextResponse.json({ film: read.raw, segments, takes, master }, { headers: NO_STORE });
 }

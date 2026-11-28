@@ -823,8 +823,10 @@ def put_back_0218(conn_or_session) -> None:
 
 MIGRATION_0236 = MIGRATIONS / "0236_film_clip_sound_gate.sql"
 ROLLBACK_0236 = REPO / "docs" / "sql" / "rollback_0236_film_clip_sound_gate.sql"
-#: md5 of 0236's film_price (white space folded), the way its drift guard and end state read it.
+#: md5 of 0236's film_price and film_assembly_retryable (white space folded), the way its drift guard and end state read them.
 FILM_PRICE_0236 = "b873f893f3f185b3eab3698d349f3379"
+FILM_ASSEMBLY_RETRYABLE_0215 = "82ec51dabd0ff178ec2280bc0c56e62b"
+FILM_ASSEMBLY_RETRYABLE_0236 = "88a312d28e63be043796bcc86f024164"
 
 
 def has_0236(conn_or_session) -> bool:
@@ -833,9 +835,10 @@ def has_0236(conn_or_session) -> bool:
 
 
 def take_off_0236(conn_or_session) -> None:
-    """0236 (a scene's clip sound refused until the cut keeps it) replaces 0218's film_price, and 0218's replay and rollback refuse any
-    other body: take_off_0218 (so take_off_0171 and take_off_0208) takes it off first with its own rollback, and put_back_0218 puts it
-    back once 0218's body is there again. Its column goes with the rollback and comes back off (the default) with the replay."""
+    """0236 (a scene's clip sound refused until the cut keeps it) replaces 0218's film_price and 0215's film_assembly_retryable, and
+    those files' replays and rollbacks refuse any other body: take_off_0218 (so take_off_0171 and take_off_0208) and take_off_0215 (so
+    take_off_0198, take_off_0192, take_off_0187) take it off first with its own rollback, and put_back_0218 / put_back_0215 put it
+    back once both bodies are there again. Its column goes with the rollback and comes back off (the default) with the replay."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if has_0236(conn):
         text = ROLLBACK_0236.read_text(encoding="utf-8")
@@ -856,6 +859,7 @@ def rollback_0236_if_on() -> str:
 def put_back_0236(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if not has_0236(conn) and _md5_of(conn, "public.film_price(public.films)") == FILM_PRICE_0218 \
+            and _md5_of(conn, "public.film_assembly_retryable(text)") == FILM_ASSEMBLY_RETRYABLE_0215 \
             and conn.execute("select to_regclass('public.film_studio_settings') is not null").fetchone()[0]:
         conn.execute(MIGRATION_0236.read_text(encoding="utf-8"))
 
@@ -1252,6 +1256,7 @@ def take_off_0215(conn_or_session) -> None:
     record of a resume), which put_back_0215 picks up again as its own. 0226's bodies call 0215's is_org_spender, which this rollback
     drops: 0226 comes off first."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0236(conn)  # 0236 replaces 0215's film_assembly_retryable, and 0215's replay and rollback refuse any other body
     take_off_0226(conn)
     if has_0215(conn):
         text = ROLLBACK_0215.read_text(encoding="utf-8")
@@ -1264,6 +1269,7 @@ def put_back_0215(conn_or_session) -> None:
     if not has_0215(conn) and has_0198(conn) and has_0187(conn) and has_0192(conn):
         conn.execute(MIGRATION_0215.read_text(encoding="utf-8"))
     put_back_0226(conn)
+    put_back_0236(conn)
 
 
 MIGRATION_0226 = MIGRATIONS / "0226_org_spender_everywhere.sql"

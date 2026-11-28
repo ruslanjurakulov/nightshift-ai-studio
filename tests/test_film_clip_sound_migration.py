@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parent.parent
 MIGRATION = (ROOT / "supabase" / "migrations" / "0236_film_clip_sound_gate.sql").read_text(encoding="utf-8")
 ROLLBACK = (ROOT / "docs" / "sql" / "rollback_0236_film_clip_sound_gate.sql").read_text(encoding="utf-8")
 M0218 = (ROOT / "supabase" / "migrations" / "0218_creative_prompt_limits.sql").read_text(encoding="utf-8")
+M0215 = (ROOT / "supabase" / "migrations" / "0215_film_archive_resume.sql").read_text(encoding="utf-8")
+RETRYABLE = r"(create or replace function public\.film_assembly_retryable\(p_word text\).*?\n\$\$;)"
 
 
 def body_of(text: str) -> str:
@@ -31,6 +33,17 @@ class FilmClipSoundMigration(unittest.TestCase):
         self.assertEqual(len(hunk), 5)
         undone = [ln for ln in lines if not ln.rstrip().endswith("-- 0236") and not ln.lstrip().startswith("-- 0236:")]
         self.assertEqual("".join(undone), body_0218())
+
+    def test_film_assembly_retryable_is_0215s_plus_only_the_marked_hunk_and_the_rollback_puts_it_back(self):
+        ours = re.search(RETRYABLE, MIGRATION, re.S).group(1)
+        lines = ours.splitlines(keepends=True)
+        self.assertEqual(sum(1 for ln in lines if ln.rstrip().endswith("-- 0236")), 1)
+        undone = [ln for ln in lines if not ln.rstrip().endswith("-- 0236") and not ln.lstrip().startswith("-- 0236:")]
+        theirs = re.search(RETRYABLE, M0215, re.S).group(1)
+        self.assertEqual("".join(undone), theirs)
+        self.assertIn("'sound_mix_failed', 'asset_unprobed'", ours)
+        self.assertEqual(re.search(RETRYABLE, ROLLBACK, re.S).group(1), theirs)
+        self.assertIn("array['82ec51dabd0ff178ec2280bc0c56e62b', '88a312d28e63be043796bcc86f024164']", MIGRATION)
 
     def test_the_rollback_puts_0218s_body_back_byte_for_byte(self):
         self.assertEqual(body_of(ROLLBACK), body_0218())

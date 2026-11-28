@@ -57,7 +57,11 @@ What it decides
   ``dialogue``, ``ambience`` or ``muted`` (``SOUND_ROLES``): the scene's ``sound_role`` when the plan or a
   person set one, otherwise ``ambience`` when a shown take was bought with the priced sound option
   (``params.audio`` true: kling-v3, seedance-1.5-pro; 0171 copies ``clip_params.audio`` into the take), and
-  ``muted`` for everything else. So a film made before this, whose takes bought no sound, keeps its
+  ``muted`` for everything else. **Today every role is a default**: ``film_scenes`` has no ``sound_role``
+  column, ``save_film`` refuses the key and ``FilmRest.scenes`` does not select it, so the explicit role is
+  read only from a row that carries one (none does yet). Storing a scene's in-clip dialogue is the next pull
+  request; until then no scene is ``dialogue``, and the music ducks under the narration only. So a film made
+  before this, whose takes bought no sound, keeps its
   document and its hash, and a single-price model's sound (Veo, H3, LTX ...) is not played by default: a
   model that speaks may speak unasked words in a scene that has no lines (Atlas, 28 Nov; the orchestrator
   asks those models for no sound where the adapter can). The shots of a ``dialogue`` or ``ambience`` scene
@@ -405,8 +409,15 @@ def _check_sound(asset: Mapping, n: int, idx: int, role: str, bought: bool) -> N
     """A shot whose sound the film needs plays it, or the film is refused: never the silent clip in its place."""
     has = asset.get("has_audio")
     why = "was bought with its own sound" if bought else f"is in a scene whose sound is {role}"
+    if asset.get("file_missing"):
+        # Not "unprobed": there is no file to probe, and a retry would find none (Lens M1).
+        raise FilmTimelineRefused("asset_unavailable", f"{_scene_label(n)} shot {idx}: its video is not on the media "
+                                  "volume: re-shoot it", n)
     if has is False:
-        fix = "re-shoot the shot" if bought else "set the scene's sound to muted, or re-shoot it with sound"
+        # What a person can do today (Lens I2): nobody can mute a scene yet, so the remedies are a re-shoot, or the film
+        # quoted again without the priced sound option.
+        fix = ("re-shoot the shot, or quote the film again without its sound option" if bought
+               else "re-shoot it on a model that makes sound")
         raise FilmTimelineRefused("clip_without_sound", f"{_scene_label(n)} shot {idx} {why}, but its video has no "
                                   f"sound track: {fix}", n)
     if has is not True:
@@ -584,7 +595,9 @@ def build_cut(film: Mapping, scenes: Sequence[Mapping], takes: Sequence[Mapping]
             # purchase (Atlas, 28 Nov: no refund logic), so the plan says so beside the status.
             shot_plans.append({"take_id": _id(take.get("id")), "shot_index": take["shot_index"], "asset_id": aid,
                                "start_s": _s(start), "in_s": _s(in_ms), "out_s": _s(in_ms + length),
-                               "chained": chained, "clip_sound": status, "sound_paid": bought})
+                               "chained": chained, "clip_sound": status, "sound_paid": bought,
+                               # What the probe found in the file, whatever the role (None: not probed, or lip-synced).
+                               "file_sound": asset.get("has_audio") if isinstance(asset.get("has_audio"), bool) else None})
             start += length
         if speaks:
             # The lines fall inside the scene, clear of its lead and tail, as a narration segment does; S6's

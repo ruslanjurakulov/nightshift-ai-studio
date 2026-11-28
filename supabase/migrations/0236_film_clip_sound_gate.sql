@@ -1,8 +1,9 @@
 -- 0236_film_clip_sound_gate.sql — while the film's cut drops a clip's own sound, a scene that asks for the priced sound option is
 -- refused by name (clip_sound_not_kept), at quote and at start, instead of being sold and then dropped (Breach BR-SG-01, S1).
 --
--- *** LIVE ON APPLY. *** It replaces ONE function that exists there (film_price, 0218's body plus one hunk) and adds one column to
--- one table (film_studio_settings.clip_sound_kept, default false). It writes no other row and grants nothing.
+-- *** LIVE ON APPLY. *** It replaces TWO functions that exist there (film_price, 0218's body plus one hunk; film_assembly_retryable,
+-- 0215's body plus one hunk) and adds one column to one table (film_studio_settings.clip_sound_kept, default false). It writes no
+-- other row and grants nothing.
 --
 -- EVIDENCE (the code, 2026-11-28; docs/studio/S2_CLIP_AUDIO.md section 1, PR #963).
 --   * modules/film_timeline.py on main wrote every picture clip without "audio": true, so a take bought with its own sound
@@ -24,6 +25,13 @@
 --   and answers its first refusal as {ok: false, reason}), quote_film_resume, start_film_resume and film_resume_price (0215). So the
 --   refusal is server-side on every path that sells a film, and the Command Center's /api/films/[id]/start answers the same word
 --   (memberSafeStart passes start_film's reason), with its sentence in lib/i18n/studio-timeline/{en,ru,uz}.ts.
+--   film_assembly_retryable                REPLACED on 0215's body (82ec51dabd0ff178ec2280bc0c56e62b) with ONE hunk (two lines,
+--                                          marked `-- 0236`): the S2 assembly's two new transient words, `sound_mix_failed` (an
+--                                          audio-only ffmpeg of modules/film_mix.py stopped) and `asset_unprobed` (a shot's file
+--                                          could not be probed for its sound track), are ones a re-run of the same takes may cure, so
+--                                          rerun_film_assembly makes them again instead of answering assembly_not_retryable (Lens I2:
+--                                          the worker's remedy for both is "retry the assembly", rule 6). Every other word keeps
+--                                          0215's answer; clip_without_sound (re-shoot) stays not retryable.
 --   film_precheck is NOT replaced: start_film always reaches film_price, and a second copy of the rule there would be a second body
 --   to rebase for nothing.
 -- WHAT A PERSON SEES. clip_params.audio = false, or no audio key: unchanged, the silent price. true: refused, with the fix (turn the
@@ -40,17 +48,22 @@
 --   folded with [[:space:]]+, and the one backslash film_price's body holds (0218's clip-length pattern) is written @@0236_BACKSLASH@@
 --   and put back with chr(92) before the body is executed, so the body that reaches the database is byte for byte the one hashed below.
 -- REPLACES (md5 of prosrc with every run of white space read as one space):
---   film_price   0218 3c22f87be736c073d17d93e040e914e1 -> 0236 b873f893f3f185b3eab3698d349f3379
+--   film_price                0218 3c22f87be736c073d17d93e040e914e1 -> 0236 b873f893f3f185b3eab3698d349f3379
+--   film_assembly_retryable   0215 82ec51dabd0ff178ec2280bc0c56e62b -> 0236 88a312d28e63be043796bcc86f024164
+--   0215's own replay and rollback refuse 0236's film_assembly_retryable: take 0236 off first (its rollback), as the lab does.
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only; the SQL editor on the live project). Expected: one row, all true.
 --   select (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.film_price(public.films)'::regprocedure)
 --            = '3c22f87be736c073d17d93e040e914e1' as film_price_is_0218s,
+--          (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.film_assembly_retryable(text)'::regprocedure)
+--            = '82ec51dabd0ff178ec2280bc0c56e62b' as retryable_is_0215s,
 --          to_regclass('public.film_studio_settings') is not null as switch_table_exists;
 --
 -- APPLY AS ONE TRANSACTION (SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1): `set local lock_timeout`
 -- assumes it, and the last block asserts the end state. Idempotent: a replay finds this file's body and the column, and writes them
 -- again (the switch's value is never reset by a replay).
--- Rollback: docs/sql/rollback_0236_film_clip_sound_gate.sql (owner-applied; puts 0218's body back byte for byte and drops the column).
+-- Rollback: docs/sql/rollback_0236_film_clip_sound_gate.sql (owner-applied; puts 0218's and 0215's bodies back byte for byte and drops
+-- the column).
 -- Docs: docs/MIGRATIONS.md, "Film clip sound: refused until the cut keeps it (0236, provisional)".
 
 set local lock_timeout = '5s';
@@ -68,6 +81,14 @@ begin
    where x.oid = 'public.film_price(public.films)'::regprocedure;
   if h is null or h <> all (array['3c22f87be736c073d17d93e040e914e1', 'b873f893f3f185b3eab3698d349f3379']) then
     raise exception '0236 found a film_price() that is neither 0218''s body nor 0236''s (md5 %): read the live body first', h;
+  end if;
+  if to_regprocedure('public.film_assembly_retryable(text)') is null then
+    raise exception '0236 needs 0215_film_archive_resume.sql (film_assembly_retryable): apply it first';
+  end if;
+  select md5(regexp_replace(x.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc x
+   where x.oid = 'public.film_assembly_retryable(text)'::regprocedure;
+  if h <> all (array['82ec51dabd0ff178ec2280bc0c56e62b', '88a312d28e63be043796bcc86f024164']) then
+    raise exception '0236 found a film_assembly_retryable() that is neither 0215''s body nor 0236''s (md5 %): read the live body first', h;
   end if;
 end $$;
 
@@ -343,6 +364,23 @@ $fp$;
 revoke all on function public.film_price(public.films) from public, anon, authenticated, service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
+-- 2b. film_assembly_retryable: 0215's body plus the one hunk marked -- 0236
+-- ───────────────────────────────────────────────────────────────────────────
+create or replace function public.film_assembly_retryable(p_word text) returns boolean
+  language sql immutable set search_path = public, pg_temp as $$
+  select coalesce(p_word in ('assembly_crashed', 'render_failed', 'render_timed_out', 'render_degraded', 'store_failed', 'disk_low',
+                             'output_mismatch', 'captions_failed', 'captions_unavailable'), false)
+         -- 0236: the film's sound mix, or the probe of a shot's file, failed: the same takes may assemble next time.
+         or coalesce(p_word in ('sound_mix_failed', 'asset_unprobed'), false)  -- 0236
+         -- The word was lost: the assembly's own word never reached the settle, because the sweep settled the segment at its
+         -- deadline, the claim after the last lease settled it worker_lost, or the worker settled the generic assembly_failed (it
+         -- raised, or could not begin). The cause is unknown, never proven deterministic, and a failed assembly is charged 0: the
+         -- re-run, which costs only the assembly line, is allowed.
+         or coalesce(p_word in ('deadline', 'worker_lost', 'assembly_failed'), false)
+$$;
+revoke all on function public.film_assembly_retryable(text) from public, anon, authenticated, service_role;
+
+-- ───────────────────────────────────────────────────────────────────────────
 -- 3. The end state, asserted inside the transaction
 -- ───────────────────────────────────────────────────────────────────────────
 do $$
@@ -366,6 +404,20 @@ begin
   if not exists (select 1 from pg_proc p where p.oid = fp and p.prosecdef
                     and p.proconfig @> array['search_path=public, pg_temp']) then
     raise exception '0236 end state: film_price is not security definer with a pinned search_path';
+  end if;
+  select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into got from pg_proc p
+   where p.oid = 'public.film_assembly_retryable(text)'::regprocedure;
+  if got <> '88a312d28e63be043796bcc86f024164' then
+    raise exception '0236 end state: film_assembly_retryable does not hold this file''s body (md5 %)', got;
+  end if;
+  if not public.film_assembly_retryable('sound_mix_failed') or not public.film_assembly_retryable('asset_unprobed')
+     or public.film_assembly_retryable('clip_without_sound') or not public.film_assembly_retryable('render_failed') then
+    raise exception '0236 end state: film_assembly_retryable does not answer the S2 words as this file says';
+  end if;
+  if has_function_privilege('anon', 'public.film_assembly_retryable(text)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.film_assembly_retryable(text)', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.film_assembly_retryable(text)', 'EXECUTE') then
+    raise exception '0236 end state: film_assembly_retryable is executable by an API role';
   end if;
   if not exists (select 1 from information_schema.columns c
                   where c.table_schema = 'public' and c.table_name = 'film_studio_settings' and c.column_name = 'clip_sound_kept'
@@ -397,4 +449,8 @@ end $$;
 --     and not has_table_privilege('service_role', 'public.film_studio_settings', 'update') as switch_not_api_writable,
 --   not has_function_privilege('authenticated', 'public.film_price(public.films)', 'EXECUTE')
 --     and not has_function_privilege('anon', 'public.film_price(public.films)', 'EXECUTE')
---     and not has_function_privilege('service_role', 'public.film_price(public.films)', 'EXECUTE') as film_price_internal;
+--     and not has_function_privilege('service_role', 'public.film_price(public.films)', 'EXECUTE') as film_price_internal,
+--   (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
+--     where oid = 'public.film_assembly_retryable(text)'::regprocedure) = '88a312d28e63be043796bcc86f024164' as retryable_is_0236s,
+--   public.film_assembly_retryable('sound_mix_failed') and public.film_assembly_retryable('asset_unprobed')
+--     and not public.film_assembly_retryable('clip_without_sound') as s2_words_retryable;

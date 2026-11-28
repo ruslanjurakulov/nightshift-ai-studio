@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -114,6 +115,27 @@ class TheGateAndTheCutAgree(unittest.TestCase):
         self.assertIn("CLIP_SOUND_IN_CUT", sql)
 
 
+class RolesAreDefaultsToday(unittest.TestCase):
+    """Lens I3: no migration stores a scene's sound role yet; the worker's scene read must name the column the day one does."""
+
+    def test_no_migration_adds_a_sound_role_or_dialogue_column_to_film_scenes_unless_the_worker_reads_it(self):
+        migrations = "\n".join(p.read_text(encoding="utf-8") for p in
+                               sorted((Path(__file__).resolve().parent.parent / "supabase" / "migrations").glob("*.sql")))
+        added = set(re.findall(r"(?is)alter table\s+(?:only\s+)?public\.film_scenes\s+add column (?:if not exists )?"
+                               r"(sound_role|dialogue)\b", migrations))
+        seen = {}
+
+        class Probe(fo.FilmRest):
+            def __init__(self):
+                pass
+
+            def _select(self, table, params):
+                seen.update(params)
+                return []
+        Probe().scenes("f")
+        self.assertLessEqual(added, set(seen["select"].split(",")))
+
+
 class Roles(unittest.TestCase):
     def test_a_take_bought_with_sound_defaults_to_ambience(self):
         cut = bought(Film(), scenes={1}).build()
@@ -157,7 +179,8 @@ class NoSilentMute(unittest.TestCase):
     def test_an_ambience_or_dialogue_scene_whose_file_has_no_sound_is_refused_with_the_fix(self):
         for r in ("ambience", "dialogue"):
             e = refused(self, role(Film(), 1, r, has_audio=False), "clip_without_sound", scene=2)
-            self.assertIn("muted", e.detail)
+            self.assertIn("re-shoot", e.detail)
+            self.assertNotIn("mute", e.detail)       # nobody can mute a scene yet (Lens I2)
 
     def test_a_file_never_probed_is_refused_rather_than_going_silent(self):
         e = refused(self, role(Film(), 0, "ambience", has_audio=None), "asset_unprobed", scene=1)
@@ -496,6 +519,97 @@ class MixMeasured(unittest.TestCase):
         self.assertAlmostEqual(self.track.duration_s, self.cut.length_s)
 
 
+def tone_clip(path: Path, seconds: float, hz: int = AMB_HZ):
+    ff("-f", "lavfi", "-i", f"color=c=0x303030:s=64x36:r=30:d={seconds}", "-f", "lavfi", "-i",
+       f"aevalsrc=exprs='0.125*sin(2*PI*{hz}*t)|0.125*sin(2*PI*{hz}*t)':s=44100:d={seconds}",
+       "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-shortest", str(path))
+
+
+def file_resolver(f: Film, clip: Path):
+    def resolve(aid):
+        a = f.assets.get(aid)
+        if a is None or a["kind"] != "video":
+            return None
+        return tl.ResolvedAsset(aid, "video", str(clip), a["duration_s"], True)
+    return resolve
+
+
+@unittest.skipUnless(FFMPEG and FFPROBE, "ffmpeg is not installed")
+class StemInChunks(unittest.TestCase):
+    """Lens I1: one stem command fails at about 120 inputs under ffmpeg_limits (pthread_create); a 60 x 3 film has 180 sounding
+    shots. The stem is mixed in chunks of at most STEM_CHUNK_SHOTS, and a cross-fade at a chunk's edge sounds as it did."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+
+    def test_a_chunk_edge_inside_a_cross_faded_run_sounds_exactly_as_one_command(self):
+        f = Film(scenes=8, seconds=3, shots=1, shot_s=4.0, narration=False, music_s=0, captions="none")
+        for i in range(8):
+            role(f, i, "ambience")
+        cut = f.build()
+        clip = self.root / "clip.mp4"
+        tone_clip(clip, 4.2)
+        tracks = fm.stem_tracks(cut.doc, cut.sound, file_resolver(f, clip))
+        self.assertTrue(all(t.crossfade_s > 0 for t in tracks[1:]))     # one run of eight: every edge is inside it
+        one, parts = self.root / "one.wav", []
+        self.assertTrue(fm.ffmpeg_limits.run(fm.stem_command(FFMPEG, tracks, cut.length_s, str(one)), timeout_s=120).ok)
+        chunks = fm.stem_chunks(tracks, size=3)
+        self.assertEqual([len(c) for c in chunks], [3, 3, 2])
+        self.assertEqual([c[0].crossfade_s for c in chunks[1:]], [0.0, 0.0])
+        for k, chunk in enumerate(chunks):
+            parts.append(self.root / f"p{k}.wav")
+            self.assertTrue(fm.ffmpeg_limits.run(fm.stem_command(FFMPEG, chunk, cut.length_s, str(parts[-1])), timeout_s=120).ok)
+        joined = self.root / "joined.wav"
+        self.assertTrue(fm.ffmpeg_limits.run(fm.join_command(FFMPEG, [str(p) for p in parts], cut.length_s, str(joined)),
+                                             timeout_s=120).ok)
+        # The difference of the two files is silence: the linear fades sum to exactly what acrossfade made.
+        out = subprocess.run([FFMPEG, "-hide_banner", "-nostats", "-i", str(one), "-i", str(joined), "-filter_complex",
+                              "[1:a]volume=-1[n];[0:a][n]amix=inputs=2:normalize=0,astats=measure_perchannel=none:"
+                              "measure_overall=RMS_level", "-f", "null", "-"], capture_output=True, text=True, timeout=120)
+        rms = re.findall(r"RMS level dB:\s+(-?(?:\d+(?:\.\d+)?|inf))", out.stderr)[-1]
+        self.assertTrue(rms == "-inf" or float(rms) < -70, rms)
+        self.assertGreater(rms_db(joined, 9.0, 11.0, AMB_HZ), -30)
+
+    def test_a_180_shot_film_masters_under_ffmpeg_limits(self):
+        f = Film(scenes=60, seconds=3, shots=3, shot_s=1.3, narration=False, music_s=0, captions="none")
+        for i in range(60):
+            role(f, i, "ambience")
+        cut = f.build()
+        self.assertEqual(len(cut.sound["stem"]), 180)
+        clip = self.root / "clip.mp4"
+        tone_clip(clip, 1.4)
+        work = self.root / "work"
+        work.mkdir()
+        t0 = time.monotonic()
+        mixed = fm.master(tl.load(cut.doc), cut, file_resolver(f, clip), ffmpeg=FFMPEG, workdir=str(work), timeout_s=600)
+        took = time.monotonic() - t0
+        print(f"\n180-shot stem and master: {took:.1f} s, {mixed.timings}")
+        self.assertEqual(mixed.stem_shots, 180)
+        self.assertEqual(sorted(k for k in mixed.timings if k.startswith("stem") and k.endswith("_s")),
+                         ["stem_0_s", "stem_1_s", "stem_2_s", "stem_join_s"])
+        self.assertTrue(all(mixed.timings[f"stem_{k}_peak_mb"] < 1024 for k in range(3)))
+        self.assertIn(mixed.loudness["mode"], ("linear", "dynamic"))
+        self.assertGreater(rms_db(mixed.tracks[0].path, 170.0, 172.0, AMB_HZ), -40)     # the last chunk's shots are there
+        self.assertEqual(sorted(p.name for p in work.iterdir()), ["master.wav"])       # every intermediate removed (Lens N3)
+        self.assertEqual(fm.sound_files_on_disk(180), 4)
+        self.assertEqual(fm.sound_files_on_disk(30), 2)
+
+
+@unittest.skipUnless(FFMPEG and FFPROBE, "ffmpeg is not installed")
+class SilenceFailsByName(unittest.TestCase):
+    """Lens N4: a narration or a stem the cut plays that measures silent is never shipped labelled "silent"."""
+
+    def test_a_narrated_film_whose_mix_is_silent_fails_mix_silent(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        film = SoundFilm(root, ["silent"] * 3, music=False, narration_amp=0.0)
+        with self.assertRaises(fm.MixFailed) as cm:
+            film.master(root / "work")
+        self.assertEqual(cm.exception.reason, "mix_silent")
+        self.assertIn("narration", cm.exception.detail)
+
+
 @unittest.skipUnless(FFMPEG and FFPROBE, "ffmpeg is not installed")
 class DynamicIsLabelled(unittest.TestCase):
     """7.6 #10 as Atlas decided it: a film a linear gain cannot normalise ships in loudnorm's dynamic mode, labelled."""
@@ -544,8 +658,8 @@ class Assembly(unittest.TestCase):
             sc["sound_role"] = kind
         return f
 
-    def run_it(self, f, *, has_audio=lambda p, m: True, out_has_audio=True, loudness=None):
-        db = f.db()
+    def run_it(self, f, *, has_audio=lambda p, m: True, out_has_audio=True, loudness=None, db=None):
+        db = db or f.db()
         self.rendered = []
 
         def render(norm, resolver, out, timings=None, **kw):
@@ -589,6 +703,66 @@ class Assembly(unittest.TestCase):
                       out.detail)
         prov = db.asset_rows[out.asset_id]["provenance"]
         self.assertEqual(prov["sound"]["master_loudness"]["status"], "dynamic (linear not possible)")
+
+    def test_a_shown_shots_missing_file_is_asset_unavailable_not_unprobed(self):
+        f = self.film()
+        clip = next(t for t in f.takes if t["kind"] == "clip")
+        fa.ml.asset_file(self.root, fa.ml.canonical_id(clip["result_asset_id"]), "original").unlink()
+        _db, out = self.run_it(f)
+        self.assertEqual((out.ok, out.reason), (False, "asset_unavailable"), out)
+        self.assertIn("re-shoot", out.detail)
+
+    def test_each_file_is_probed_once(self):
+        calls = []
+
+        def has_audio(p, m):
+            calls.append(str(p))
+            return True
+        _db, out = self.run_it(self.film(), has_audio=has_audio)
+        self.assertTrue(out.ok, out)
+        self.assertEqual(len(calls), len(set(calls)))
+        self.assertEqual(len(calls), 2)
+
+    def test_the_master_records_its_mix_format_and_each_scenes_sound(self):
+        f = self.film()
+        f.scenes[1]["sound_role"] = "muted"
+        for t in f.takes:
+            if t["kind"] == "clip" and t["scene_id"] == f.scenes[1]["id"]:
+                t["params"] = {"audio": True}
+        db, out = self.run_it(f)
+        self.assertTrue(out.ok, out)
+        prov = db.asset_rows[out.asset_id]["provenance"]
+        self.assertEqual((prov["mix_format"], prov["sound"]["mix_format"]), (fa.MIX_FORMAT, fa.MIX_FORMAT))
+        scenes = prov["sound"]["scenes"]
+        self.assertEqual([(x["scene"], x["role"], x["clip_sound"], x["sound_paid"]) for x in scenes],
+                         [(1, "ambience", ["used"], [False]), (2, "muted", ["muted"], [True])])
+        self.assertEqual(scenes[1]["file_sound"], [True])
+        self.assertEqual(prov["sound"]["master_loudness"]["status"], "linear")
+
+    def test_a_master_an_earlier_mix_registered_is_rendered_again_and_ours_is_handed_in_with_its_loudness(self):
+        f = self.film()
+        db = f.db()
+        # Our own registered master (a crashed attempt): handed in, with the loudness it was recorded with.
+        _d, first = self.run_it(f, db=db)
+        self.assertTrue(first.ok, first)
+        db.seg["assembly"].update(status="running", asset_id=None, charged_credits=None)
+        _d, again = self.run_it(f, db=db)
+        self.assertTrue(again.ok, again)
+        self.assertFalse(again.rendered)
+        self.assertEqual(again.loudness["status"], "linear")
+        # The same row without mix_format (as an earlier mix would have left it): never handed in, rendered again.
+        db.asset_rows[first.asset_id]["provenance"] = {k: v for k, v in db.asset_rows[first.asset_id]["provenance"].items()
+                                                       if k != "mix_format"}
+        db.seg["assembly"].update(status="running", asset_id=None, charged_credits=None)
+        _d, third = self.run_it(f, db=db)
+        self.assertTrue(third.rendered)
+        seg = "5e000000-0000-4000-8000-000000000001"
+        self.assertNotEqual(fa.master_asset_id(seg, "x"), str(fa.uuid.uuid5(fa.ASSET_NS, f"{seg}:x")))
+
+    def test_the_disk_check_counts_the_sound_files_that_coexist(self):
+        small = fa.disk_needed_mb(1920, 1080, 100.0, 30)
+        big = fa.disk_needed_mb(1920, 1080, 100.0, 180)
+        self.assertAlmostEqual(big - small, 100.0 * fm.WAV_MB_PER_S * 2)
 
     def test_a_mix_that_fails_fails_the_film_by_name_at_zero(self):
         f = self.film()

@@ -3226,6 +3226,10 @@ rate: the person paid for sound the film never played.
   the total is NULL. quote_film, start_film and the resume paths inherit it, so the refusal is server-side on every path;
   `/api/films/[id]/start` answers the same word, with its sentence in `lib/i18n/studio-timeline/{en,ru,uz}.ts`. `film_precheck`
   is not replaced (start_film always reaches `film_price`).
+- **`film_assembly_retryable`** replaced on 0215's body (`82ec51da…` -> `88a312d28e63be043796bcc86f024164`) with one marked
+  two-line hunk: `sound_mix_failed` and `asset_unprobed` (the S2 assembly's transient words, whose remedy is "retry the assembly")
+  are retryable, so `rerun_film_assembly` makes them again. `clip_without_sound` (re-shoot) stays not retryable. 0215's replay and
+  rollback refuse 0236's body: `sec_db.take_off_0215` takes 0236 off first and `put_back_0215` puts it back.
 - **Owner step, in this order**: deploy the media worker carrying the S2 clip-sound fix (`CLIP_SOUND_IN_CUT = True` in
   `modules/film_timeline.py`, `modules/film_mix.py`), then `update public.film_studio_settings set clip_sound_kept = true,
   updated_at = now() where id;`. Turning it on earlier sells sound a running worker still drops.
@@ -3234,4 +3238,4 @@ rate: the person paid for sound the film never played.
 - **No backslash** in the file or its rollback: 0218's one backslash goes through `chr(92)`.
 - **Lab**: `tests/security/test_sec_film_clip_sound_0236.py`; `sec_db.take_off_0236` / `put_back_0236` ride on
   `take_off_0218` / `put_back_0218` / `rollback_0218_if_on`.
-- Rollback: `docs/sql/rollback_0236_film_clip_sound_gate.sql` (0218's body back byte for byte, the column dropped).
+- Rollback: `docs/sql/rollback_0236_film_clip_sound_gate.sql` (0218's and 0215's bodies back byte for byte, the column dropped).

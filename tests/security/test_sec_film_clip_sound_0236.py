@@ -178,11 +178,37 @@ def test_the_drift_guard_refuses_a_body_that_is_neither_0218s_nor_its_own(db):
     assert _md5(db) == sec_db.FILM_PRICE_0236
 
 
+def test_the_s2_assemblys_transient_words_may_be_rerun_and_clip_without_sound_may_not(db):
+    """Lens I2: the worker's remedy for sound_mix_failed and asset_unprobed is "retry the assembly"; rerun_film_assembly must agree."""
+    got = dict(db.su("select w, public.film_assembly_retryable(w) from unnest(array['sound_mix_failed', 'asset_unprobed', "
+                     "'clip_without_sound', 'render_failed', 'missing_take']) w"))
+    assert got == {"sound_mix_failed": True, "asset_unprobed": True, "clip_without_sound": False, "render_failed": True,
+                   "missing_take": False}
+    assert db.su("select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc "
+                 "where oid = 'public.film_assembly_retryable(text)'::regprocedure")[0][0] == sec_db.FILM_ASSEMBLY_RETRYABLE_0236
+    for role in ("anon", "authenticated", "service_role"):
+        assert db.su("select has_function_privilege(%s, 'public.film_assembly_retryable(text)', 'EXECUTE')", [role])[0][0] is False
+
+
+def test_0215s_take_off_takes_0236_off_first_and_its_put_back_puts_it_back(db):
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0215(c)
+        assert not sec_db.has_0236(c) and not sec_db.has_0215(c)
+        sec_db.put_back_0215(c)
+        assert sec_db.has_0215(c) and sec_db.has_0236(c)
+        assert c.execute("select public.film_assembly_retryable('sound_mix_failed')").fetchone()[0] is True
+        c.rollback()
+
+
 def test_the_rollback_puts_0218_back_and_drops_the_column_and_0236_applies_again(db):
     with psycopg.connect(db.dsn, autocommit=False) as c:
         sec_db.take_off_0236(c)
         assert c.execute("select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc "
                          "where oid = 'public.film_price(public.films)'::regprocedure").fetchone()[0] == sec_db.FILM_PRICE_0218
+        assert c.execute("select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc "
+                         "where oid = 'public.film_assembly_retryable(text)'::regprocedure").fetchone()[0] \
+            == sec_db.FILM_ASSEMBLY_RETRYABLE_0215
+        assert c.execute("select public.film_assembly_retryable('sound_mix_failed')").fetchone()[0] is False
         assert c.execute("select count(*) from information_schema.columns where table_schema = 'public' "
                          "and table_name = 'film_studio_settings' and column_name = 'clip_sound_kept'").fetchone()[0] == 0
         sec_db.put_back_0236(c)
@@ -195,4 +221,28 @@ def test_the_file_holds_no_backslash_and_marks_its_hunk(db):
     for path in (MIGRATION, ROLLBACK):
         assert "\\" not in path.read_text(encoding="utf-8"), path.name
     body = MIGRATION.read_text(encoding="utf-8")
-    assert body.count("  -- 0236\n") == 5      # the hunk's five lines, each marked
+    assert body.count("  -- 0236\n") == 6      # film_price's five hunk lines and film_assembly_retryable's one, each marked
+
+
+def test_a_scene_sound_role_column_never_lands_without_the_worker_reading_it(db):
+    """Lens I3: roles are defaults only, because film_scenes has no sound_role (or dialogue) column. The orchestrator asks a
+    single-price model for no sound unless the scene's sound_role is dialogue (film_orchestrator.without_unused_sound), and it reads
+    scenes through FilmRest.scenes: a column that exists while that read does not select it would make every dialogue scene's clip
+    without its lines, silently. This fails the moment such a column exists in the lab and the read does not name it."""
+    from modules import film_orchestrator as fo
+
+    cols = {r[0] for r in db.su("select column_name from information_schema.columns where table_schema = 'public' "
+                                "and table_name = 'film_scenes' and column_name in ('sound_role', 'dialogue')")}
+    seen = {}
+
+    class Probe(fo.FilmRest):
+        def __init__(self):
+            pass
+
+        def _select(self, table, params):
+            seen.update(params)
+            return []
+    Probe().scenes("00000000-0000-4000-8000-000000000000")
+    selected = set(seen["select"].split(","))
+    assert cols <= selected, f"film_scenes has {sorted(cols)} but FilmRest.scenes selects {sorted(selected)}"
+

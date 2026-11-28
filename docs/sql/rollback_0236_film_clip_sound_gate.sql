@@ -3,10 +3,12 @@
 --
 -- WHAT COMES BACK: 0218's film_price, verbatim (md5 3c22f87be736c073d17d93e040e914e1, white space folded). A scene whose
 --   clip_params.audio is true is then quoted and started again at the with-sound price (BR-SG-01 is open again on a worker that drops
---   the sound).
+--   the sound). And 0215's film_assembly_retryable, verbatim (82ec51dabd0ff178ec2280bc0c56e62b): sound_mix_failed and asset_unprobed
+--   are then assembly_not_retryable again.
 -- WHAT GOES: film_studio_settings.clip_sound_kept (its value with it; 0171's switch film_studio_enabled is untouched).
--- WHAT IT DOES: 0. REFUSES (changes nothing) if film_price is neither 0236's body nor 0218's (a later file changed it: take that out
---   first). 1. Puts 0218's body back. 2. Drops the column. 3. Asserts the end state.
+-- WHAT IT DOES: 0. REFUSES (changes nothing) if film_price is neither 0236's body nor 0218's, or film_assembly_retryable neither
+--   0236's nor 0215's (a later file changed it: take that out first). 1. Puts 0218's and 0215's bodies back. 2. Drops the column.
+--   3. Asserts the end state.
 -- No backslash anywhere in this file (0219's header): 0218's one backslash is written @@0236_BACKSLASH@@ and put back with chr(92).
 
 begin;
@@ -20,6 +22,11 @@ begin
    where p.oid = to_regprocedure('public.film_price(public.films)');
   if h is null or h <> all (array['b873f893f3f185b3eab3698d349f3379', '3c22f87be736c073d17d93e040e914e1']) then
     raise exception 'rollback 0236: film_price is neither 0236''s body nor 0218''s (md5 %): read it first', h;
+  end if;
+  select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p
+   where p.oid = to_regprocedure('public.film_assembly_retryable(text)');
+  if h is null or h <> all (array['88a312d28e63be043796bcc86f024164', '82ec51dabd0ff178ec2280bc0c56e62b']) then
+    raise exception 'rollback 0236: film_assembly_retryable is neither 0236''s body nor 0215''s (md5 %): read it first', h;
   end if;
 end $$;
 
@@ -273,6 +280,19 @@ end
 $fp$;
 revoke all on function public.film_price(public.films) from public, anon, authenticated, service_role;
 
+-- 0215's body.
+create or replace function public.film_assembly_retryable(p_word text) returns boolean
+  language sql immutable set search_path = public, pg_temp as $$
+  select coalesce(p_word in ('assembly_crashed', 'render_failed', 'render_timed_out', 'render_degraded', 'store_failed', 'disk_low',
+                             'output_mismatch', 'captions_failed', 'captions_unavailable'), false)
+         -- The word was lost: the assembly's own word never reached the settle, because the sweep settled the segment at its
+         -- deadline, the claim after the last lease settled it worker_lost, or the worker settled the generic assembly_failed (it
+         -- raised, or could not begin). The cause is unknown, never proven deterministic, and a failed assembly is charged 0: the
+         -- re-run, which costs only the assembly line, is allowed.
+         or coalesce(p_word in ('deadline', 'worker_lost', 'assembly_failed'), false)
+$$;
+revoke all on function public.film_assembly_retryable(text) from public, anon, authenticated, service_role;
+
 alter table public.film_studio_settings drop column if exists clip_sound_kept;
 
 do $$
@@ -283,6 +303,11 @@ begin
    where p.oid = 'public.film_price(public.films)'::regprocedure;
   if got <> '3c22f87be736c073d17d93e040e914e1' then
     raise exception 'rollback 0236 end state: film_price is not 0218''s body (md5 %)', got;
+  end if;
+  select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into got from pg_proc p
+   where p.oid = 'public.film_assembly_retryable(text)'::regprocedure;
+  if got <> '82ec51dabd0ff178ec2280bc0c56e62b' then
+    raise exception 'rollback 0236 end state: film_assembly_retryable is not 0215''s body (md5 %)', got;
   end if;
   if exists (select 1 from information_schema.columns c where c.table_schema = 'public' and c.table_name = 'film_studio_settings'
                 and c.column_name = 'clip_sound_kept') then

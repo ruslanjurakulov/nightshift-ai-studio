@@ -51,7 +51,15 @@ WAV_CODEC = ("-c:a", "pcm_f32le", "-ar", "48000", "-ac", "2")
 #: Below this the mix holds no sound loudnorm can measure (its own gate is -70 LUFS).
 SILENT_LUFS = -70.0
 
-REASONS = ("clip_without_sound", "sound_mix_failed", "render_timed_out")
+#: The most shots one stem command reads. Measured by Lens under ffmpeg_limits (2 GiB, two decoder threads per input): 100 video
+#: inputs mixed at 156 MB, while 120 to 180 failed (pthread_create: every input starts its own decoder threads under the
+#: address-space limit). A 60-scene film of 3 shots each is 180, so the stem is mixed in chunks of at most this many shots, then
+#: the chunks into one stem.
+STEM_CHUNK_SHOTS = 64
+#: One 32-bit float WAV at 48 kHz stereo, in MB per second of film (0.384, rounded up): what each intermediate costs on disk.
+WAV_MB_PER_S = 0.4
+
+REASONS = ("clip_without_sound", "sound_mix_failed", "render_timed_out", "mix_silent")
 
 
 class MixFailed(Exception):
@@ -110,13 +118,17 @@ def stem_tracks(doc: Mapping, sound: Mapping, resolver: tl.AssetResolver) -> Lis
            for t in doc["tracks"] if t["kind"] == tl.KIND_V]
     stem_doc = {k: v for k, v in doc.items() if k not in ("tracks", "captions")}
     stem_doc["tracks"] = pic
-    spec = timeline_render.to_render_spec(stem_doc, resolver, "unused.mp4")
-    tracks = list(spec.audio_tracks)
+    # The cut's own document is validated (tl.load); this copy differs only in the audio flags, and is not put through the
+    # editor's validator, whose ceiling of 64 sounding clips is the final pass's, not the chunked stem's (Lens I1).
+    tl.load(doc)
+    norm = tl.normalise(stem_doc)
+    tracks = list(timeline_render._sound(norm, tl.resolve_assets(norm, resolver)))
     if len(tracks) != len(roles):
         # timeline_render leaves out, without a word, a clip whose file it does not know to carry sound. The cut
         # checked every one: a file that changed since must not go out silent (rule 4).
         raise MixFailed("clip_without_sound", f"{len(roles) - len(tracks)} shot(s) whose sound the film plays have "
-                        "no sound track on the media volume: re-shoot those shots, or mute their scenes")
+                        "no sound track on the media volume: re-shoot those shots, or quote the film again without their "
+                        "sound option")
     sounding = [c for t in pic for c in t["clips"] if c["audio"]]
     attack, release = float(sound["attack_s"]), float(sound["release_s"])
     out = []
@@ -180,6 +192,40 @@ def stem_command(ffmpeg: str, tracks: Sequence[AudioTrack], length_s: float, out
         graph.append(f"[{prev}]" + (f"adelay=delays={delay_ms}:all=1" if delay_ms > 0 else "anull") + f"[r{run[0]}]")
         labels.append(f"[r{run[0]}]")
     graph.extend(_mix(labels, length_s))
+    return argv + ["-filter_complex", ";".join(graph), "-map", "[out]", *WAV_CODEC, out]
+
+
+def stem_chunks(tracks: Sequence[AudioTrack], size: int = STEM_CHUNK_SHOTS) -> List[List[AudioTrack]]:
+    """The stem's shots in consecutive chunks of at most ``size``. Where a chunk starts on a shot cross-faded from the chunk
+    before, the join is made without ``acrossfade`` but to the same sound: ``acrossfade`` with ``c1=tri:c2=tri`` is the outgoing
+    sound faded out linearly over the overlap plus the incoming one faded in linearly over it, the two overlapping by exactly
+    that much (the incoming shot starts where the overlap does). So the outgoing shot gets that fade out, the incoming one that
+    fade in and its own delay, and the chunks' sum is the one-command stem."""
+    out: List[List[AudioTrack]] = []
+    for i in range(0, len(tracks), size):
+        chunk = list(tracks[i:i + size])
+        if out and chunk[0].crossfade_s > 0:
+            d = chunk[0].crossfade_s
+            out[-1][-1] = replace(out[-1][-1], fade_out_s=max(out[-1][-1].fade_out_s, d))
+            chunk[0] = replace(chunk[0], fade_in_s=max(chunk[0].fade_in_s, d), crossfade_s=0.0)
+        out.append(chunk)
+    return out
+
+
+def sound_files_on_disk(stem_shots: int) -> int:
+    """How many of film_mix's WAVs exist at once at most: the chunks and the stem while they are joined, else two (the stem and
+    the premaster, then the premaster and the master). The assembly's disk check asks for this many."""
+    chunks = -(-stem_shots // STEM_CHUNK_SHOTS) if stem_shots else 0
+    return max(2, chunks + 1 if chunks > 1 else 2)
+
+
+def join_command(ffmpeg: str, parts: Sequence[str], length_s: float, out: str) -> List[str]:
+    """The chunks' stems summed (each already on the film's clock) into one."""
+    argv = _head(ffmpeg)
+    for p in parts:
+        argv += _input_args(p, video=False)
+    graph = [f"[{i}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[c{i}]" for i in range(len(parts))]
+    graph.extend(_mix([f"[c{i}]" for i in range(len(parts))], length_s))
     return argv + ["-filter_complex", ";".join(graph), "-map", "[out]", *WAV_CODEC, out]
 
 
@@ -289,17 +335,33 @@ def master(norm: Mapping, cut: ft.Cut, resolver: tl.AssetResolver, *, ffmpeg: st
         shots = stem_tracks(cut.doc, sound, resolver)
         stem_n = len(shots)
         stem = work / "clip_stem.wav"
-        go("stem", stem_command(ffmpeg, shots, length, str(stem)))
+        chunks = stem_chunks(shots)
+        if len(chunks) == 1:
+            go("stem", stem_command(ffmpeg, chunks[0], length, str(stem)))
+        else:
+            parts = [work / f"clip_stem_{k}.wav" for k in range(len(chunks))]
+            for k, (chunk, part) in enumerate(zip(chunks, parts)):
+                go(f"stem_{k}", stem_command(ffmpeg, chunk, length, str(part)))
+            go("stem_join", join_command(ffmpeg, [str(p) for p in parts], length, str(stem)))
+            for part in parts:
+                part.unlink(missing_ok=True)
         beds.append(AudioTrack(path=str(stem), duration_s=length))
     if not beds:
         return Mixed(tracks=(), loudness=None, timings=timings)
 
     pre = work / "premaster.wav"
     go("premaster", premaster_command(ffmpeg, beds, length, str(pre)))
+    (work / "clip_stem.wav").unlink(missing_ok=True)   # in the premaster now; the disk check counts two files from here
     m = loudnorm_report(go("measure", measure_command(ffmpeg, str(pre))).tail)
     measured = {"I": _num(m.get("input_i")), "TP": _num(m.get("input_tp")), "LRA": _num(m.get("input_lra")),
                 "thresh": _num(m.get("input_thresh")), "offset": _num(m.get("target_offset"))}
     if str(m.get("input_i")).strip() == "-inf" or (measured["I"] is not None and measured["I"] < SILENT_LUFS):
+        narrated = any(t.get("id") == "narration" and t.get("clips") for t in norm["tracks"])
+        if narrated or stem_n:
+            # A narration or a shot's sound the cut says plays, and nothing measurable came out: never shipped as "silent"
+            # (rule 4). The files themselves hold no sound; a retry of the same takes would mix the same silence.
+            raise MixFailed("mix_silent", "the film's narration or its shots' own sound came out silent: generate the "
+                            "narration again, or re-shoot the shots whose sound the film plays")
         report = {"target": _targets(), "measured": {k: measured[k] for k in ("I", "TP", "LRA")},
                   "mode": None, "status": "not applied: the mix is silent"}
         return Mixed(tracks=(AudioTrack(path=str(pre), duration_s=length),), loudness=report, stem_shots=stem_n,
@@ -323,5 +385,6 @@ def master(norm: Mapping, cut: ft.Cut, resolver: tl.AssetResolver, *, ffmpeg: st
                  premaster_inputs=len(beds), timings=timings)
 
 
-__all__ = ["MixFailed", "Mixed", "REASONS", "SILENT_LUFS", "apply_command", "loudnorm_report", "master",
-           "measure_command", "premaster_command", "stem_command", "stem_tracks"]
+__all__ = ["MixFailed", "Mixed", "REASONS", "SILENT_LUFS", "STEM_CHUNK_SHOTS", "WAV_MB_PER_S", "apply_command", "join_command",
+           "loudnorm_report", "master", "measure_command", "premaster_command", "sound_files_on_disk", "stem_chunks",
+           "stem_command", "stem_tracks"]
