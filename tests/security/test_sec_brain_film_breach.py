@@ -1,11 +1,13 @@
 """Breach on the film editor's "Write the storyboard with AI" (POST /api/brain/film, command-center/lib/server/brain/film-plan.ts),
-its database half. The route-level holes stay failing in command-center/tests/security-brain-film-breach.test.ts; these pin the
-database facts they rest on and the walls the route relies on.
+its database half. The route-level pins are in command-center/tests/security-brain-film-breach.test.ts; these pin the database
+facts they rest on and the walls the route relies on. Migration 0232's own pins: tests/security/test_sec_film_lease_0232.py.
 
-* BR-FILM-01/02 (HOLE, xfail strict): nothing in the database ties a plan to a FILM. The route finds "the project's conversation"
-  through a BRIEF marker (brief->film_plan->>film_id) that the author writes freely with ai_chat_save_brief, and 0211's lease is per
-  conversation. Two conversations marked with the same film (one person's two first presses racing, or two editors) both get a
-  running lease at once, so two plans of one project both take every turn and only one save_film can win.
+* BR-FILM-01/02 (CLOSED by migration 0232): nothing in the database tied a plan to a FILM. The route finds "the project's
+  conversation" through a BRIEF marker (brief->film_plan->>film_id) that the author writes freely with ai_chat_save_brief, and 0211's
+  lease is per conversation: two conversations marked with the same film (one person's two first presses racing, or two editors)
+  both got a running lease at once, so two plans of one project both took every turn and only one save_film could win. 0232's
+  ai_chat_film_plan_begin, which both routes call right after 0211's begin and before the first turn, is keyed by the film: the
+  second is refused `plan_running` and reserves nothing. 0211's per-conversation lease is still granted to both (it is unchanged).
 * The walls that held (pinned, passing): another tenant reads and writes nothing of the film or the marked conversation; a viewer
   cannot start a conversation or save; save_film at the version read first refuses an edit made meanwhile and an archived film;
   ai_chat_start refuses another workspace's channel.
@@ -22,6 +24,18 @@ from sec_db import acting, as_superuser, user
 from sec_films_0166 import FILM
 
 BEGIN = "select public.ai_chat_plan_begin(%s, 0, 0)"
+# What both routes take after 0211's lease, before the plan's first turn (migration 0232): the film's own lease, with the turns reserved.
+FILM_BEGIN = "select public.ai_chat_film_plan_begin(%s, %s, 5)"
+
+
+def _empty_film(conn, who, org: str) -> str:
+    """An empty draft to plan (the seeded film has scenes, which 0232 refuses as film_not_plannable)."""
+    with acting(conn, who, commit=True) as s:
+        fid = s.value("select public.create_film_draft(%s, null, 'topic', 'A film to plan', %s::jsonb, %s)",
+                      [org, json.dumps({"title": "To plan", "language": "en", "target_seconds": 180}),
+                       f"br-film-{uuid.uuid4().hex[:8]}"])["film"]["id"]
+    _back(conn)
+    return fid
 SAVE_BRIEF = "select public.ai_chat_save_brief(%s, %s::jsonb, 'ready')"
 
 
@@ -53,37 +67,42 @@ def _marked_conversation(conn, who, org: str, film: str) -> str:
     return sid
 
 
-@pytest.mark.xfail(strict=True, reason="BR-FILM-01: route-closed in this PR; DB-closed by 0232")
 def test_one_person_cannot_run_two_plans_of_one_film_at_once(conn, sc):
     with as_superuser(conn, commit=False) as su:
         _cap(su, sc.alice.org, 1000)
         # Two first presses that raced (tests BR-FILM-01 in the vitest file): each made and marked its own conversation.
-        a = _marked_conversation(conn, sc.alice.actor, sc.alice.org, FILM["a"])
-        b = _marked_conversation(conn, sc.alice.actor, sc.alice.org, FILM["a"])
+        target = _empty_film(conn, sc.alice.actor, sc.alice.org)
+        a = _marked_conversation(conn, sc.alice.actor, sc.alice.org, target)
+        b = _marked_conversation(conn, sc.alice.actor, sc.alice.org, target)
         with acting(conn, sc.alice.actor, commit=True) as s:
-            first = s.run(BEGIN, [a])
-            second = s.run(BEGIN, [b])
+            assert s.run(BEGIN, [a]).ok and s.run(BEGIN, [b]).ok  # 0211: one lease per conversation, both granted
+            first = s.run(FILM_BEGIN, [a, target])
+            second = s.run(FILM_BEGIN, [b, target])
         _back(conn)
         assert first.ok, first
-        # The safe answer: the film is being planned already. Today the second is granted too.
+        # The safe answer: the film is being planned already, and the second press reserves nothing.
         assert not second.ok and second.error == "plan_running", second
+        assert su.value("select public.ai_chat_reserved(%s)", [sc.alice.org]) == 5
 
 
-@pytest.mark.xfail(strict=True, reason="BR-FILM-02: two editors' conversations of one film both hold a plan lease")
 def test_two_editors_cannot_run_two_plans_of_one_film_at_once(conn, sc):
     with as_superuser(conn, commit=False) as su:
         _cap(su, sc.alice.org, 1000)
         colleague = _member(su, sc.alice.org, "editor")
-        a = _marked_conversation(conn, sc.alice.actor, sc.alice.org, FILM["a"])
-        b = _marked_conversation(conn, colleague, sc.alice.org, FILM["a"])
+        target = _empty_film(conn, sc.alice.actor, sc.alice.org)
+        a = _marked_conversation(conn, sc.alice.actor, sc.alice.org, target)
+        b = _marked_conversation(conn, colleague, sc.alice.org, target)
         with acting(conn, sc.alice.actor, commit=True) as s:
-            first = s.run(BEGIN, [a])
+            assert s.run(BEGIN, [a]).ok
+            first = s.run(FILM_BEGIN, [a, target])
         _back(conn)
         with acting(conn, colleague, commit=True) as s:
-            second = s.run(BEGIN, [b])
+            assert s.run(BEGIN, [b]).ok
+            second = s.run(FILM_BEGIN, [b, target])
         _back(conn)
         assert first.ok, first
         assert not second.ok and second.error == "plan_running", second
+        assert su.value("select public.ai_chat_reserved(%s)", [sc.alice.org]) == 5
 
 
 def test_the_film_marker_is_the_authors_own_and_names_any_film(conn, sc):

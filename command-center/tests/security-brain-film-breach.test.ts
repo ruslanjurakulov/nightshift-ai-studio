@@ -9,8 +9,9 @@ import { fakePlanLease } from "./helpers/fakePlanLease";
  *
  * The fake database keeps the rules the attacks rely on: RLS on ai_chat_sessions (the author's own rows only), the marker lookup
  * applied as the route asks for it, 0199's cap counted under the reserve (every reserve is a turn; the cap refuses at the limit),
- * p_retry only while the last message is the person's, 0211's lease per conversation (tests/helpers/fakePlanLease.ts), and 0166
- * save_film at the current version only (`film_changed`). Nothing reaches a vendor or a real database.
+ * p_retry only while the last message is the person's, 0211's lease per conversation and, where a test switches it on, 0232's
+ * film lease with its reservation (tests/helpers/fakePlanLease.ts), and 0166 save_film at the current version only (`film_changed`).
+ * Nothing reaches a vendor or a real database.
  *
  * Tests marked HOLE are `it.fails`: they assert the safe behaviour and fail today. When the hole is fixed, the `it.fails` turns red:
  * make it a plain `it` then. Never skip them. The rest pin walls that held.
@@ -174,7 +175,14 @@ const client = {
       const sid = String(args.p_session);
       const list = db.messages.get(sid) ?? [];
       if (args.p_retry && list.at(-1)?.role !== "user") return refuse("nothing_to_retry");
+      // 0232: this conversation's own plan takes its turn out of its reservation first; then the charged cap (chat_daily_cap), then
+      // what other plans hold (chat_reserved). With 0232 off nothing is held and this is 0199's rule.
+      const own = lease.outstanding(sid) > 0 ? 1 : 0;
       if (db.limit !== null && db.used >= db.limit) return refuse("chat_daily_cap", "NS429", `used=${db.used} limit=${db.limit}`);
+      if (db.limit !== null && db.used + lease.reserved() - own >= db.limit) {
+        return refuse("chat_reserved", "NS429", `used=${db.used} reserved=${lease.reserved() - own} limit=${db.limit} until=`);
+      }
+      lease.take(sid);
       if (!args.p_retry) db.messages.set(sid, [...list, { id: ++db.msgId, role: "user", content: String(args.p_text) }]);
       db.used += 1;
       return { data: { call_id: randomUUID(), used: db.used, limit: db.limit }, error: null };
@@ -287,11 +295,14 @@ describe("metering: turns spent with no storyboard saved", () => {
   });
 
   /**
-   * BR-FILM-02 (HOLE, low). Two editors of one workspace pressing on the same empty project each get their own conversation and
-   * their own lease, and both run every turn against the WORKSPACE's shared daily cap; only one save_film can win, so the other's
-   * turns (up to at_most of them) are spent on a storyboard nobody gets. Same fix as BR-FILM-01: one running plan per film.
+   * BR-FILM-02 (was HOLE, low; fixed by migration 0232: ai_chat_film_plan_begin, one running plan per FILM, taken after 0211's lease
+   * and before the first turn). Two editors of one workspace pressing on the same empty project each get their own conversation and
+   * their own lease, and both ran every turn against the WORKSPACE's shared daily cap; only one save_film can win, so the other's
+   * turns (up to at_most of them) were spent on a storyboard nobody gets. The fake mirrors 0232's contract (fakePlanLease, film on).
    */
-  it.fails("HOLE BR-FILM-02: a second editor's press on a project being planned takes no turn", async () => {
+  it("FIXED BR-FILM-02: a second editor's press on a project being planned takes no turn", async () => {
+    lease.state.film = "on";
+    lease.state.quota = () => ({ used: db.used, limit: db.limit });
     const [a, b] = await Promise.all([press("user-1"), press("user-2")]);
     const statuses = [a.status, b.status];
     expect(statuses).toContain(200);
@@ -303,10 +314,13 @@ describe("metering: turns spent with no storyboard saved", () => {
    * BR-FILM-03 (HOLE, low). The up-front cap check (planPrecheck: begun only when today's turns cover the worst case, "so it never
    * stops halfway for the cap") is a read, not a reservation. Two presses in flight (two projects, two tabs, two editors) each see
    * enough turns left, and the database's cap then refuses one of them part-way, after its outline and some windows were paid for.
-   * Fix: reserve at_most turns with the lease (ai_chat_plan_begin taking the count and refusing under the workspace's cap lock), or
-   * count running leases' remaining worst case into `left`.
+   * Fixed by migration 0232: ai_chat_film_plan_begin reserves at_most turns under the workspace's cap lock and refuses plan_over_cap
+   * when they do not fit; a plan's own turns come out of its reservation, and other turns see it as used. The fake mirrors 0232's
+   * contract (fakePlanLease, film on). Before 0232 is applied the press behaves as before and this hole is open.
    */
-  it.fails("HOLE BR-FILM-03: a press that fails for the cap has taken no turn, even with another plan in flight", async () => {
+  it("FIXED BR-FILM-03: a press that fails for the cap has taken no turn, even with another plan in flight", async () => {
+    lease.state.film = "on";
+    lease.state.quota = () => ({ used: db.used, limit: db.limit });
     const at_most = (await (await read()).json()).turns.at_most as number;
     rpc.mockReset();
     db.limit = db.used + at_most; // exactly one plan's worst case left: each press's precheck passes
@@ -315,7 +329,11 @@ describe("metering: turns spent with no storyboard saved", () => {
     const turnsOf = (id: string) => calls("ai_chat_reserve_turn").filter((r) => r.p_session === sessionOf(id)).length;
     const outcome = [{ film: FILM, status: a.status, body: await a.json() }, { film: FILM2, status: b.status, body: await b.json() }];
     // A press that did not save its storyboard took no turn: it was refused up front (plan_over_cap), never part-way.
-    for (const o of outcome.filter((x) => x.status !== 200)) expect({ error: o.body.error, turns: turnsOf(o.film) }).toEqual({ error: "plan_over_cap", turns: 0 });
+    // (Since 0232 a press that finds everything left held by the other plan is told chat_reserved: refused up front all the same.)
+    for (const o of outcome.filter((x) => x.status !== 200)) {
+      expect({ error: ["plan_over_cap", "chat_reserved"].includes(o.body.error) ? "refused up front" : o.body.error, turns: turnsOf(o.film) })
+        .toEqual({ error: "refused up front", turns: 0 });
+    }
   });
 
   /**
