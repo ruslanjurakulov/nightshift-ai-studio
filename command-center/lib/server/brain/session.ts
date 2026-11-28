@@ -23,6 +23,15 @@ export function dbRefusal(error: { code?: string; message?: string; details?: st
     const m = /used=(\d+) limit=(\d+)/.exec(error.details ?? "");
     return brainJson({ error: "chat_daily_cap", used: m ? Number(m[1]) : null, limit: m ? Number(m[2]) : null }, 429);
   }
+  // 0232: what is left of today's cap (or the trial) is held by storyboards being written; it comes back by `until`, not in a day.
+  // Every number the detail cannot give is null (rule 5), never 0.
+  if (code === "chat_reserved") {
+    const m = /^used=(\d*) reserved=(\d*) limit=(\d*) until=(\S*)(?: scope=(workspace|trial|person))?$/.exec(error.details ?? "");
+    const n = (v: string | undefined) => (v ? Number(v) : null);
+    const until = m && m[4] && !Number.isNaN(Date.parse(m[4])) ? m[4] : null;
+    // scope person: the person's own daily limit, held by their own storyboard being written (the panel says it so).
+    return brainJson({ error: "chat_reserved", used: n(m?.[1]), reserved: n(m?.[2]), limit: n(m?.[3]), until, ...(m?.[5] ? { scope: m[5] } : {}) }, 429);
+  }
   if (code === "chat_plan_required") return brainJson({ error: "chat_plan_required" }, 402);
   if (code === "chat_unavailable") return brainJson({ error: "unavailable" }, 503);
   if (code === "message_too_long" || code === "invalid_params") return brainJson({ error: code }, 400);

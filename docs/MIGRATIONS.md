@@ -2801,6 +2801,141 @@ The audit allow-list adds `model.terms_accept` and `model.terms_revoke`.
 
 Apply as one transaction after 0018 (platform role), 0035 (registry), 0107 (operator MFA) and 0145 (audit allow-list).
 The owner-applied rollback is `docs/sql/rollback_0227_owner_model_terms_acceptance.sql`.
+## One storyboard plan per film, its turns reserved when it begins (0232, provisional)
+
+0232 (`0232_ai_chat_film_plan_leases.sql`) closes Breach BR-FILM-01/02/03 on #953. 0211's lease is per conversation, so two
+conversations planning one film (one person's racing presses, two editors, the chat's draft and the film editor's button) both
+ran, and the up-front cap check was a read that reserved nothing, so two plans at the cap both started and the second stopped
+halfway with its turns spent. Its fix round closes Breach BR-LEASE-01/02/03 on 0232 itself (Sentinel's list).
+
+- **`ai_chat_film_plan_leases`**: one row per film (which conversation and 0211 attempt plans it, `reserved` 1 to 15, `taken`,
+  `released`, running | failed | done, the same `expires_at` as 0211's lease). RLS on, an author-only SELECT policy as a second
+  wall, no grant to any API role. A partial unique index keeps one running film plan per conversation; full indexes on
+  `session_id` and `org_id` (the cascading keys); the end state asserts its columns and indexes.
+- **`ai_chat_film_plan_begin(session, film, at_most)`** (new, `authenticated`): called by both routes right after 0211's
+  `ai_chat_plan_begin` and before the first turn. The caller is the conversation's author, an editor with a seat
+  (`is_org_spender`, else `not_a_member`); the film of the conversation's own workspace (any channel: save_film may move it; else
+  `film_not_found`) and one a plan could write into (editable, not archived, no scene; else `film_not_plannable`, NS409); 0211's
+  lease running (else `plan_not_current`). Another running plan of the film: `plan_running` (detail: its end). The same attempt
+  asking again gets the reservation it holds. `at_most` is bounded by the film: `ai_chat_film_plan_max_turns(target_seconds)` =
+  `least(15, 1 + 2 x ceil(t / 24))` (60 s 7, 90 s 9, 180 s and longer 15); above it `plan_too_long` (NS409, "at most N turns for
+  this film": the length changed while the plan was set up; the routes answer 409 `plan_too_long` with "check again"), never cut.
+  Then, under the workspace's advisory lock (`ai_chat_reserve_turn`'s) and last the person's, on CHARGED numbers in a turn's
+  order: `chat_plan_required`, `chat_daily_cap` (used=N limit=M), and when short of `at_most`: `chat_reserved` (used=N reserved=R
+  limit=M until=T scope=workspace|trial|person) if it would fit once the other holds end, else `plan_over_cap` (left=N needed=M
+  scope=workspace|trial|person). Nothing is written by a refusal. The platform's global limit is not reserved.
+- **A new function, not a new argument on `ai_chat_plan_begin`**: a new argument is a new signature (two PostgREST overloads, or
+  the old one dropped under a running app). Riding on 0211's attempt lets 0211's own `plan_end` close both with one added
+  statement.
+- **"Used" means charged.** `ai_chat_used` and `ai_chat_trial_left` keep 0199's bodies. What running plans hold is
+  `ai_chat_reserved(org)` (internal; a lease counts only while running, unexpired, with something left, and while its author is
+  still an editor or above of the workspace, or the workspace is the exempt one, where every running lease counts), with
+  `ai_chat_reserved_until(org)`, `ai_chat_reserved_by(user)` and `ai_chat_reserved_by_until(user)`.
+- **Three bodies replaced** (md5 guard: the earlier body or 0232's own; a body 0226 replaces is refused with "apply 0226 first",
+  anything else as "an unknown body ... changed by hand? compare with 0226 before applying"):
+  `ai_chat_reserve_turn` e105fa93… (0226) -> 3a54f4b6… (a turn of a conversation whose film plan runs is taken out of its
+  reservation before the caps are read, so it is counted once; a turn that finds the rest held is `chat_reserved`; the person's
+  limit, held only by their own storyboard, is `chat_reserved` scope=person with `ai_chat_reserved_by_until`, and charged at it
+  stays `chat_daily_cap`; the answer adds `reserved`), `ai_chat_plan_end` 4df6a1c4… (0226) -> 71c2feb9… (the
+  film lease of the attempt ends with it; `released` = what was not taken), `ai_chat_quota` 7c17f974… (0199) -> 09b69b04… (adds
+  `reserved` and `reserved_until`; `used` stays charged). Relied on unchanged and guarded: `ai_chat_plan_session` 75c67929…,
+  `ai_chat_plan_begin` 2002d73e… (0226), `ai_chat_plan_state` c2aede96… (0211).
+- **Release.** At `plan_end`, done or failed. At expiry, at once: an expired lease is not counted, so a crashed plan's unused
+  turns come back without anything being run; the next film begin in the workspace sweeps it (failed / expired, `released`) and
+  closes its own pending calls as `vendor_error` with unknown tokens (0211's rule: the vendor may have been paid, they stay counted).
+- **Locks**, in one order everywhere: the workspace's advisory lock, the conversation's row, 0211's lease, the film lease, calls
+  (another transaction's lease or call SKIP LOCKED), and the person's advisory lock last. `ai_chat_reserve_turn` now locks the
+  conversation's row right after the workspace's lock, because `plan_end` takes the conversation and then the film lease.
+- **Known, not closed** (0232's header, docs/studio/NIGHTSHIFT_AI.md): a forgiven plan turn goes to the workspace's pool (F); the
+  chat's stored-storyboard save takes no film lease (G); an expired lease skipped by the SKIP LOCKED sweep and then overwritten
+  keeps its pending calls pending (I); a person's holds across films are bounded only by their own daily limit.
+- **The app** degrades honestly: before 0232 the function is missing (PGRST202 / 42883) and both routes plan as with #953 (the
+  per-person yield, the read-only cap check), the film route's answer claims no `reserved`, and `ai_chat_quota` has no `reserved`
+  (read as none held). The prechecks subtract `reserved` from what is left. The panel shows the held part in the meter, says
+  `chat_reserved` with its time (Retry, no plans link), and `plan_over_cap` on the trial with a plan as its remedy (en / ru / uz,
+  never "24 hours" for a hold). `film_not_plannable` reads as `film_not_editable`.
+- **No backslash** in the file or its rollback: `ai_chat_reserve_turn`'s two `E''` lists go through EXECUTE with a token, as in
+  0226; the fold is `regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')`.
+- **Publishing and privacy**: untouched (CLAUDE.md rule 2). A lease spends no credit, starts and publishes nothing.
+- **Replay.** The file replays onto itself. Re-running 0199 or 0211 applies silently and puts the older bodies back (apply 0226
+  and then 0232 again after). Re-running 0226 fails loudly (its guard refuses 0232's `ai_chat_reserve_turn` and `ai_chat_plan_end`):
+  take 0232 out with its rollback first, then 0226, then 0232. The lab's `take_off_0226` takes 0232 off first and `put_back_0226`
+  puts it back (`tests/security/test_sec_film_lease_0232.py`).
+- **Requires** 0166 (films, `film_is_editable`, `film_scenes`), 0199, 0211, 0215 (`is_org_spender`) and 0226.
+- **Undo.** `docs/sql/rollback_0232_ai_chat_film_plan_leases.sql` (owner-applied): the three earlier bodies back verbatim with
+  their grants; the new function, the five helpers and the table dropped (which plans held which film; it references films, so a
+  kept one would stop 0166's rollback, and nothing else depends on it). Plans running at that moment lose their lease and
+  reservation at once. Turns, calls and conversations are 0199's and stay.
+
+## Only a member spends a workspace's credits, on every path (0226, provisional)
+
+0226 (`0226_org_spender_everywhere.sql`) applies the owner's decision of 22 Nov, which 0215 applied to the film paths, to every other
+path that spends a workspace's credits. 0043's `accessible_org_ids` makes a platform owner or admin an admin of every organization;
+that stays read-only support access. Spending takes a seat in `org_members` (0215's `is_org_spender(org, role)`); in the exempt
+organization, whose credits are the platform's own, a platform owner or admin may, as before. A read-only check before this file
+found no non-member staff activity on any of these paths in production.
+
+- **Twenty-eight bodies, one marked hunk each, nothing else changed** (md5 guard: the earlier body or 0226's own). Sixteen spend paths
+  ask `is_org_spender` right after their own who-may-call check, with the role they already asked of a member, and refuse
+  `not_a_member` (NS400; `api_err` 403 for the API and connected apps) before anything is counted, priced, held or written:
+  `reserve_credits` (admin; the platform's own caller is still trusted), `create_creative_job` (any member), `start_workflow_run`
+  and `advance_workflow_run` (editor), `approve_storyboard`, `request_scene_regenerate`, `request_repurpose`,
+  `start_series_episode` (admin), the paid four-argument `request_editor_export`, `request_brand_scan`, `request_character_swap`,
+  `request_download` (editor; its exempt organization is not asked, as it has no platform-admin rule there),
+  `render_jobs_payment_guard` (a signed-in browser's row, admin), `create_api_key` (admin; `create_scoped_api_key` calls it first),
+  and at use time `api_begin` (the key's maker) and `oauth_ctx` (the connected app's person), both before the request is counted.
+- **Row locks.** Two paths take a row lock first, to ask who may call: `approve_storyboard` (`storyboard_lock_for_runner`'s FOR
+  UPDATE on the storyboard) and the paid `request_editor_export` (0054's FOR UPDATE on the project). The refusal is an exception,
+  so it aborts the transaction: the lock goes with it and nothing persists.
+- **The API doors** (`api_begin`, `oauth_ctx`) ask `is_org_spender` first, so a seated member pays one index probe and passes;
+  `is_org_member` is asked only to tell a refusal from the old one. The check sits in its own `begin … exception when others`
+  block (an unexpected error answers `internal_error` 500, like the block after it, never a raw SQL error), before the rate
+  counter.
+- **The confirmer** (Breach 0226-1). `workflow_confirmer_may_spend` (0074), which a workflow's later step asks of the member who
+  pressed Run now, answered yes from the platform role in every organization: a platform admin with only a viewer seat kept spending
+  on later steps. Its non-exempt branch now asks only for a seat of editor or above (0074's platform arm and its dead
+  `p_org = default_org_id()` arm go); the exempt branch keeps its platform owner or admin arm. Such a step stops with
+  `confirmation_revoked` and holds nothing.
+- **The owner's five** (27 Nov). `ai_chat_start` and `ai_chat_reserve_turn` (Nightshift AI: the workspace's trial and daily cap)
+  ask `is_org_spender(org, 'editor')` before the cap or the trial is read or counted; `set_api_key_access`, `set_api_key_limit`
+  and `api_activate` ask `is_org_spender(org, 'admin')` before anything is written. A platform owner or admin without a seat no
+  longer chats on a customer's trial, widens a key or accepts the API terms. The chat route and the Developer console name the
+  refusal (en / ru / uz, `tests/not-a-member-chat-api.test.ts`). `api_set_monthly_limit` (the workspace's own API limit) was not in
+  the owner's list and is unchanged.
+- **Round three** (owner and Atlas, 27 Nov). Nightshift AI's plan step (0211): `ai_chat_plan_session` (the helper both plan calls
+  open with, after its row lock on the conversation), `ai_chat_plan_begin` and `ai_chat_plan_end` ask `is_org_spender(org,
+  'editor')`: a refused call writes no lease and closes no call. `ai_chat_plan_state` is a stable read that moves no counter:
+  unchanged. `api_set_monthly_limit` (the workspace's API limit) and `oauth_decide_authorization` (a connected app's consent, the
+  counterpart of `create_api_key`; it answers `{ok: false, error: not_a_member}`, its own refusal shape, after taking the pending
+  request as every answer does) ask `is_org_spender(org, 'admin')`. Platform staff may restrict, never widen: `cancel_workflow_run`
+  stays open to them and now writes its `workflow.cancel` audit row (the actor, the run's organization) in the database for every
+  caller (the route no longer writes a second one); `revoke_api_key` already recorded `revoked_by` and its `api_key.revoke` row
+  and is unchanged.
+- **No backslash** in the file or its rollback (an apply tool can rewrite escape sequences): the md5 fold is
+  `regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')`, which the lab compares with the `\s+` shorthand on every body. The two
+  earlier bodies that hold a backslash, at three sites (`request_brand_scan`'s position test, `ai_chat_reserve_turn`'s two `E''`
+  character lists), are written as an EXECUTE whose backslashes are a token that `replace()` turns back into `chr(92)`: each source, and its md5, is
+  the earlier text plus the hunk.
+- **Refused as before**: a member of another organization, a viewer where an editor is asked, a key whose maker is no admin at all
+  (`key_owner_not_admin`), a connection whose person lost access (`workspace_access_lost`). The new check never answers first.
+- **Covered without a body of their own**: every API endpoint (through `api_begin`) and MCP tool (through `oauth_ctx`);
+  `request_reply_draft` already asks `inbox_real_member`. Free paths (the free editor exports, `request_series_plan`) and every
+  quote are not asked.
+- **Accepted, not changed** (DB review): a `not_a_member` answer of `api_begin` / `oauth_ctx` is not logged through `api_finish`
+  (L4: the request context is not built yet, as for `api_not_activated`), and the review's I1, both left as they are.
+- **The app** reads `not_a_member` as its own word (403) in each path's map, with en / ru / uz copy (`tests/not-a-member.test.ts`):
+  the run's hold, downloads, storyboard approval, scene repair, repurpose, series start, paid export, brand scan, character swap,
+  generations and workflows, the Developer console's key creation, the API spec and the connected assistant's sentence.
+- **Publishing and privacy**: untouched (CLAUDE.md rule 2). No browser path gains anything; each may only refuse more.
+- **Replay.** The file replays onto itself. Any earlier file that defines one of these twenty-eight functions restores its older body
+  when it is re-run, unless it carries an md5 guard that refuses a body it was not written on. Measured on the lab with 0226 applied
+  (`tests/security/test_sec_org_spender_0226.py` pins both lists): re-running 0120, 0122, 0129, 0132, 0133, 0136, 0137, 0147, 0174
+  or 0192 fails loudly (take 0226, and whatever else sits on that file, out first), and so does 0020 on a database that holds
+  ledger rows of a later kind; re-running 0030, 0031, 0036, 0040, 0041, 0042, 0057, 0060, 0062, 0070, 0073, 0074, 0075, 0076, 0080,
+  0085, 0093, 0094, 0111, 0199 or 0211 applies silently and puts an older body back (apply 0226 again after).
+- **Requires** 0215 (`is_org_spender`) and the files above.
+- **Undo.** `docs/sql/rollback_0226_org_spender_everywhere.sql` (owner-applied): the twenty-eight earlier bodies back, verbatim, with
+  their grants. It adds nothing else, so nothing else is undone.
 
 ## Dated credit prices (0224)
 
@@ -3032,3 +3167,47 @@ found no non-member staff activity on any of these paths in production.
 - **Requires** 0215 (`is_org_spender`) and the files above.
 - **Undo.** `docs/sql/rollback_0226_org_spender_everywhere.sql` (owner-applied): the twenty-eight earlier bodies back, verbatim, with
   their grants. It adds nothing else, so nothing else is undone.
+
+## Stopping something is recorded, and a workflow run is stopped only by its own rule (0231, provisional)
+
+0231 (`0231_cancel_audit.sql`) closes Breach 0226-R3-1 (BR-0226-31, medium, pre-existing since 0073/0198), 0226-R3-2
+(BR-0226-32, low), both found attacking 0226's "the database records who stopped a run", and 0231-R4-1 (BR-0226-33, medium,
+pre-existing since 0073) and 0231-R4-2 (BR-0226-34, low), found attacking 0231 itself (`docs/security/LEDGER.md`). Four bodies
+are replaced, each with marked 0231 hunks, and one policy is added.
+
+- **`cancel_creative_job`** (0198's body). A job that is a workflow run's step asks an editor of the organization,
+  the rule `cancel_workflow_run` uses: before 0231 any seat (a viewer's) cancelled it, and the run ended at its next advance. Platform
+  staff pass it, as they pass `cancel_workflow_run`'s (they may restrict a customer's run, never widen it). Any other job keeps
+  0036's rule: a viewer still cancels an ordinary job. The refusal (`forbidden`, 42501) comes before the account lock, the job's row
+  lock or anything written.
+- **The record.** Every cancel that happened writes a `creative.cancel` row in `app_audit_log`: the signed-in person (the stamp
+  trigger writes the confirmed e-mail), the job and its organization. A job that had already ended answers as before and writes
+  nothing. `cancel_workflow_run` calls it for the run's running step, so stopping a run writes both rows, by the same person. The
+  creative job route no longer writes its own row (it had no channel, so 0087's policy refused it for every customer).
+- **`cancel_workflow_run`** (0226's body). Its `workflow.cancel` row is written only when the run was running: a call on a run that
+  had already ended answers as before and writes nothing (before, each repeat added a row for a stop that never happened).
+- **A workflow step's key is the run's.** Step N's job is made under `wf:<run>:<N>`, and a key is unique per organization, so a viewer
+  could take a later step's key first and fail the step (`idempotency_conflict`), ending the run. `create_creative_job` (0226's body)
+  now refuses any key beginning `wf:` with NS400 `invalid_idempotency_key` (the detail says to choose another key), unless it is the
+  exact key `workflow_advance_locked` (0192's body) names in the transaction-local setting `nightshift.workflow_step_key` right
+  before its call and clears right after. A browser cannot set that setting: `set_config` is pg_catalog's, which PostgREST does not
+  expose, and every function a browser may call that uses it names a fixed setting. The API and connected apps derive their own
+  keys (`api-...`, `oa-...`), so their callers' keys never reach the refusal. A key such as `wf-...` or `WF:...` is unaffected.
+- **No browser-written cancel row.** A restrictive insert policy, `app_audit_log_no_cancel_rows`, refuses `workflow.cancel` and
+  `creative.cancel` to a browser's own insert. The two functions write as the table's owner, which row security does not ask (the
+  table does not force it), so their rows land; every other action keeps 0087's rule. The actions stay on 0087's list, because
+  `app_audit_log_stamp` checks it for the definer's insert too, and the file refuses to apply when either is missing from it (a
+  later drop would make every cancel fail, swallowed inside `cancel_workflow_run`). No other app code writes either action.
+- **Requires** 0226 (its `create_creative_job` and `cancel_workflow_run`; the guard asks for their md5s), 0192
+  (`workflow_advance_locked`), 0198 (`cancel_creative_job`), 0087.
+- **Bodies** (md5, whitespace runs read as one space; earlier -> 0231): `cancel_creative_job` 2720d62c17ae26bce439a28280964575 (0198)
+  -> c210f8e4684e154d40f7029b5c94b893; `create_creative_job` ab939bb64ef626e30c1438c6030d8801 (0226) ->
+  88c83aa87050731c96ce8a0a5bb28b0a; `workflow_advance_locked` 553dd9f65b62541fd3653ed55288ae46 (0192) ->
+  37fda6dc6caf182483f10314d166579c; `cancel_workflow_run` 427ead0896b4881c0739b944997c6b50 (0226) -> c09c0dbdd8207bab0fc6d3175276fbf2.
+- **Replay** (measured). The file replays onto itself. Re-running 0036, 0060, 0070, 0073, 0074, 0075 or 0083 after it silently puts
+  an older body back (apply 0231 again after); re-running 0174, 0192, 0198 or 0226 fails loudly and changes nothing. Their rollbacks
+  refuse while 0231 is on (`sec_db.take_off_0226` takes 0231 off first).
+- **Undo.** `docs/sql/rollback_0231_cancel_audit.sql` (owner-applied): the four earlier bodies back, verbatim, and the policy
+  dropped. The rows written stay: they are the record of who cancelled.
+- **Lab.** `tests/security/test_sec_cancel_audit_0231.py` (Breach's round-3 and round-4 pins, the four callers, the reserved key
+  namespace, the migration's guard, replay and rollback, sec_db's chain).
