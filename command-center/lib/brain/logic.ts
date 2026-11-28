@@ -17,6 +17,7 @@
  */
 
 import { RUN_DURATIONS_S, HOME_LANGUAGES, type HomeLanguage } from "@/lib/home";
+import type { RefSheet } from "@/lib/brain/ref-sheets";
 
 export type BrainKind = "long" | "short";
 export type BrainAspect = "16:9" | "9:16" | "1:1";
@@ -195,6 +196,8 @@ export interface Brief extends Partial<Omit<Scenario, "target_seconds" | "chapte
   music: { mode: "off" };
   price?: BriefPrice;
   // credit_ref and scene_map are read by the database from the job and the film (0199), never sent by the browser.
+  /** Character reference sheets (lib/brain/ref-sheets.ts): optional and additive, written only by /api/brain/sheets. */
+  ref_sheets?: RefSheet[];
   handoff: null | { kind: "film"; film_id: string; scene_map?: Record<string, string> }
     | { kind: "run"; channel_id: string; dispatched_at?: string; job_id?: string; credit_ref?: string };
 }
@@ -950,7 +953,7 @@ const MOVE_WORDS: Record<CameraMove, string> = {
 };
 
 /** A character as every prompt it is in says it: its look sheet verbatim (at the scene's age stage), or the older free description. */
-function characterLine(c: BriefCharacter, stageId: string | null): string {
+export function characterLine(c: BriefCharacter, stageId: string | null): string {
   const stage = stageId ? (c.age_stages ?? []).find((a) => a.id === stageId) : undefined;
   const l = stage?.look ?? c.look;
   if (!l) return `${c.name}: ${c.description || c.image_prompt}`;

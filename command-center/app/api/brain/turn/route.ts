@@ -1,4 +1,5 @@
 import { createClient, getUser } from "@/lib/supabase/server";
+import { carrySheets } from "@/lib/brain/ref-sheets";
 import { requireOrgRole } from "@/lib/auth/org-roles";
 import { rejectCrossOrigin } from "@/lib/server/same-origin";
 import { readJsonBodyCapped, SMALL_BODY_BYTES } from "@/lib/server/json-body";
@@ -583,7 +584,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     // 5. The storyboard is kept before anything else can fail (Lens M6): a refresh, or a draft save that fails, finds it and choosing
     // again re-reads it without a turn. Unpriced until the quote below says otherwise. Only while this attempt holds the lease.
     if (!(await stillOurs())) return superseded(f.id);
-    const kept = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: { ...draftBrief, price: { state: "unpriced" } }, p_step: "ready" });
+    const kept = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: { ...draftBrief, ...carrySheets(s.brief), price: { state: "unpriced" } }, p_step: "ready" });
     if (kept.error) return dbRefusal(kept.error) ?? brainJson({ error: "unavailable" }, 503);
     // Shots per scene from the film's own clip model as the database stored it, when its lengths are listed (G4); otherwise one
     // shot, and the quote names what is missing.
@@ -604,7 +605,8 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     // 8. The BRIEF with its price, again only while this attempt holds the lease.
     const brief: Brief = { ...draftBrief, price: priceOf(quoteRead) };
     if (!(await stillOurs())) return superseded(f.id);
-    const stored = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: brief, p_step: "ready" });
+    // The character sheets this conversation already made (lib/brain/ref-sheets) survive the storyboard being saved again.
+    const stored = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: { ...brief, ...carrySheets(s.brief) }, p_step: "ready" });
     if (stored.error) return dbRefusal(stored.error) ?? brainJson({ error: "unavailable" }, 503);
     ending = { state: "done", reason: "" };
     return brainJson({
