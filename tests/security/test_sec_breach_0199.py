@@ -289,7 +289,12 @@ def test_forged_brief_card_and_payload_are_size_bounded(conn, sc):
             call = s.value(RESERVE, [sc.alice.ai_chat_session, "bloat"])["call_id"]
             huge = json.dumps({"x": "a" * 300_000})
             assert not s.run(FINISH, [call, "ok", 1, 1, "x", huge, None, None, None, None]).ok
-            assert not s.run(FINISH, [call, "ok", 1, 1, "x", None, None, None, huge, None]).ok
+            # A forged 300 KB BRIEF is never stored. Before 0249 the CHECK refused it (and the call stayed pending); with 0249 the call
+            # ends brief_too_large and nothing is written (tests/security/test_sec_sheets_writer_0249.py pins the call row).
+            out = s.run(FINISH, [call, "ok", 1, 1, "x", None, None, None, huge, None])
+            assert not s.value("select brief ? 'x' from public.ai_chat_sessions where id = %s", [sc.alice.ai_chat_session])
+            if out.ok:
+                call = s.value(RESERVE, [sc.alice.ai_chat_session, "bloat again"])["call_id"]
             assert not s.run(FINISH, [call, "ok", 1, 1, "x", None, None, None, None, json.dumps({"x": "a" * 9000})]).ok
             assert not s.run("select public.ai_chat_save_brief(%s, %s::jsonb, 'ready')", [sc.alice.ai_chat_session, huge]).ok
 
