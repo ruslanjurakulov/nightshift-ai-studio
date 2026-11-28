@@ -1305,11 +1305,13 @@ def test_a_replay_changes_nothing_not_even_the_owners_price(conn, w):
     s = w.su
     set_settings(s, price_credits=3, platform_daily_scans=7)
     sec_db.take_off_0134(s)                                  # 0134 sits on 0133's brand_scan_fail_locked: off, 0133 twice, then back
+    sec_db.take_off_0226(s)  # 0226 sits on 0133's request_brand_scan, which 0133's guard and rollback refuse
     before = (fingerprint(s, True), fingerprint(s, False), counts(s))
     s.conn.execute(migration_body())
     s.conn.execute(migration_body())
     assert (fingerprint(s, True), fingerprint(s, False), counts(s)) == before
     sec_db.put_back_0134(s)
+    sec_db.put_back_0226(s)
     become(s, None)
     assert s.rows("select price_credits, platform_daily_scans, platform_daily_checks from public.brand_scan_settings") == [(3, 7, 5000)]
 
@@ -1344,6 +1346,7 @@ def test_the_file_refuses_a_function_of_its_name_that_somebody_changed_by_hand(c
     s = w.su
     become(s, None)
     sec_db.take_off_0134(s)
+    sec_db.take_off_0226(s)  # 0226 sits on 0133's request_brand_scan, which 0133's guard and rollback refuse
     definition = s.value("select pg_get_functiondef(%s::regprocedure)", [ALL[name]])
     marker = "begin" if "\nbegin" in definition else "select"
     s.conn.execute(definition.replace(marker, marker + " /* changed by hand */", 1))
@@ -1359,6 +1362,7 @@ def test_the_rollback_refuses_while_people_have_rows_or_a_scan_is_in_flight(conn
     s = w.su
     become(s, None)
     sec_db.take_off_0134(s)
+    sec_db.take_off_0226(s)  # 0226 sits on 0133's request_brand_scan, which 0133's guard and rollback refuse
     before = (fingerprint(s, True), counts(s))
     out = s.run(rollback_body())
     assert not out.ok and "the brand scan tables hold" in out.error and "brand_scan_rollback_delete_rows" in out.error, out
@@ -1375,6 +1379,7 @@ def test_the_rollback_removes_exactly_what_0133_added_and_0133_applies_again(con
     assert re.search(r"(?m)^begin;$", rollback) and len(re.findall(r"(?m)^commit;$", rollback)) == 1
     with as_superuser(conn, commit=False) as su:
         sec_db.take_off_0134(su)                             # 0134 comes off first (0133's rollback refuses any body but 0133's)
+        sec_db.take_off_0226(su)  # 0226 sits on 0133's request_brand_scan, which 0133's guard and rollback refuse
         ours, others = fingerprint(su, True), fingerprint(su, False)
         kits = su.value("select count(*) from public.brand_kits")
         assets = su.value("select count(*) from public.media_assets")
@@ -1403,7 +1408,8 @@ def test_0133_touches_no_object_it_did_not_add(conn, sc):
     dsn = sec_db.create_database(admin, name)
     try:
         # 0134 extends 0133's brand_scan_fail_locked: it is left out too, and is not part of what is compared.
-        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0133_", "0134_"))])
+        # 0226 (only a member spends) replaces a body of a file left out here and refuses to apply without it: out too.
+        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0133_", "0134_", "0226_"))])
         with psycopg.connect(dsn, autocommit=True) as c:
             s = sec_db.Session(c)
             assert all(v == [] for v in fingerprint(s, True).values())

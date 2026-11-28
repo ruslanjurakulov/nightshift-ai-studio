@@ -35,6 +35,8 @@ export function dbRefusal(error: { code?: string; message?: string; details?: st
   if (code === "nothing_to_retry") return brainJson({ error: "nothing_to_retry" }, 409);
   if (code === "session_not_found" || code === "channel_not_found" || code === "call_not_found") return notFound();
   if (code === "forbidden") return brainJson({ error: "forbidden" }, 403);
+  // 0226: the workspace's trial and daily cap are spent only by a member (a platform admin who holds no seat reads, never chats).
+  if (code === "not_a_member") return brainJson({ error: "not_a_member" }, 403);
   return brainJson({ error: "unavailable" }, 503);
 }
 

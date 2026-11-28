@@ -231,6 +231,7 @@ export const seriesPlanUz: SeriesPlanDictionary = {
       rate_limited: "Soʻrovlar juda koʻp. Biroz kutib, qayta urinib koʻring.",
       run_limit: "Tarifingizdagi bir vaqtda ishga tushirish limiti band. Biri tugashini kutib, qayta urinib koʻring.",
       forbidden: "Bu yerda epizodni boshlay olmaysiz. Ish maydonini boshqaradigan kishidan soʻrang.",
+      not_a_member: "Bu ish maydonida uning kreditlarini sarflash uchun yetarli huquqli aʼzoligingiz yoʻq. Uni boshqaradigan kishidan sizni qoʻshishini yoki koʻproq huquq berishini soʻrang. Hech narsa boshlanmadi va yechilmadi.",
       confirmation_required: "Bu epizod uchun avval nishani tasdiqlashingiz kerak.",
       price_required: "Narx yoʻq. Sahifani yangilab, qayta urinib koʻring.",
       already_started: "Bu epizod allaqachon boshlangan.",

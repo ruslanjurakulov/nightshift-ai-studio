@@ -31,7 +31,9 @@ vi.mock("@/lib/site/showcase.json", async () => {
 });
 vi.mock("@/components/site/showcase-assets", async () => {
   const { FIXTURE_FILES, FIXTURE_JOB } = await import("./fixtures/showcase-entry");
-  return { SHOWCASE_FILES: { ...FIXTURE_FILES, [ids.still]: { ...FIXTURE_FILES[FIXTURE_JOB], clip: null } } };
+  const { SHOWCASE_ENTRIES, showcaseCard } = await import("@/lib/site/showcase");
+  // The client slice of the same stand-in data file, as the generator would write it (lib/site/showcase.ts showcaseCard).
+  return { SHOWCASE_FILES: { ...FIXTURE_FILES, [ids.still]: { ...FIXTURE_FILES[FIXTURE_JOB], clip: null } }, SHOWCASE_CARDS: SHOWCASE_ENTRIES.map(showcaseCard) };
 });
 // The slots and scenes as they will be once their `ai` lines are set: the module's own objects, so slotMedia and sceneMedia read them.
 vi.mock("@/components/site/slots", async (orig) => {

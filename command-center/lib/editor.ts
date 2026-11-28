@@ -4296,6 +4296,8 @@ export const EDITOR_ERRORS = [
   // A speed curve the renderer would refuse (0136 prices a curve at its rendered length, so a curve it cannot read is
   // not priced at all): the quote and the paid request refuse it.
   "invalid_speed_curve",
+  // 0226: a paid export spends the workspace's credits, which takes a seat in it (a platform admin who holds none reads, never spends).
+  "not_a_member",
   "not_available",
   "network",
   "failed",
@@ -4330,6 +4332,7 @@ export function mapEditorError(
   error: { code?: string; message?: string } | null | undefined,
 ): { error: EditorError; status: number } {
   const word = (error?.message ?? "").trim();
+  if (error?.code === "NS400" && word === "not_a_member") return { error: "not_a_member", status: 403 };
   switch (error?.code) {
     case "NS400":
       return { error: DB_WORDS[word] ?? "bad_request", status: 400 };

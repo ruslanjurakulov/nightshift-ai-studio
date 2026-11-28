@@ -97,7 +97,7 @@ type HistoryRead<T> = { ok: true; value: T } | { ok: false; gone?: boolean; mess
 /** Refusals a Retry cannot change: the same press would meet the same answer. */
 const NO_RETRY = [
   "chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose",
-  "forbidden", "content_refused", "output_too_long",
+  "forbidden", "content_refused", "output_too_long", "not_a_member",
   // The plan step's refusals another press cannot change (lib/server/brain/plan, 0211's lease).
   "plan_over_cap", "plan_running", "plan_unavailable", "plan_superseded", "proposal_outdated",
   // A project's own storyboard conversation (lib/server/brain/film-plan): it is continued in the project, never here.
@@ -455,6 +455,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (e === "adult_only_service") return c.errors.adult_only_service;
     if (e === "adult_attestation_required") return c.errors.adult_attestation_required;
     if (e === "session_closed") return c.errors.session_closed;
+    if (e === "not_a_member") return c.errors.not_a_member;
     if (e === "card_changed") return c.errors.card_changed;
     // A film editor's storyboard conversation opened here (a link, the history): its own words and a link to that project.
     if (e === "film_conversation") return c.errors.film_conversation;
