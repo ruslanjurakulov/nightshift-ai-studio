@@ -10,8 +10,9 @@
  * {"Type":"TC260PG",…}}). tools/export_showcase.py keeps it in every copy. Anything else that names a vendor in a media file
  * (another tag, an EXIF Make, an XMP packet, a tampered or look-alike AIGC value) is not provenance we have to keep, and fails.
  *
- * The exemption is exact (isSignedImplicitLabel): an `AIGC` key, its value within AIGC_GAP bytes (8 in a WebM SimpleTag, 51 in
- * an MP4 keys/ilst pair, measured), a JSON object with exactly LABEL_KEYS, every value a string, and ReservedCode1 a JSON object
+ * The exemption is exact (isSignedImplicitLabel): an `AIGC` key, its value within AIGC_GAP bytes (8 in a WebM SimpleTag; 142 in
+ * the site's MP4s, measured, because an MP4 lists every key in moov/meta/keys before the values in ilst, so the distance grows
+ * with the number of tags), a JSON object with exactly LABEL_KEYS, every value a string, and ReservedCode1 a JSON object
  * of exactly the signature block's shape with SecurityData.Type "TC260PG". Only that value's bytes are skipped; the rest of the
  * file is scanned as if it were not there. A maker that changes the shape fails the build loudly: read the new shape, then
  * decide, never widen this quietly.
@@ -48,8 +49,11 @@ export const VENDOR_LABEL_KEYS = ["ProduceID", "ContentPropagator", "PropagateID
 export const SHORT_NAME = 6;
 /** The shortest printable run a short name counts in: the name and at least a key's worth of text around it. */
 export const SHORT_CONTEXT = 12;
-/** How far after the "AIGC" key its value may start. */
-export const AIGC_GAP = 64;
+/**
+ * How far after the "AIGC" key its value may start: room for an MP4's other keys and earlier values (142 bytes with the site's five
+ * tags). Loose on purpose and still exact: the value found there must parse as the full label shape, or nothing is exempted.
+ */
+export const AIGC_GAP = 1024;
 /** How far after "AIGC" a 32-hex id is looked for. */
 export const AIGC_WINDOW = 4096;
 

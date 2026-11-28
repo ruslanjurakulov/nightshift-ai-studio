@@ -17,9 +17,15 @@ type Label = Record<string, unknown>;
 // Binary around the tag, as in a real WebM: the EBML head, a SimpleTag's TagName and TagString ids.
 const head = "\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01";
 const webm = (value: string) => Buffer.from(`${head}\x67\xc8\x45\xa3\x84AIGC\x44\x87\x80${value}\x00\xff\xfe`, "latin1");
-// An MP4 with use_metadata_tags: the key in moov/meta/keys, its value in ilst about 50 bytes on.
+// An MP4 with use_metadata_tags: every key in moov/meta/keys first, then the values in ilst in key order, so the AIGC value sits
+// past the other keys and the values before it (142 bytes on in the site's real MP4s).
+const mdta = (k: string) => `\x00\x00\x00${String.fromCharCode(8 + k.length)}mdta${k}`;
+const item = (n: number, v: string) => `\x00\x00\x00\x00\x00\x00\x00${String.fromCharCode(n)}\x00\x00\x00\x00data\x00\x00\x00\x01\x00\x00\x00\x00${v}`;
 const mp4 = (value: string) =>
-  Buffer.from(`\x00\x00\x00\x18ftypisom\x00\x00\x02\x00\x00\x00\x00\x14mdtaAIGC\x00\x00\x00\x2a\x00\x00\x00\x01\x00\x00\x00\x22data\x00\x00\x00\x01\x00\x00\x00\x00${value}\x00\x00mdat`, "latin1");
+  Buffer.from(
+    `\x00\x00\x00\x18ftypisom\x00\x00\x02\x00moovudtameta\x00\x00\x00\x00keys\x00\x00\x00\x05${mdta("major_brand")}${mdta("minor_version")}${mdta("compatible_brands")}${mdta("AIGC")}${mdta("encoder")}ilst${item(1, "isom")}${item(2, "512")}${item(3, "isomiso2avc1mp41")}${item(4, value)}${item(5, "Lavf60.16.100")}\x00\x00mdat`,
+    "latin1",
+  );
 // The measured shape (54 labelled WebMs, 2026-11-28) with stand-in values: never a real id or signature.
 const sig = { Type: "x", AlgID: "y", TBSData: { Type: "z" }, Signature: "0f".repeat(32) };
 const pub = [sig, { ...sig, TBSData: { Type: "z", BType: "w" } }, { Type: "x", AlgID: "y", TBSData: { Type: "z" }, KeyValue: "0f".repeat(32) }];
@@ -70,17 +76,22 @@ describe("media-bundle-check: the signed implicit label is kept, nothing else th
     expect(r.out).toContain("2 carry a maker's signed implicit label");
   });
 
-  it("passes the repository's own showcase clips, which carry the real labels", () => {
+  it("passes the repository's own showcase clips, which carry the real labels, in the WebMs and the MP4s", () => {
     const dir = path.join(CC, "components", "site", "showcase");
     const media: Record<string, Buffer> = {};
     for (const job of readdirSync(dir)) {
-      const f = path.join(dir, job, "clip-sm.webm");
-      if (existsSync(f)) media[`${job.slice(0, 8)}.clip-sm.webm`] = readFileSync(f);
+      for (const name of ["clip-sm.webm", "clip-sm.mp4"]) {
+        const f = path.join(dir, job, name);
+        if (existsSync(f)) media[`${job.slice(0, 8)}.${name}`] = readFileSync(f);
+      }
     }
     expect(Object.keys(media).length).toBeGreaterThan(0);
     const r = run(media);
     expect(r.status).toBe(0);
-    expect(r.out).toMatch(/[1-9]\d* carry a maker's signed implicit label/);
+    // Every labelled clip-sm.webm and its clip-sm.mp4 (the MP4's value sits further from its key than a WebM's).
+    const webms = Object.entries(media).filter(([name, b]) => name.endsWith(".webm") && b.includes("ProduceID")).length;
+    expect(webms).toBeGreaterThan(0);
+    expect(r.out).toContain(`; ${webms * 2} carry a maker's signed implicit label`);
   });
 
   it("fails the same vendor name outside the label, in the same file and in a poster's EXIF", () => {
@@ -101,7 +112,7 @@ describe("media-bundle-check: the signed implicit label is kept, nothing else th
   });
 
   it("fails a label moved away from its AIGC key: the exemption is the tag, not the text", () => {
-    expect(run({ "clip.1.webm": Buffer.from(`${head}AIGC\x00${"\xff".repeat(200)}${exact}\x00`, "latin1") }).status).toBe(1);
+    expect(run({ "clip.1.webm": Buffer.from(`${head}AIGC\x00${"\xff".repeat(2048)}${exact}\x00`, "latin1") }).status).toBe(1);
   });
 
   it("fails a provenance key or a 32-hex id under AIGC in any other shape, and prints no part of the id", () => {

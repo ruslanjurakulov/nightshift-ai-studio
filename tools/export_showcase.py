@@ -34,8 +34,9 @@ always kept, never stripped or replaced, on the site's copies too. MiniMax ships
 implicit label), and the copies carry the source's metadata as it is (`-map_metadata 0`, ffmpeg's default, stated so no one
 "tidies" it away). The Matroska muxer writes every global tag, but the MP4 muxer silently drops a key it has no atom for unless
 asked (measured with ffmpeg 6.1: without `-movflags use_metadata_tags` the AIGC tag is gone from clip.mp4), and losing it there
-would be stripping by omission, so both MP4s ask. The MP4 copies exported before this flag lack the tag; they were not re-muxed
-(the site's files are not rewritten by hand). scripts/media-bundle-check.mjs allows exactly that signed tag in
+would be stripping by omission, so both MP4s ask. The MP4 copies exported before this flag had lost it; each was given back its
+own WebM's exact value by a stream-copy remux (no re-encode), and tests/test_export_showcase.py pins that every MP4 carries its
+WebM's label. scripts/media-bundle-check.mjs allows exactly that signed tag in
 /_next/static/media/ and fails on a vendor name or id anywhere else.
 
 Sound (the owner's decision of 2026-11-22: every video on the site is cinematic and has sound). When ffprobe finds an audio

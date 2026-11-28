@@ -607,6 +607,26 @@ class RepositoryStateTest(unittest.TestCase):
         out = subprocess.run(["git", "check-ignore", "-q", str(x.DATA_FILE)], cwd=x.ROOT)
         self.assertEqual(out.returncode, 1, "command-center/lib/site/showcase.json must be committed (.gitignore re-includes it)")
 
+    @unittest.skipUnless(shutil.which("ffprobe"), "ffprobe is not installed here, so the clips' tags cannot be read")
+    def test_every_mp4_carries_the_same_makers_label_as_its_webm(self):
+        # docs/AI_DISCLOSURE.md: a maker's invisible label is always kept. The exporter's MP4 muxer once dropped it
+        # (no use_metadata_tags), so the MiniMax samples' MP4s went out unlabelled while their WebMs kept it.
+        def aigc(p: Path):
+            out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags=AIGC", "-of", "json", str(p)],
+                                 stdin=subprocess.DEVNULL, capture_output=True, check=True).stdout
+            return (json.loads(out).get("format") or {}).get("tags", {}).get("AIGC")
+
+        labelled = 0
+        for job in sorted(p for p in x.OUT_ROOT.iterdir() if (p / "clip.webm").is_file()):
+            for webm, mp4 in (("clip.webm", "clip.mp4"), ("clip-sm.webm", "clip-sm.mp4")):
+                value = aigc(job / webm)
+                if value is None:
+                    continue
+                labelled += 1
+                # Compared, never printed: the value holds the maker's job id.
+                self.assertTrue(aigc(job / mp4) == value, f"{job.name}/{mp4} does not carry {webm}'s AIGC label")
+        self.assertGreater(labelled, 0, "no showcase WebM carries a maker's label, so this pins nothing")
+
 
 class WorkflowTest(unittest.TestCase):
     def setUp(self):
