@@ -9,21 +9,22 @@
  * blurred box over the sections below the gallery, and another card over the sticky header.
  *
  * How the grid fits each card: its rows are a small unit that grows with the column, u = (W + REF) / UNITS, where W is the
- * column's width (container query units) and REF stands for a card's text block plus the gap under it. A card is its frame
- * (r * W, r = height / width, exactly the clip's or the drawing's shape) plus its text, so in rows it needs
+ * column's width (container query units) and REF stands for the gap under a card (once also its text block). A card is its frame
+ * (r * W, r = height / width, exactly the clip's or the drawing's shape) plus REF, so in rows it needs
  * UNITS * (r * W + REF) / (W + REF): for a square that is the same at every width, and for a 9:16 or a 16:9 frame it drifts by
  * a few per cent across a breakpoint, so one number per card and column count is enough. It is worked out at the column width
- * the layout is drawn for (MASONRY_COLUMN). Wider or narrower than that, a card may have a few rows spare, which go to its text
- * block (the key stays at the foot, the picture keeps its shape), or need a few more: the stylesheet's rows are
+ * the layout is drawn for (MASONRY_COLUMN). Wider or narrower than that, a card may have a few rows spare, a strip of the
+ * card's own dark ground under the frame (the picture keeps its shape), or need a few more: the stylesheet's rows are
  * minmax(u, auto), so the rows it crosses grow to hold it (the cards beside it grow with them) and nothing ever spills over the
- * card below. The same holds for words longer than REF (a long name in Russian on a narrow column).
+ * card below. The caption lies over the frame, so the words never need rows of their own.
  */
 
 /** Rows per (column width + REF). More rows, smaller rounding: 64 keeps a row near 10 px at every width. */
 export const MASONRY_UNITS = 64;
-/** A card's text block (kind, name, line, needs, the key: 236 px in en, ru and uz on a column of 350 px or more) and the 20 px
- *  gap below the card, in CSS px. */
-export const MASONRY_REF = 256;
+/** The 20 px gap below a card, in CSS px. It also held a 236 px text block under the frame until the cards went media first
+ *  (owner decision 22 Nov: the name and line lie over the frame's foot on hover, components/site/media-card.css), so a card is now
+ *  its frame alone. */
+export const MASONRY_REF = 20;
 
 /**
  * The column width (CSS px) each column count is sized for, from the site's frame (site.css: --st-max 1240, gutters 24 px from
@@ -99,4 +100,30 @@ function searchColumns(spans: readonly number[], columns: number): number[] | nu
   };
   walk(columns);
   return best && (best as number[]).map((c) => c + 1);
+}
+
+/**
+ * The rows each card spans once its column is stretched to end level with the longest: each shorter column's spare rows shared
+ * out over its cards in proportion to their spans (so each is cut by about the same share; the earlier ones take the rounding),
+ * and the stylesheet lets a frame grow to fill its card (the picture
+ * is cut from the centre, object-fit: cover). Why: since the cards went media first (owner decision 22 Nov), a card is its frame
+ * alone, and frames of three shapes cannot end level by placement only (34 rows, about 200 px, apart at three columns with the
+ * eight of today); a text block under each frame used to hide that. With no columns planned (`cols` null) the spans are kept.
+ */
+export function levelSpans(spans: readonly number[], cols: readonly number[] | null, columns: number): number[] {
+  if (!cols) return [...spans];
+  const ends = new Array<number>(columns).fill(0);
+  spans.forEach((s, i) => (ends[cols[i] - 1] += s));
+  const top = Math.max(...ends);
+  const out = [...spans];
+  for (let c = 1; c <= columns; c++) {
+    const members = cols.flatMap((x, i) => (x === c ? [i] : []));
+    if (members.length === 0) continue;
+    const spare = top - ends[c - 1];
+    const add = members.map((i) => Math.floor((spare * spans[i]) / ends[c - 1]));
+    let left = spare - add.reduce((a, b) => a + b, 0);
+    for (let k = 0; left > 0; k = (k + 1) % members.length, left--) add[k] += 1;
+    members.forEach((i, k) => (out[i] += add[k]));
+  }
+  return out;
 }

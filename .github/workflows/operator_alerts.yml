@@ -81,6 +81,9 @@ jobs:
           OPERATOR_STUCK_MINUTES: ${{ vars.OPERATOR_STUCK_MINUTES }}
           OPERATOR_ALERT_MAX_PER_HOUR: ${{ vars.OPERATOR_ALERT_MAX_PER_HOUR }}
           OPERATOR_DEADMAN_HOURS: ${{ vars.OPERATOR_DEADMAN_HOURS }}
+          # The film spend watch's lines, USD (empty = 6 and 8). A malformed value fails this job, naming the variable.
+          NIGHTSHIFT_FILM_SPEND_WARN_USD: ${{ vars.NIGHTSHIFT_FILM_SPEND_WARN_USD }}
+          NIGHTSHIFT_FILM_SPEND_STOP_USD: ${{ vars.NIGHTSHIFT_FILM_SPEND_STOP_USD }}
           # The owner's pause of the scheduled pipeline (docs/VIDEO_GO_LIVE.md): while it is on the bot raises no
           # dead-man alert, says "paused" instead of MISSING and reminds once a day. Same variable, same reading
           # (modules/pipeline_pause.py) as daily_video.yml.

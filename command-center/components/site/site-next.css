@@ -911,6 +911,15 @@ html:is([lang="ru"], [lang="uz"]) .nx-show-h { font-size: clamp(28px, 7.2vw, 52p
 @media (prefers-reduced-motion: reduce) {
   .nx-clip { display: none; }
 }
+/* The speaker toggle on a clip that has sound (components/site/SoundToggle.tsx; owner decision 2026-11-22): bottom right of the
+   clip's box, a 44 px round hit area, dark and translucent so it reads on any frame. Above a media card's stretched link
+   (.mf-card-link, z-index 1), its caption (2), its AI mark (3) and its focus ring (4) (components/site/media-card.css), and
+   marked data-tap-ignore so TapReveal leaves it alone: a press is the toggle's, never the card's. Gone with the clip under reduced motion, where the still is all there is. */
+.nx-clip-sound { position: absolute; z-index: 5; right: 10px; bottom: 10px; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; margin: 0; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.28); background: rgba(8, 8, 10, 0.62); color: #fff; cursor: pointer; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.nx-clip-sound:hover { background: rgba(8, 8, 10, 0.82); }
+.nx-clip-sound:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.nx-clip-sound[aria-pressed="true"] { border-color: rgba(255, 255, 255, 0.7); }
+@media (prefers-reduced-motion: reduce) { .nx-clip-sound { display: none; } }
 
 /* Money: the price check beside what is on sale. */
 .nx-price-grid { display: grid; gap: 20px; margin-top: 28px; }
@@ -1454,38 +1463,8 @@ html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows >
   @media (min-width: 1240px) { .nx-gallery-card { grid-column: var(--c4, auto); grid-row: var(--r4, auto) / span var(--s4, var(--span, 60)); } }
 }
 .nx-gallery-pic .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; }
-/* The badge is never lost: in the top right corner (a camera's timestamp or a title burned into a picture sits top left), on a
-   dark, edged chip that reads on a black frame too, small on a phone's narrow card, and it wraps rather than being cut. */
-.nx-gallery-pic .nx-result-badge { z-index: 2; top: 8px; left: auto; right: 8px; max-width: calc(100% - 16px); padding: 3px 8px; border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(10, 10, 14, 0.86); font-size: 13px; line-height: 1.3; pointer-events: none; }
-@media (min-width: 760px) { .nx-gallery-pic .nx-result-badge { top: 10px; right: 10px; max-width: calc(100% - 20px); padding: 4px 10px; font-size: 13px; } }
 /* The grid's one pause key (a keyboard's; hidden until focused, site-next.css .nx-clip-pause) shows at the grid's top right. */
 .nx-gallery-box > .nx-clip-pause { top: 10px; right: 10px; bottom: auto; z-index: 5; }
-/* The card's button: the whole card, over the picture (the badge, the words and the link sit above it). */
-.nx-gallery-open { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
-.nx-gallery-open:focus-visible { outline: 3px solid var(--nx-stage-amber, #ffa940); outline-offset: -3px; }
-/* The words and the link over the bottom of the picture: hidden at rest, shown under a fine pointer's hover or keyboard focus.
-   Hidden, it takes no tap: a touch opens the card (and its dialog has the words and the link). */
-.nx-gallery-over { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 44px 12px 12px; background: linear-gradient(180deg, rgba(6, 6, 10, 0) 0%, rgba(6, 6, 10, 0.78) 42%, rgba(6, 6, 10, 0.92) 100%); color: #fff; opacity: 0; pointer-events: none; }
-.nx-gallery-card:has(:focus-visible) .nx-gallery-over { opacity: 1; }
-.nx-gallery-card:has(:focus-visible) .nx-gallery-try { pointer-events: auto; }
-@media (hover: hover) and (pointer: fine) {
-  .nx-gallery-card:hover .nx-gallery-over { opacity: 1; }
-  .nx-gallery-card:hover .nx-gallery-try { pointer-events: auto; }
-}
-.nx-gallery-over-format { margin: 0; font-family: var(--font-display); font-size: 15px; font-weight: 600; line-height: 1.25; }
-/* A prompt runs to hundreds of words: the card shows its first two lines on hover (all of it is in the page and in the dialog). */
-.nx-gallery-prompt { margin: 0; font-size: 14px; line-height: 1.45; color: #fff; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
-.nx-gallery-try { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border-radius: 999px; background: #fff; color: #0b0b10; font-size: 14px; font-weight: 600; white-space: nowrap; }
-.nx-gallery-try svg { width: 16px; height: 16px; }
-.nx-gallery-try:focus-visible { outline: 3px solid var(--nx-stage-amber, #ffa940); outline-offset: 2px; }
-/* The dialog's lines (components/site/SampleDetail.tsx), read on its dark panel. */
-.nx-gallery-format-t { margin: 0; font-family: var(--font-display); font-size: 20px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; color: var(--ns-text); }
-.nx-gallery-format-b { margin: 4px 0 0; font-size: 15px; line-height: 1.45; color: var(--ns-text-dim); }
-.nx-gallery-format { margin-bottom: 4px; }
-.nx-gallery-model { margin: 0; font-size: 17px; color: var(--ns-text); overflow-wrap: anywhere; }
-.nx-gallery-key { margin: 0; font-size: 14px; font-weight: 500; color: var(--ns-text-dim); }
-.nx-gallery-model .nx-gallery-key { font-size: inherit; }
-.nx-gallery-date { margin: 0; font-size: 14px; color: var(--ns-text-dim); }
 .nx-gallery-unavailable { margin: 0; font-size: 14px; color: var(--ns-text-dim); }
 
 /* ── Round 10: the AI-studio landing (components/landing/Landing.tsx) ─────────────────────────
@@ -1522,7 +1501,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-sh .nx-sh-h1 { max-width: 16ch; font-size:
 .nx-facts-more .nx-trust li { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; font-size: 15px; color: var(--ns-text); }
 .nx-facts-more .nx-trust svg { width: 16px; height: 16px; color: var(--ns-go); }
 .nx-ai-note { flex-basis: 100%; font-size: 13px; line-height: 1.4; }
-.nx-gallery-use { margin: 0; font-size: 14px; line-height: 1.45; color: var(--ns-text-dim); }
 .nx-sh-foot { position: relative; z-index: 1; margin-top: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 28px; color: #fff; }
 .nx-sh-credit { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; max-width: min(100%, 520px); margin: 0; padding: 4px 8px; border-radius: 22px; background: rgba(0, 0, 0, 0.62); font-size: 14px; }
 .nx-sh-credit .nx-result-badge, .nx-sh-credit .nx-result-credit { position: static; max-width: none; padding: 3px 4px; background: none; }
@@ -1682,21 +1660,32 @@ html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(var(--n
     /* Edge to edge: the row starts at the text's left edge and runs off the screen's right one, which says "there is more". */
     margin-inline: calc(-1 * var(--st-gutter)); padding: 0 var(--st-gutter) 24px;
   }
-  .nx-models-grid > .nx-model { flex: 0 0 min(72%, 280px); scroll-snap-align: start; }
+  .nx-models-grid > .nx-model { flex: 0 0 min(78%, 300px); scroll-snap-align: start; }
 }
-.nx-model { position: relative; display: flex; flex-direction: column; min-width: 0; overflow: hidden; border-radius: 20px; border: 1px solid var(--ns-rule); background: var(--ns-ground); }
-.nx-model-media { position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; background: #12151c; }
+/* The tile as the AI studios draw a model (2026-11-22): the sample fills a tall card with a 24 px radius, the model's name at its
+   top left under the AI badge, and the words it was made from quoted large over a dark foot, a small "Prompt" above them (sentence
+   case, as every label here: tests/human-type-tokens.test.ts).
+   The card is a screen in both themes (white words on the picture), like the grid it links to. The scrims: 0.62 black behind the
+   name and 0.86 to 0.94 under the quote, so white on the brightest pixel stays at 4.5:1 or better. */
+.nx-model { position: relative; display: flex; flex-direction: column; min-width: 0; aspect-ratio: 4 / 5; overflow: hidden; isolation: isolate; border-radius: 24px; border: 1px solid var(--ns-rule); background: #0b0b10; color: #fff; }
+.nx-model-media { position: absolute; inset: 0; z-index: -1; width: 100%; overflow: hidden; background: #12151c; }
+.nx-model-media::after { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, rgba(5, 5, 9, 0.62) 0%, rgba(5, 5, 9, 0) 24%, rgba(5, 5, 9, 0) 34%, rgba(5, 5, 9, 0.86) 62%, rgba(5, 5, 9, 0.94) 100%); }
 .nx-model-pic { display: block; width: 100%; height: 100%; object-fit: cover; }
 .nx-model-media .nx-clip { inset: 0; width: 100%; height: 100%; }
-.nx-model .nx-ai-badge { position: absolute; z-index: 2; top: 10px; left: 10px; max-width: calc(100% - 20px); }
+.nx-model .nx-ai-badge { position: absolute; z-index: 2; top: 16px; left: 16px; max-width: calc(100% - 32px); }
+.nx-model-name { margin: 0; padding: 56px 20px 0; font-family: var(--font-display); font-size: 20px; font-weight: 600; line-height: 1.2; letter-spacing: -0.015em; color: #fff; overflow-wrap: anywhere; }
+.nx-model-body { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; margin-top: auto; padding: 20px 20px 12px; }
+.nx-model-kicker { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.3; color: rgba(255, 255, 255, 0.78); }
+/* Large and tight, cut to four lines; the browser's own quote marks for the page's language (a <q>). */
+.nx-model-quote { margin: 0; font-family: var(--font-display); font-size: clamp(19px, 1.7vw, 24px); font-weight: 500; line-height: 1.22; letter-spacing: -0.015em; color: #fff; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; overflow: hidden; }
+.nx-model-quote[data-empty="true"] { font-size: 17px; color: rgba(255, 255, 255, 0.86); }
 /* The count and, when it applies, "not in the Studio yet": each on its own short line (no separator dot left dangling at a wrap). */
-.nx-model-meta { margin: 0; font-size: 14px; line-height: 1.45; color: var(--ns-text-dim); }
+.nx-model-meta { margin: 4px 0 0; font-size: 13px; line-height: 1.45; color: rgba(255, 255, 255, 0.78); }
 .nx-model-meta > span { display: block; font-size: inherit; }
-.nx-model-body { display: flex; flex: 1 1 auto; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; padding: 14px 16px 6px; }
-.nx-model-see { margin-top: auto; }
-.nx-model-name { margin: 0; font-family: var(--font-display); font-size: 19px; font-weight: 600; letter-spacing: -0.01em; color: var(--ns-text); overflow-wrap: anywhere; }
-.nx-model-count { margin: 0; font-size: 14px; color: var(--ns-text-dim); }
-.nx-model-see { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 15px; font-weight: 600; color: var(--ns-text); text-decoration: underline; text-underline-offset: 4px; }
+.nx-model-meta .nx-gallery-unavailable { color: rgba(255, 255, 255, 0.78); }
+.nx-model-count { margin: 0; font-size: 13px; color: rgba(255, 255, 255, 0.78); }
+.nx-model-see { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-size: 15px; font-weight: 600; color: #fff; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.45); text-underline-offset: 4px; }
+.nx-model-see:hover { text-decoration-color: currentColor; }
 .nx-model-see svg { width: 16px; height: 16px; }
 
 /* "How it works": the idea in one card, under the three steps. */
@@ -1705,11 +1694,9 @@ html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(var(--n
 @media (prefers-reduced-motion: no-preference) {
   .nx-pbar-plus, .nx-pbar-go, .nx-pbar-idea, .nx-pbar-unpick { transition: background-color var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease), transform var(--ns-dur-2) var(--ns-ease); }
   .nx-pbar-go:hover { transform: translateY(-1px); }
-  .nx-model { transition: transform var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease); }
-  .nx-model:hover { transform: translateY(-3px); border-color: var(--ns-rule-strong); }
+  .nx-model { transition: transform var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease), box-shadow var(--ns-dur-2) var(--ns-ease); }
+  .nx-model:hover { transform: translateY(-4px); border-color: var(--ns-rule-strong); box-shadow: 0 24px 48px -28px rgba(0, 0, 0, 0.55); }
   html[data-motion="paused"] .nx-model { transition: none; transform: none; }
-  /* The words over a card fade in rather than snap. */
-  .nx-gallery-over { transition: opacity 180ms var(--ns-ease); }
 }
 
 /* The explore grid is a screen, like the stage: dark in both themes, so the clips carry the section. The tokens are re-bound
@@ -1721,10 +1708,6 @@ html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(var(--n
 .nx-sh-foot { --ns-text: #fff; --ns-text-dim: rgba(255, 255, 255, 0.88); --ns-rule-strong: rgba(255, 255, 255, 0.4); --ns-console: rgba(8, 8, 8, 0.66); }
 .nx-show-pic .nx-result-badge[data-kind="ai"] { top: 16px; left: 16px; }
 
-/* A clip animated from one of the samples' pictures: that picture beside its model, small enough not to compete with the clip. */
-.nx-gallery-source { display: flex; align-items: center; gap: 12px; margin: 0; min-width: 0; }
-.nx-gallery-source img { flex: none; width: 96px; height: auto; border-radius: 10px; border: 1px solid var(--ns-rule); }
-.nx-gallery-source figcaption { min-width: 0; font-size: 15px; color: var(--ns-text); overflow-wrap: anywhere; }
 
 /* In a credit drawn over a picture, the "Use this prompt" note is the button's description for assistive tech and is not printed
    on the picture (it would cover it); where the credit has room (the first screen, the gallery, under a showcase or the desk) it is. */
@@ -1835,4 +1818,71 @@ html[data-composer="docked"]:has(.nx-pbar) { scroll-padding-bottom: calc(var(--n
    picture under the keys at 768 px. A phone's screen is filled by the words anyway; from 1024 px the rule above applies. */
 @media (min-width: 640px) and (max-width: 1023px) {
   .nx-hero.nx-sh { min-height: 0; }
+}
+
+/* ── The landing, 2026-11-22: one rhythm, one accent, one card shape ──
+   Only inside the landing's root (components/landing/Landing.tsx .lp-root), so Pricing, Solutions and sign-in keep theirs. The
+   values are custom properties on purpose: the design-system pass (S5) will ship tokens for them, and swapping is one line each.
+   - Sections: 120 px apart on a wide screen, 96 on a tablet, 72 on a phone.
+   - Type: a lighter display weight (500, not 600), section titles on one line where they fit, tracked -0.02em, and a middle step
+     between the display size and body text for card titles and leads.
+   - One accent: the indigo key the header and every primary button already use; the first screen's lime eyebrow and blue key
+     follow it, and the steps' numerals are quiet captions instead of a second, amber accent.
+   - Cards: one 24 px radius and a 1 px rule; hover lifts only where motion is allowed and the page's switch has not paused it. */
+.nx .lp-root {
+  --lp-sec: 72px;
+  --lp-display-weight: 500;
+  --lp-h2: clamp(32px, 4.2vw, 56px);
+  --lp-h2-ru: clamp(28px, 3.6vw, 46px);
+  --lp-mid: clamp(19px, 1.6vw, 22px);
+  --lp-radius: 24px;
+  --lp-accent: #4f46e5;
+  --lp-accent-hover: #4338ca;
+}
+@media (min-width: 640px) { .nx .lp-root { --lp-sec: 96px; } }
+@media (min-width: 1024px) { .nx .lp-root { --lp-sec: 120px; } }
+.nx .lp-root .nx-section { padding-block: var(--lp-sec); }
+.nx .lp-root .nx-final-wrap { padding-block: 0 var(--lp-sec); }
+.nx .lp-root .nx-h2 { font-size: var(--lp-h2); font-weight: var(--lp-display-weight); line-height: 1.06; letter-spacing: -0.02em; max-width: 24ch; }
+html:is([lang="ru"], [lang="uz"]) .nx .lp-root .nx-h2 { font-size: var(--lp-h2-ru); }
+.nx .lp-root .nx-h3 { font-size: var(--lp-mid); font-weight: var(--lp-display-weight); letter-spacing: -0.015em; }
+.nx .lp-root .nx-sub { margin-top: 12px; font-size: 17px; }
+.nx .lp-root .nx-label { min-height: 30px; margin-bottom: 16px; padding: 0 12px; font-size: 13px; font-weight: 600; }
+
+/* A section that shows work puts its title on one line and the work right under it: from 1024 px the lead sits beside the title,
+   at caption size, instead of a paragraph between the title and the grid. */
+@media (min-width: 1024px) {
+  .nx .lp-root :is(#samples, #models) > .nx-wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 36ch); column-gap: 56px; align-items: end; }
+  .nx .lp-root :is(#samples, #models) > .nx-wrap > * { grid-column: 1 / -1; }
+  .nx .lp-root :is(#samples, #models) > .nx-wrap > .nx-label { grid-column: 1; grid-row: 1; justify-self: start; }
+  .nx .lp-root :is(#samples, #models) > .nx-wrap > .nx-h2 { grid-column: 1; grid-row: 2; }
+  .nx .lp-root :is(#samples, #models) > .nx-wrap > .nx-sub { grid-column: 2; grid-row: 2; align-self: end; margin: 0 0 6px; font-size: 15px; line-height: 1.5; }
+}
+
+/* The first screen: the display weight. Its key is the reference's black pill and its note a 13 px caption (home.css), not the
+   page's accent: the owner asked for that hero "in this style" (2026-11-22). */
+.nx .lp-root .hm-hero-title { font-weight: var(--lp-display-weight); letter-spacing: -0.025em; }
+
+/* The steps: the live piece leads; the numeral is a quiet caption above the title, not a second accent. */
+.nx .lp-root .nx-strip-no { font-size: 14px; font-weight: 600; line-height: 1.3; color: var(--ns-text-dim); }
+@media (min-width: 860px) { .nx .lp-root .nx-strip-no { margin-bottom: 8px; font-size: 14px; } }
+
+/* One card shape. */
+.nx .lp-root .nx-gallery-card { border-radius: 16px; }
+.nx .lp-root :is(.efx-card, .nx-step-live, .nx-wall-frame, .nx-data, .nx-final) { border-radius: var(--lp-radius); }
+@media (prefers-reduced-motion: no-preference) {
+  .nx .lp-root .nx-gallery-card { transition: transform var(--ns-dur-2) var(--ns-ease), box-shadow var(--ns-dur-2) var(--ns-ease); }
+  .nx .lp-root .nx-gallery-card:hover { transform: translateY(-3px); box-shadow: 0 20px 40px -24px rgba(0, 0, 0, 0.7); }
+  .nx .lp-root .efx-card { transition: transform var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease); }
+  .nx .lp-root .efx-card:hover { transform: translateY(-3px); }
+  html[data-motion="paused"] .nx .lp-root :is(.nx-gallery-card, .efx-card) { transition: none; transform: none; }
+}
+/* The effects on a phone: one row that scrolls sideways and stops on each card, as the model tiles do, so nine effects are one
+   screen tall instead of nine. */
+@media (max-width: 639.98px) {
+  .nx .lp-root .efx-grid {
+    display: flex; gap: 12px; align-items: stretch; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--st-gutter); scrollbar-width: thin; margin-inline: calc(-1 * var(--st-gutter)); padding: 0 var(--st-gutter) 16px;
+  }
+  .nx .lp-root .efx-card { flex: 0 0 min(80%, 300px); margin-bottom: 0; scroll-snap-align: start; }
 }

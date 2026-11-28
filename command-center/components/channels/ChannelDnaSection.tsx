@@ -5,7 +5,7 @@ import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Dna } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
-import { VOICES } from "@/lib/ttsModels";
+import { VOICES } from "@/lib/voices";
 import {
   DNA_ASPECTS,
   DNA_FORMATS,

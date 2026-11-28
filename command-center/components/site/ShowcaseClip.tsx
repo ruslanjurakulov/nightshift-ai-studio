@@ -6,7 +6,8 @@ import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 /**
  * A model sample's loop, over its own first frame. A Client Component so the build copies the sample's video files to
  * /_next/static/media/ (see showcase-assets.ts); every rule of LoopClip holds (reduced motion, Save-Data, plays while on screen, the
- * page's pause switch). Nothing for a picture or an entry whose files are missing.
+ * page's pause switch). Nothing for a picture or an entry whose files are missing. A clip whose files carry sound gets the speaker
+ * toggle (components/site/SoundToggle.tsx); a silent one does not.
  *
  * `compact` defaults to true (a gallery card is never wide); a slot that fills a wide box (the landing's first screen) passes
  * false and gets the 1280 file on a wide screen. `early` is the first screen's clip, started after load and idle.
@@ -17,17 +18,36 @@ export function ShowcaseClip({
   early = false,
   position,
   together = false,
+  soundToggle = true,
 }: {
   jobId: string;
   compact?: boolean;
   early?: boolean;
   position?: string;
   together?: boolean;
+  /**
+   * False where the clip's box sits under other content (the landing's first screen): the place then renders
+   * `<SoundToggle clip={jobId} />` itself where it can be reached. The toggle exists only for a clip with sound either way.
+   */
+  soundToggle?: boolean;
 }) {
   const files = SHOWCASE_FILES[jobId];
   if (!files?.clip) return null;
   // A sample whose model made a larger clip offers it to a wide screen (lib/site/renditions.ts); the 1280 file is the fallback.
   // Only a file that is really wider than the 1280 one counts as larger.
   const sources = files.lg?.clip && files.lg.width > 1280 ? { ...files.clip, lg: files.lg.clip } : files.clip;
-  return <LoopClip sources={sources} poster={files.posterSm} compact={compact} early={early} position={position} together={together} />;
+  // Sound is what the export measured in the file (`audio: true` in showcase-assets.ts), never assumed: an entry without it is silent.
+  return (
+    <LoopClip
+      sources={sources}
+      poster={files.posterSm}
+      compact={compact}
+      early={early}
+      position={position}
+      together={together}
+      audio={files.clip.audio === true}
+      soundKey={jobId}
+      soundToggle={soundToggle}
+    />
+  );
 }

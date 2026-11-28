@@ -1,4 +1,4 @@
-import { isVoiceId } from "@/lib/ttsModels";
+import { isVoiceId } from "@/lib/voices";
 
 /**
  * "Run now" with a voice of its own: may THIS run speak with it (docs/CUSTOM_VOICE.md, "Hard gate")?

@@ -183,6 +183,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
           sessionEnded: o.sessionEnded,
           tooManyConnections: o.tooManyConnections,
           tooManyToday: o.tooManyToday,
+          notAMember: o.notAMember,
         }}
       />
       </div>

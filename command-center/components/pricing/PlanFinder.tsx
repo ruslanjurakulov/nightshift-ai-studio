@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Minus, Plus } from "lucide-react";
 import { fmt, type Locale } from "@/lib/i18n/core";
 import { formatNumber } from "@/lib/number-format";
-import { creditUnit, formatCredits, type CreditUnitForms, type PriceMap, UNIT_VIDEO_MINUTE } from "@/lib/credits";
+import { creditUnit, formatCredits, type CreditUnitForms, UNIT_VIDEO_MINUTE } from "@/lib/credits";
 import {
   DEFAULT_LENGTH_S,
   FINDER_LIMITS,
@@ -14,6 +14,7 @@ import {
   recommendPlan,
   type FinderInput,
   type FinderPlan,
+  type VideoRates,
   type VoiceTier,
 } from "@/lib/plan-finder";
 import type { PlanFinderDictionary } from "@/lib/i18n/plan-finder/en";
@@ -43,7 +44,7 @@ export function PlanFinder({
   unitForms: CreditUnitForms;
   plans: FinderPlan[];
   /** The two units a video is quoted from; null = no published per-minute rate (the finder then says so). */
-  video: PriceMap | null;
+  video: VideoRates | null;
   /** "Rate set …" / "Rate as read on …", already in the page's language; null with no rate. */
   stamp: string | null;
   /** The most pictures a concept-thumbnail run adds (lib/credits.ts CONCEPT_THUMBNAIL_MAX_IMAGES). */
@@ -72,7 +73,7 @@ export function PlanFinder({
   const c = (n: number) => formatCredits(n, locale);
   const unit = (n: number) => creditUnit(n, locale, unitForms);
   const set = <K extends keyof FinderInput>(key: K, value: FinderInput[K]) => setInput((cur) => ({ ...cur, [key]: value }));
-  const minute = video?.[UNIT_VIDEO_MINUTE] ? video[UNIT_VIDEO_MINUTE].creditsPerUnit * (1 + video[UNIT_VIDEO_MINUTE].margin) : null;
+  const minute = video?.[UNIT_VIDEO_MINUTE]?.credits ?? null;
 
   const stepper = (key: "channels" | "perWeek" | "lengthMin", label: string) => {
     const { min, max } = FINDER_LIMITS[key];

@@ -4,6 +4,12 @@
  * presses Generate there and sees the price (CLAUDE.md #3). The panel keeps the model only if it offers it to that workspace
  * (lib/models-discovery prefillModel), and shows which model and price it will use before anything runs.
  *
+ * An animation (i2v) also carries `sample=<its job id>`, but only when the Studio's own resolver (lib/site/sample-source.ts, against
+ * the same shipped data) finds its starting picture: the Studio then shows that picture as a proposed source, which the person may
+ * copy into their library with "Use this picture".
+ * One whose picture does not ship gets no reference (a link sure to be refused would only show every visitor an error note); its
+ * form opens with the words and the model, and asks for a picture as it always does.
+ *
  * Signed out, the link is sign-up with the Studio form as `next`: lib/safe-redirect.ts afterSignupPath carries it through the
  * e-mail confirmation and /welcome, and only a same-origin Studio path survives that (anything else falls back to /welcome).
  */
@@ -13,23 +19,54 @@ import { STUDIO_TOOL_CAPS } from "@/lib/models-discovery";
 import { cleanLinkPrompt, isLinkPromptTool } from "@/lib/creative/improve";
 import { fitsAfterSignup } from "@/lib/safe-redirect";
 import { SIGNUP_PATH } from "@/lib/public-paths";
-import { modelLeftOut } from "@/lib/site/showcase";
+import { SHOWCASE_ENTRIES, modelLeftOut, type ShowcaseEntry } from "@/lib/site/showcase";
+import { SAMPLE_PARAM, resolveSampleSource } from "@/lib/site/sample-source";
+import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
 
 /**
  * `operatorPreview` (not in the Studio yet) or a `shutdownOn` that has come (no longer in it): the link opens the tool with the
  * words and does not name the model (lib/site/showcase.ts modelLeftOut).
  */
-type Sample = { capability: string; modelId: string; prompt: string; operatorPreview?: boolean; shutdownOn?: string | null };
+type Sample = { capability: string; modelId: string; prompt: string; operatorPreview?: boolean; shutdownOn?: string | null; jobId?: string };
+
+/** The shipped showcase data the Studio resolves `sample=` against; the tests pass their own. */
+export interface ShippedSamples {
+  entries: readonly ShowcaseEntry[];
+  files: Parameters<typeof resolveSampleSource>[3];
+}
+const SHIPPED: ShippedSamples = { entries: SHOWCASE_ENTRIES, files: SHOWCASE_FILES };
+
+/** Whether the link names its sample: exactly when the create page would resolve it to a picture, so the two never disagree. */
+export function linksSample(s: Sample, data: ShippedSamples = SHIPPED): boolean {
+  return s.capability === "i2v" && resolveSampleSource(s.jobId, { capability: "i2v", sourceId: null }, data.entries, data.files)?.state === "ready";
+}
 
 /** The Studio form for a sample, under the all-channels workspace, with its words cut to `max` characters; null for a tool the Studio has no form for. */
-function studioPath(s: Sample, max: number, now: Date): string | null {
+function studioPath(s: Sample, max: number, now: Date, data: ShippedSamples): string | null {
+  const section = createSection(s, max, now, data);
+  return section ? `/${ALL_CHANNELS_SLUG}${section}` : null;
+}
+
+/** The `/create?…` part of a sample's form, with no channel in front: the public site puts all-channels there, the Studio its own. */
+function createSection(s: Sample, max: number, now: Date, data: ShippedSamples): string | null {
   if (!(STUDIO_TOOL_CAPS as readonly string[]).includes(s.capability) || !MODEL_ID_RE.test(s.modelId)) return null;
   const q = new URLSearchParams({ tool: s.capability });
   if (!modelLeftOut(s, now)) q.set("model", s.modelId);
+  // An animation names its own sample, by id only (never a picture's address), and only one the Studio will resolve.
+  if (linksSample(s, data)) q.set(SAMPLE_PARAM, s.jobId as string);
   const words = isLinkPromptTool(s.capability) ? cleanLinkPrompt(s.capability, s.prompt) : "";
   const cut = cutWords(words, max);
   if (cut) q.set("prompt", cut);
-  return `/${ALL_CHANNELS_SLUG}/create?${q.toString()}`;
+  return `/create?${q.toString()}`;
+}
+
+/**
+ * The same form as studioTryHref, as a section of the CURRENT channel (`/create?…`, for useChannelPath): inside the Studio the
+ * person is signed in and on a channel already, and a sample there must not throw them back to all-channels (the Studio's
+ * explore grid, components/studio/StudioExplore.tsx).
+ */
+export function studioCreateSection(s: Sample, now: Date = new Date(), data: ShippedSamples = SHIPPED): string | null {
+  return createSection(s, Number.MAX_SAFE_INTEGER, now, data);
 }
 
 /** At most `max` characters of the words, ending on a whole word where there is one, never half a character. */
@@ -42,16 +79,16 @@ export function cutWords(words: string, max: number): string {
 }
 
 /** The Studio form for a signed-in visitor: the whole of the words the Studio box takes from a link (lib/creative/improve). */
-export function studioTryHref(s: Sample, now: Date = new Date()): string | null {
-  return studioPath(s, Number.MAX_SAFE_INTEGER, now);
+export function studioTryHref(s: Sample, now: Date = new Date(), data: ShippedSamples = SHIPPED): string | null {
+  return studioPath(s, Number.MAX_SAFE_INTEGER, now, data);
 }
 
 /**
  * Sign-up, then the Studio form. The words are cut (on a word) until the form still fits through the callback and /welcome; a sample
  * whose form would not fit even with no words gets sign-up with the tool and model alone.
  */
-export function signupTryHref(s: Sample, now: Date = new Date()): string | null {
-  const full = studioPath(s, Number.MAX_SAFE_INTEGER, now);
+export function signupTryHref(s: Sample, now: Date = new Date(), data: ShippedSamples = SHIPPED): string | null {
+  const full = studioPath(s, Number.MAX_SAFE_INTEGER, now, data);
   if (!full) return null;
   let path: string = full;
   if (!fitsAfterSignup(path)) {
@@ -61,7 +98,7 @@ export function signupTryHref(s: Sample, now: Date = new Date()): string | null 
     let best: string | null = null;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      const p = studioPath(s, mid, now);
+      const p = studioPath(s, mid, now, data);
       if (p && fitsAfterSignup(p)) {
         best = p;
         lo = mid + 1;
@@ -75,6 +112,6 @@ export function signupTryHref(s: Sample, now: Date = new Date()): string | null 
   return `${SIGNUP_PATH}?next=${encodeURIComponent(path)}`;
 }
 
-export function tryHref(s: Sample, signedIn: boolean, now: Date = new Date()): string | null {
-  return signedIn ? studioTryHref(s, now) : signupTryHref(s, now);
+export function tryHref(s: Sample, signedIn: boolean, now: Date = new Date(), data: ShippedSamples = SHIPPED): string | null {
+  return signedIn ? studioTryHref(s, now, data) : signupTryHref(s, now, data);
 }

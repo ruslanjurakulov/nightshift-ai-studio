@@ -14,6 +14,7 @@ import { ru } from "../lib/i18n/ru";
 import { uz } from "../lib/i18n/uz";
 import { NO_FILTERS, fromAdminRow, fromSellableRow, type DiscoveryModel } from "../lib/models-discovery";
 import { PROVIDER_BRANDS } from "./helpers/brands";
+import { providerLabels } from "../lib/server/provider-names";
 
 vi.mock("@/lib/i18n/context", async () => {
   const { en } = await import("../lib/i18n/en");
@@ -90,7 +91,15 @@ const basic = fromSellableRow(
 
 function mount(models: DiscoveryModel[] = [video, speech, basic], operator = false, filters?: Partial<typeof NO_FILTERS>) {
   return render(
-    <ModelDiscovery models={models} operator={operator} pricesRead probesRead initialFilters={{ ...NO_FILTERS, ...filters }} />,
+    // As app/(app)/[channel]/models/page.tsx hands them: the labels of these models' providers, to the operator only.
+    <ModelDiscovery
+      models={models}
+      operator={operator}
+      pricesRead
+      probesRead
+      initialFilters={{ ...NO_FILTERS, ...filters }}
+      providerNames={operator ? providerLabels(models.map((m) => m.provider)) : undefined}
+    />,
   );
 }
 

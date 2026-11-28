@@ -276,6 +276,40 @@ services:
     mem_limit: 3g
     logging: *default-logging
 
+  # ── Film sweep (migration 0212, tools/film_sweep.py --loop) ────────────────
+  # The fallback schedule of switch-on gate G2 (pg_cron is the primary, where
+  # installed): film_sweep('server') every 300 s, so a segment past its
+  # deadline and grace settles while its hold is open even with film-worker
+  # stopped. It spends nothing (0171's settle rules only) and needs no media,
+  # ffmpeg or provider key: the service key from the worker env file, never a
+  # flag. Switched by NIGHTSHIFT_FILM_SWEEP (with NIGHTSHIFT_WORKER on, whose
+  # env file it reads), independent of NIGHTSHIFT_FILM_WORKER: `on` and every
+  # deploy starts or recreates it, anything else and it is removed
+  # (deploy/remote-deploy.sh). The process reads the same word and sweeps
+  # nothing unless it is exactly `on`. SIGTERM stops it between passes.
+  film-sweep:
+    profiles: ["worker"]
+    image: nightshift-worker:latest
+    command: ["python", "tools/film_sweep.py", "--loop"]
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - path: ${WORKER_ENV_FILE:-/opt/nightshift/.env.worker}
+        required: false
+    environment:
+      HOME: /tmp
+    stop_grace_period: 30s
+    tmpfs:
+      - /tmp
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 64
+    mem_limit: 128m
+    logging: *default-logging
+
   # ── Creative worker (migration 0036, tools/creative_worker.py) ─────────────
   # Runs creative_jobs — image / video / speech generations started from the
   # Command Center — in its own process, so a generation never waits behind a

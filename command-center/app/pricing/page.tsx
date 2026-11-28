@@ -122,8 +122,10 @@ export default async function PricingPage() {
   if (!rates && !ratesFailed) rates = publicRates;
   // A member's own list when it was read (it carries each rate's updated_at), the public pair otherwise, and nothing
   // when the member's read failed — as the rates panel above: unknown, never the other list standing in for it.
-  const video = memberPrices ? videoPrices(memberPrices) : ratesFailed ? null : videoPrices(await publicVideoRead);
-  const setAt = videoRateSetAt(video);
+  const videoList = memberPrices ?? (ratesFailed ? null : await publicVideoRead);
+  // Only the final credits per unit go to the page (videoPrices): the list itself, with its margin and note, stays here.
+  const video = videoPrices(videoList);
+  const setAt = videoRateSetAt(videoList);
   const finder: PlanFinderData = {
     video,
     videoStamp: video ? (setAt ? { kind: "set", at: setAt } : { kind: "read", at: readAt }) : null,
@@ -135,7 +137,7 @@ export default async function PricingPage() {
   const referral = await referralRead;
 
   return (
-    <PublicShell t={t} fresh>
+    <PublicShell t={t} current="pricing" fresh>
       <PricingView
         t={t}
         locale={locale}

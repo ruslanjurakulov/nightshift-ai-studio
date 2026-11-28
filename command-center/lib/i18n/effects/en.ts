@@ -5,7 +5,7 @@
  * The prompts themselves are not here: they are English in every language (lib/effects/effects.json). Nothing on the public side
  * names a model or its maker (tests/helpers/brands.ts): the Studio card names the model, because there it is the one that runs.
  */
-import type { EffectId } from "@/lib/effects/catalog";
+import type { EffectId } from "@/lib/effects/shared";
 
 /** One effect's copy: a picture effect says what picture works; a words effect asks for its subject, with an example. */
 export interface EffectCopy {
@@ -109,6 +109,8 @@ export const effectsEn = {
     listLabel: "Effects",
     use: "Use this effect",
     useAria: "Use this effect: {name}",
+    /** The card's corner mark on an effect whose frame is still a drawing (not a result, so never "AI-generated"). */
+    drawing: "Drawing",
   },
 };
 

@@ -33,7 +33,6 @@ describe("ownerSafety parity", () => {
       expect(o.grantTitle).toContain("{credits}");
       expect(o.grantTitle).toContain("{org}");
       expect(o.priceDeleteTitle).toContain("{name}");
-      expect(o.memberRemoveTitle).toContain("{email}");
       expect(o.topupTitle).toContain("{amount}");
       expect(o.topupTitle).toContain("{provider}");
       expect(o.keyReplaceTitle).toContain("{name}");

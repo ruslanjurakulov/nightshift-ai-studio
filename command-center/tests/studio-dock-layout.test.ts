@@ -10,7 +10,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const css = readFileSync(path.join(process.cwd(), "components/studio-canvas/studio-canvas.css"), "utf8");
+const readCss = (file: string) => readFileSync(path.join(process.cwd(), file), "utf8");
+const css = readCss("components/studio-canvas/studio-canvas.css");
 const block = (sel: string) => {
   const at = css.indexOf(`${sel} {`);
   expect(at, sel).toBeGreaterThanOrEqual(0);
@@ -26,6 +27,10 @@ describe("the canvas's docks never cover what is not theirs", () => {
   it("the desk's dock floats inside the board, and the map sits above its band", () => {
     expect(block(".cv-dockwrap")).toMatch(/position:\s*absolute/);
     expect(block(".react-flow__panel.cv-mini")).toMatch(/margin:\s*12px 12px 80px/);
+  });
+  it("keeps the desk dock's keys in view when the Library takes up part of the board", () => {
+    expect(css).toMatch(/^\.cv-dockwrap\[data-drawer\] \.cv-deck \{[^{}]*flex-wrap:\s*wrap;[^{}]*height:\s*auto;/m);
+    expect(css).toMatch(/^\.cv-dockwrap\[data-drawer\] \.cv-qnote \{\s*display:\s*none;/m);
   });
   it("keys and docks show an edge of at least 3:1 on every ground (the hairline measured 1.22:1)", () => {
     const lum = (hex: string) => {
@@ -50,7 +55,35 @@ describe("the canvas's docks never cover what is not theirs", () => {
   it("the dock's main key wraps in a long language instead of pushing the page sideways (ru, uz measured +101px)", () => {
     const b = block(":is(.cv-deck, .cv-flow-dock) .cv-kbtn.is-primary");
     expect(b).toMatch(/white-space:\s*normal/);
+    expect(b).toMatch(/flex:\s*0 1 auto/);
     expect(b).toMatch(/min-width:\s*0/);
+    // No docked max-content rule: it was never shown to fix anything (the +101px does not reproduce on main) and it can push the key
+    // past the viewport when the Library is also open (Pixel on #932, 1440 docked + Library).
+    expect(css).not.toContain(".grid:has(> .ns-ai-dock) .cv-deck .cv-kbtn.is-primary");
+    expect(css).not.toMatch(/\.cv-deck[^{}]*dock-quote[^{}]*\{[^{}]*flex:\s*none/);
+  });
+  it("keeps Create as the only filled primary action while the tab bar is visible", () => {
+    const selector = ':is(.cv-deck, .cv-flow-dock) .cv-kbtn.is-primary[data-state="choose"]';
+    const quiet = css.match(/@media \(max-width: 1023px\) \{\s*\/\*[^]*?\*\/\s*([^{}]+)\{/);
+    expect(quiet?.[1].trim()).toBe(selector);
+    expect(block(selector)).toContain("background: var(--key)");
+    expect(block(`${selector}:hover`)).toContain("background: var(--key-hi)");
+  });
+  it("uses the design-system focus color from the canvas to the Nightshift AI history", () => {
+    for (const match of css.matchAll(/([^{}]*:focus-visible[^{}]*)\{([^{}]*)\}/g)) {
+      const ring = match[2].match(/(?:outline|box-shadow):\s*[^;]+/g);
+      for (const declaration of ring ?? []) {
+        if (declaration.trimEnd().endsWith(": none")) continue;
+        expect(declaration, match[1]).toContain("var(--ds-focus)");
+      }
+    }
+    expect(block(":is(.cv-root, .cv-tok) :focus-visible")).toContain("outline: 2px solid var(--ds-focus)");
+    const panel = readCss("components/brain/nightshift-ai-panel.css");
+    expect(panel).toMatch(/\.ns-ai-dock :is\(\.chat-shell, \.chat-frame\) \{\s*--chat-focus: var\(--ds-focus\);/);
+    expect(panel).toMatch(/\.chat-meter-link:focus-visible \{ outline: 2px solid var\(--chat-focus\)/);
+    const history = readCss("components/chat/chat-history.css");
+    expect(history).toMatch(/\.chat-history-expand:focus-visible \{ outline: 2px solid var\(--chat-focus\)/);
+    expect(readCss("app/tokens.css")).toMatch(/\.ns-ai-dock,\s*:root\[data-theme="dark"\][^{]*\{[^}]*--ds-focus: #c8ff2e;/);
   });
   it("the lane scrolls sideways inside itself", () => {
     expect(block(".cv-lane-scroll")).toMatch(/overflow-x:\s*auto/);

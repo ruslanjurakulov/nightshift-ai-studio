@@ -187,12 +187,36 @@ agent files were taken, no hooks or scripts — `.claude/agents/ECC-NOTICE.md`):
 **react-reviewer**, **python-reviewer**, **type-design-analyzer**,
 **pr-test-analyzer**. Lens may call on them for a second opinion on a diff.
 
-Pipeline per PR: Scout (when a provider is involved) → Forge → Lens → Probe →
+Pipeline per PR: Scout (when a provider is involved, and before any new
+feature: see "Reuse before you build") → Forge → Lens → Probe →
 Breach → Sentinel → Forge fixes → Pixel (when there is UI) → Atlas final check
 → CI green → the owner is told it is ready. Every confirmed vulnerability
 becomes a permanent failing-then-passing test in `tests/security/`. Critical
 and high findings block "ready". Independent PRs run in parallel, each in its
 own worktree; the shared checkout's branch is never changed.
+
+## Reuse before you build
+
+The owner's rule (28 Nov 2026). The film's planner was written from scratch
+while an MIT-licensed project already did the same job better: character
+sheets, shot specs, a judge between key frames. A day spent writing what
+already exists is a day the product does not move.
+
+- **Before building any feature, Scout checks open source first.** Look for a
+  maintained repository that already does it: GitHub, papers with code,
+  official SDK examples. Record what was found, its licence, and whether it is
+  ported, adapted or rejected (with the reason) in the PR body.
+- **Licence is the gate.** MIT, Apache-2.0 and BSD may be ported, with the
+  notice kept in `THIRD_PARTY_NOTICES` and a header comment in each file that
+  carries ported code. GPL/AGPL code is never linked into the app or shipped
+  to the browser. A non-commercial licence, a research-only licence or a
+  missing licence is never copied; its ideas may be used, its code may not.
+- **Competitors are the bar, not the reference to copy.** Before designing a
+  screen or a sample, look at how the leading products do it. Reach that
+  level with our own design, never by copying their assets, names or clips.
+- **Keep looking.** Atlas runs a standing scan of new open-source releases,
+  new models and competitor features. It proposes improvements to the owner
+  without waiting to be asked; the owner should not have to name each one.
 
 ## Writing code here
 

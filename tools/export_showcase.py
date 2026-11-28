@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Export one Studio generation of the operator's own organization to the public site's model samples (docs/SHOWCASE.md).
 
-    python tools/export_showcase.py --job-id <uuid> [--slot SLOT] [--caption TEXT] [--summary PATH]
+    python tools/export_showcase.py --job-id <uuid> [--slot SLOT] [--caption TEXT] [--card-line-en TEXT --card-line-ru TEXT
+                                    --card-line-uz TEXT] [--summary PATH]
 
 Run by .github/workflows/showcase_asset.yml, never by a browser. It reads the job, its output and its costs from the database
 with the service key, and the output file itself from our own server through the same short-lived signed link the Library uses
@@ -23,10 +24,24 @@ It REFUSES, before it downloads anything, unless:
 * the job is not already a sample (the same job twice is a no-op, not a duplicate).
 
 Then it downloads the file, checks it is exactly the stored one (sha256), and writes web copies under
-command-center/components/site/showcase/<job id>/ (a video: clip.mp4 / clip.webm at 1280 wide and clip-sm.* at 640, silent, and a
+command-center/components/site/showcase/<job id>/ (a video: clip.mp4 / clip.webm at 1280 wide and clip-sm.* at 640, and a
 poster.webp / poster-sm.webp of its first frame; a picture: the two posters), appends the entry to
 command-center/lib/site/showcase.json and regenerates command-center/components/site/showcase-assets.ts. The output is not graded
 or retouched: a sample is shown as the model made it.
+
+Sound (the owner's decision of 2026-11-22: every video on the site is cinematic and has sound). When ffprobe finds an audio
+stream in the downloaded clip, the two FULL copies keep it: AAC 128 kb/s stereo 48 kHz in clip.mp4, Opus 96 kb/s stereo 48 kHz
+in clip.webm. The clip-sm.* copies stay silent (`-an`): they are the phone and grid files, which autoplay muted (a clip whose
+sound a visitor turns on switches to its full file, LoopClip.tsx), and sound would add about a quarter to a median 640 px file
+(345 KB). 128 kb/s is 16 KB a second, so ~80 KB on a 5 s clip and ~160 KB on a
+10 s one; Opus at 96 kb/s ~60 / ~120 KB (measured against the site's clips in docs/SHOWCASE.md "Sound"). The entry records what
+was found as `audio: true|false`, and the generated module marks the clip `audio: true`, so the site shows a sound toggle only
+on a clip that has a track (CLAUDE.md #5: never imply sound that is not there). A probe that cannot say is a refusal, not a
+silent copy (CLAUDE.md #4).
+
+The card line (`cardLine`) is an optional short line per language (en, ru, uz) from the workflow's inputs: all three or none,
+each at most 140 characters after invisible characters are stripped, one line (a line break or a tab is refused). Over the limit
+is refused, never cut.
 
 The cost is what creative_job_costs recorded (migration 0037): the dollar estimate summed over the job's rows, or null (unknown)
 when there is no row or any row has no figure, never 0 for unknown; and the vendor's own measure (unit and quantity) per row.
@@ -50,6 +65,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import unicodedata
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -71,14 +87,24 @@ UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 MODEL_ID_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{1,39}$")
 SLOT_RE = re.compile(r"^[a-z][a-z0-9.-]{0,40}$")
-#: Never part of a prompt or a note on purpose, and the same set as lib/creative/improve.ts CONTROL: C0/C1 controls (not a line
-#: break or a tab), the soft hyphen, the Arabic letter mark, the Mongolian vowel separator, the zero-width characters and marks,
-#: the bidi overrides and isolates, the word joiner and invisible operators, the byte-order mark, the tag characters (which can
-#: carry hidden text) and the supplementary variation selectors.
+#: Never part of a prompt, a note or a card line on purpose, and the same set as lib/creative/improve.ts (BR-1: the old list
+#: let invisible characters through, e.g. tag characters past U+E007F that spell hidden text): C0 controls (not a tab or a line
+#: break), DEL and C1; every format character (Unicode category Cf) except the visible prepended concatenation marks; the
+#: fillers that render as nothing; and the whole tag / supplementary variation selector block U+E0000-E0FFF.
 CONTROL_RE = re.compile(
-    "[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e"
-    "\u2060-\u2064\u2066-\u2069\ufeff\U000e0000-\U000e007f\U000e0100-\U000e01ef]"
+    "[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f"
+    "\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180f\u3164\uffa0\ufff0-\ufff8\U000e0000-\U000e0fff]"
 )
+#: Format characters that DO draw something (Arabic number sign, end of ayah, Syriac abbreviation mark, the Kaithi number signs
+#: and the rest of the prepended concatenation marks): kept, because removing them changes visible text.
+VISIBLE_CF = frozenset(chr(c) for c in (*range(0x0600, 0x0606), 0x06DD, 0x070F, 0x0890, 0x0891, 0x08E2, 0x110BD, 0x110CD))
+
+
+def strip_invisible(raw: str) -> str:
+    """`raw` without CONTROL_RE's characters and without any other Cf character (but VISIBLE_CF)."""
+    return "".join(ch for ch in CONTROL_RE.sub("", raw) if ch in VISIBLE_CF or unicodedata.category(ch) != "Cf")
+
+
 #: A variation selector alone is ordinary (U+FE0F after a symbol makes it an emoji); a run of them carries nothing visible.
 VS_RUN_RE = re.compile("[\ufe00-\ufe0f]{2,}")
 
@@ -115,7 +141,7 @@ class AlreadyThere(Exception):
 
 def parse_job_id(raw: Any) -> str:
     value = raw.strip().lower() if isinstance(raw, str) else ""
-    if not UUID_RE.match(value):
+    if not UUID_RE.fullmatch(value):
         raise Refusal("bad_job_id", "give the Studio job's id or its library file's id (a uuid like 1b2c3d4e-...; docs/SHOWCASE.md)")
     return value
 
@@ -131,7 +157,7 @@ def clean_text(raw: Any, max_units: int) -> str:
         return ""
     out: List[str] = []
     n = 0
-    for ch in VS_RUN_RE.sub("", CONTROL_RE.sub("", raw)).strip():
+    for ch in VS_RUN_RE.sub("", strip_invisible(raw)).strip():
         n += 2 if ord(ch) > 0xFFFF else 1
         if n > max_units:
             break
@@ -142,6 +168,33 @@ def clean_text(raw: Any, max_units: int) -> str:
 #: The site parser's limits (lib/site/showcase.ts parseShowcaseEntry), in UTF-16 units: an entry over one would be dropped there
 #: without a word, so the export refuses it here instead.
 TEXT_LIMITS = {"modelName": 80, "prompt": 4000, "caption": 200}
+
+
+#: A card line's longest text per language (UTF-16 units, as the site measures).
+CARD_LINE_MAX = 140
+CARD_LINE_LANGS = ("en", "ru", "uz")
+
+
+def parse_card_line(raw: Mapping[str, Any]) -> Optional[Dict[str, str]]:
+    """The card line in all three languages, or None when none was given. One or two languages only is refused: a card would
+    then speak one language on a page in another, or fall back unseen to English. A line over the limit is refused, never cut
+    (a cut line reads as a finished one)."""
+    for lang in CARD_LINE_LANGS:
+        # One line is one line: a break would start a forged line in the PR summary, and a card has no room for a second.
+        value = raw.get(lang)
+        if isinstance(value, str) and re.search(r"[\r\n\t]", value):
+            raise Refusal("card_line_invalid", f"the {lang} card line holds a line break or a tab; give it as one line")
+    lines = {lang: clean_text(raw.get(lang), 1 << 30) for lang in CARD_LINE_LANGS}
+    given = [lang for lang, v in lines.items() if v]
+    if not given:
+        return None
+    if len(given) != len(CARD_LINE_LANGS):
+        missing = ", ".join(lang for lang in CARD_LINE_LANGS if lang not in given)
+        raise Refusal("card_line_incomplete", f"give the card line in en, ru and uz, or in none; missing: {missing}")
+    for lang, v in lines.items():
+        if utf16_len(v) > CARD_LINE_MAX:
+            raise Refusal("card_line_too_long", f"the {lang} card line is {utf16_len(v)} characters; at most {CARD_LINE_MAX}")
+    return lines
 
 
 def entry_problem(entry: Mapping[str, Any]) -> Optional[str]:
@@ -176,7 +229,7 @@ def parse_slot(raw: Any, known: Sequence[str]) -> Optional[str]:
     value = raw.strip() if isinstance(raw, str) else ""
     if not value:
         return None
-    if not SLOT_RE.match(value) or value not in known:
+    if not SLOT_RE.fullmatch(value) or value not in known:
         raise Refusal("bad_slot", f"leave the slot empty or use one of: {', '.join(known)}")
     return value
 
@@ -297,7 +350,7 @@ def check_input(rest: Rest, asset_id: Any, art: Mapping[str, str], stock: Mappin
     if depth > MAX_INPUT_DEPTH:
         raise Refusal("input_chain_too_long", f"the input picture was made from more than {MAX_INPUT_DEPTH} earlier pictures; use one nearer its first")
     aid = str(asset_id or "").lower()
-    if not UUID_RE.match(aid):
+    if not UUID_RE.fullmatch(aid):
         raise Refusal("input_malformed", "the job's input picture id is not a well-formed id")
     asset = _live_operator_asset(rest, aid, "input")
     sha = str(asset.get("sha256") or "")
@@ -312,7 +365,7 @@ def check_input(rest: Rest, asset_id: Any, art: Mapping[str, str], stock: Mappin
         raise Refusal("input_not_ours", f"the input picture's source is {source!r}; only a Studio generation or the site's own AI art is accepted")
     prov = asset.get("provenance") if isinstance(asset.get("provenance"), dict) else {}
     parent_job = str(prov.get("job_id") or "").lower()
-    if not UUID_RE.match(parent_job):
+    if not UUID_RE.fullmatch(parent_job):
         raise Refusal("input_no_job", "the generated input picture does not record the job that made it")
     job = rest.job(parent_job)
     if not job or job.get("org_id") != OPERATOR_ORG or job.get("status") != "completed":
@@ -346,7 +399,7 @@ def resolve_job_id(rest: Rest, some_id: str) -> str:
         raise Refusal("not_operator_org", "the file belongs to a customer's organization; only the operator's own work can be shown")
     prov = asset.get("provenance") if isinstance(asset.get("provenance"), dict) else {}
     job_id = str(prov.get("job_id") or "").lower()
-    if asset.get("source") != "generated" or not UUID_RE.match(job_id):
+    if asset.get("source") != "generated" or not UUID_RE.fullmatch(job_id):
         raise Refusal("not_a_generation", "the library file was not made by a Studio job (an upload or a render has no job to show)")
     return job_id
 
@@ -378,7 +431,7 @@ def plan_export(
     _refuse_style(job, "style_kit_used")
     model = str(job.get("routed_model") or job.get("requested_model") or "")
     spec = registry.get(model)
-    if not MODEL_ID_RE.match(model) or not spec:
+    if not MODEL_ID_RE.fullmatch(model) or not spec:
         raise Refusal("unknown_model", "the model that made it is not in schemas/model_registry.json")
     shutdown = spec.get("shutdown") if isinstance(spec.get("shutdown"), dict) else None
     if shutdown and str(shutdown.get("on") or "") <= (today or datetime.now(timezone.utc).date()).isoformat():
@@ -506,15 +559,31 @@ def _run(argv: Sequence[str]) -> None:
         raise Refusal("transcode_failed", f"{Path(argv[0]).name} exited {proc.returncode}: {tail[0][:200]}")
 
 
-def video_commands(ffmpeg: str, src: Path, mime: str, out: Path) -> List[List[str]]:
-    """The four renditions (the site's clip conventions, scripts/make-site-media.py) and the first frame, from one forced demuxer."""
+#: The full copies' sound when the source has one (owner decision 2026-11-22). Stereo 48 kHz: what both browsers' decoders expect,
+#: and a mono or 44.1 kHz source is upmixed / resampled rather than refused.
+AAC_AUDIO = ["-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "48000"]
+OPUS_AUDIO = ["-c:a", "libopus", "-b:a", "96k", "-ac", "2", "-ar", "48000"]
+
+
+def video_commands(ffmpeg: str, src: Path, mime: str, out: Path, audio: bool = False, seconds: Optional[float] = None) -> List[List[str]]:
+    """The four renditions (the site's clip conventions, scripts/make-site-media.py) and the first frame, from one forced demuxer.
+    With `audio`, the 1280 copies keep the first audio stream (AAC in the MP4, Opus in the WebM); the 640 ones never do."""
     # -t: a backstop only (the length was measured first, clip_seconds); never more than a sample may run.
     base = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", "file", "-f", VIDEO_DEMUXER[mime], "-t", str(int(MAX_CLIP_SECONDS)), "-i", str(src)]
     cmds: List[List[str]] = []
     for suffix, w in WIDTHS.items():
         scale = f"scale={w}:-2:flags=lanczos,format=yuv420p"
-        cmds.append(base + ["-an", "-vf", scale, "-c:v", "libx264", "-preset", "slow", "-crf", "26" if suffix == "" else "28", "-profile:v", "main", "-movflags", "+faststart", str(out / f"clip{suffix}.mp4")])
-        cmds.append(base + ["-an", "-vf", scale, "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "36" if suffix == "" else "38", "-deadline", "good", "-cpu-used", "2", "-row-mt", "1", str(out / f"clip{suffix}.webm")])
+        # Explicit maps: one video and exactly one audio stream, never a second track or a data stream a source might carry.
+        keep = audio and suffix == ""
+        # The copy ends with its picture. A track longer than the picture would otherwise stretch clip.mp4 to the audio's length, a
+        # frozen last frame for most of the loop, while clip-sm.mp4 kept the picture's length. -shortest alone does not hold
+        # through a filter graph (measured: a 2 s picture with 25 s of audio came out 15 s), so the output is also cut at the
+        # picture's measured length.
+        cut = ["-shortest"] + (["-t", f"{seconds:.3f}"] if seconds and seconds > 0 else [])
+        mp4_audio = ["-map", "0:v:0", "-map", "0:a:0"] + cut + AAC_AUDIO if keep else ["-an"]
+        webm_audio = ["-map", "0:v:0", "-map", "0:a:0"] + cut + OPUS_AUDIO if keep else ["-an"]
+        cmds.append(base + mp4_audio + ["-vf", scale, "-c:v", "libx264", "-preset", "slow", "-crf", "26" if suffix == "" else "28", "-profile:v", "main", "-movflags", "+faststart", str(out / f"clip{suffix}.mp4")])
+        cmds.append(base + webm_audio + ["-vf", scale, "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "36" if suffix == "" else "38", "-deadline", "good", "-cpu-used", "2", "-row-mt", "1", str(out / f"clip{suffix}.webm")])
     cmds.append(base + ["-frames:v", "1", "-vf", "scale=1280:-2:flags=lanczos", str(out / "frame0.png")])
     return cmds
 
@@ -536,7 +605,83 @@ def write_posters(still: Path, out: Path) -> Tuple[int, int]:
 
 
 def probe_command(ffprobe: str, src: Path, mime: str) -> List[str]:
-    return [ffprobe, "-v", "error", "-protocol_whitelist", "file", "-f", VIDEO_DEMUXER[mime], "-show_entries", "format=duration", "-of", "csv=p=0", str(src)]
+    # The VIDEO stream's length, not the container's: a file whose audio runs past its picture reports the audio's length as the
+    # format's, and the picture is what the limit and the loop are about. MP4 gives `duration`; Matroska / WebM only a tag.
+    return [ffprobe, "-v", "error", "-protocol_whitelist", "file", "-f", VIDEO_DEMUXER[mime], "-select_streams", "v:0",
+            "-show_entries", "stream=duration:stream_tags=DURATION", "-of", "csv=p=0", str(src)]
+
+
+def _parse_seconds(text: str) -> float:
+    """The first line's first readable length: a number of seconds, or an `HH:MM:SS.fff` tag. NaN when neither."""
+    lines = text.strip().splitlines()
+    for field in (lines[0].split(",") if lines else []):
+        field = field.strip()
+        try:
+            return float(field)
+        except ValueError:
+            pass
+        m = re.fullmatch(r"(\d+):([0-5]\d):([0-5]\d(?:\.\d+)?)", field)
+        if m:
+            return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+    return float("nan")
+
+
+def audio_probe_command(ffprobe: str, src: Path, mime: str) -> List[str]:
+    # One line per audio stream ("audio"), nothing for none; the same forced demuxer and file-only protocol as the length probe.
+    return [ffprobe, "-v", "error", "-protocol_whitelist", "file", "-f", VIDEO_DEMUXER[mime], "-select_streams", "a",
+            "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(src)]
+
+
+def has_audio(ffprobe: str, src: Path, mime: str, run: Callable[..., "subprocess.CompletedProcess"] = subprocess.run) -> bool:
+    """Whether the downloaded clip carries an audio stream, read from the file (never the row's claim). A probe that fails is a
+    refusal: writing silent copies of a clip that has sound would quietly ship a worse sample (CLAUDE.md #4), and writing
+    `audio: false` without knowing would be a default shown as a measurement (CLAUDE.md #5)."""
+    try:
+        proc = run(audio_probe_command(ffprobe, src, mime), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        proc = None
+    if proc is None or proc.returncode != 0:
+        raise Refusal("audio_unknown", "ffprobe could not say whether the clip has sound; install ffprobe (FFPROBE) and run again")
+    return any(line.strip() == "audio" for line in proc.stdout.decode("ascii", "replace").splitlines())
+
+
+#: Below this peak a track is silence (digital silence reads -inf; a generator's padding a little above it), not sound.
+SILENT_PEAK_DB = -60.0
+#: A track that covers less of the picture than this is a blip, not the clip's sound.
+MIN_AUDIO_COVER = 0.8
+#: The measuring pass resamples to this rate, so the sample count it reports is a length in seconds.
+MEASURE_RATE = 48000
+
+
+def sound_measure_command(ffmpeg: str, src: Path, mime: str) -> List[str]:
+    """Decode the first audio stream once and report its peak and its sample count (astats), from the same forced demuxer and
+    file-only protocol as every other read of the download, never past a sample's longest length."""
+    return [ffmpeg, "-hide_banner", "-nostats", "-loglevel", "info", "-protocol_whitelist", "file", "-f", VIDEO_DEMUXER[mime],
+            "-t", str(int(MAX_CLIP_SECONDS)), "-i", str(src), "-map", "0:a:0", "-vn",
+            "-af", f"aresample={MEASURE_RATE},astats=measure_perchannel=none", "-f", "null", "-"]
+
+
+def audio_is_sound(ffmpeg: str, ffprobe: str, src: Path, mime: str, video_seconds: float,
+                   run: Callable[..., "subprocess.CompletedProcess"] = subprocess.run) -> bool:
+    """Whether the clip has sound a visitor will hear: an audio stream (has_audio) whose peak is above SILENT_PEAK_DB and which
+    covers at least MIN_AUDIO_COVER of the picture. A stream of digital silence (generators pad with one) or a blip a few
+    milliseconds long is recorded as no sound, because `audio: true` puts a speaker toggle on the public site (CLAUDE.md #5). A
+    measurement that cannot be read refuses (audio_unknown), never guesses either way."""
+    if not has_audio(ffprobe, src, mime, run=run):
+        return False
+    try:
+        proc = run(sound_measure_command(ffmpeg, src, mime), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120)
+        text = proc.stderr.decode("utf-8", "replace") if proc.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        text = ""
+    # astats prints the Overall section last; its values are the ones read (the last match of each).
+    peaks = re.findall(r"Peak level dB:\s*(-?inf|-?\d+(?:\.\d+)?)", text)
+    samples = re.findall(r"Number of samples:\s*(\d+)", text)
+    if not peaks or not samples or not (video_seconds == video_seconds and video_seconds > 0):
+        raise Refusal("audio_unknown", "the clip's sound could not be measured (ffmpeg astats); install ffmpeg (FFMPEG) and run again")
+    peak = float("-inf") if peaks[-1].endswith("inf") else float(peaks[-1])
+    audio_seconds = int(samples[-1]) / MEASURE_RATE
+    return peak > SILENT_PEAK_DB and audio_seconds >= MIN_AUDIO_COVER * video_seconds
 
 
 def clip_seconds(ffprobe: str, src: Path, mime: str, run: Callable[..., "subprocess.CompletedProcess"] = subprocess.run) -> float:
@@ -544,7 +689,7 @@ def clip_seconds(ffprobe: str, src: Path, mime: str, run: Callable[..., "subproc
     a refusal: the site would otherwise show a clip cut short at the 30 s backstop without saying so."""
     try:
         proc = run(probe_command(ffprobe, src, mime), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=60)
-        seconds = float(proc.stdout.decode("ascii", "replace").strip().splitlines()[0]) if proc.returncode == 0 else float("nan")
+        seconds = _parse_seconds(proc.stdout.decode("ascii", "replace")) if proc.returncode == 0 else float("nan")
     except (OSError, ValueError, IndexError, subprocess.SubprocessError):
         seconds = float("nan")
     if not (seconds == seconds and 0 < seconds < float("inf")):
@@ -555,20 +700,26 @@ def clip_seconds(ffprobe: str, src: Path, mime: str, run: Callable[..., "subproc
 
 
 def make_derivatives(src: Path, kind: str, mime: str, out: Path, ffmpeg: str = "ffmpeg", run: Callable[[Sequence[str]], None] = _run,
-                     ffprobe: str = "ffprobe", measure: Callable[[str, Path, str], float] = clip_seconds) -> Tuple[int, int]:
+                     ffprobe: str = "ffprobe", measure: Callable[[str, Path, str], float] = clip_seconds,
+                     sound: Callable[[str, str, Path, str, float], bool] = audio_is_sound) -> Tuple[int, int, bool]:
+    """The web copies; returns the 1280 copy's (width, height) and whether the full copies carry sound (False for a picture)."""
+    audio = False
     if kind == "video":
         # Measured before anything is written; `-t` in the commands is only a backstop.
-        measure(ffprobe, src, mime)
+        seconds = measure(ffprobe, src, mime)
+        audio = sound(ffmpeg, ffprobe, src, mime, seconds)
     out.mkdir(parents=True, exist_ok=True)
     if kind == "video":
-        for cmd in video_commands(ffmpeg, src, mime, out):
+        for cmd in video_commands(ffmpeg, src, mime, out, audio=audio, seconds=seconds):
             run(cmd)
         frame = out / "frame0.png"
         try:
-            return write_posters(frame, out)
+            w, h = write_posters(frame, out)
         finally:
             frame.unlink(missing_ok=True)
-    return write_posters(src, out)
+        return (w, h, audio)
+    w, h = write_posters(src, out)
+    return (w, h, False)
 
 
 # ── the data file and the generated module ─────────────────────────────────────────────────────────────────────────────
@@ -578,17 +729,21 @@ ASSETS_HEADER = '''// GENERATED by tools/export_showcase.py from lib/site/showca
  * The model samples' files, imported (so each is a hashed file served from this origin) in a module the browser bundle includes:
  * ShowcaseClip, a Client Component, reads the clips from here, for the same reason as clip-assets.ts (a video imported only by
  * Server Components is never copied to /_next/static/media/).
+ *
+ * SHOWCASE_CARDS is the client-safe slice of the data file: only what client code places, sizes and links a sample with. The
+ * full manifest (lib/site/showcase.ts) is server-only, because it carries each job's vendor, vendor model, cost, maker credit and
+ * file hash, and it shipped in public JavaScript on every page that drew a slot or an effect.
  */
 import type { ShowcaseFiles } from "@/lib/site/showcase";
+import type { ShowcaseCard } from "@/lib/site/showcase-card";
 '''
-
 
 def render_assets_module(entries: Sequence[Mapping[str, Any]]) -> str:
     imports: List[str] = []
     rows: List[str] = []
     for i, e in enumerate(entries):
         jid = str(e["jobId"])
-        if not UUID_RE.match(jid):
+        if not UUID_RE.fullmatch(jid):
             raise Refusal("bad_data_file", "an entry's jobId is not a uuid")
         at = f"@/components/site/showcase/{jid}"
         imports.append(f'import s{i}Poster from "{at}/poster.webp";')
@@ -596,27 +751,114 @@ def render_assets_module(entries: Sequence[Mapping[str, Any]]) -> str:
         if e.get("kind") == "video":
             for name, file in (("Mp4", "clip.mp4"), ("Webm", "clip.webm"), ("SmMp4", "clip-sm.mp4"), ("SmWebm", "clip-sm.webm")):
                 imports.append(f'import s{i}{name} from "{at}/{file}";')
-            clip = f"{{ mp4: s{i}Mp4, webm: s{i}Webm, smMp4: s{i}SmMp4, smWebm: s{i}SmWebm }}"
+            # `audio: true` only on a clip whose full copies have a track (the entry's measured `audio`); absent means silent, so
+            # every entry exported before sound existed generates exactly the module it did.
+            sound = ", audio: true" if e.get("audio") is True else ""
+            clip = f"{{ mp4: s{i}Mp4, webm: s{i}Webm, smMp4: s{i}SmMp4, smWebm: s{i}SmWebm{sound} }}"
         else:
             clip = "null"
         rows.append(f'  "{jid}": {{ poster: s{i}Poster.src, posterSm: s{i}PosterSm.src, clip: {clip} }},')
     body = "\n".join(imports) + ("\n" if imports else "")
     table = "{}" if not rows else "{\n" + "\n".join(rows) + "\n}"
-    return f"{ASSETS_HEADER}{body}\nexport const SHOWCASE_FILES: Readonly<Record<string, ShowcaseFiles>> = {table};\n"
+    cards = [render_card(c) for c in showcase_cards(entries)]
+    card_list = "[]" if not cards else "[\n" + "\n".join(cards) + "\n]"
+    return (
+        f"{ASSETS_HEADER}{body}\nexport const SHOWCASE_FILES: Readonly<Record<string, ShowcaseFiles>> = {table};\n"
+        f"\nexport const SHOWCASE_CARDS: readonly ShowcaseCard[] = {card_list};\n"
+    )
+
+
+#: The card fields' shapes, as lib/site/showcase.ts parseShowcaseEntry accepts them (matched with fullmatch: `$` alone lets a
+#: trailing newline through, and these values are written into TypeScript). An entry that fails any is not a card, as the
+#: site's parser drops it; command-center/tests/showcase-cards.test.ts pins that the slice equals what that parser makes.
+CAPABILITY_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+
+
+def _size(v: Any) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and 0 < v <= 16384
+
+
+def _created_ms(raw: Any) -> Optional[int]:
+    """`createdAt` in whole milliseconds, as JavaScript's Date.parse reads it (the site sorts on that), or None."""
+    if not isinstance(raw, str) or not re.match(r"^\d{4}-\d{2}-\d{2}T", raw):
+        return None
+    try:
+        when = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if when.tzinfo is None:
+        return None
+    return int(when.timestamp() * 1000)
+
+
+def showcase_cards(entries: Sequence[Mapping[str, Any]]) -> List[dict]:
+    """The client-safe slice: per entry only its key (the job id, which SHOWCASE_FILES is keyed by), the model id a link and an
+    effect match on, the tool, the kind, the size, the slot and, for an animation, the sample picture it was made from. Never the
+    vendor, the vendor's model, the cost, the maker's credit, the operator-preview flag or a hash: those stay in the server-only
+    manifest. Each job once and newest first, the order lib/site/showcase.ts parseShowcase gives the full entries."""
+    seen = set()
+    out: List[Tuple[int, dict]] = []
+    for e in entries:
+        if not isinstance(e, Mapping):
+            continue
+        jid, model, cap, kind = e.get("jobId"), e.get("modelId"), e.get("capability"), e.get("kind")
+        when = _created_ms(e.get("createdAt"))
+        if not (isinstance(jid, str) and UUID_RE.fullmatch(jid) and isinstance(model, str) and MODEL_ID_RE.fullmatch(model)):
+            continue
+        if not (isinstance(cap, str) and CAPABILITY_RE.fullmatch(cap) and kind in ("video", "image") and when is not None):
+            continue
+        if not (_size(e.get("width")) and _size(e.get("height"))) or jid in seen:
+            continue
+        slot = e.get("slot")
+        if not (slot is None or (isinstance(slot, str) and SLOT_RE.fullmatch(slot))):
+            continue
+        src = e.get("input") if isinstance(e.get("input"), Mapping) else {}
+        if src.get("kind") == "operator_job" and isinstance(src.get("jobId"), str) and UUID_RE.fullmatch(src["jobId"]):
+            inp: dict = {"kind": "operator_job", "jobId": src["jobId"]}
+        elif src.get("kind") in ("none", "site_art"):
+            inp = {"kind": src["kind"]}
+        else:
+            continue
+        seen.add(jid)
+        card = {"jobId": jid, "modelId": model, "capability": cap, "kind": kind, "width": e["width"], "height": e["height"], "slot": slot, "input": inp}
+        out.append((when, card))
+    # Stable, newest first: equal times keep the data file's order, as Array.prototype.sort does.
+    return [c for _, c in sorted(out, key=lambda t: -t[0])]
+
+
+def render_card(c: Mapping[str, Any]) -> str:
+    inp = c["input"]
+    src = f'{{ kind: "operator_job", jobId: "{inp["jobId"]}" }}' if inp["kind"] == "operator_job" else f'{{ kind: "{inp["kind"]}" }}'
+    slot = "null" if c["slot"] is None else f'"{c["slot"]}"'
+    return (
+        f'  {{ jobId: "{c["jobId"]}", modelId: "{c["modelId"]}", capability: "{c["capability"]}", kind: "{c["kind"]}", '
+        f'width: {c["width"]}, height: {c["height"]}, slot: {slot}, input: {src} }},'
+    )
 
 
 def dump_data(data: Mapping[str, Any]) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
 
 
-def entry_from_plan(plan: Mapping[str, Any], size: Tuple[int, int], slot: Optional[str], caption: str, now: datetime) -> dict:
+def entry_from_plan(plan: Mapping[str, Any], size: Tuple[int, int], slot: Optional[str], caption: str, now: datetime, *, audio: bool = False,
+                    card_line: Optional[Mapping[str, str]] = None) -> dict:
     keep = ("jobId", "assetId", "sha256", "modelId", "modelName", "provider", "operatorPreview", "shutdownOn", "attribution", "capability", "kind", "prompt", "createdAt", "input", "endFrame", "cost")
     entry = {k: plan[k] for k in keep}
     entry.update({"width": size[0], "height": size[1], "slot": slot, "caption": caption or None, "exportedAt": now.strftime("%Y-%m-%dT%H:%M:%SZ")})
+    # What the probe found in the file; a picture has no sound. The site reads only `true` as sound.
+    entry["audio"] = bool(audio) and plan["kind"] == "video"
+    entry["cardLine"] = dict(card_line) if card_line else None
     bad = entry_problem(entry)
     if bad:
         raise Refusal("entry_invalid", f"the entry's {bad} is longer or other than the site accepts, so it would never be shown")
     return entry
+
+
+def _code(text: str) -> str:
+    """`text` as one inline code span, fenced longer than any backtick run in it, so a value can neither end the span nor
+    `@mention` anyone in the PR body (GitHub notifies a bare @name, never one inside code)."""
+    fence = "`" * (max((len(r) for r in re.findall(r"`+", text)), default=0) + 1)
+    return f"{fence} {text} {fence}"
 
 
 def summary_markdown(entry: Mapping[str, Any]) -> str:
@@ -631,6 +873,7 @@ def summary_markdown(entry: Mapping[str, Any]) -> str:
     ) or "none recorded"
     src = entry["input"]
     origin = {"none": "none (text only)", "site_art": f"site AI art `{src.get('file')}`", "operator_job": f"operator job `{src.get('jobId')}`"}[src["kind"]]
+    card = entry.get("cardLine")
     lines = [
         f"- Job: `{entry['jobId']}` ({entry['capability']}, {entry['kind']}), created {entry['createdAt']}",
         f"- Model: {entry['modelName']} (`{entry['modelId']}`)" + (f", attribution: [{entry['attribution']['text']}]({entry['attribution']['url']})" if entry["attribution"] else ", no attribution required"),
@@ -641,6 +884,8 @@ def summary_markdown(entry: Mapping[str, Any]) -> str:
         f"- Vendor's own figure: {vendor}",
         f"- Output asset `{entry['assetId']}`, sha256 `{entry['sha256']}` (the download matched it)",
         f"- Prompt: {json.dumps(entry['prompt'], ensure_ascii=False)}",
+        "- Sound: " + ("a picture" if entry["kind"] != "video" else "yes: the 1280 copies keep the clip's audio (AAC / Opus); the 640 copies are silent" if entry.get("audio") else "none (the clip has no audio track)"),
+        "- Card line: " + ("; ".join(f"{lang}: {_code(json.dumps(card[lang], ensure_ascii=False))}" for lang in CARD_LINE_LANGS) if card else "none"),
     ]
     return "\n".join(lines) + "\n"
 
@@ -713,7 +958,8 @@ def export(
     fetch: Callable[[str, str, str, Path], int],
     slot_raw: Any = None,
     caption_raw: Any = None,
-    derive: Callable[..., Tuple[int, int]] = make_derivatives,
+    card_line_raw: Optional[Mapping[str, Any]] = None,
+    derive: Callable[..., Tuple[int, int, bool]] = make_derivatives,
     data_file: Path = DATA_FILE,
     assets_module: Path = ASSETS_MODULE,
     out_root: Path = OUT_ROOT,
@@ -722,6 +968,8 @@ def export(
     given = parse_job_id(job_raw)
     slot = parse_slot(slot_raw, slot_names())
     caption = clean_text(caption_raw, 200)
+    # Checked with the other inputs, before the database or the download: a bad line costs nothing.
+    card_line = parse_card_line(card_line_raw or {})
     data = load_data(data_file)
     # The same sample asked for by its file's id is the same sample.
     if any(isinstance(e, dict) and given in (e.get("jobId"), e.get("assetId")) for e in data["entries"]):
@@ -738,11 +986,11 @@ def export(
         if out.exists():
             shutil.rmtree(out)
         try:
-            size = derive(src, plan["kind"], plan["mime"], out)
+            width, height, audio = derive(src, plan["kind"], plan["mime"], out)
         except BaseException:
             shutil.rmtree(out, ignore_errors=True)
             raise
-    entry = entry_from_plan(plan, size, slot, caption, now or datetime.now(timezone.utc))
+    entry = entry_from_plan(plan, (width, height), slot, caption, now or datetime.now(timezone.utc), audio=audio, card_line=card_line)
     data["entries"].append(entry)
     data_file.write_text(dump_data(data), encoding="utf-8")
     assets_module.write_text(render_assets_module(data["entries"]), encoding="utf-8")
@@ -754,6 +1002,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--job-id", required=True)
     ap.add_argument("--slot", default="")
     ap.add_argument("--caption", default="")
+    for lang in CARD_LINE_LANGS:
+        ap.add_argument(f"--card-line-{lang}", default="", help=f"the card's short line in {lang} (all three languages or none)")
     ap.add_argument("--summary", type=Path, help="write a Markdown summary of the entry here (for the PR body)")
     ap.add_argument("--outcome", type=Path, help="write exported / already_there / refused here (for the workflow)")
     ap.add_argument("--job-out", type=Path, help="write the job id the export resolved to here (the given id may be its file's)")
@@ -790,6 +1040,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
         entry = export(
             args.job_id, rest=rest, fetch=fetch, slot_raw=args.slot, caption_raw=args.caption,
+            card_line_raw={lang: getattr(args, f"card_line_{lang}") for lang in CARD_LINE_LANGS},
             derive=lambda src, kind, mime, out: make_derivatives(src, kind, mime, out, ffmpeg=ffmpeg, ffprobe=ffprobe),
         )
     except AlreadyThere as e:

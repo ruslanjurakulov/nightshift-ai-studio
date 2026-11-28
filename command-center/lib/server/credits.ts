@@ -295,6 +295,10 @@ export async function reserveRunCredits(
     // by an earlier press of the same step. Answer that, never a second hold.
     if (error.code === "23505" && opts.creditRef) return { ok: false, status: 409, body: { error: "run_already_started" } };
     if (error.code === "42501") return { ok: false, status: 403, body: { error: "forbidden" } };
+    // 0226: a platform owner or admin with no seat in this workspace reads it but never spends its credits. Its own word, not a
+    // "try again": nothing was held, and the remedy is a seat, not a retry.
+    if (error.code === "NS400" && (error.message ?? "").trim() === "not_a_member")
+      return { ok: false, status: 403, body: { error: "not_a_member" } };
     return { ok: false, status: 502, body: { error: "credit_reserve_failed" } };
   }
   const exempt = !!(data && typeof data === "object" && (data as { exempt?: unknown }).exempt === true);

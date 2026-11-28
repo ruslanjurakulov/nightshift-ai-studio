@@ -31,7 +31,8 @@
   /* A person's mark: neon lime (the names say amber; same job). */
   --amber: #c8ff2e; --amber-ink: #c8ff2e; --on-amber: #0a1200; --amber-soft: rgb(200 255 46 / 0.14); --amber-light: rgb(200 255 46 / 0.4);
   --go: #3dff8a; --tally: #ff4d5e; --caution: #ffd23f; --tally-soft: rgb(255 77 94 / 0.12);
-  --focus: #57a2ff; --film: #03050b; --lamp-off: #6b7a99; --scrim: rgb(2 5 12 / 0.7);
+  /* studio-live and studio-timeline still read --focus inside the canvas; it now follows the design system's focus token. */
+  --focus: var(--ds-focus); --film: #03050b; --lamp-off: #6b7a99; --scrim: rgb(2 5 12 / 0.7);
   --p-text: #ffd23f; --p-image: #33d6ff; --p-video: #ff4fa3; --p-audio: #3dff8a;
   --dot: rgb(120 170 255 / 0.10);
   --node-bg: linear-gradient(165deg, #0f1a2e, #0a1222 60%);
@@ -81,7 +82,7 @@
   --ns-act: var(--run);
   --ns-act-ink: var(--violet-ink);
   --ns-act-soft: var(--violet-soft);
-  --ns-focus: var(--focus);
+  --ns-focus: var(--ds-focus);
   --ns-lit-edge: var(--run-glow);
   --ns-lit-glow: var(--run-glow);
   --ns-console: var(--console);
@@ -105,7 +106,7 @@
   --violet-ink: #1a5fd0; --violet-soft: rgb(31 111 229 / 0.10); --violet-light: rgb(31 111 229 / 0.3);
   --amber: #5a8f00; --amber-ink: #4a7600; --on-amber: #ffffff; --amber-soft: rgb(90 143 0 / 0.14); --amber-light: rgb(90 143 0 / 0.35);
   --go: #0a7a3a; --tally: #c8102e; --caution: #8a6d00; --tally-soft: rgb(200 16 46 / 0.08);
-  --focus: #1f6fe5; --film: #03050b; --lamp-off: #8c97ad; --scrim: rgb(15 27 51 / 0.4);
+  --film: #03050b; --lamp-off: #8c97ad; --scrim: rgb(15 27 51 / 0.4);
   /* The neon type colours, darkened to at least 3:1 on white. */
   --p-text: #8a6d00; --p-image: #0a7fa0; --p-video: #c2186f; --p-audio: #0a7a3a;
   --dot: rgb(30 70 140 / 0.13);
@@ -130,7 +131,7 @@
     --violet-ink: #1a5fd0; --violet-soft: rgb(31 111 229 / 0.10); --violet-light: rgb(31 111 229 / 0.3);
     --amber: #5a8f00; --amber-ink: #4a7600; --on-amber: #ffffff; --amber-soft: rgb(90 143 0 / 0.14); --amber-light: rgb(90 143 0 / 0.35);
     --go: #0a7a3a; --tally: #c8102e; --caution: #8a6d00; --tally-soft: rgb(200 16 46 / 0.08);
-    --focus: #1f6fe5; --film: #03050b; --lamp-off: #8c97ad; --scrim: rgb(15 27 51 / 0.4);
+    --film: #03050b; --lamp-off: #8c97ad; --scrim: rgb(15 27 51 / 0.4);
     /* The neon type colours, darkened to at least 3:1 on white. */
     --p-text: #8a6d00; --p-image: #0a7fa0; --p-video: #c2186f; --p-audio: #0a7a3a;
     --dot: rgb(30 70 140 / 0.13);
@@ -179,8 +180,9 @@ main:has([data-studio-canvas]) {
 @media (max-width: 1023px) {
   .cv-root:not(.is-flow) { height: calc(100dvh - var(--cv-top, 60px) - 72px - env(safe-area-inset-bottom)); }
 }
-:is(.cv-root, .cv-tok) :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-/* The palette's field is the whole row: its own ring would double it. */
+:is(.cv-root, .cv-tok) :focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
+/* The palette input drops its own ring so the row needs a visible focus boundary. */
+.cv-pi:has(input:focus-visible) { outline: 2px solid var(--ds-focus); outline-offset: -2px; }
 .cv-pi input:focus-visible { outline: none; }
 .cv-tok { font-size: 14px; line-height: 1.45; color: var(--text); }
 .cv-root kbd,
@@ -380,7 +382,7 @@ main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-heigh
 /* A key that cannot be pressed looks it: grey, not a paler violet. */
 .cv-kbtn:disabled,
 .cv-kbtn.is-primary:disabled { color: var(--faint); border-color: var(--rule); background: var(--key); cursor: not-allowed; }
-.cv-kbtn.is-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px var(--focus); }
+.cv-kbtn.is-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px var(--ds-focus); }
 
 /* popover menu */
 .cv-pop {
@@ -530,7 +532,7 @@ main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-heigh
   touch-action: none;
   transition: box-shadow var(--d-state) var(--ease), border-color var(--d-state) var(--ease);
 }
-.cv-node:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.cv-node:focus-visible { outline: 3px solid var(--ds-focus); outline-offset: 3px; }
 .cv-node.s-working,
 .cv-node.s-queued { box-shadow: 0 0 0 1px var(--violet-light), 0 26px 50px -16px var(--violet-light), var(--lift-2); }
 .cv-node.s-failed { border-color: color-mix(in srgb, var(--tally) 60%, transparent); }
@@ -630,8 +632,7 @@ main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-heigh
 .cv-port.t-image::before { border-radius: 50%; }
 .cv-port.t-video::before { width: 11px; height: 11px; transform: rotate(45deg); }
 .cv-port.t-audio::before { width: 14px; height: 13px; box-shadow: none; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-.cv-port:hover::before,
-.cv-port:focus-visible::before { outline: 2px solid var(--pc); outline-offset: 3px; }
+.cv-port:hover::before { outline: 2px solid var(--pc); outline-offset: 3px; }
 .react-flow__handle.cv-port.connectingto::before,
 .react-flow__handle.cv-port.valid::before { outline: 2px solid var(--amber); outline-offset: 4px; }
 .cv-port > span { pointer-events: none; }
@@ -675,6 +676,9 @@ main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-heigh
   pointer-events: none;
 }
 .cv-dockwrap[data-drawer] { left: calc(var(--drawer-w) + 22px); }
+/* The open Library takes a column out of the dock even when the board still fits one row. */
+.cv-dockwrap[data-drawer] .cv-deck { flex-wrap: wrap; height: auto; padding: 6px; }
+.cv-dockwrap[data-drawer] .cv-qnote { display: none; }
 .cv-deck {
   display: flex;
   flex: none;
@@ -702,7 +706,6 @@ main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-heigh
 .cv-deck .cv-seg button { min-height: 34px; width: 36px; padding: 0; justify-content: center; }
 .cv-deck .cv-vsep { height: 24px; margin: 0 6px; }
 .cv-deck .cv-qnote { margin: 0 6px 0 10px; font-size: 13px; }
-.cv-deck [data-testid="dock-quote"] { flex: none; }
 /* The dock fits the board it floats in, not the window: beside the Nightshift AI panel or an open inspector the board is
    narrower than the window says. Words go first (the keys keep their tooltips), then the note; the keys never go. */
 .cv-stage { container-type: inline-size; }
@@ -1245,7 +1248,7 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   background: var(--console);
   box-shadow: var(--lift-3);
 }
-.cv-quick .cv-pal-o:focus-visible { outline: none; background: var(--key); box-shadow: inset 3px 0 0 var(--amber); }
+.cv-quick .cv-pal-o:focus-visible { outline: none; background: var(--key); box-shadow: inset 3px 0 0 var(--ds-focus); }
 .cv-quick .cv-pal-o[aria-disabled="true"] { cursor: not-allowed; }
 .cv-quick .cv-pal-o[aria-disabled="true"] .cv-opt-on,
 .cv-quick .cv-pal-o[aria-disabled="true"] svg { color: var(--faint); }
@@ -1323,9 +1326,24 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
     --ln-video: var(--ds-type-video, #b0105f); --ln-video-ink: #ffffff; --ln-audio: var(--ds-type-audio, #076b36); --ln-audio-ink: #ffffff; --ln-ground: var(--console); --edge: #6b7894;
   }
 }
-/* The dock's main key says its step in the reader's language ("Выберите шаг", "Qadamni tanlang"): a long one wraps to two lines
-   inside its 40px rather than pushing the dock, or the page, sideways. */
-:is(.cv-deck, .cv-flow-dock) .cv-kbtn.is-primary { flex-shrink: 1; min-width: 0; max-width: 220px; white-space: normal; text-align: center; line-height: 1.15; }
+/* The translated dock key pushed the page sideways when Nightshift AI narrowed the board. */
+:is(.cv-deck, .cv-flow-dock) .cv-kbtn.is-primary {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.15;
+}
+@media (max-width: 1023px) {
+  /* Choosing a step competes with Create wherever the tab bar is visible. */
+  :is(.cv-deck, .cv-flow-dock) .cv-kbtn.is-primary[data-state="choose"] {
+    color: var(--text);
+    border-color: var(--edge);
+    background: var(--key);
+  }
+  :is(.cv-deck, .cv-flow-dock) .cv-kbtn.is-primary[data-state="choose"]:hover { background: var(--key-hi); }
+}
 /* Below lg the Nightshift AI panel stacks above the canvas. While the person is typing in it (focus inside), the canvas's dock and
    lane step aside, so nothing of the canvas can sit on its box, its Send key or its "nothing is charged" note while a phone's
    keyboard leaves half a screen. The dock is sticky to the canvas besides (above), so it cannot leave the canvas's box anyway. */
@@ -1532,7 +1550,7 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 .cv-master-st { overflow-wrap: anywhere; }
 .cv-master-act { min-width: 0; font-size: 13px; }
 .cv-pill.is-sel { outline: 2px solid var(--amber); outline-offset: 1px; box-shadow: 0 0 0 5px var(--amber-soft), 0 0 18px -4px var(--amber); z-index: 2; }
-.cv-pill:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cv-pill:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
 .cv-pill-art { flex: none; align-self: stretch; width: 64px; margin: 3px 0 3px -1px; overflow: hidden; border-radius: 5px; background: var(--film); }
 .cv-pill-art img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
 .cv-pill-ic { flex: none; width: 15px; height: 15px; margin-left: 4px; opacity: 0.85; }

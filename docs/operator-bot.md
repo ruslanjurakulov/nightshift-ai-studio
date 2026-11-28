@@ -238,7 +238,8 @@ looks at the same sources, and sends what is new. Each alert has three buttons:
 | `stuck` | a running job has no heartbeat for 10 min (the database's own "abandoned" line); a job queued longer than `OPERATOR_STUCK_MINUTES` | warn | every 6 h while it lasts |
 | `balance` | ElevenLabs credits below `ELEVENLABS_LOW_CREDITS` | warn | every 12 h while it lasts |
 | `deploy` | the latest finished `deploy_web.yml`, `tests.yml` or `frontend.yml` run on `main` failed | warn | once per run |
-| `worker` | a worker said running/starting but has not reported for 5 min (and no fresh worker of that kind exists; the bot's own `operator-bot` row is judged on its own); a worker reported FAILED | **critical** | every 3 h while it lasts |
+| `worker` | a worker said running/starting but has not reported for 5 min (and no fresh worker of that role exists; a role is the kind, except kind `other`, which is split by the id's prefix: `email-…`, `film-…`; the bot's own `operator-bot` row is judged on its own. A later `stopped` excuses a silent row only from the same worker: the same id, or for the film worker, whose id carries its pid, the same host `film-<host>`; another host stopped on purpose never excuses one that crashed); a worker reported FAILED | **critical** | every 3 h while it lasts |
+| `film` | Film Studio's switch-on gates G3/G4 (see "Film Studio" below): a settle that could not capture a charge (`segment_settled` with `detail.not_captured` > 0, **critical**); a segment the claim or the sweep skipped (`segment_skipped`, or the `security_events` fallback `film.segment_skipped`, warn); a segment queued 15 min with no claim, or running/draining with a heartbeat older than 20 min (warn); the sweep overdue by `film_sweep_status()` (0212, **critical**); a film's known vendor dollars at the warn (warn) or stop (**critical**) line, or a vendor line with no dollar figure (warn), see "Film spend watch" | critical / warn | events once each (24 h window); stuck every 6 h per segment; overdue every 3 h while it lasts |
 | `payment` | a payment-provider event the webhook **rejected** (paid but not credited, or a refund not applied: needs a person, **critical**), **failed** (the provider retries, warn), or a refund / chargeback that was applied (warn), received in the last 24 h | critical / warn | once per event and outcome |
 | `approval` | a new pending publish approval | info | once |
 | `marketing` | **information only** (see "Marketing" below): posts waiting for your approval (a count: "2 posts are waiting for your approval"); a post that ended `dead` (unconfirmed: "check the channel, do not resend") or `failed` (with its closed error code and the named fix), in the last 24 h; a post that was sent (its kind and time). Never a post's words, link, media or any chat id | info (drafts, sent) / warn (failed) / **critical** (dead) | drafts: when the waiting count RISES above the last count seen (a fall, such as you approving one of two, is noted silently, and 0 clears the memory); a result once |
@@ -480,6 +481,87 @@ workflow resolves its due channels from the hour it actually STARTS, so a run
 delayed past the top of the hour skips that day's slot: the dead-man switch is what
 catches it.
 
+## Film Studio (kind `film`)
+
+Film Studio's switch-on gates G3 and G4 (`docs/FILM_STUDIO.md`, "Switch-on gates"; `docs/studio/S2_GAPS.md`). The
+sources are read with the service key like every other one, and each is on its own: a table or function the database
+does not have yet is "cannot answer", which raises nothing and is said in `/health` and the digest.
+
+| Alert | Source | Severity | Key (never language-dependent) |
+|---|---|---|---|
+| A settle could not capture a charge: "Film charge NOT captured: 1.50 credits the hold could no longer pay — org 0b1c2d3e, film f11f2e3d …" | `film_events.event = 'segment_settled'` with `detail.not_captured` > 0 (0171/0198) | **critical** | `film:not_captured:<event id>` |
+| A segment was skipped: "Film segment 5e65a1b2 was skipped by the claim (40P01) — org …, film …" | `film_events.event = 'segment_skipped'` (0171 `film_record_skip`) | warn | `film:skipped:<event id>` |
+| The same, when even its film event could not be written | `security_events.kind = 'film.segment_skipped'` (the fallback in `film_record_skip`) | warn | `film:skipped:sec:<row id>` |
+| A segment `queued` 15 min with no claim (names `NIGHTSHIFT_FILM_WORKER` / `NIGHTSHIFT_FILM_ASSEMBLY`), or `running`/`draining` with a heartbeat older than 20 min | `film_segments` (id, status, the timestamps and org_id only) | warn, every 6 h | `film:stuck:<segment id>` |
+| The sweep is overdue, with 0212's own line, the open count and, when 0212 gives both, how many are stuck and the oldest one's age; the remedy names pg_cron (Supabase → Database → Extensions) and the `film-sweep` service (`NIGHTSHIFT_FILM_SWEEP`) | `film_sweep_status()` (0212; runners `worker`, `server`, `pg_cron`, `actions`): only `overdue: true` | **critical**, every 3 h | `film:sweep_overdue` |
+
+* **What a line carries.** Ids cut to their first 8 characters, the uncaptured amount, a status, the call (`claim` or
+  `sweep`, anything else prints `?`) and a five-character SQLSTATE (anything else prints `?`). Never a prompt, a scene,
+  the database's own `message` (0171 stores one beside the SQLSTATE; it is never selected: only the four values above
+  are picked out of `detail` by PostgREST's path select), a customer's name or e-mail (`security_events.actor_*` is
+  never selected).
+* **Events.** A 24 h window, inside the 48 h the alert memory keeps, so each event is announced once. The settles are
+  asked of the database with `detail->>not_captured=not.is.null`, so a day of ordinary settles cannot push one out of the
+  row limit.
+* **The sweep.** `overdue` true raises the alert; false is fine; **null is "never recorded"**: no alert (there is
+  nothing to compare), but `/health` and the digest say "Film sweep: never recorded (unknown, not fine)" (CLAUDE.md #5).
+  An answer without the key, or with a non-boolean, reads "unknown (its status did not say …)". Before 0212 is applied
+  the call answers 404 and the line reads "Film sweep: unknown (not set up yet)". `film_sweep_status` is the second
+  read function on the bot's allow-list (`_READ_FUNCTIONS` in `modules/operator_bot/sources.py`).
+* **Proved on the real schema.** `tests/security/test_sec_operator_film_sources.py` turns the bot's own read parameters
+  into the SQL PostgREST builds and runs it as `service_role` against rows the real 0171 functions wrote: the columns,
+  the grants, the path selects and the `not_captured` filter. Its `film_sweep_status()` part is skipped until 0212 is in
+  the migration chain.
+* **The film worker's own liveness** is the `worker` kind: `tools/film_worker.py` reports `worker_status` as kind
+  `other`, id `film-<host>-<pid>`: `starting`, `running` every 30 s, `failed` with the remedy when it refuses to start
+  (a variable or module name, never a value; scrubbed), `stopped` at the end, and `stopped` with
+  "NIGHTSHIFT_FILM_WORKER is not on" while switched off, which is never "lost". Its prefix keeps it apart from the
+  e-mail worker's `email-…` row: neither's heartbeat hides the other's silence.
+* **No Open button.** These are customers' projects, and no operator page lists another organization's films, so the
+  message has Mute and Details (`/health`) only; a link is never guessed. Mute it with `/mute film`.
+
+### Film spend watch (`film:spend:*`)
+
+The paid test film has a hard vendor cap (`docs/studio/S2_LIVE_TEST.md`). Credits do not bound vendor spend (a failed
+take's retry is the platform's cost, 0171), so the watch reads the vendor dollars themselves, every pass, for each film
+with an open segment or one settled in the last 24 h: `film_segments` → `film_takes` (kind, attempt, status) →
+`creative_jobs.film_take_id` (and the job's `routed_model`, else `requested_model`) → `creative_job_costs` (quantity,
+unit, usd_estimate) → `model_registry` (`spec->pricing->>provider_usd_per_unit`, its unit and
+`spec->pricing->variants->prices` only, by path select).
+
+Each cost row is one of three, and every line says which:
+
+* **recorded**: the row carries its own `usd_estimate`;
+* **estimated (registry figure)**: `quantity` × the model's `provider_usd_per_unit`, only in the figure's own unit. This
+  is the usual case: the adapters record the vendor's quantity and leave `usd_estimate` NULL by design
+  (`modules/creative_adapters.py`, `RegistryAdapter.usage`);
+* **estimated (highest variant)**: the same for a model priced in variants (`pricing.variants.prices`: resolution,
+  image size, quality, audio), at the dearest variant that states a figure, because which variant the vendor billed is
+  not read and a cap watcher must not guess low (gemini-3.1-flash-image: base 0.067, 4K 0.15, estimated at 0.15). A
+  variant table that states no figure is unknown, never the base figure;
+* **unknown**: no quantity, no figure for the model (for example `openai-gpt-image-2.6-*`), another unit, or a finished
+  take (`completed`, `failed`, `superseded`, `skipped`) whose job has no cost row at all. Never counted as 0: the total
+  is the known sum plus "N unknown". Today the film worker records a cost only for a take that succeeded
+  (`modules/film_orchestrator.py`), so every failed or retried take with a job is an unknown line.
+
+| Alert | Severity | Key |
+|---|---|---|
+| The known sum reached `NIGHTSHIFT_FILM_SPEND_WARN_USD` (default 6) | warn | `film:spend:<film>:<warn line>` |
+| The known sum reached `NIGHTSHIFT_FILM_SPEND_STOP_USD` (default 8): "stop the film by hand now (runbook step 6)", naming the stop ladder (workspace switch off, cancel the segment, worker off) and that unknown lines are not included | **critical** | `film:spend:<film>:<stop line>` |
+| A line has no dollar figure, so the cap cannot be watched for it | warn | `film:spend_unrecorded:<film>` |
+
+Each fires once (a one-off key). The lines are dollars like `6` or `6.50`, warn below stop; anything else is a
+refusal: the alert pass exits 2 and the always-on service does not start, naming the variable (never a silent
+default), and `/health` says "Film spend watch: REFUSED, <variable> …". The watch is strictly read-only: it writes to
+no film, segment, switch or credit and stops nothing; a person does. `/health` and the digest carry one line: the
+films in the window, the dearest one's known dollars and basis, the unknown lines and both thresholds; a read that
+fails reads "unknown (why)", never 0.
+
+After every take, a person can run `python tools/film_spend.py --film <film id>` (service key from the environment,
+never printed): the known total and its basis, each take's kind, attempt, status and dollars or "not recorded" /
+"unknown", and the two lines. `tests/security/test_sec_operator_film_spend.py` runs the bot's exact reads as
+`service_role` against rows the real 0171/0198/0037 functions wrote.
+
 ## Marketing (information only)
 
 The brand-channel poster (`docs/MARKETING_POSTS.md`, migration 0108) posts to the public
@@ -557,7 +639,9 @@ need migration 0109 (applied when it merges) and say "not available yet" until i
    (1-12, default 3, `off` disables the dead-man alert), `NIGHTSHIFT_PIPELINE_PAUSED`
    (the owner's pause of the scheduled pipeline, docs/VIDEO_GO_LIVE.md section 8: the bot
    then raises no dead-man alert, shows `paused` instead of MISSING and reminds once a
-   day), and the existing `ELEVENLABS_LOW_CREDITS`.
+   day), `NIGHTSHIFT_FILM_SPEND_WARN_USD` and `NIGHTSHIFT_FILM_SPEND_STOP_USD` (the film
+   spend watch's lines, default 6 and 8 USD; a malformed one is refused, naming it), and the
+   existing `ELEVENLABS_LOW_CREDITS`.
 3. **Merge the PR.** Then, once: Actions > *Operator Alerts* > Run workflow, tick
    "Also send the daily digest right now". You should get the digest and, on the
    first run, "Operator alerts are on".

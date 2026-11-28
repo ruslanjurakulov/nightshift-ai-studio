@@ -5,13 +5,15 @@ import { PageHeader } from "@/components/PageHeader";
 import { getChannelContext } from "@/lib/channels-server";
 import { channelSlug, isScoped } from "@/lib/channels";
 import { isRunNowConfigured, runBackend } from "@/lib/server/run-backend";
+import { createPipelineOptionsFor } from "@/lib/server/pipeline-options";
+import { exampleModelsFor } from "@/lib/server/creative-examples";
 import { CreateStudio } from "@/components/create/CreateStudio";
 import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { atLeast } from "@/lib/auth/roles";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
 import { isOperatorOrg } from "@/lib/channel-tokens";
 import { getOrgContext } from "@/lib/orgs-server";
-import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels } from "@/lib/server/creative";
+import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels, readStudioModels } from "@/lib/server/creative";
 import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery, withPreviews, type StudioPrefill } from "@/lib/creative/studio";
@@ -31,7 +33,7 @@ import { DeskBar, YouTubeDesk, type CreditsReading, type ProjectsReading } from 
 import { createClient, getUser } from "@/lib/supabase/server";
 import { readCreditAccount } from "@/lib/server/credits";
 import { loadEditorProjects } from "@/lib/server/editor";
-import { effectFromQuery, effectPrefill, resolveEffect } from "@/lib/effects/catalog";
+import { effectChoice, effectDeskCards, effectFace, effectFromQuery, effectPrefill, resolveEffect } from "@/lib/effects/catalog";
 import { EffectBanner } from "@/components/effects/EffectBanner";
 import { EffectsDesk } from "@/components/effects/EffectsDesk";
 import { AgeGate, MinorNotice } from "@/components/age/AgeGate";
@@ -43,8 +45,13 @@ import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
 import { isPlatformOwner } from "@/lib/server/owner-view";
 import { KIND_TOOL, SLUG_RE, cleanLinkPrompt, drawsCreateScreen, isCreateKind } from "@/lib/customer/create";
 import { aiChatEnv, aiChatOpenFor } from "@/lib/brain/flag";
-import { readToolAvailability } from "@/lib/server/tool-availability";
+import { readCatalogStates, readToolAvailability } from "@/lib/server/tool-availability";
 import { startAvailability } from "@/lib/start-box";
+import { SAMPLE_PARAM, resolveSampleSource } from "@/lib/site/sample-source";
+import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
+import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
+import type { ExploreData } from "@/lib/creative/explore";
+import { buildExploreData } from "@/lib/creative/explore-server";
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -64,7 +71,7 @@ export default async function CreatePage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const { selection, channels } = await getChannelContext();
   const scopedChannel = isScoped(selection)
     ? channels.find((c) => c.channel_id === selection)
@@ -127,6 +134,9 @@ export default async function CreatePage({
     effectAsk && effectPick?.state === "ready"
       ? effectPrefill(effectAsk.effect, effectPick.modelId, effectAsk.subject, effectAsk.sourceId)
       : initial;
+  // A public animation sample's link (`sample=<its job>`, lib/site/sample-source.ts): resolved here against the shipped showcase data
+  // only, to the sample's own starting picture; anything else is a refusal the form says out loud. The address never names a file.
+  const sampleSource = resolveSampleSource(q[SAMPLE_PARAM], formInitial, SHOWCASE_ENTRIES, SHOWCASE_FILES);
   // Whose create attempt this is: with the id the idempotency key survives a reload of the tab (as a hash only).
   const user = await getUser();
   // "Use in Studio" from the Style Library (/create?tool=t2i&style=<kit>) picks that
@@ -150,6 +160,8 @@ export default async function CreatePage({
       dna={dna.run}
       userId={user?.id ?? ""}
       orgId={genOrgId}
+      // The per-run model choices name our vendors and their model ids: built here and sent only when the form will draw them.
+      pipeline={createPipelineOptionsFor({ operator: frame, orgId: genOrgId })}
     />
   );
 
@@ -220,6 +232,21 @@ export default async function CreatePage({
         })()
       : null;
 
+  // The explore grid under the customer's Create screen (lib/creative/explore-server.ts). Its catalogue is the composer's models filtered the
+  // way the Studio's availability marks filter them (lib/server/tool-availability.ts): priced, open to some organization, no operator
+  // preview, no lock. A registry or a price list that could not be read is "unread", never "nothing on sale yet" (rule 5): loadStudioModels answers []
+  // for both, so the cached readStudioModels() is asked which it was (the same request's read, no second query). Nothing is written.
+  const exploreData: ExploreData | null = !createScreen
+    ? null
+    : !genOrgId
+      ? { state: "unread" }
+      : await (async (): Promise<ExploreData> => {
+          const [read, catalog] = await Promise.all([readStudioModels(), readCatalogStates(genOrgId)]);
+          // A price list that could not be read (readCatalogStates: an error, or prices not read) is unread too: onlyPriced would
+          // keep every model on a guess, and a card would open a form whose quote is refused.
+          return buildExploreData({ registryRead: read !== null, models, catalog, entries: SHOWCASE_ENTRIES, files: SHOWCASE_FILES, locale });
+        })();
+
   // 0192: the 18+ confirmation, asked once of an account with none. Someone who said they are under 18 gets the honest notice
   // instead of the composer (the database refuses their quotes too); an unknown state stops no one.
   const age = await readAgeState();
@@ -255,6 +282,7 @@ export default async function CreatePage({
             initialKind={isCreateKind(one(q.kind)) ? (one(q.kind) as "video" | "image" | "audio") : "video"}
             initialPrompt={cleanLinkPrompt(one(q.prompt))}
             idea={ideaPickup}
+            explore={exploreData}
             templateSlug={(() => {
               const slug = one(q.template);
               return typeof slug === "string" && SLUG_RE.test(slug) ? slug : null;
@@ -268,6 +296,7 @@ export default async function CreatePage({
         <StudioHome
           orgId={genOrgId}
           models={panelModels}
+          exampleModels={frame ? exampleModelsFor(panelModels) : {}}
           unavailable={switchedOff}
           plans={plans}
           defaultStyleKitId={startKit}
@@ -288,9 +317,9 @@ export default async function CreatePage({
         />
       )}
       {desk === "effects" &&
-        (genOrgId ? <EffectsDesk models={panelModels} /> : <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.effects.desk.noOrg}</p>)}
+        (genOrgId ? <EffectsDesk cards={effectDeskCards(panelModels)} /> : <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.effects.desk.noOrg}</p>)}
       {isMediaDesk(desk) && effectAsk && effectPick && (
-        <EffectBanner effect={effectAsk.effect} availability={effectPick} subject={effectAsk.subject} />
+        <EffectBanner effect={effectFace(effectAsk.effect)} availability={effectChoice(effectPick)} subject={effectAsk.subject} />
       )}
       {isMediaDesk(desk) &&
         effectPick?.state !== "unavailable" &&
@@ -317,6 +346,9 @@ export default async function CreatePage({
             project={parseIdParam(q.project)}
             // The start box's "AI edit" kept its words in this browser (lib/site/idea-handoff.ts): the composer takes them once.
             idea={ideaPickup}
+            sample={sampleSource}
+            // Only a copy of the sample's picture this person made is ever reused (lib/creative/sample-preload.ts).
+            userId={user?.id ?? null}
           />
         ) : (
           <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.desk.noOrg}</p>

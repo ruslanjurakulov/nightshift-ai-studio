@@ -93,5 +93,6 @@ export const effectsUz: EffectsDictionary = {
     listLabel: "Effektlar",
     use: "Effektdan foydalanish",
     useAria: "Effektdan foydalanish: {name}",
+    drawing: "Chizma",
   },
 };

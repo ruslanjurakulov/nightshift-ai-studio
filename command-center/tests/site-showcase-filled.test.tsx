@@ -15,7 +15,9 @@ vi.mock("@/lib/site/showcase.json", async () => {
 });
 vi.mock("@/components/site/showcase-assets", async () => {
   const { FIXTURE_FILES } = await import("./fixtures/showcase-entry");
-  return { SHOWCASE_FILES: FIXTURE_FILES };
+  const { SHOWCASE_ENTRIES, showcaseCard } = await import("@/lib/site/showcase");
+  // The client slice of the same stand-in data file, as the generator would write it (lib/site/showcase.ts showcaseCard).
+  return { SHOWCASE_FILES: FIXTURE_FILES, SHOWCASE_CARDS: SHOWCASE_ENTRIES.map(showcaseCard) };
 });
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
@@ -37,6 +39,7 @@ import { WelcomeFlow } from "@/components/welcome/WelcomeFlow";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import type { MoneyAnchor } from "@/lib/landing";
 import { PROVIDER_BRANDS } from "./helpers/brands";
+import { aiMarkOf } from "./helpers/ai-mark";
 import { FIXTURE_JOB } from "./fixtures/showcase-entry";
 
 afterEach(cleanup);
@@ -48,34 +51,33 @@ describe("with one sample merged", () => {
     expect(SHOWCASE_ENTRIES.map((e) => e.jobId)).toEqual([FIXTURE_JOB]);
   });
 
-  it.each(LOCALES.map((l) => l.code))("%s: the landing shows the gallery right under the first screen, then the models, and names the model only inside its card", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the landing shows the gallery right under the first screen, then the models; its card names no model and opens the Studio", (code) => {
     const t = dictionaries[code];
     const { container } = render(<Landing t={t} locale={code} pricing={{ kind: "announced" }} anchor={NO_MONEY} showcase={[]} />);
     const section = container.querySelector("section#samples") as HTMLElement;
     expect(section).toBeTruthy();
-    // Round 10: the explore grid comes first (as on an AI studio's page), the model tiles after it, the showcases and the
-    // hands-on example later.
+    // The explore grid comes first (as on an AI studio's page), the model tiles after it, then how it works. Since 2026-11-22 it is
+    // the page's one gallery: no showcase band and no plan demo after it.
     const order = [...container.querySelectorAll("section[id]")].map((s) => s.id);
+    expect(order.indexOf("samples")).toBeGreaterThanOrEqual(0);
     expect(order.indexOf("samples")).toBeLessThan(order.indexOf("models"));
-    expect(order.indexOf("models")).toBeLessThan(order.indexOf("studio"));
-    expect(order.indexOf("samples")).toBeLessThan(order.indexOf("try"));
-    // The one model's tile is inside the sample's own box, and links down to its card.
+    expect(order.indexOf("models")).toBeLessThan(order.indexOf("how"));
+    for (const gone of ["studio", "approvals", "try", "watch", "picture-to-video"]) expect(order, gone).not.toContain(gone);
+    // The one model's tile is inside the sample's own box, and links down to its card (the tiles name their model: kept by the
+    // owner on 27 Nov).
     const tile = container.querySelector(`#models [data-showcase-entry="${FIXTURE_JOB}"]`)!;
     expect(tile.querySelector(`a[href="#sample-${FIXTURE_JOB}"]`)).toBeTruthy();
     expect(container.querySelector(`#sample-${FIXTURE_JOB}`)).toBeTruthy();
-    // The card is its picture and the AI-generated badge (media first); its model is named in the dialog it opens, which is the
-    // sample's own box too (components/site/SampleDetail.tsx).
+    // The gallery card is its picture and the AI mark (media first), one link into the Studio through sign-up, and no dialog.
+    // Owner decision 22 Nov: no model name on a gallery card; it travels only in the Studio link.
     const card = section.querySelector(`[data-showcase-entry="${FIXTURE_JOB}"]`) as HTMLElement;
-    expect(card.textContent).toContain(t.site.gallery.badge);
-    expect(card.textContent).not.toMatch(/Runway/);
-    const back = vi.spyOn(window.history, "back").mockImplementation(() => window.dispatchEvent(new PopStateEvent("popstate")));
-    fireEvent.click(card.querySelector("button.nx-gallery-open")!);
-    const dialog = screen.getByRole("dialog", { name: t.site.gallery.detail });
-    expect(dialog.dataset.showcaseEntry).toBe(FIXTURE_JOB);
-    expect(dialog.textContent).toMatch(/Runway/);
-    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(aiMarkOf(card.querySelector(".mf-ai"))).toEqual({ seen: t.site.gallery.badge, said: t.site.gallery.badgeName });
+    expect(card.textContent).not.toMatch(PROVIDER_BRANDS);
+    expect(card.querySelector("a")?.getAttribute("href")?.startsWith("/signup?next=")).toBe(true);
+    expect(card.querySelector("button, [aria-haspopup]")).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
-    back.mockRestore();
+    // Outside the sample boxes (the gallery's cards, the model tiles and the ribbon's names, each a sample's own box),
+    // nothing names a model or a maker.
     const rest = container.cloneNode(true) as HTMLElement;
     rest.querySelectorAll("[data-showcase-entry]").forEach((n) => n.remove());
     expect(rest.textContent).not.toMatch(PROVIDER_BRANDS);
