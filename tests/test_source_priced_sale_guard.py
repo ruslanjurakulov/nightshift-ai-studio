@@ -69,7 +69,7 @@ def is_open(status: str) -> bool:
 # the schema, or quoted. A later file written one of those ways is the function
 # the database runs, and must not be skipped for an older one (Lens round 3, 6).
 _DEFINES_CREATIVE_PRICE = re.compile(
-    r'create\s+(or\s+replace\s+)?function\s+(public\.)?"?creative_price"?\s*\(', re.I)
+    r'create\s+(or\s+replace\s+)?function\s+("?public"?\.)?"?creative_price"?\s*\(', re.I)
 _SOURCE_SECOND_CAPS = re.compile(
     r"if cap in \(([^)]*)\) then\s*\n\s*--[^\n]*\n\s*qty := public\.creative_source_seconds")
 
@@ -170,7 +170,10 @@ class SaleGuardHelpers(unittest.TestCase):
         for head in ("create function public.creative_price(",
                      "CREATE OR REPLACE FUNCTION creative_price (",
                      'create or replace function public."creative_price"(',
-                     'create function "creative_price"('):
+                     'create function "creative_price"(',
+                     # A quoted schema is as valid as a quoted name (Lens on #955).
+                     'create or replace function "public"."creative_price"(',
+                     'CREATE FUNCTION "public".creative_price('):
             with self.subTest(head=head):
                 d = self._migrations({"0100_a.sql": self.SHAPED,
                                       "0200_b.sql": head + "p_org uuid) returns int as $$ select 1 $$;\n"})
