@@ -53,7 +53,7 @@ import { FILM_MODEL_PREFERENCE, MODEL_ID, pickFilmModel, type OnSaleModel, type 
 import { writeStoryboard } from "@/lib/server/brain/plan";
 import { beginFilmLease } from "@/lib/server/brain/film-lease";
 import { claimsAuthorship, looksOverLimit, outlineText, planLimits, planTurns, withPlanTurns } from "@/lib/brain/plan";
-import { brainJson, channelOrg, chosenModelState, dbRefusal, machineReason, modelFromRef, notFound, vendorUser } from "@/lib/server/brain/session";
+import { brainJson, channelOrg, chosenModelState, dbRefusal, machineReason, modelFromRef, notFound, vendorUser, withStreamHeaders } from "@/lib/server/brain/session";
 import { FILM_PLAN_KEY } from "@/lib/brain/film-plan";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -667,7 +667,7 @@ function legacyQuote(quoteRead: ReturnType<typeof coerceQuote>) {
                        refusal: quoteRead.refusal, exempt: quoteRead.exempt } : null;
 }
 
-export async function POST(request: Request) {
+async function answerTurn(request: Request): Promise<Response> {
   // Off is off: nothing is read, not even the session (Breach on 0199: a 401/403 would say the feature exists).
   if (aiChatMode(aiChatEnv()) === "off") return notFound();
   const cross = rejectCrossOrigin(request);
@@ -777,4 +777,10 @@ export async function POST(request: Request) {
     return brainJson({ ok: true });
   }
   return brainJson({ error: "bad_request" }, 400);
+}
+
+// One place for the headers of every answer, refusals included, so the stream that is to come on this path (live-creation plan
+// §3.4) cannot be the one response without them. Why here and not in next.config.ts or the Caddyfile: withStreamHeaders.
+export async function POST(request: Request) {
+  return withStreamHeaders(await answerTurn(request));
 }

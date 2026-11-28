@@ -102,6 +102,23 @@ beforeEach(() => {
 });
 
 describe("/api/brain/turn", () => {
+  it("every answer, refusals and the feature switched off included, keeps no-store and adds no-transform for the stream to come", async () => {
+    // What would break: a proxy hop re-encoding (and so possibly holding back) the NDJSON lines of live-creation plan §3.4, or
+    // no-store lost from a signed-in person's answer (a next.config.ts header would have replaced it, measured on Next 15.5).
+    const answered = await turn();
+    expect(answered.status).toBe(200);
+    expect(answered.headers.get("cache-control")).toBe("no-store, no-transform");
+    expect(answered.headers.get("x-accel-buffering")).toBe("no");
+    const refused = await post({ action: "nonsense", session: SESSION });
+    expect(refused.status).toBe(400);
+    expect(refused.headers.get("cache-control")).toBe("no-store, no-transform");
+    expect(refused.headers.get("x-accel-buffering")).toBe("no");
+    process.env.NIGHTSHIFT_AI_CHAT = "off";
+    const off = await turn();
+    expect(off.status).toBe(404);
+    expect(off.headers.get("cache-control")).toBe("no-store, no-transform");
+  });
+
   it("the owner's model down is refused before the cap is touched, and no other model is tried", async () => {
     state.onSale = ["openai-gpt-6-luna"];
     const res = await turn();
