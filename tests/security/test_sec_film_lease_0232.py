@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import re
 import uuid
 
 import psycopg
@@ -722,7 +723,10 @@ def test_the_replay_note_says_what_rerunning_an_earlier_file_does(conn, name, lo
         if loud:
             with pytest.raises(psycopg.Error) as e:
                 c.execute((sec_db.MIGRATIONS / name).read_text(encoding="utf-8"))
-            assert "0226 found public.ai_chat_reserve_turn" in str(e.value), str(e.value)
+            # 0226's guard walks its bodies in order and stops at the first it does not know: 0232's chat body, or, where 0231
+            # (cancel audit) is on as well, 0231's create_creative_job, which comes first. Either way it refuses loudly.
+            assert re.search(r"0226 found public[.](ai_chat_reserve_turn|create_creative_job|cancel_workflow_run)", str(e.value)), \
+                str(e.value)
         else:
             c.execute((sec_db.MIGRATIONS / name).read_text(encoding="utf-8"))
             assert {sig: md5_of(c, sig) for sig in lease.REPLACED} != before

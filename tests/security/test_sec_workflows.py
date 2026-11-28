@@ -665,6 +665,12 @@ def test_a_member_cannot_make_a_step_start_from_a_file_it_did_not_make(db):
 I2V_PRICE = "update public.credit_prices set credits_per_unit = %s where unit = 'model_vid_i2v_second'"
 
 
+#: A job made under a step's key with 0231's marker set, as only workflow_advance_locked can (the FROM subquery runs first): the
+#: plant BR-L-005's pins need, now that a member's own create_creative_job refuses a wf: key (0231, BR-0226-33).
+PLANT = ("select public.create_creative_job(%s, '{cap}', '{model}', %s::jsonb, 'exact', %s, {credits}) "
+         "from (select set_config('nightshift.workflow_step_key', %s, true)) m")
+
+
 def test_a_later_step_never_adopts_a_job_made_beforehand_under_its_key(db):
     # BR-L-005: run ids and step params are readable by every member, and a key
     # replay answers before the price check. A job planted under 'wf:<run>:1'
@@ -676,9 +682,14 @@ def test_a_later_step_never_adopts_a_job_made_beforehand_under_its_key(db):
     made = db.su("select result_asset_ids[1]::text from public.creative_jobs where id = %s", [s0])[0][0]
     db.su(I2V_PRICE, [3])
     try:
-        planted = db.one("authenticated", o.owner,
-                         "select public.create_creative_job(%s, 'i2v', 'vid-i2v', %s::jsonb, 'exact', %s, 15)",
-                         [o.org, json.dumps({"source_asset_id": made, "duration_s": 5}), f"wf:{run}:1"])
+        # 0231 (BR-0226-33): a member can no longer take the key at all; the plant below sets the marker the way only
+        # workflow_advance_locked can, so that this pin keeps proving the second line (a step never adopts a job it did not make).
+        assert err(lambda: db.one("authenticated", o.owner,
+                                  "select public.create_creative_job(%s, 'i2v', 'vid-i2v', %s::jsonb, 'exact', %s, 15)",
+                                  [o.org, json.dumps({"source_asset_id": made, "duration_s": 5}), f"wf:{run}:1"])) == (
+            "NS400", "invalid_idempotency_key")
+        planted = db.one("authenticated", o.owner, PLANT.format(cap="i2v", model="vid-i2v", credits=15),
+                         [o.org, json.dumps({"source_asset_id": made, "duration_s": 5}), f"wf:{run}:1", f"wf:{run}:1"])
     finally:
         db.su(I2V_PRICE, [2])
     pj = planted["job"]["id"]
@@ -702,9 +713,11 @@ def test_run_now_refuses_a_first_step_whose_key_was_taken_beforehand(db):
     o = db.new_org()
     wf = flow(db, o)
     run = str(uuid.uuid4())
-    db.one("authenticated", o.owner,
-           "select public.create_creative_job(%s, 't2i', 'img-a', %s::jsonb, 'exact', %s, 4)",
-           [o.org, json.dumps({"prompt": VALUES["idea"]}), f"wf:{run}:0"])
+    assert err(lambda: db.one("authenticated", o.owner,
+                              "select public.create_creative_job(%s, 't2i', 'img-a', %s::jsonb, 'exact', %s, 4)",
+                              [o.org, json.dumps({"prompt": VALUES["idea"]}), f"wf:{run}:0"])) == ("NS400", "invalid_idempotency_key")
+    db.one("authenticated", o.owner, PLANT.format(cap="t2i", model="img-a", credits=4),
+           [o.org, json.dumps({"prompt": VALUES["idea"]}), f"wf:{run}:0", f"wf:{run}:0"])
     assert err(lambda: db.start(o.editor, run, wf["id"], wf["version"], VALUES, TOTAL)) == (
         "NS409", "idempotency_conflict")
     assert db.su("select count(*) from public.workflow_runs where id = %s", [run])[0][0] == 0
