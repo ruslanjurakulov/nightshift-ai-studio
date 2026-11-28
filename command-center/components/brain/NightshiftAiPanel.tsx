@@ -638,7 +638,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (!next) return;
     setLive(next);
     const sid = sessionRef.current;
-    if (!sid || !next.phase) return;
+    if (!next.phase) return;
+    // A first send has no session yet: only its "thinking" is told, with session_id null (the contract in lib/brain/canvas-events).
+    if (!sid) { if (next.phase === "thinking") dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "thinking" } }); return; }
     dispatchBrainCanvas({ kind: "activity", detail: { session_id: sid, phase: next.phase,
       ...(next.windows ? { plan: { windows: next.arrived, of: next.windows, chapters_written: writtenChapters(next).length, chapters: next.chapters } } : {}) } });
   };
