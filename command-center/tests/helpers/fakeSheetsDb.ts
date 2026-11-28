@@ -4,6 +4,7 @@
  * answers sellable_models from a list each test sets.
  */
 import type { Brief } from "@/lib/brain/logic";
+import { mergeConcurrent, readSheets, type RefSheet } from "@/lib/brain/ref-sheets";
 
 export const ORG = "11111111-2222-4333-8444-555555555555";
 export const OTHER_ORG = "99999999-2222-4333-8444-555555555555";
@@ -64,6 +65,15 @@ export function makeFake() {
     failSaveAt: [] as number[],
     saveCount: 0,
     saved: [] as Row[],
+    /**
+     * Migration 0249 applied: ai_chat_save_sheets merges under the row (the same rule as mergeConcurrent, as the SQL does) and a
+     * whole-BRIEF save keeps the stored ref_sheets and film_link (its trigger). Off: the function is missing (PGRST202), #980's path.
+     */
+    with0249: false,
+    /** Answers ai_chat_save_sheets with this error when set (a refusal of 0249's). */
+    sheetsError: null as { code?: string; message?: string; details?: string } | null,
+    /** A write another request lands right before this one's ai_chat_save_sheets takes the row (the race 0249 closes). */
+    beforeSheetsWrite: null as null | (() => void),
     n: 0,
   };
   const client = {
@@ -124,8 +134,37 @@ export function makeFake() {
           state.saveCount += 1;
           if (state.failSaveAt.includes(state.saveCount)) return { data: null, error: { code: "XX000", message: "boom" } };
           state.saved.push(args.p_brief as Row);
-          if (state.session) state.session = { ...state.session, brief: args.p_brief };
+          if (state.session) {
+            let brief = args.p_brief as Row;
+            if (state.with0249) {
+              // 0249's trigger: the stored sheets and link stay, whatever this BRIEF carries.
+              const old = state.session.brief as Row;
+              const rest = { ...brief };
+              delete rest.ref_sheets;
+              delete rest.film_link;
+              brief = { ...rest, ...("ref_sheets" in old ? { ref_sheets: old.ref_sheets } : {}), ...("film_link" in old ? { film_link: old.film_link } : {}) };
+            }
+            state.session = { ...state.session, brief };
+          }
           return { data: null, error: null };
+        }
+        if (fn === "ai_chat_save_sheets") {
+          if (!state.with0249) return { data: null, error: { code: "PGRST202", message: "Could not find the function public.ai_chat_save_sheets" } };
+          state.saveCount += 1;
+          if (state.failSaveAt.includes(state.saveCount)) return { data: null, error: { code: "XX000", message: "boom" } };
+          if (state.sheetsError) return { data: null, error: state.sheetsError };
+          state.beforeSheetsWrite?.();
+          state.beforeSheetsWrite = null;
+          const s = state.session;
+          if (!s) return { data: null, error: { code: "NS404", message: "session_not_found" } };
+          if (s.step === "created") return { data: null, error: { code: "NS409", message: "session_closed" } };
+          if (s.step !== "ready") return { data: null, error: { code: "NS409", message: "plan_not_ready", details: String(s.step) } };
+          const brief = { ...(s.brief as Row) };
+          if (args.p_sheets !== null) brief.ref_sheets = mergeConcurrent(readSheets(brief.ref_sheets), args.p_sheets as RefSheet[], (args.p_base ?? []) as RefSheet[]);
+          if (args.p_film_link !== null) brief.film_link = args.p_film_link;
+          state.saved.push(brief);
+          state.session = { ...s, brief };
+          return { data: { ref_sheets: brief.ref_sheets ?? [], film_link: brief.film_link ?? null }, error: null };
         }
         if (fn === "film_json") {
           const f = state.film;

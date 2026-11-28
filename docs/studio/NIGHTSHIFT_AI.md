@@ -185,11 +185,15 @@ quote when Make is pressed and sends its token; a quote that changes while the c
 While a picture is made it polls `GET …&states=1` (the job states only: no catalogue read, no quote) and reads the quote again only
 when a view's state changed.
 
-**Two writers.** Without a migration there is no compare-and-swap: `saveSheets` re-reads the session right before 0199's write and
-merges only `ref_sheets` into that fresh BRIEF, view by view (`mergeConcurrent`: a view this write changed is this write's; any other
-keeps the later attempt, then the further state, of the two), and the turn route re-reads the stored sheets right before each of its writes. The window
-left is the moment between that re-read and the write. A view lost in it is found again by its key, but an approval can still be
-lost to a write landing in that moment; closing it needs a database function that writes `ref_sheets` alone under the row lock.
+**Two writers.** With migration 0249 the sheets have one writer in the database: `saveSheets` calls `ai_chat_save_sheets` with its
+list and the list it started from, and the database merges them into the stored one under the conversation's row lock, view by view
+by the same rule as `mergeConcurrent` (a view this write changed is this write's; any other keeps the later attempt, then the further
+state, of the two), writing `ref_sheets` alone. The turn route writes the film link through the same function right after its
+BRIEF. Every other write of the BRIEF (0199's `ai_chat_save_brief` and `ai_chat_finish_turn`) keeps the stored `ref_sheets` and
+`film_link`, whatever its BRIEF carries, by 0249's trigger on `ai_chat_sessions`: a turn that read the sheets before an approval can
+no longer put the older list back. Before 0249 is applied (`PGRST202`), `saveSheets` re-reads the session right before 0199's write
+and merges there, and the turn route re-reads the stored sheets right before each of its writes (`carrySheets`, which stays for that
+case); the window between that re-read and the write remains on such a database.
 
 **The model.** The film's own key-frame model when it is on sale for t2i and edit, else the first of `FILM_MODEL_PREFERENCE.keyframe`
 that is, said by name and with why ("because the film has no picture model set yet", or "because the film's own picture model

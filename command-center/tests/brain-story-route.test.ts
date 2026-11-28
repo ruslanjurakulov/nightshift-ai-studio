@@ -32,6 +32,8 @@ const state = {
   queue: [] as Record<string, unknown>[],
   /** save_film's scenes (0166 film_read), when a test needs them. */
   savedScenes: null as { id: string; position: number }[] | null,
+  /** ai_chat_save_sheets' answer (0249); null answers like any other call here (applied, nothing to say). */
+  sheetsAnswer: null as { data: unknown; error: unknown } | null,
 };
 const rpc = vi.fn();
 const llm = vi.fn();
@@ -61,6 +63,7 @@ const client = {
     if (fn === "create_film_draft") return { data: { film: { id: FILM, version: 1 } }, error: null };
     if (fn === "save_film") return { data: { film: { id: FILM, version: 2 }, ...(state.savedScenes ? { scenes: state.savedScenes } : {}) }, error: null };
     if (fn === "quote_film") return { data: { priced: true, total: 240, quote_id: `fq-2-${"a".repeat(32)}`, startable: true, available: 500 }, error: null };
+    if (fn === "ai_chat_save_sheets" && state.sheetsAnswer) return state.sheetsAnswer;
     return { data: null, error: null };
   },
 };
@@ -103,6 +106,7 @@ beforeEach(() => {
   state.filmOpen = true;
   state.queue = [];
   state.savedScenes = null;
+  state.sheetsAnswer = null;
   state.llm = { ok: true, text: JSON.stringify({ reply: "Which kind?", slots: {}, card: { thread_title: "New video", question: "Long or short?", options: ["Long", "Short", "Not sure"] } }), tokensIn: 10, tokensOut: 20 };
 });
 
@@ -271,5 +275,44 @@ describe("the draft's film link (Lens M3)", () => {
     expect(last.film_link).toEqual({ film_id: FILM, scenes: [
       { brief: d.brief.scenes[0].id, film: "dddddddd-0000-4000-8000-000000000901" }, { brief: d.brief.scenes[1].id, film: "dddddddd-0000-4000-8000-000000000902" }] });
     expect(last.ref_sheets).toEqual([{ character_id: "c1", stage: null, views: [] }]);
+  });
+});
+
+describe("the film link goes through 0249's writer (its trigger keeps a whole-BRIEF write off the link)", () => {
+  const choose = async () => {
+    state.session = { ...state.session!, slots: FULL_SHORT, step: "proposing", brief: {} };
+    const quiet = (t: string) => ({ title: t, duration_s: 30, visual_prompt: "v", speech: "none" });
+    state.payload = { scenarios: [scen({ scenes: [quiet("a"), quiet("b")] }), scen()] };
+    state.savedScenes = [{ id: "dddddddd-0000-4000-8000-000000000901", position: 0 }, { id: "dddddddd-0000-4000-8000-000000000902", position: 1 }];
+    return post({ action: "choose", session: SESSION, index: 0 });
+  };
+
+  it("with 0249: written by ai_chat_save_sheets alone (no sheets, no base), right after the BRIEF", async () => {
+    state.sheetsAnswer = { data: { ref_sheets: [], film_link: null }, error: null };
+    const res = await choose();
+    expect(res.status).toBe(200);
+    const writes = called("ai_chat_save_sheets").map((c) => c[1] as Record<string, unknown>);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ p_session: SESSION, p_sheets: null, p_base: null, p_film_link: { film_id: FILM } });
+    const order = rpc.mock.calls.map((c) => c[0]);
+    expect(order.lastIndexOf("ai_chat_save_sheets")).toBeGreaterThan(order.lastIndexOf("ai_chat_save_brief"));
+  });
+
+  it("without 0249 (PGRST202): the BRIEF's own copy is the write, and the choice answers as before", async () => {
+    state.sheetsAnswer = { data: null, error: { code: "PGRST202", message: "Could not find the function" } };
+    const res = await choose();
+    expect(res.status).toBe(200);
+    const saves = called("ai_chat_save_brief").map((c) => (c[1] as { p_brief: Record<string, unknown> }).p_brief);
+    expect(saves[saves.length - 1].film_link).toMatchObject({ film_id: FILM });
+  });
+
+  it("a link 0249 refuses or cannot store is said, never left for attach to read as 'not this film'", async () => {
+    state.sheetsAnswer = { data: null, error: { code: "NS400", message: "invalid_film_link" } };
+    const res = await choose();
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toBe("invalid_film_link");
+    state.sheetsAnswer = { data: null, error: { code: "XX000", message: "boom" } };
+    const again = await choose();
+    expect(again.status).toBe(503);
   });
 });

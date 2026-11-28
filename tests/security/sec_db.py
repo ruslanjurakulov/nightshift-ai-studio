@@ -1492,6 +1492,31 @@ def put_back_0233(conn_or_session) -> None:
         conn.execute(MIGRATION_0233.read_text(encoding="utf-8"))
 
 
+MIGRATION_0249 = MIGRATIONS / "0249_ai_chat_save_sheets.sql"
+ROLLBACK_0249 = REPO / "docs" / "sql" / "rollback_0249_ai_chat_save_sheets.sql"
+
+
+def has_0249(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.ai_chat_save_sheets(uuid, jsonb, jsonb, jsonb)') is not null").fetchone()[0])
+
+
+def take_off_0249(conn_or_session) -> None:
+    """0249 (the one writer of a conversation's sheets and film link, and the trigger that keeps them from every other BRIEF writer)
+    replaces no body; its guard asks for 0199's ai_chat_save_brief unchanged. A test that needs 0199's whole-BRIEF write as it was
+    (#980's behaviour) takes it off with its rollback inside its rolled-back transaction."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0249(conn):
+        text = ROLLBACK_0249.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0249(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0249(conn):
+        conn.execute(MIGRATION_0249.read_text(encoding="utf-8"))
+
+
 def migration_files() -> list[Path]:
     """Every migration, in sorted filename order — the order a fresh project
     applies them. Numbers need not be contiguous (migrations can merge out of

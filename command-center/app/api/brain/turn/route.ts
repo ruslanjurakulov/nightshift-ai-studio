@@ -1,6 +1,6 @@
 import { createClient, getUser } from "@/lib/supabase/server";
 import { carrySheets, filmLinkOf } from "@/lib/brain/ref-sheets";
-import { storedSheets } from "@/lib/server/brain/ref-sheets";
+import { saveFilmLink, storedSheets } from "@/lib/server/brain/ref-sheets";
 import { requireOrgRole } from "@/lib/auth/org-roles";
 import { rejectCrossOrigin } from "@/lib/server/same-origin";
 import { readJsonBodyCapped, SMALL_BODY_BYTES } from "@/lib/server/json-body";
@@ -272,8 +272,9 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
 
 /**
  * The character sheets and the draft's film link as stored right now (lib/brain/ref-sheets carrySheets), for a write that replaces
- * the BRIEF: read again just before it (Lens M2), falling back to what this request read first when that read fails. The window
- * between this read and the write remains; closing it needs a compare-and-swap in the database.
+ * the BRIEF: read again just before it (Lens M2), falling back to what this request read first when that read fails. With 0249 the
+ * database keeps the stored ones whatever this carries (its trigger on ai_chat_sessions), which closes the window between this read
+ * and the write; the carry stays for a database without 0249, where it is still the only thing that keeps them.
  */
 async function carried(supabase: SupabaseClient, s: Session) {
   return carrySheets((await storedSheets(supabase, s.id)) ?? s.brief);
@@ -623,6 +624,12 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     // The character sheets this conversation already made (lib/brain/ref-sheets) survive the storyboard being saved again.
     const stored = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: { ...brief, ...(await carried(supabase, s)), ...(filmLink ? { film_link: filmLink } : {}) }, p_step: "ready" });
     if (stored.error) return dbRefusal(stored.error) ?? brainJson({ error: "unavailable" }, 503);
+    // With 0249 only its writer may set the link (the BRIEF's copy above is kept out by its trigger); without 0249 the BRIEF's copy
+    // is the write and this is a no-op. A link that could not be stored is said, never left for attach to call "not this film".
+    if (filmLink) {
+      const linked = await saveFilmLink(supabase, s.id, filmLink);
+      if (!linked.ok) return linked.res;
+    }
     ending = { state: "done", reason: "" };
     return brainJson({
       brief,

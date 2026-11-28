@@ -17,7 +17,7 @@ import { FILM_MODEL_PREFERENCE, MODEL_ID } from "@/lib/brain/film-models";
 import { FILM_PLAN_KEY } from "@/lib/brain/film-plan";
 import {
   REF_LINE, makeable, mergeConcurrent, mergeSheets, planSheets, readSheetBrief, readSheets, refGate, selectRefs, withRefLine,
-  type AssetFacts, type GateModel, type RefGate, type RefSheet, type RefView, type SheetBrief, type SheetView,
+  type AssetFacts, type FilmLink, type GateModel, type RefGate, type RefSheet, type RefView, type SheetBrief, type SheetView,
 } from "@/lib/brain/ref-sheets";
 
 /**
@@ -252,12 +252,37 @@ export async function quoteSheets(c: SheetCtx, model: SheetModel, sheets: readon
   return { ok: true, total: out.reduce((a, b) => a + b.credits, 0), views: out.map((x) => ({ character_id: x.character_id, stage: x.stage, view: x.view, credits: x.credits })), waiting, token };
 }
 
+/** 0249's refusals of a list out of shape: an app bug, said by its name rather than as "unavailable". */
+const SHEET_SHAPE = new Set(["too_many_sheets", "sheets_too_large", "too_many_views", "sheet_prompt_too_long", "invalid_sheet", "invalid_film_link", "brief_too_large"]);
+const notApplied = (e: { code?: string } | null) => e?.code === "PGRST202" || e?.code === "42883";
+
+/** A refusal of 0249's ai_chat_save_sheets, by name; anything else as 0199's refusals are read (dbRefusal). */
+export function sheetsRefusal(error: { code?: string; message?: string; details?: string }): Response {
+  const code = error.message ?? "";
+  if (code === "plan_not_ready") {
+    const step = /^(asking|proposing)$/.test(error.details ?? "") ? error.details : undefined;
+    return brainJson({ error: "plan_not_ready", ...(step ? { step } : {}) }, 409);
+  }
+  if (code === "film_conversation") return brainJson({ error: "film_conversation" }, 409);
+  if (SHEET_SHAPE.has(code)) return brainJson({ error: code }, 422);
+  return dbRefusal(error) ?? brainJson({ error: "unavailable" }, 503);
+}
+
 /**
- * The BRIEF with its sheets. The session is read again right before the write and only `ref_sheets` is merged into that fresh BRIEF
- * (Lens M2), view by view (mergeConcurrent): a chat turn's or another tab's write made meanwhile is kept. The window between this
- * re-read and 0199's write remains: closing it needs a compare-and-swap in the database (a migration, not done here).
+ * The BRIEF with its sheets. With 0249 the database writes them (ai_chat_save_sheets): under the conversation's row lock, view by
+ * view by the same rule as mergeConcurrent, only brief.ref_sheets, and every other BRIEF writer keeps them (its trigger), so a chat
+ * turn's or another tab's write can no longer put an older list back. Before 0249 (the function missing: PGRST202 / 42883), #980's
+ * path: the session read again right before the write, merged here, and written whole through 0199; its window between the re-read
+ * and the write remains on such a database.
  */
 export async function saveSheets(c: SheetCtx, sheets: RefSheet[], base: readonly RefSheet[]): Promise<{ ok: true; sheets: RefSheet[] } | { ok: false; res: Response }> {
+  const r = (await c.supabase.rpc("ai_chat_save_sheets", { p_session: c.session.id, p_sheets: sheets, p_base: base, p_film_link: null })) as Rpc;
+  if (!r.error) {
+    // What the row holds after the merge, read through the same caps as any stored list (never the answer cast as sheets).
+    const data = r.data && typeof r.data === "object" ? (r.data as { ref_sheets?: unknown }) : {};
+    return { ok: true, sheets: readSheets(data.ref_sheets) };
+  }
+  if (!notApplied(r.error)) return { ok: false, res: sheetsRefusal(r.error) };
   const fresh = await readSession(c.supabase, c.session.id, c.userId);
   if (!fresh.ok) return fresh;
   const refused = stepRefusal(fresh.step);
@@ -452,7 +477,21 @@ export async function attachSheets(c: SheetCtx): Promise<Response> {
   return brainJson({ attached, film: { id: c.film.id, version }, film_quote: q.error ? null : q.data });
 }
 
-/** The ref_sheets and film_link stored on a conversation right now: a route that writes the BRIEF anew carries THESE (Lens M2). */
+/**
+ * The draft's film link, written by 0249's ai_chat_save_sheets alone (its trigger keeps the stored link from a whole-BRIEF write, so
+ * the turn route's BRIEF cannot set it any more). Before 0249 the route's BRIEF already carried it through 0199, so a missing
+ * function is that path, and nothing is left to do.
+ */
+export async function saveFilmLink(supabase: SupabaseClient, sessionId: string, link: FilmLink): Promise<{ ok: true } | { ok: false; res: Response }> {
+  const r = (await supabase.rpc("ai_chat_save_sheets", { p_session: sessionId, p_sheets: null, p_base: null, p_film_link: link })) as Rpc;
+  if (!r.error || notApplied(r.error)) return { ok: true };
+  return { ok: false, res: sheetsRefusal(r.error) };
+}
+
+/**
+ * The ref_sheets and film_link stored on a conversation right now: a route that writes the BRIEF anew carries THESE (Lens M2). With
+ * 0249 the database keeps the stored ones whatever the BRIEF carries (its trigger); the carry remains for a database without it.
+ */
 export async function storedSheets(supabase: SupabaseClient, sessionId: string): Promise<unknown> {
   const r = await supabase.from("ai_chat_sessions").select("brief").eq("id", sessionId).maybeSingle();
   return r.error ? null : (r.data as { brief?: unknown } | null)?.brief ?? null;

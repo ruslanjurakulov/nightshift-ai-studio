@@ -903,3 +903,9 @@ sec_music_per_request_0228.extend(TABLES, FUNCTIONS)
 import sec_platform_roster_0233  # noqa: E402
 
 sec_platform_roster_0233.extend(TABLES, FUNCTIONS)
+
+# Migration 0249 (the one writer of a Nightshift AI conversation's character sheets and film link, under its row lock; a trigger
+# keeps them from every other BRIEF writer): tests/security/sec_sheets_writer_0249.py
+import sec_sheets_writer_0249  # noqa: E402
+
+sec_sheets_writer_0249.extend(TABLES, FUNCTIONS)
