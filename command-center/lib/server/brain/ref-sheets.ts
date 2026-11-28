@@ -7,6 +7,7 @@ import { readAgeState } from "@/lib/server/age";
 import { aiChatEnv, aiChatMode, aiChatOpenFor } from "@/lib/brain/flag";
 import { brainJson, dbRefusal, notFound } from "@/lib/server/brain/session";
 import { readPlanFilm, type PlanFilm } from "@/lib/server/brain/film-plan";
+import { filmGateFor } from "@/lib/server/films";
 import { creativeDb } from "@/lib/server/creative";
 import { createGeneration, quote, type CreativeDb, type GenerationInput } from "@/lib/creative/operations";
 import { geoRefusal } from "@/lib/server/geo";
@@ -67,6 +68,10 @@ export async function sheetContext(sessionId: unknown, filmId: unknown): Promise
   if (!brief || brief.kind !== "short" || !(brief.characters ?? []).length) return { ok: false, res: brainJson({ error: "no_characters" }, 409) };
   let film: PlanFilm | null = null;
   if (typeof filmId === "string") {
+    // Film Studio's own switches, the project's workspace included (as /api/brain/film): a project the editor cannot open is not
+    // read, priced or given references from here either.
+    const gate = await filmGateFor(filmId);
+    if (!gate.ok) return { ok: false, res: gate.response };
     const f = await readPlanFilm(supabase, filmId);
     if (!f.ok) return f;
     if (f.film.orgId !== row.org_id) return { ok: false, res: notFound() };
