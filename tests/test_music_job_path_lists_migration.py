@@ -190,9 +190,13 @@ class TheRollback(unittest.TestCase):
         self.assertIn(f"is distinct from '{OK_0188}'", ROLLBACK)
 
     def test_it_refuses_while_a_music_model_is_on_sale(self):
-        # A NOTICE would let the dead end back in (routed quotes find nothing, the failover raises 22023): a named refusal.
+        # A NOTICE would let the dead end back in (routed quotes find nothing, the failover raises 22023): a named refusal, and no
+        # force switch (Atlas: a force is what gets used in a hurry). The only NOTICE is the list of routed music jobs in flight.
         self.assertIn("raise exception 'rollback 0250: these music models are on sale", ROLLBACK)
-        self.assertNotIn("raise notice", ROLLBACK)
+        self.assertNotIn("raise notice 'rollback 0250: these music models", ROLLBACK)
+        self.assertEqual(ROLLBACK.count("raise notice"), 1)
+        self.assertIn("raise notice 'rollback 0250: routed music jobs still in flight", ROLLBACK)
+        self.assertNotIn("current_setting", ROLLBACK)
         self.assertIn("'music' = any (capabilities) and availability in ('beta', 'ga')", ROLLBACK)
         self.assertLess(ROLLBACK.index("these music models are on sale"), ROLLBACK.index("create or replace function"))
 
