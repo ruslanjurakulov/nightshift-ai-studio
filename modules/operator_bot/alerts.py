@@ -22,6 +22,13 @@ security_events fallback (warn, once per event), a segment queued with no claim 
 STUCK_COOLDOWN), and the sweep overdue by 0212's own measure (critical). Ids cut to 8, amounts, statuses, closed call
 words and SQLSTATEs only; "never recorded" is not an alert and never reads as fine.
 
+The film spend watch rides the same kind (the paid test film's hard cap, docs/studio/S2_LIVE_TEST.md): per film with an
+open or recently settled segment, the KNOWN vendor dollars of its takes (a recorded usd_estimate, else quantity x the
+registry's figure, labelled an estimate) against NIGHTSHIFT_FILM_SPEND_WARN_USD (warn, ``film:spend:<film>:<line>``)
+and NIGHTSHIFT_FILM_SPEND_STOP_USD (critical, the same key with the stop line, naming runbook step 6's stop ladder), and
+a warning ``film:spend_unrecorded:<film>`` when a line has no dollar figure at all, because the cap cannot be watched
+for it. Each once. It only reads: a person stops the film.
+
 Detection is pure over the sources (:func:`detect`). Delivery is
 :class:`AlertEngine`, which is where the restraint lives:
 
@@ -54,6 +61,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Callable, Optional
 
 from modules.operator_bot import analysis, reliability
@@ -322,7 +330,7 @@ def _film_alerts(ops: OperatorSources, now: datetime, lang: str) -> list[Alert]:
     a scene, the database's message or a customer's name."""
     out: list[Alert] = []
     for name, fn in (("events", _film_event_alerts), ("fallbacks", _film_fallback_alerts),
-                     ("stuck", _film_stuck_alerts), ("sweep", _film_sweep_alerts)):
+                     ("stuck", _film_stuck_alerts), ("sweep", _film_sweep_alerts), ("spend", _film_spend_alerts)):
         try:
             out += fn(ops, now, lang)
         except Exception as e:  # noqa: BLE001 - a malformed row must not end the pass
@@ -409,6 +417,49 @@ def _film_sweep_alerts(ops: OperatorSources, now: datetime, lang: str) -> list[A
                   t(lang, "alert.film_sweep_overdue", minutes=st["after_min"] if st["after_min"] is not None else "?",
                     open=st["open"] if st["open"] is not None else "?", stuck=views.Raw(stuck), last=views.Raw(last)),
                   None, FILM_SWEEP_COOLDOWN)]
+
+
+def usd_line(value) -> str:
+    """A threshold as it appears in a dedupe key: ``6``, ``6.5`` (never ``6.00`` vs ``6``: one line, one key)."""
+    return format(Decimal(str(value)).normalize(), "f")
+
+
+def spend_basis(lang: str, film: dict) -> views.Raw:
+    """How a film's dollars were arrived at, plus the lines that have none (never counted as 0)."""
+    basis = t(lang, "film.spend_estimated" if film.get("basis") == "estimated" else
+              "film.spend_recorded" if film.get("basis") == "recorded" else "film.spend_nothing_known")
+    extra = t(lang, "film.spend_unknown_lines", n=film["unknown"]) if film.get("unknown") else ""
+    return views.Raw(basis + extra)
+
+
+def _film_spend_alerts(ops: OperatorSources, now: datetime, lang: str) -> list[Alert]:
+    cfg = ops.cfg
+    if getattr(cfg, "film_spend_error", ""):
+        # The pass refuses to start on this (tools/run_operator_alerts.py); a caller that did not check must still not
+        # judge a paid film against lines the owner did not set.
+        return []
+    sec = ops.film_spend(now - FILM_WINDOW)
+    if not sec.ok:
+        return []
+    warn, stop = cfg.film_spend_warn_usd, cfg.film_spend_stop_usd
+    out = []
+    for f in sec.data or []:
+        fid = safe_id(f.get("film_id"), 40)
+        if not fid:
+            continue
+        common = dict(film=_fid(fid), org=_fid(f.get("org_id")), usd=views.num(lang, f["usd"], 2),
+                      basis=spend_basis(lang, f), warn=views.num(lang, warn, 2), stop=views.num(lang, stop, 2))
+        if f["usd"] >= stop:
+            # CRITICAL: the next take could cross the owner's hard cap. The watch stops nothing: a person does.
+            out.append(Alert("film", f"film:spend:{fid}:{usd_line(stop)}", "critical",
+                             t(lang, "alert.film_spend_stop", **common)))
+        elif f["usd"] >= warn:
+            out.append(Alert("film", f"film:spend:{fid}:{usd_line(warn)}", "warn",
+                             t(lang, "alert.film_spend_warn", **common)))
+        if f.get("unknown"):
+            out.append(Alert("film", f"film:spend_unrecorded:{fid}", "warn",
+                             t(lang, "alert.film_spend_unrecorded", n=f["unknown"], **common)))
+    return out
 
 
 def last_draft_count(state: AlertState) -> int:

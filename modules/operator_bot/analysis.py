@@ -9,12 +9,13 @@ from __future__ import annotations
 import re
 from collections import Counter
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from modules.operator_bot.config import (
     OperatorConfig, STUCK_HEARTBEAT_MINUTES, WORKER_STALE_SECONDS,
 )
-from modules.operator_bot.sources import CREATIVE_ACTIVE, parse_ts
+from modules.operator_bot.sources import CREATIVE_ACTIVE, FILM_TAKE_DONE, parse_ts
 
 
 def _num(value) -> Optional[float]:
@@ -162,6 +163,92 @@ def film_sweep_state(data) -> dict:
             "after_min": None if after is None else int(after),
             # Segments 0171's sweep rules could already have settled, and for how long the oldest has waited.
             "stuck": None if stuck is None else int(stuck), "oldest_stuck_min": None if oldest is None else int(oldest)}
+
+
+def _usd(value) -> Optional[Decimal]:
+    """A non-negative finite money amount from a JSON number or string, else None (unknown, never 0)."""
+    if value is None or isinstance(value, bool) or value == "":
+        return None
+    try:
+        d = Decimal(str(value).strip())
+    except (InvalidOperation, ValueError):
+        return None
+    return d if d.is_finite() and d >= 0 else None
+
+
+def film_job_model(job) -> str:
+    """The model a film take's creative job ran on: the router's choice, else the one asked for (0036)."""
+    return str((job or {}).get("routed_model") or (job or {}).get("requested_model") or "")
+
+
+#: How a dollar figure was arrived at, worst first: a line with any estimate is an estimate.
+SPEND_BASES = ("estimated", "recorded")
+
+
+def _cost_line(row, figure: Optional[dict]) -> tuple[str, Optional[Decimal]]:
+    """One creative_job_costs row: ("recorded", usd) when the worker stored dollars; ("estimated", quantity x the
+    registry's figure) when it stored only a quantity in the figure's unit; ("unknown", None) otherwise: no quantity,
+    no figure for the model (openai-gpt-image-2.6-* has none), or a unit the figure is not priced in."""
+    usd = _usd(row.get("usd_estimate"))
+    if usd is not None:
+        return "recorded", usd
+    qty = _usd(row.get("quantity"))
+    per = _usd((figure or {}).get("usd_per_unit"))
+    unit, price_unit = row.get("unit"), (figure or {}).get("price_unit")
+    # A quantity is only priced in the unit it was counted in: a missing unit on either side is not a match.
+    if qty is None or per is None or not unit or unit != price_unit:
+        return "unknown", None
+    return "estimated", qty * per
+
+
+def film_spend_rollup(films: dict, takes, jobs, costs, figures=()) -> list[dict]:
+    """Each film's vendor cost so far, from its takes' jobs' cost rows. Pure.
+
+    ``films`` maps film id -> org id. Returns, per film, ``{"film_id", "org_id", "usd" (Decimal, the KNOWN sum: recorded
+    plus estimated), "basis" ("recorded" | "estimated" | None when nothing is known), "unknown" (lines with no dollar
+    figure: a finished take whose job has no cost row, or a cost row that can be neither read nor estimated), "takes"}``,
+    and per take ``{"id", "kind", "attempt", "status", "usd", "basis", "unknown", "state"}`` where state is
+    ``costed`` (every row known), ``partial`` (some rows unknown), ``unknown`` (rows, none known), ``not_recorded`` (its
+    vendor call is over and there is no cost row), ``pending`` (in flight, no row yet) or ``no_job`` (no vendor call
+    was made through a job). An unknown is never counted as 0 (CLAUDE.md #5): the sum is a floor, and says so."""
+    fig = {str(f.get("id")): f for f in figures or ()}
+    job_of: dict = {}
+    model_of: dict = {}
+    for j in jobs or ():
+        job_of.setdefault(str(j.get("film_take_id")), []).append(str(j.get("id")))
+        model_of[str(j.get("id"))] = film_job_model(j)
+    rows_of: dict = {}
+    for c in costs or ():
+        rows_of.setdefault(str(c.get("job_id")), []).append(c)
+    out = {fid: {"film_id": fid, "org_id": org, "usd": Decimal(0), "basis": None, "unknown": 0, "takes": []}
+           for fid, org in films.items()}
+    for t in takes or ():
+        film = out.get(str(t.get("film_id")))
+        if film is None:
+            continue
+        job_ids = job_of.get(str(t.get("id")), [])
+        lines = [(_cost_line(c, fig.get(model_of.get(j, ""))))
+                 for j in job_ids for c in rows_of.get(j, [])]
+        known = [(b, v) for b, v in lines if v is not None]
+        unknown = len(lines) - len(known)
+        if not job_ids:
+            state = "no_job"
+        elif not lines:
+            state = "not_recorded" if t.get("status") in FILM_TAKE_DONE else "pending"
+            unknown = 1 if state == "not_recorded" else 0
+        else:
+            state = "costed" if not unknown else ("partial" if known else "unknown")
+        usd = sum((v for _b, v in known), Decimal(0)) if known else None
+        basis = next((b for b in SPEND_BASES if any(k == b for k, _v in known)), None)
+        film["takes"].append({"id": t.get("id"), "kind": t.get("kind"), "attempt": t.get("attempt"),
+                              "status": t.get("status"), "usd": usd, "basis": basis, "unknown": unknown,
+                              "state": state})
+        if usd is not None:
+            film["usd"] += usd
+        film["unknown"] += unknown
+        if basis is not None:
+            film["basis"] = basis if film["basis"] is None else min(film["basis"], basis, key=SPEND_BASES.index)
+    return list(out.values())
 
 
 def worker_role(row) -> str:

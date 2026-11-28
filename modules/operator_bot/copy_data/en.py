@@ -541,4 +541,20 @@ TABLE = {
     "film.sweep_unreadable": "Film sweep: unknown (its status did not say whether it is overdue)",
     "film.sweep_overdue": "Film sweep: <b>OVERDUE</b> — {last}",
     "film.sweep_ok": "Film sweep: on time — {last}",
+
+    # -- film spend watch (the hard cap of a paid test film) ----------------
+    "alert.film_spend_warn": "Film {film} — org {org}: USD {usd} at its vendors so far, {basis}. That is at or above the warn line of USD {warn} (stop line USD {stop}). Check it after every take: python tools/film_spend.py --film &lt;film id&gt;.",
+    "alert.film_spend_stop": "Film {film} — org {org}: USD {usd} at its vendors, {basis}. That is at or above the STOP line of USD {stop}. Stop the film by hand now (runbook step 6, docs/studio/S2_LIVE_TEST.md), least drastic first: 1) the workspace switch off, set_org_film_studio_enabled(&lt;org&gt;, false); 2) cancel the segment, film_cancel_segment(&lt;segment&gt;, cancelled); 3) the worker off, NIGHTSHIFT_FILM_WORKER empty, then redeploy. Unknown lines are not included: check the vendor billing pages.",
+    "alert.film_spend_unrecorded": "Film {film} — org {org}: {n} vendor line(s) have no dollar figure (a finished take with no cost row, or a cost row with no quantity, or a model with no registry figure). The USD {warn} / {stop} lines cannot be watched for them. Known so far: USD {usd}, {basis}. Check the vendor billing pages.",
+    "film.spend_estimated": "estimated (registry figure)",
+    "film.spend_recorded": "recorded",
+    "film.spend_nothing_known": "no dollar figure known yet",
+    "film.spend_unknown_lines": ", plus {n} unknown line(s), not counted",
+    "film.spend": "Film spend (last 24 h): {n} film(s); the highest is {film} at USD {usd}, {basis}; {unknown} unknown line(s) in all; lines warn USD {warn}, stop USD {stop}{cut}",
+    "film.spend_none": "Film spend (last 24 h): no film with an open or recently settled segment; lines warn USD {warn}, stop USD {stop}",
+    "film.spend_unknown": "Film spend: {why}",
+    "film.spend_refused": "Film spend watch: REFUSED, {variable} {why}. Fix the variable: the alert pass does not start until then.",
+    "film.spend_reason.not_usd": "is not an amount of US dollars (write it like 6 or 6.50)",
+    "film.spend_reason.not_positive": "must be above 0",
+    "film.spend_reason.not_below_stop": "must be below NIGHTSHIFT_FILM_SPEND_STOP_USD",
 }

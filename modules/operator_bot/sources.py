@@ -27,6 +27,11 @@ Four kinds of source, none of them new:
   ``film.segment_skipped``, migrations 0166/0171, and ``film_sweep_status()``, 0212): ids, statuses, times,
   an organization id, and single numbers or closed words picked out of an event's detail by PostgREST's path
   select. Never a prompt, a scene, the database's message text or a customer's name.
+* The film spend reads (``film_segments`` → ``film_takes`` → ``creative_jobs.film_take_id`` →
+  ``creative_job_costs``, migrations 0171 and 0037, and ``model_registry``'s reviewed vendor figure, 0035): per film
+  with an open or recently settled segment, its takes' kind, attempt and status, their jobs' model ids, and each cost
+  row's quantity, unit and USD. Ids, closed words, small numbers and money; never a prompt, a model's parameters, an
+  error text or a price source.
 * The public pages of the site (a GET, status code only).
 
 Every read returns a :class:`Section`. A source that cannot answer says WHY in a
@@ -105,6 +110,11 @@ FILM_OPEN_STATUSES = ("queued", "running", "draining")
 FILM_ALERT_EVENTS = ("segment_settled", "segment_skipped")
 #: The security_events kind 0171's film_record_skip writes when even its film_events row could not be written.
 FILM_SKIP_SECURITY_KIND = "film.segment_skipped"
+
+#: film_takes statuses (0166) after which a take's vendor call, if it made one, is over: its cost row should exist.
+FILM_TAKE_DONE = ("completed", "failed", "superseded", "skipped")
+#: How many ids go into one ``in.(...)`` filter: a uuid is 36 characters, so a chunk stays far inside any URL limit.
+IN_CHUNK = 50
 
 SITE_PAGES = ("/", "/pricing", "/login", "/signup")
 
@@ -445,6 +455,94 @@ class OperatorSources:
         if not sec.ok:
             return sec
         return Section(True, [r for r in sec.data or [] if r.get("status") in FILM_OPEN_STATUSES], cap=sec.cap)
+
+    FILM_SPEND_SEGMENTS_LIMIT = 200
+    FILM_SPEND_ROWS_LIMIT = 2000
+
+    def film_spend(self, since: datetime) -> Section:
+        """What each film with an open segment, or one settled since ``since``, has cost at its vendors so far: a cost
+        row's own ``usd_estimate`` where one was recorded, else its quantity times the registry's figure (an
+        estimate), else unknown (never 0), with its takes. Data: one dict per film, see
+        :func:`modules.operator_bot.analysis.film_spend_rollup`. Read-only; any read that fails makes the whole
+        answer unknown (a partial sum is not "this film's cost")."""
+        cols = "film_id,org_id,status,settled_at"
+        lim = str(self.FILM_SPEND_SEGMENTS_LIMIT)
+        open_ = self._read("film_segments", {"select": cols, "status": f"in.({','.join(FILM_OPEN_STATUSES)})",
+                                             "order": "created_at.asc", "limit": lim})
+        if not open_.ok:
+            return open_
+        done = self._read("film_segments", {"select": cols, "settled_at": f"gte.{iso(since)}",
+                                            "order": "settled_at.desc", "limit": lim})
+        if not done.ok:
+            return done
+        films: dict = {}
+        for r in list(open_.data or []) + list(done.data or []):
+            # Belt and braces for a source that ignored a filter: only a live segment or one settled in the window.
+            settled = parse_ts(r.get("settled_at"))
+            if r.get("status") in FILM_OPEN_STATUSES or (settled is not None and settled >= since):
+                fid = str(r.get("film_id") or "")
+                if fid:
+                    films.setdefault(fid, r.get("org_id"))
+        out = self._film_costs(films)
+        if out.ok and (open_.cap or done.cap):
+            out.cap = out.cap or open_.cap or done.cap
+        return out
+
+    def film_spend_for(self, film_id: str) -> Section:
+        """The same answer for one named film, whatever its segments (tools/film_spend.py)."""
+        sec = self._read("films", {"select": "id,org_id", "id": f"eq.{film_id}", "limit": "1"})
+        if not sec.ok:
+            return sec
+        rows = [r for r in sec.data or [] if str(r.get("id")) == film_id]
+        if not rows:
+            return Section.fail("not found")
+        return self._film_costs({film_id: rows[0].get("org_id")})
+
+    def _in_chunks(self, table: str, select: str, column: str, ids, extra: Optional[dict] = None) -> Section:
+        rows, cap = [], 0
+        ids = sorted({str(i) for i in ids if i})
+        for n in range(0, len(ids), IN_CHUNK):
+            sec = self._read(table, {"select": select, column: f"in.({','.join(ids[n:n + IN_CHUNK])})",
+                                     **(extra or {}), "limit": str(self.FILM_SPEND_ROWS_LIMIT)})
+            if not sec.ok:
+                return sec
+            rows += list(sec.data or [])
+            cap = cap or sec.cap
+        return Section(True, rows, cap=cap)
+
+    def _film_costs(self, films: dict) -> Section:
+        from modules.operator_bot import analysis
+
+        if not films:
+            return Section(True, [])
+        takes = self._in_chunks("film_takes", "id,film_id,org_id,kind,attempt,status,created_at", "film_id", films,
+                                {"order": "created_at.asc"})
+        if not takes.ok:
+            return takes
+        take_rows = [r for r in takes.data if str(r.get("film_id")) in films]
+        jobs = self._in_chunks("creative_jobs", "id,film_take_id,routed_model,requested_model", "film_take_id",
+                               [r.get("id") for r in take_rows])
+        if not jobs.ok:
+            return jobs
+        take_ids = {str(r.get("id")) for r in take_rows}
+        job_rows = [r for r in jobs.data if str(r.get("film_take_id")) in take_ids]
+        costs = self._in_chunks("creative_job_costs", "job_id,quantity,unit,usd_estimate", "job_id",
+                                [r.get("id") for r in job_rows])
+        if not costs.ok:
+            return costs
+        job_ids = {str(r.get("id")) for r in job_rows}
+        cost_rows = [r for r in costs.data if str(r.get("job_id")) in job_ids]
+        # The adapters record a quantity in the vendor's unit and leave usd_estimate NULL by design
+        # (modules/creative_adapters.py, RegistryAdapter.usage): the dollars come from the registry's reviewed figure,
+        # picked out of spec by path so nothing else of the spec is read. Only the price and its unit.
+        models = {analysis.film_job_model(r) for r in job_rows} - {""}
+        figures = self._in_chunks("model_registry", "id,usd_per_unit:spec->pricing->>provider_usd_per_unit,"
+                                  "price_unit:spec->pricing->>unit", "id", models) if models else Section(True, [])
+        if not figures.ok:
+            return figures
+        figure_rows = [r for r in figures.data if str(r.get("id")) in models]
+        rolled = analysis.film_spend_rollup(films, take_rows, job_rows, cost_rows, figure_rows)
+        return Section(True, rolled, cap=takes.cap or jobs.cap or costs.cap or figures.cap)
 
     def film_sweep_status(self) -> Section:
         """Whether the film sweep ran (0212): per runner its last run, the open segment count and ``overdue``
