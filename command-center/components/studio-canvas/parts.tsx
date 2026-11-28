@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { AudioLines, Clapperboard, Film, Image as ImageIcon, Layers, Sparkles, Type, Wand2, type LucideIcon } from "lucide-react";
+import { TextShimmer } from "@/components/ui/effects";
 import type { NodeKind } from "@/lib/studio/canvas";
 import type { useI18n } from "@/lib/i18n/context";
 import { failureReason, statusView, type StudioJob } from "@/lib/creative/studio";
@@ -25,7 +27,10 @@ export function Lamp({ tone, live = false, label, className }: { tone: "ok" | "r
   return (
     <span className={className ? `cv-lampw ${className}` : "cv-lampw"}>
       <span aria-hidden className={`cv-lamp is-${tone}${live ? " is-live" : ""}`} />
-      <span className="cv-lamp-label">{label}</span>
+      {/* A light passes over the words only while the job is really working (live comes from its status, never a timer). */}
+      <TextShimmer active={live} className="cv-lamp-label">
+        {label}
+      </TextShimmer>
     </span>
   );
 }
@@ -61,3 +66,45 @@ export function statusLine(t: ReturnType<typeof useI18n>["t"], status: NodeStatu
   }
 }
 
+
+/** How long a node keeps its "just finished" look: long enough to see, short enough that a board of results is calm. */
+export const JUST_FINISHED_MS = 1800;
+
+/**
+ * True for a moment after this node's job is seen to finish: it was working or queued while on screen, then done, AND its
+ * result is in view (`ready`: the picture is shown, or the result has no picture to show). Not before: a ring beside
+ * "the result is loading" or "the result can't be shown" would celebrate a result the card itself says is not there
+ * (rule 5). A board opened on a finished job never celebrates it, and a job first read as done (a fast job, an unknown
+ * reading) is not a finish either: only a run the person watched end. Missing a ring is the safe failure; a false one is not.
+ */
+export function useJustFinished(status: NodeStatus, ready = true): boolean {
+  const sawRun = useRef(status === "working" || status === "queued");
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    if (status === "working" || status === "queued") {
+      sawRun.current = true;
+      setOn(false);
+      return;
+    }
+    if (status !== "done") {
+      sawRun.current = false;
+      setOn(false);
+      return;
+    }
+    if (!ready || !sawRun.current) return;
+    sawRun.current = false;
+    setOn(true);
+    const t = window.setTimeout(() => setOn(false), JUST_FINISHED_MS);
+    return () => window.clearTimeout(t);
+  }, [status, ready]);
+  return on;
+}
+
+/**
+ * The phone list's card has no room for a class hook per row (rows are drawn in a map), so its "just finished" look is this
+ * ring drawn inside the card (an inset ring: the card clips), only for the moment useJustFinished allows.
+ */
+export function FinishRing({ status, ready }: { status: NodeStatus; ready: boolean }) {
+  const on = useJustFinished(status, ready);
+  return on ? <span aria-hidden className="cv-finish" data-fx="finish" /> : null;
+}
