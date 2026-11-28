@@ -176,19 +176,38 @@ class RegistryField(unittest.TestCase):
         self.web_only["terms_gate"] = "terms_review_required"
         self.assertEqual(self.reg.validate(self.doc), [])
 
-    def test_a_model_with_a_country_list_needs_a_terms_gate(self):
-        # The database cannot check the country yet (docs/GEO_BLOCK.md): such a model must stay off sale.
+    def test_a_country_list_with_no_terms_gate_needs_an_allow_list(self):
+        # A deny-list alone lets a code on neither list through (EU, ZZ: BR-S6-04): 0238 keeps such a row off sale in the
+        # database, and the file refuses it, so a sync can never write a row the database would refuse whole.
         self.web_only["blocked_countries"] = ["PK"]
         self.web_only["terms_gate"] = None
-        self.assertTrue(any("blocked_countries needs a terms_gate" in e for e in self.reg.validate(self.doc)))
+        self.web_only.pop("available_countries", None)
+        mid = self.web_only["id"]
+        self.assertIn(f"{mid}: blocked_countries needs available_countries (or a terms_gate) before the database lets it on sale (0238)",
+                      self.reg.validate(self.doc))
 
-    def test_every_model_in_the_file_with_a_country_list_is_kept_off_sale(self):
+    def test_a_country_list_with_an_allow_list_needs_no_terms_gate(self):
+        # Since 0208 the database checks the country on every path and since 0230 it reads the allow-list: 0238 lets such a row on sale.
+        self.web_only["blocked_countries"] = ["PK"]
+        self.web_only["available_countries"] = ["UZ"]
+        self.web_only["terms_gate"] = None
+        self.assertEqual(self.reg.validate(self.doc), [])
+
+    def test_an_empty_allow_list_is_not_an_allow_list(self):
+        # The schema refuses it (minItems 1) before the cross-field rule is read; 0238's CHECK refuses it in the database too.
+        self.web_only["blocked_countries"] = ["PK"]
+        self.web_only["available_countries"] = []
+        self.web_only["terms_gate"] = None
+        self.assertNotEqual(self.reg.validate(self.doc), [])
+
+    def test_every_model_in_the_file_with_a_country_list_is_kept_off_sale_or_carries_its_allow_list(self):
         listed = [m for m in self.doc["models"] if m.get("blocked_countries")]
         self.assertTrue(listed)
         for m in listed:
-            self.assertTrue(m.get("terms_gate"), m["id"])      # 0035's terms_before_sale keeps it hidden
-        mig = (ROOT / "supabase" / "migrations" / "0142_country_block_before_sale.sql").read_text(encoding="utf-8")
-        self.assertIn("add constraint model_registry_countries_before_sale", mig)   # and 0142 refuses beta/ga for it
+            # 0035's terms_before_sale keeps a gated row hidden; 0238's CHECK lets an ungated one on sale only with an allow-list.
+            self.assertTrue(m.get("terms_gate") or m.get("available_countries"), m["id"])
+        mig = (ROOT / "supabase" / "migrations" / "0238_country_list_sale_needs_allow_list.sql").read_text(encoding="utf-8")
+        self.assertIn("add constraint model_registry_countries_before_sale", mig)
 
     def test_a_model_the_api_sells_cannot_be_blocked_by_country(self):
         self.any["blocked_countries"] = ["IN"]
