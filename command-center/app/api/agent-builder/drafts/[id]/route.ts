@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireOperator } from "@/lib/auth/org-roles";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { DRAFT_ID, agentDraftsEnabled, draftRpcFailure } from "@/lib/server/agent-drafts";
 
@@ -13,6 +14,11 @@ function json(body: unknown, status: number) {
 }
 /** The switch is off: the same 404 as a route that does not exist, before the session is read. */
 const disabled = () => json({ error: "not_found" }, 404);
+/** Operators only until launch, after the switch and before anything else (the list route says why). */
+async function operatorRefusal() {
+  const access = await requireOperator();
+  return access.ok ? null : json({ error: access.error }, access.status);
+}
 
 async function session() {
   const db = await createClient();
@@ -27,6 +33,8 @@ async function session() {
  */
 export async function GET(request: Request, { params }: Params) {
   if (!agentDraftsEnabled()) return disabled();
+  const refused = await operatorRefusal();
+  if (refused) return refused;
   const { id } = await params;
   if (!DRAFT_ID.test(id)) return json({ error: "invalid_id" }, 400);
   const db = await session();
@@ -52,6 +60,8 @@ export async function GET(request: Request, { params }: Params) {
 /** The owner deletes one plan and every version of it (delete_agent_workflow_draft, 0130). Another person's id is not_found. */
 export const DELETE = requireSameOrigin(async function DELETE(_request: Request, { params }: Params) {
   if (!agentDraftsEnabled()) return disabled();
+  const refused = await operatorRefusal();
+  if (refused) return refused;
   const { id } = await params;
   if (!DRAFT_ID.test(id)) return json({ error: "invalid_id" }, 400);
   const db = await session();

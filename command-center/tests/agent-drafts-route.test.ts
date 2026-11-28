@@ -47,6 +47,8 @@ const client = {
 };
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => { h.sessionReads++; return client; } }));
+// The operator gate has its own test (agent-builder-operator-gate.test.tsx); here every caller is the operator.
+vi.mock("@/lib/auth/org-roles", () => ({ requireOperator: async () => ({ ok: true }) }));
 
 const list = await import("../app/api/agent-builder/drafts/route");
 const one = await import("../app/api/agent-builder/drafts/[id]/route");

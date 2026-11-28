@@ -7,6 +7,8 @@ import "server-only";
  * NIGHTSHIFT_AGENT_DRAFTS_ENABLED — a server env var, default OFF. On for `on`, `1`, `true` or `yes` (any case, surrounding spaces
  * ignored), like the repository's other release switches (lib/server/release-flags.ts). Read on every request, never at import. Off:
  * every /api/agent-builder/drafts route answers the public 404 before it reads the session or touches the database.
+ * On, the routes still serve only a platform operator (requireOperator) until launch, like the /agent-builder page: the switch and
+ * the role are two locks, and neither opens the routes alone.
  *
  * This hides the doors only. Once 0130 is applied, a signed-in user can call save_agent_workflow_draft() and
  * delete_agent_workflow_draft() through PostgREST with the browser key whatever this says, within the database's own limits.

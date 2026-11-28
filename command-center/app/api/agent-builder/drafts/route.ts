@@ -1,6 +1,7 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireOperator } from "@/lib/auth/org-roles";
 import { importWorkflowDraft } from "@/lib/agent-draft";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { readJsonBodyCapped } from "@/lib/server/json-body";
@@ -23,10 +24,21 @@ function response(body: unknown, status: number) {
 }
 /** The switch is off: the same 404 as a route that does not exist, before the session is read. */
 const disabled = () => response({ error: "not_found" }, 404);
+/**
+ * Operators only until launch, like the /agent-builder page. Asked after the switch, so an operator alone never opens the routes
+ * while it is off; asked before anything else, so a customer learns nothing about drafts, ids or bodies. The refusal is
+ * requireOperator's own (401 signed out, 403 a customer), the answer every operator-only route gives.
+ */
+async function operatorRefusal() {
+  const access = await requireOperator();
+  return access.ok ? null : response({ error: access.error }, access.status);
+}
 
 /** List ONLY the signed-in author's own draft metadata via owner-id RLS. */
 export async function GET() {
   if (!agentDraftsEnabled()) return disabled();
+  const refused = await operatorRefusal();
+  if (refused) return refused;
   const db = await session();
   if (!db) return response({ error: "unauthorized" }, 401);
   const { data, error } = await db.from("agent_workflow_drafts")
@@ -39,6 +51,8 @@ export async function GET() {
 /** Saves a validated client-side plan atomically; never runs a model. */
 export const POST = requireSameOrigin(async function POST(req: NextRequest) {
   if (!agentDraftsEnabled()) return disabled();
+  const refused = await operatorRefusal();
+  if (refused) return refused;
   const db = await session();
   if (!db) return response({ error: "unauthorized" }, 401);
   const parsed = await readJsonBodyCapped(req, BODY_LIMIT);
