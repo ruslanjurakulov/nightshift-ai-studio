@@ -891,3 +891,9 @@ sec_geo_allowlist_0230.extend(TABLES, FUNCTIONS)
 import sec_cancel_audit_0231  # noqa: E402
 
 sec_cancel_audit_0231.extend(TABLES, FUNCTIONS)
+
+# Migration 0228 (music per request, S6): no new table or function; creative_price and creative_params_problem stay internal.
+# tests/security/sec_music_per_request_0228.py
+import sec_music_per_request_0228  # noqa: E402
+
+sec_music_per_request_0228.extend(TABLES, FUNCTIONS)

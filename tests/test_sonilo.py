@@ -159,8 +159,11 @@ class CapabilityTests(unittest.TestCase):
     def test_the_registry_only_set_is_exactly_what_the_database_does_not_list(self):
         # The migration that teaches the database a capability must also take it out of REGISTRY_ONLY_CAPABILITIES, and
         # nothing may be called registry-only that the database already knows.
+        # 0228 teaches the database `music` (Lyria 3.5), and the code keeps it registry-only until Atlas confirms 0228 is live: a sync
+        # from code merged before the migration is applied must never send a music row (one row outside the check fails the whole
+        # sync). A later small PR takes MUSIC out of REGISTRY_ONLY_CAPABILITIES, and this line loses its `| {MUSIC}`.
         for constraint in ("model_registry_capabilities_check", "model_probe_runs_capability_check"):
-            self.assertEqual(set(CAPABILITIES) - REGISTRY_ONLY_CAPABILITIES, _db_capabilities(constraint), constraint)
+            self.assertEqual((set(CAPABILITIES) - REGISTRY_ONLY_CAPABILITIES) | {MUSIC}, _db_capabilities(constraint), constraint)
         # video_character_swap (0137) is sold through its own tables, never as a creative job: registry-only for good.
         self.assertEqual(REGISTRY_ONLY_CAPABILITIES, {"music", "video_music", "video_character_swap"})
 
@@ -208,10 +211,12 @@ class RegistryEntryTests(unittest.TestCase):
         self.assertFalse({row["id"] for row in rows} & set(IDS))
         for row in rows:      # one row outside the constraint would fail the sync of every model
             self.assertLessEqual(set(row["capabilities"]), known, row["id"])
-        # The two Character Studio entries (0137) are registry-only too: tests/test_character_swap_adapters.py holds them.
+        # The two Character Studio entries (0137) are registry-only too: tests/test_character_swap_adapters.py holds them. So is
+        # Google Lyria 3.5, the other `music` provider (tests/test_google_lyria.py).
         swap = {"kling-4.0-omni-edit", "seedance-2.5-edit"}
-        self.assertEqual(len(rows), len(self.r) - 2 - len(swap))
-        self.assertEqual({e.id for e in self.r.values() if e.registry_only}, set(IDS) | swap)
+        lyria = {"google-lyria-3.5"}
+        self.assertEqual(len(rows), len(self.r) - 2 - len(swap) - len(lyria))
+        self.assertEqual({e.id for e in self.r.values() if e.registry_only}, set(IDS) | swap | lyria)
 
     def test_the_gate_is_terms_review_and_nothing_can_be_sold(self):
         for mid in IDS:
@@ -330,6 +335,16 @@ class SubmitTests(Case):
         super().setUp()
         self.vendor.on("POST", T2M, Resp(202, ACCEPTED))
         self.vendor.on("POST", V2M, Resp(202, ACCEPTED))
+
+    def test_br_l_209_a_sung_language_is_refused_not_ignored(self):
+        # The bridge passes a music job's language (for Lyria); Sonilo has no such field, so it is refused before any call.
+        with self.assertRaises(AdapterError) as cm:
+            self.adapter().submit(req(text_language="ru"), "text-to-music")
+        self.assertTrue(cm.exception.not_accepted)
+        self.assertIn("no language setting", cm.exception.message)
+        self.assertEqual(self.vendor.requests, [])
+        entry = reg.load()["sonilo-music"]
+        self.assertTrue(any("no language setting" in p for p in self.adapter().problems(req(text_language="uz"), entry)))
 
     def test_a_track_is_asked_for_as_an_async_mp3_of_one_variant_with_the_duration_given(self):
         task = self.adapter().submit(req(duration_s=45), "text-to-music")
