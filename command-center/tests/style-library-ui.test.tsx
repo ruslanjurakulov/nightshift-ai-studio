@@ -122,7 +122,7 @@ describe("the detail sheet", () => {
     expect(within(dialog).getByText(ts.useHint)).toBeTruthy();
   });
 
-  it("closes on Escape and the close button, and puts focus back on the tile", () => {
+  it("closes on Escape and the close button, and puts focus back on the tile", async () => {
     const s = libraryStyleById("linocut-print")!;
     render(ui());
     const opener = tile(s.name.en);
@@ -130,7 +130,8 @@ describe("the detail sheet", () => {
     fireEvent.click(opener);
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.activeElement).toBe(opener);
+    // The shared Sheet (Radix) gives focus back on the next tick, after the dialog has gone.
+    await waitFor(() => expect(document.activeElement).toBe(opener));
     fireEvent.click(opener);
     fireEvent.click(screen.getByRole("button", { name: ts.close }));
     expect(screen.queryByRole("dialog")).toBeNull();

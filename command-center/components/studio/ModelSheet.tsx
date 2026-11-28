@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Check, Lock, Search, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
-import { nextFocusIndex } from "@/lib/feedback";
 import { formatCredits } from "@/lib/credits";
 import {
   apiErrorMessage,
@@ -18,9 +16,7 @@ import {
 } from "@/lib/creative/studio";
 import type { ModelPrice } from "@/components/studio/useModelPrices";
 import { TierMarks } from "@/components/studio/TierMarks";
-
-const FOCUSABLE =
-  'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/Sheet";
 
 /**
  * Pick the model for the current tool: a bottom sheet on a phone, a centred
@@ -34,6 +30,12 @@ const FOCUSABLE =
  *
  * Search narrows the list; ↑/↓ move between models, Enter picks one, Escape
  * closes, Tab stays inside, and focus returns to what opened it.
+ *
+ * The shell is the shared Sheet (components/ui, Radix Dialog): it traps focus,
+ * locks the page's scroll, hides the page from a screen reader and closes on
+ * Escape or a press outside, which this file used to hand-roll. The list stays a
+ * listbox with focus on its rows, not a cmdk combobox: here `aria-selected` is
+ * the model in use, and a combobox would use it for the highlighted row.
  */
 export function ModelSheet({
   capability,
@@ -64,11 +66,13 @@ export function ModelSheet({
 }) {
   const { t, fmt, locale } = useI18n();
   const g = t.gen;
-  const titleId = useId();
   const listId = useId();
-  const panel = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
-  const opener = useRef<HTMLElement | null>(null);
+  // Read during the first render, before the sheet takes focus: the Change button when given (it is on the page for as long as
+  // this is), else whatever had focus. A click does not focus a button in every browser, hence returnTo.
+  const [opener] = useState<HTMLElement | null>(() =>
+    typeof document === "undefined" ? null : (returnTo?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null)),
+  );
   const options = useRef<Array<HTMLLIElement | null>>([]);
   const [query, setQuery] = useState("");
 
@@ -80,45 +84,11 @@ export function ModelSheet({
   const [active, setActive] = useState(selectedIndex);
   const activeIndex = Math.min(active, Math.max(0, shown.length - 1));
 
-  useEffect(() => {
-    // The Change button when given (it is on the page for as long as this is),
-    // else whatever had focus.
-    opener.current = returnTo?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
-    // Focus the picked model, so ↑/↓ and Enter work at once; search is a Tab away.
-    const first = options.current[selectedIndex];
-    (first ?? search.current)?.focus();
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      const el = opener.current;
-      if (el && el.isConnected) el.focus();
-    };
-    // Mount only: the opener and the first focus belong to the opening.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   function move(to: number) {
     if (shown.length === 0) return;
     const i = (to + shown.length) % shown.length;
     setActive(i);
     options.current[i]?.focus();
-  }
-
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      onClose();
-      return;
-    }
-    if (e.key !== "Tab" || !panel.current) return;
-    const items = Array.from(panel.current.querySelectorAll<HTMLElement>(FOCUSABLE));
-    const current = items.indexOf(document.activeElement as HTMLElement);
-    const next = nextFocusIndex(current, items.length, e.shiftKey);
-    if (next < 0) return;
-    e.preventDefault();
-    items[next].focus();
   }
 
   function onListKey(e: React.KeyboardEvent, i: number) {
@@ -164,32 +134,35 @@ export function ModelSheet({
     return { text: apiErrorMessage(t, p.code), tone: p.code === "entitlement_required" ? "muted" : "fail" };
   };
 
-  if (typeof document === "undefined") return null;
-  return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-end justify-center sm:items-center sm:p-4" onKeyDown={onKeyDown}>
-      <div aria-hidden className="absolute inset-0 bg-[var(--studio-scrim)]" onClick={onClose} />
-      <div
-        ref={panel}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="relative flex max-h-[86dvh] w-full flex-col overflow-hidden rounded-t-[var(--ns-r-sheet)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] sm:max-h-[80vh] sm:max-w-[560px] sm:rounded-[var(--ns-r-sheet)]"
+  return (
+    <Sheet open onOpenChange={(open) => !open && onClose()}>
+      <SheetContent
+        side="auto"
+        closeLabel={null}
+        onOpenAutoFocus={(e) => {
+          // The picked model, so ↑/↓ and Enter work at once; search is a Tab away.
+          e.preventDefault();
+          (options.current[selectedIndex] ?? search.current)?.focus();
+        }}
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          if (opener?.isConnected) opener.focus();
+        }}
+        // Escape is this sheet's: the canvas or panel behind must not also take it (Radix closes the sheet itself).
+        onKeyDown={(e) => {
+          if (e.key === "Escape") e.stopPropagation();
+        }}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] px-4 pb-3 pt-4 sm:px-6">
+        <div className="flex items-start justify-between gap-4 border-b border-[var(--ds-border)] px-4 pb-3 pt-4 sm:px-6">
           <div className="flex min-w-0 flex-col gap-1">
-            <h2 id={titleId} className="font-display text-[22px] font-bold leading-none text-[var(--color-fg)]">
-              {g.sheetTitle}
-            </h2>
-            <p className="text-xs text-[var(--color-muted)]">{fmt(g.sheetFor, { kind: kindLabel(t, capability) })}</p>
+            <SheetTitle className="ds-t-heading-lg text-[var(--ds-text)]">{g.sheetTitle}</SheetTitle>
+            <SheetDescription className="ds-t-caption text-[var(--ds-muted)]">
+              {fmt(g.sheetFor, { kind: kindLabel(t, capability) })}
+            </SheetDescription>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={g.sheetClose}
-            className="tap-icon grid size-8 shrink-0 place-items-center rounded-[var(--ns-r-key)] text-[var(--color-muted)] hover:bg-[var(--studio-field)] hover:text-[var(--color-fg)]"
-          >
+          <SheetClose aria-label={g.sheetClose} className="ui-close tap-icon">
             <X aria-hidden className="size-4" />
-          </button>
+          </SheetClose>
         </div>
 
         <div className="px-4 pt-3 sm:px-6">
@@ -222,7 +195,7 @@ export function ModelSheet({
           <ul
             id={listId}
             role="listbox"
-            aria-labelledby={titleId}
+            aria-label={g.sheetTitle}
             className="scroll-focus flex flex-col gap-2 overflow-y-auto px-4 py-3 sm:px-6"
           >
             {shown.map((m, i) => {
@@ -326,9 +299,8 @@ export function ModelSheet({
           </ul>
         )}
 
-        <p className="border-t border-[var(--color-border)] px-4 py-3 text-xs text-[var(--color-muted)] sm:px-6">{g.sheetNote}</p>
-      </div>
-    </div>,
-    document.body,
+        <p className="ds-t-caption border-t border-[var(--ds-border)] px-4 py-3 text-[var(--ds-muted)] sm:px-6">{g.sheetNote}</p>
+      </SheetContent>
+    </Sheet>
   );
 }
