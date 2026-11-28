@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import type { EffectMotif } from "@/lib/effects/catalog";
+import type { EffectMotif } from "@/lib/effects/shared";
 
 /**
  * An effect card's drawing while the effect has no real sample: a few flat shapes in the effect's two colours that hint at the

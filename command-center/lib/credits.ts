@@ -31,18 +31,8 @@ export const UNIT_USD = "usd";
 export const UNIT_JOB_MINIMUM = "job_minimum";
 export const SPECIAL_UNITS = [UNIT_VIDEO_MINUTE, UNIT_USD, UNIT_JOB_MINIMUM] as const;
 
-/** The cost ledger's units (modules/cost_ledger.py) — offered in the price editor. */
-export const LEDGER_UNITS = [
-  "gemini_input_tokens",
-  "gemini_output_tokens",
-  "tts_characters",
-  "render_seconds",
-  "pexels_requests",
-  "upload_bytes",
-  "video_gen_clips",
-  "image_generations",
-  "vision_calls",
-] as const;
+// The cost ledger's own unit names (gemini_input_tokens, pexels_requests, ...) are not here: they name the vendors we
+// meter, and this module is in every public page's chunk. They are lib/server/ledger-units.ts (server-only).
 
 /** Mirrors the credit_prices_unit_check constraint. */
 export const PRICE_UNIT_RE = /^[a-z][a-z0-9_]{0,62}$/;
@@ -63,6 +53,12 @@ export interface CreditPrice {
 }
 
 export type PriceMap = Record<string, CreditPrice>;
+
+/** One unit's price as the customer is charged it, the margin folded in on the server: all a Client Component is handed. */
+export interface ChargedRate {
+  unit: string;
+  credits: number;
+}
 
 export interface CreditAccount {
   balance: number;

@@ -1474,12 +1474,10 @@ export const uz: Dictionary = {
     unpricedIn: "{n} ta videoda",
     empty: "Oxirgi {days} kunda hech bir video xarajat yozmagan.",
     unattributed: "Video yoki slugʻsiz {n} ta reyestr qatori hisobga olinmadi.",
+    // The vendor-named units (gemini_*, pexels_*) are in lib/server/ledger-unit-labels.ts: this dictionary ships to the browser.
     units: {
-      gemini_input_tokens: "LLM kirish tokenlari",
-      gemini_output_tokens: "LLM chiqish tokenlari",
       tts_characters: "TTS belgilari",
       render_seconds: "Render soniyalari",
-      pexels_requests: "Stok media soʻrovlari",
       upload_bytes: "Yuklash baytlari",
       video_gen_clips: "Generatsiya qilingan kliplar",
       image_generations: "Generatsiya qilingan rasmlar",

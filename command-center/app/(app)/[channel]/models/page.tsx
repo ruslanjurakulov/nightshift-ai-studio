@@ -20,7 +20,8 @@ import { chargedPrices } from "@/lib/credits";
 import { budgetModelsFrom } from "@/lib/owner/budget";
 import { readCustomerModels, readOperatorModels } from "@/lib/server/model-discovery";
 import { coerceAdminModels, coerceModelTermsAcceptances, latestProbes } from "@/lib/models-admin";
-import { filtersFromQuery } from "@/lib/models-discovery";
+import { filtersFromQuery, showsProvider } from "@/lib/models-discovery";
+import { providerLabels } from "@/lib/server/provider-names";
 import { getChannelContext } from "@/lib/channels-server";
 import { channelPath } from "@/lib/channels";
 import { getOrgContext } from "@/lib/orgs-server";
@@ -250,6 +251,8 @@ export default async function ModelsPage({
         probesRead={read.probesRead}
         initialFilters={filtersFromQuery(q)}
         initialModel={typeof q.model === "string" ? q.model : null}
+        // Who makes each model, for the operator's view only, and only these models' names (never the vendor map).
+        providerNames={showsProvider(asOperator) ? providerLabels(read.models.map((m) => m.provider)) : undefined}
       />
     </div>
   );

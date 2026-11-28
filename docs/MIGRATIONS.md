@@ -2660,6 +2660,7 @@ exactly) and `film_price` (0171's body plus four hunks). Apply order: 0208, then
 - **Not covered.** The queue worker does not re-check availability before it submits a job (a follow-up). None can be queued on
   this model today, because it is terms-gated and not a preview; the file names any job that is not finished.
 - **Tests.** `tests/test_retire_omni_1_1_migration.py`, `tests/security/test_sec_retire_omni_1_1.py`.
+
 ## Film Studio: the sweep runs without the worker, and every run is recorded (0212)
 
 0212 (`0212_film_sweep.sql`, provisional number; `docs/studio/S2_GAPS.md` also pencils 0212 in for the archive branch, and
@@ -2935,6 +2936,122 @@ found no non-member staff activity on any of these paths in production.
 - **Requires** 0215 (`is_org_spender`) and the files above.
 - **Undo.** `docs/sql/rollback_0226_org_spender_everywhere.sql` (owner-applied): the twenty-eight earlier bodies back, verbatim, with
   their grants. It adds nothing else, so nothing else is undone.
+
+## Dated credit prices (0224)
+
+0224 (`0224_dated_credit_price.sql`) lets a credit price change at an exact moment, so our price rises when a vendor's does, not
+when someone remembers (owner decision D7, 2026-11-22). By itself it changes no quote: the table starts empty and no price is
+inserted. Prices are the owner's. Apply order: 0208, then 0218, then 0224.
+
+- **`credit_price_schedule`** (unit, credits_per_unit, effective_at, reason, created_by, created_at). Append-only: update, delete
+  and truncate are refused by trigger, so a mistake is corrected by a new row (the same `effective_at`: the later row wins).
+  `credits_per_unit > 0`, never NaN or Infinity, and never below a tenth of the rate in force (a slipped decimal point: 0.0000004
+  for 0.4 would quote 0 credits; a cut that deep is a list-price decision, made before scheduling). `created_by` / `created_at`
+  are stamped by the database. RLS on, no policy, no privilege for anon,
+  authenticated or service_role: written in the SQL editor only. A row is accepted only for a model's credit unit (or a variant of
+  it) that already has a `credit_prices` row. Refused, each with the reason:
+  - any other unit (job_minimum, video_minute, downloads, reply_draft …), because nothing reads a dated price for it;
+  - the **base** unit of a model sold by variant (`pricing.variants.by` quality, image_size, upscale_target, audio or
+    resolution_audio, or resolution on a model that pins a `default_resolution`: the same test `creative_price` uses). Such a model
+    is quoted at `<credit_unit>_<variant>`, so a dated base row would change no quote. Schedule each variant unit instead.
+- **`credits_per_unit_now(unit)`**: the latest row with `effective_at <= now()`, else `credit_prices.credits_per_unit`, else null
+  (never 0). No API role may call it.
+- **`credit_prices_dated_guard`** (BEFORE INSERT OR UPDATE on `credit_prices`): once a unit has a dated row, in force or pending, a
+  change of its `credits_per_unit` is refused NS428 `dated_price_scheduled`: "add a credit_price_schedule row (effective_at =
+  now()) instead of editing the list price". A margin or note edit is allowed. Deleting the list row is allowed (an admin may take
+  a model off sale; it is then unpriced, never cheaper), and the row comes back only at the rate it had when it was deleted (the
+  unit's newest `credit_price_history` row, which the delete writes): the Credits page's restore does exactly that. A delete and an
+  insert at another rate, in one statement or two, are refused. The Credits
+  page shows that refusal in the owner's language (`dated_price_scheduled` in `lib/i18n/owner-rpc`), through the server route and
+  the direct editor both.
+- **`creative_price`**: 0218's body plus one line, `rate.credits_per_unit := public.credits_per_unit_now(rate.unit);`, right after
+  it reads the `credit_prices` row. The margin, the job minimum and every refusal are unchanged. md5 guard: 0218's
+  `59c5c289009a874af043c534b29934ee` → `ea2b58e88fe34ae18b261e5a0fbef435`, the same body 0218's own 0224 branch writes.
+  A job held before `effective_at` keeps its hold.
+- Lab: `tests/security/test_sec_dated_price_0224.py`; pins: `tests/test_dated_credit_price_migration.py`; registry check:
+  `tests/test_dated_vendor_prices.py`. Rollback: `docs/sql/rollback_0224_dated_credit_price.sql`. It puts 0218's `creative_price`
+  back and drops the reader and the list guard. The table and its rows are kept, and they change no quote afterwards. After an
+  `effective_at` has passed, set `credit_prices` to the rate in force right after rolling back (the guard is gone by then).
+  Applying 0224 again later never lowers a price by itself. While 0224 was off nothing read the schedule (and the tenth rule, which
+  asks 0224's reader, was not asked), so before it is on again:
+  - a unit whose dated row in force differs from its list rate (the list moved while 0224 was off) gets a dated row at the list
+    rate, effective at once, with a NOTICE. If that list rate is below a tenth of the dated one, the file stops and says so: check
+    the list price, or, if it is meant, insert that dated row yourself (accepted while 0224 is off), then apply again;
+  - a pending row below a tenth of the rate it would replace (a slipped decimal point) is kept at the replaced rate by a row at the
+    same moment, with a NOTICE; schedule a deliberate cut again once 0224 is on;
+  - a pending row below the list rate as it is then is kept and named in a NOTICE: read it before its moment.
+- **No backslash in either file.** The live apply path (Supabase MCP `apply_migration`) rewrote backslash escapes in SQL text when
+  0218 went live. The md5 folds use `[[:space:]]+` (the same class as the backslash-s form in Postgres' regular expressions; the lab
+  checks both give one md5 on every function), and `creative_price` (0218's prompt regexes carry backslashes) is built as text with
+  each backslash written `@@0224_BACKSLASH@@`, turned back by `replace(..., chr(92))` and executed. The end state checks the md5.
+- **Not covered** (follow-ups):
+  - `credit_rates()` and `sellable_models()` still show the list rate after a dated row is in force: the catalog's per-unit figure
+    is the earlier rate while the quote the person confirms, and the hold, are the dated one (a CLAUDE.md #5 display gap). One line
+    in each body, in a later migration.
+  - A film's takes are paid from the hold `start_film` made for the whole film, and a film may run up to about 20 hours
+    (`film_money_limits`: the 20-hour deadline plus its grace). A film started just before a rise on a scheduled unit its takes use
+    (an i2v or a voice unit) keeps the earlier rate for every take. D7 (describe) is not a film unit and is unaffected.
+  - `created_by` reads `postgres` for a row written in the SQL editor: it says which database role wrote it, not which person. The
+    `reason` text is the record of who decided and why.
+
+### D7: gemini-3.6-flash doubles on 2027-01-01
+
+Google's paid tier (aistudio.google.com/docs/pricing, read 2026-11-22), per 1M tokens: input $0.75 → $1.50, output (thinking
+included) $3.75 → $7.50. The registry records this as `pricing.changes` on `gemini-3.6-flash`. The Studio's describe tool on that
+model is quoted from `model_gemini_3_6_flash_request`, one request per job. The Studio's Nightshift AI chat (0199) runs on the same
+model but is not charged per turn (plan daily caps only), so nothing here prices it.
+
+The formula (1 credit = 1 US cent, the convention of `docs/sql/prices_2026_10_01.sql`):
+
+    vendor cost per request (credits) = 100 × (T_in × P_in + T_out × P_out) / 1,000,000
+    customer price per request        = max(job_minimum, round_up(credits_per_unit × (1 + margin)))
+
+T_in and T_out are a request's tokens. P_in and P_out are the vendor's prices per 1M tokens. Both P_in and P_out double, so the cost
+doubles whatever the token mix (2 = 1.50/0.75 = 7.50/3.75). So **new credits_per_unit = live credits_per_unit × 2**, with the margin
+unchanged, keeps price/cost exactly as it is today: if the live rate covers today's cost, the new one covers the new cost. The SQL
+below computes the new rate from the live row, pinned to the figure you read, so it does not depend on a number typed into this
+document. `tests/test_dated_vendor_prices.py` fails if the factor written here is ever smaller than the largest to/from ratio in the
+registry, or if the moment is after the vendor's.
+
+**The moment: 2026-12-31T22:00:00Z, two hours before Google's date.** A creative job's hold lives for two hours
+(`creative_jobs.expires_at`, 0036), so a job held just before the vendor's change, and called after it, is already held at the new
+price. Google's page names a date, not a time zone (not verified), and early is the safe side: for two hours a describe costs the
+customer the new price while the vendor still bills the old one. A workflow that is mid-run when that instant passes is refused
+`price_changed` (NS409) on its next step, as on any price change (`create_creative_job` refuses a step priced above the quote the
+person confirmed), and is run again at the new price.
+
+Read the live row first. The note on the row written by `docs/sql/prices_corrections_2026_10_01.sql` says its 0.4 was already
+sized to the 2027 cost of an estimated 1.5K-input + 200-output request: 100 × (1500 × 1.50 + 200 × 7.50) / 10⁶ = 0.375 credits.
+If that is the live row, today's rate already covers the 2027 cost estimate (an estimate: those token counts are not measured), and
+doubling keeps today's margin over cost instead of restoring a lost one. D7 says raise it, so the row below doubles the rate.
+
+Step 2 is safe to run twice and never compounds: it schedules from the rate you read in step 1 (type that figure in place of
+`<RATE_FROM_STEP_1>`; left as it is, the statement does not run), and only when no row is scheduled for that unit at that moment.
+**INSERT 0 1** is the row. **INSERT 0 0** means it is already scheduled, or the live rate is not the one you read: stop, and run
+step 1 again. Do not edit `credit_prices` for this unit afterwards: the list guard refuses it (add a dated row instead).
+
+```sql
+-- 1. Read first: the live rate and margin, and what one describe is sold at today.
+select unit, credits_per_unit, margin, credits_per_unit * (1 + margin) as sold_per_request, note
+  from public.credit_prices where unit = 'model_gemini_3_6_flash_request';
+
+-- 2. The dated rise, from the rate read in step 1. INSERT 0 1 = scheduled; INSERT 0 0 = already scheduled, or the live rate is not
+--    the one you read: stop and re-read.
+insert into public.credit_price_schedule (unit, credits_per_unit, effective_at, reason)
+select cp.unit, cp.credits_per_unit * (1.50 / 0.75), '2026-12-31T22:00:00Z',
+       'D7: Google doubles gemini-3.6-flash on 2027-01-01 (input $0.75->$1.50, output $3.75->$7.50 per 1M tokens; aistudio.google.com/docs/pricing, read 2026-11-22); 2 h early = the hold lifetime'
+  from public.credit_prices cp
+ where cp.unit = 'model_gemini_3_6_flash_request'
+   and cp.credits_per_unit = <RATE_FROM_STEP_1>
+   and not exists (select 1 from public.credit_price_schedule s
+                    where s.unit = cp.unit and s.effective_at = '2026-12-31T22:00:00Z');
+
+-- 3. Check: the list rate, the rate in force now (until 2026-12-31T22:00:00Z the same), and what is scheduled.
+select s.unit, cp.credits_per_unit as list_rate, public.credits_per_unit_now(s.unit) as rate_now,
+       s.credits_per_unit as scheduled_rate, s.effective_at
+  from public.credit_price_schedule s join public.credit_prices cp using (unit)
+ where s.unit = 'model_gemini_3_6_flash_request';
+```
 
 ## The country gate reads an allow-list vendor's own list (0230)
 

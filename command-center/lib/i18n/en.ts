@@ -1493,12 +1493,10 @@ export const en = {
     unpricedIn: "in {n} video(s)",
     empty: "No video recorded a cost in the last {days} days.",
     unattributed: "{n} ledger row(s) had no video or slug and were not counted.",
+    // The vendor-named units (gemini_*, pexels_*) are in lib/server/ledger-unit-labels.ts: this dictionary ships to the browser.
     units: {
-      gemini_input_tokens: "LLM input tokens",
-      gemini_output_tokens: "LLM output tokens",
       tts_characters: "TTS characters",
       render_seconds: "Render seconds",
-      pexels_requests: "Stock media requests",
       upload_bytes: "Upload bytes",
       video_gen_clips: "Generated video clips",
       image_generations: "Generated images",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
@@ -82,7 +82,12 @@ export function usd(v: number | null, locale = "en"): string {
 
 const n0 = (v: number, locale = "en") => formatNumber(Math.round(v), locale, 0);
 
+/** The words for the vendor-named ledger units (lib/server/ledger-unit-labels.ts), from the page: not in the dictionary. */
+const NO_WORDS: Readonly<Record<string, string>> = {};
+const UnitWords = createContext(NO_WORDS);
+
 export function BillingBoard({
+  unitLabels = NO_WORDS,
   providers,
   runway,
   githubConfigured,
@@ -105,6 +110,8 @@ export function BillingBoard({
   basisDays?: number;
   /** The balance snapshots could not be read: the ElevenLabs panel says so instead of "no data yet". */
   runwayUnknown?: boolean;
+  /** unit -> measure word for the ledger units whose names carry a vendor, resolved on the server. */
+  unitLabels?: Readonly<Record<string, string>>;
 }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -136,66 +143,68 @@ export function BillingBoard({
   }
 
   return (
-    <div className="rhythm stagger-enter">
-      <div className="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-3">
-        <StatCard
-          label={basisDays > 0 && basisDays < 30 ? t.ownerTruth.spendPace : t.billing.statBurn30}
-          value={spendUnknown ? t.common.unknown : spendNoRows ? t.ownerTruth.noRowsYet : usd(spend30, locale)}
-          sub={
-            spendUnknown
-              ? t.common.couldNotRead
-              : [
-                  partial ? t.billing.partialNote : "",
-                  // The headline is the pipeline's ledger; Studio and the probes are counted on each provider's row.
-                  t.billingLedger.headlinePipelineOnly,
-                  basisDays > 0 && basisDays < 30 ? fmt(basisDays === 1 ? t.ownerTruth.basedOnDay : t.ownerTruth.basedOnDays, { n: basisDays }) : "",
-                  // The cost ledger is mirrored nightly: say how old it is.
-                  lastSync ? fmt(t.ownerTruth.lastSync, { when: lastSync }) : spendNoRows ? "" : t.ownerTruth.syncUnknown,
-                ]
-                  .filter(Boolean)
-                  .join(" · ") || undefined
-          }
-        />
-        <StatCard
-          label={t.billing.statFirstOut}
-          value={first ? first.name : nothingRunningOut ? t.billing.statFirstOutNone : t.common.unknown}
-          sub={first ? fmt(t.billing.days, { n: Math.floor(first.daysLeft as number) }) : undefined}
-          tone={first && (first.daysLeft as number) <= first.lowBalanceDays ? "warn" : undefined}
-        />
-        <div className="flex flex-col justify-end gap-2 border-t border-[var(--color-border)] pt-4">
-          <button
-            type="button"
-            onClick={doRefresh}
-            disabled={!githubConfigured || refresh === "busy"}
-            className="btn-quiet w-fit disabled:opacity-40"
-          >
-            <RefreshCw className="size-4" aria-hidden />
-            {refresh === "busy" ? t.billing.refreshing : t.billing.refresh}
-          </button>
-          <span className="g5-note" aria-live="polite">
-            {refresh === "ok" && <span className="text-[var(--color-ok)]">{t.billing.refreshQueued}</span>}
-            {refresh === "fail" && <span className="g5-fail-text">{refreshWhy ?? t.billing.refreshFailed}</span>}
-          </span>
+    <UnitWords.Provider value={unitLabels}>
+      <div className="rhythm stagger-enter">
+        <div className="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-3">
+          <StatCard
+            label={basisDays > 0 && basisDays < 30 ? t.ownerTruth.spendPace : t.billing.statBurn30}
+            value={spendUnknown ? t.common.unknown : spendNoRows ? t.ownerTruth.noRowsYet : usd(spend30, locale)}
+            sub={
+              spendUnknown
+                ? t.common.couldNotRead
+                : [
+                    partial ? t.billing.partialNote : "",
+                    // The headline is the pipeline's ledger; Studio and the probes are counted on each provider's row.
+                    t.billingLedger.headlinePipelineOnly,
+                    basisDays > 0 && basisDays < 30 ? fmt(basisDays === 1 ? t.ownerTruth.basedOnDay : t.ownerTruth.basedOnDays, { n: basisDays }) : "",
+                    // The cost ledger is mirrored nightly: say how old it is.
+                    lastSync ? fmt(t.ownerTruth.lastSync, { when: lastSync }) : spendNoRows ? "" : t.ownerTruth.syncUnknown,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || undefined
+            }
+          />
+          <StatCard
+            label={t.billing.statFirstOut}
+            value={first ? first.name : nothingRunningOut ? t.billing.statFirstOutNone : t.common.unknown}
+            sub={first ? fmt(t.billing.days, { n: Math.floor(first.daysLeft as number) }) : undefined}
+            tone={first && (first.daysLeft as number) <= first.lowBalanceDays ? "warn" : undefined}
+          />
+          <div className="flex flex-col justify-end gap-2 border-t border-[var(--color-border)] pt-4">
+            <button
+              type="button"
+              onClick={doRefresh}
+              disabled={!githubConfigured || refresh === "busy"}
+              className="btn-quiet w-fit disabled:opacity-40"
+            >
+              <RefreshCw className="size-4" aria-hidden />
+              {refresh === "busy" ? t.billing.refreshing : t.billing.refresh}
+            </button>
+            <span className="g5-note" aria-live="polite">
+              {refresh === "ok" && <span className="text-[var(--color-ok)]">{t.billing.refreshQueued}</span>}
+              {refresh === "fail" && <span className="g5-fail-text">{refreshWhy ?? t.billing.refreshFailed}</span>}
+            </span>
+          </div>
         </div>
+
+        <ElevenLabsPanel runway={runway} unknown={runwayUnknown} />
+
+        <section className="panel" aria-labelledby="bl-providers">
+          <div className="g5-sechead">
+            <h2 id="bl-providers" className="g5-h">
+              {t.billing.providersTitle}
+            </h2>
+          </div>
+          <ul className="g5-rows">
+            {providers.map((p) => (
+              <ProviderRow key={p.id} p={p} onSaved={() => router.refresh()} />
+            ))}
+          </ul>
+        </section>
+
+        <BulkPay providers={providers} onDone={() => router.refresh()} />
       </div>
-
-      <ElevenLabsPanel runway={runway} unknown={runwayUnknown} />
-
-      <section className="panel" aria-labelledby="bl-providers">
-        <div className="g5-sechead">
-          <h2 id="bl-providers" className="g5-h">
-            {t.billing.providersTitle}
-          </h2>
-        </div>
-        <ul className="g5-rows">
-          {providers.map((p) => (
-            <ProviderRow key={p.id} p={p} onSaved={() => router.refresh()} />
-          ))}
-        </ul>
-      </section>
-
-      <BulkPay providers={providers} onDone={() => router.refresh()} />
-    </div>
+    </UnitWords.Provider>
   );
 }
 
@@ -290,7 +299,8 @@ export function sourceText(src: SourceUse, usdPerCredit: number | null, tl: Bill
 /** Bought, used (with its three sources) and left: the owner's ledger of one provider. Every unknown says why. */
 function LedgerFacts({ ledger, usdPerCredit }: { ledger: ProviderLedger; usdPerCredit: number | null }) {
   const { t, locale } = useI18n();
-  const tl = t.billingLedger;
+  const words = useContext(UnitWords);
+  const tl = { ...t.billingLedger, units: { ...t.billingLedger.units, ...words } };
   const credits = (usdValue: number) => (usdPerCredit ? fmt(tl.credits, { n: formatNumber(usdValue / usdPerCredit, locale, 2) }) : "");
   const join = (...parts: string[]) => parts.filter(Boolean).join(" · ");
 

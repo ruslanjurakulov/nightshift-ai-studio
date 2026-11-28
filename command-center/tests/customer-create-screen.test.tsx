@@ -154,3 +154,37 @@ describe("the Create screen", () => {
     expect(screen.getAllByText(en.customerApp.create.failed)).toHaveLength(1);
   });
 });
+
+describe("the explore grid under the Create screen (S8 PR 3)", () => {
+  const x = en.studioHome.explore;
+  const tpl = {
+    slug: "treasure-strike", kind: "video", title: "Treasure strike", description: "A pickaxe hits gold.", category: "viral", prompt: "a {thing}",
+    placeholders: ["thing"], model_id: "veo-3", model_available: true, model_status: "available", aspect: "9:16", duration_s: 5, quality: null,
+    preview_url: "/templates/treasure-strike/preview.mp4", poster_url: "/templates/treasure-strike/poster.webp",
+  };
+
+  it("draws the grid below the composer and the results, and its card opens this channel's Create with the template", async () => {
+    const fetchMock = vi.fn(async (url: string) => (String(url).startsWith("/api/templates?") ? json(200, { status: "ok", templates: [tpl] }) : json(404, {})));
+    vi.stubGlobal("fetch", fetchMock);
+    render(wrap(<CreateScreen orgId="o1" models={MODELS} explore={{ state: "ok", samples: [], onSale: { t2v: ["veo-3"], t2i: [] } }} />));
+    const grid = screen.getByTestId("studio-explore");
+    // Below the fold: after the results in document order, so nothing above the composer moved.
+    expect(screen.getByTestId("gen-canvas").compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId("gen-composer").compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await screen.findByRole("heading", { name: x.trending });
+    expect(grid.querySelector("a.mf-card-link")!.getAttribute("href")).toBe("/chronos/create?template=treasure-strike");
+    // Only reads of the templates list, never a write.
+    for (const [url, init] of fetchMock.mock.calls as unknown as [string, RequestInit | undefined][]) {
+      expect(String(url).startsWith("/api/templates?")).toBe(true);
+      expect(init?.method ?? "GET").toBe("GET");
+    }
+  });
+
+  it("without the page's explore data there is no grid and no extra request (the template-link tests count fetches)", () => {
+    const fetchMock = vi.fn(async () => json(200, {}));
+    vi.stubGlobal("fetch", fetchMock);
+    render(wrap(<CreateScreen orgId="o1" models={MODELS} />));
+    expect(screen.queryByTestId("studio-explore")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
