@@ -189,6 +189,11 @@ export const studioTimelineEn = {
       voice_language_unknown: "We could not confirm that the voice model speaks this project's language. Choose a voice model whose languages are listed, in the project.",
       // 0236 (BR-SG-01): a scene asks for its clip's own sound, and the server does not yet keep it in the final film.
       clip_sound_not_kept: "Clip sound is not yet kept in the final film. Turn the scene's sound option off in the project, then ask for the price again.",
+      // 0241: a scene's own sound role is sold only where the film can keep it.
+      dialogue_needs_sound: "A scene's lines are heard only from a clip model that makes sound, with the scene's sound option on where the model sells sound apart. Choose such a model, or turn the scene's sound option on, in the project, then ask for the price again.",
+      ambience_not_kept: "A scene's ambience is kept only when its clip's sound was bought. Choose a clip model that sells sound apart and turn the scene's sound option on, or set the scene's sound to muted, in the project, then ask for the price again.",
+      sound_option_unused: "A muted scene would pay for its clip's sound and never play it. Turn the scene's sound option off in the project, then ask for the price again.",
+      sound_option_not_offered: "This clip model's sound is included in its price. Remove the scene's sound option in the project, then ask for the price again.",
       other: "A line of this project could not be priced.",
     },
     // Start-specific words for every refusal the start and quote paths can answer that startFailed does not already say.

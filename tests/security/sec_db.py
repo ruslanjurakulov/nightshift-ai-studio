@@ -405,6 +405,8 @@ ON_0156 = (*ON_0156, "0236_film_clip_sound_gate.sql")
 #: 0239 (a film's key frame quoted the way it is made) replaces 0236's film_price and 0235's film_apply_settings and film_save_scenes
 #: and refuses any other body: a sequence that leaves 0235 (so 0236) out leaves 0239 out too, and puts it back right after 0236.
 ON_0156 = (*ON_0156, "0239_film_keyframe_refs_quote.sql")
+#: 0241 (a scene's own sound and its lines) replaces 0239's film_price and film_save_scenes and refuses any other body: right after it.
+ON_0156 = (*ON_0156, "0241_film_scene_dialogue.sql")
 ON_0155 = (MIGRATION_0156.name, *ON_0156)
 #: Migrations written on 0153's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0153 out
 #: leaves these out too, in this order.
@@ -459,6 +461,8 @@ ON_0139 = (*(f for f in ON_0139 if f != "0235_film_operator_preview.sql"), "0235
 ON_0139 = (*(f for f in ON_0139 if f != "0236_film_clip_sound_gate.sql"), "0236_film_clip_sound_gate.sql")
 #: 0239 sits on 0236's film_price and 0235's film_apply_settings / film_save_scenes: right after 0236.
 ON_0139 = (*(f for f in ON_0139 if f != "0239_film_keyframe_refs_quote.sql"), "0239_film_keyframe_refs_quote.sql")
+#: 0241 sits on 0239's film_price and film_save_scenes: right after 0239, last.
+ON_0139 = (*(f for f in ON_0139 if f != "0241_film_scene_dialogue.sql"), "0241_film_scene_dialogue.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
@@ -495,8 +499,10 @@ ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164
            "0235_film_operator_preview.sql",
            # 0236 replaces 0235's film_price and 0215's film_assembly_retryable and refuses to apply without them.
            "0236_film_clip_sound_gate.sql",
-           # 0239 replaces 0236's film_price and 0235's film_apply_settings and film_save_scenes: last.
-           "0239_film_keyframe_refs_quote.sql")
+           # 0239 replaces 0236's film_price and 0235's film_apply_settings and film_save_scenes.
+           "0239_film_keyframe_refs_quote.sql",
+           # 0241 replaces 0239's film_price and film_save_scenes and refuses to apply without them: last.
+           "0241_film_scene_dialogue.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -976,7 +982,7 @@ FILM_ASSEMBLY_RETRYABLE_0236 = "88a312d28e63be043796bcc86f024164"
 def has_0236(conn_or_session) -> bool:
     """0236's film_price is live, by itself or under 0239 (whose film_price is 0236's plus its own hunks)."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
-    return _md5_of(conn, "public.film_price(public.films)") in (FILM_PRICE_0236, FILM_PRICE_0239)
+    return _md5_of(conn, "public.film_price(public.films)") in (FILM_PRICE_0236, FILM_PRICE_0239, FILM_PRICE_0241)
 
 
 def take_off_0236(conn_or_session) -> None:
@@ -1712,7 +1718,7 @@ _BEFORE_0239 = {"public.film_price(public.films)": FILM_PRICE_0236,
 def has_0239(conn_or_session) -> bool:
     """0239 replaces its three bodies in one transaction: film_price holding 0239's body is the file."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
-    return _md5_of(conn, "public.film_price(public.films)") == FILM_PRICE_0239
+    return _md5_of(conn, "public.film_price(public.films)") in (FILM_PRICE_0239, FILM_PRICE_0241)
 
 
 def take_off_0239(conn_or_session) -> None:
@@ -1721,6 +1727,7 @@ def take_off_0239(conn_or_session) -> None:
     and take_off_0139 reach) takes it off first with its own rollback, and put_back_0236 puts it back once every body it is written on
     is there again."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0241(conn)  # 0241 replaces 0239's film_price and film_save_scenes, which 0239's rollback refuses: off first
     if has_0239(conn):
         text = ROLLBACK_0239.read_text(encoding="utf-8")
         conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
@@ -1732,7 +1739,8 @@ def rollback_0239_if_on() -> str:
     text = ROLLBACK_0239.read_text(encoding="utf-8")
     body = "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
     assert "$rb0239$" not in body and "$if0239$" not in body
-    return (f"do $if0239$ begin if (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc "
+    # 0241 sits on 0239's film_price (0239's rollback refuses its body): off first, where it is on.
+    return rollback_0241_if_on() + "\n" + (f"do $if0239$ begin if (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc "
             f"where oid = to_regprocedure('public.film_price(public.films)')) = '{FILM_PRICE_0239}' then "
             f"execute $rb0239${body}$rb0239$; end if; end $if0239$;")
 
@@ -1740,10 +1748,53 @@ def rollback_0239_if_on() -> str:
 def put_back_0239(conn_or_session) -> None:
     """0239 again, once 0236's film_price and 0235's two save bodies are on, and only when it is not on already."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
-    if has_0239(conn):
-        return
-    if {sig: _md5_of(conn, sig) for sig in _BEFORE_0239} == _BEFORE_0239:
+    if not has_0239(conn) and {sig: _md5_of(conn, sig) for sig in _BEFORE_0239} == _BEFORE_0239:
         conn.execute(MIGRATION_0239.read_text(encoding="utf-8"))
+    put_back_0241(conn)
+
+
+MIGRATION_0241 = MIGRATIONS / "0241_film_scene_dialogue.sql"
+ROLLBACK_0241 = REPO / "docs" / "sql" / "rollback_0241_film_scene_dialogue.sql"
+#: md5 of 0241's two bodies (white space folded), the way its drift guard and end state read them; it is written on 0239's.
+FILM_SAVE_SCENES_0241 = "50942d89b6c407fc7438fe158cdd8115"
+FILM_PRICE_0241 = "3607297484f191d45ff9a1f63a11c5b5"
+#: The rollback's own switch, for a lab whose scenes it may empty (the rollback refuses while a scene holds a sound role or lines).
+_DISCARD_0241 = "set local nightshift.rollback_0241_discard_sound = 'on';"
+
+
+def has_0241(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return _md5_of(conn, "public.film_price(public.films)") == FILM_PRICE_0241
+
+
+def rollback_0241_body() -> str:
+    text = ROLLBACK_0241.read_text(encoding="utf-8")
+    return _DISCARD_0241 + "\n" + "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+
+
+def take_off_0241(conn_or_session) -> None:
+    """0241 (a scene's own sound and its spoken lines) replaces 0239's film_price and film_save_scenes, and 0239's replay and rollback
+    refuse any other body: take_off_0239 (so take_off_0236, take_off_0235 and everything that reaches them) takes it off first with its
+    own rollback, told to discard the lab's lines, and put_back_0239 puts it back once 0239's bodies are there again."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0241(conn):
+        conn.execute(rollback_0241_body())
+
+
+def rollback_0241_if_on() -> str:
+    """0241's rollback as one statement that runs only where 0241's film_price is live: rollback_0239_if_on starts with it."""
+    body = rollback_0241_body()
+    assert "$rb0241$" not in body and "$if0241$" not in body
+    return (f"do $if0241$ begin if (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc "
+            f"where oid = to_regprocedure('public.film_price(public.films)')) = '{FILM_PRICE_0241}' then "
+            f"execute $rb0241${body}$rb0241$; end if; end $if0241$;")
+
+
+def put_back_0241(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0241(conn) and _md5_of(conn, "public.film_price(public.films)") == FILM_PRICE_0239 \
+            and _md5_of(conn, "public.film_save_scenes(public.films, jsonb)") == FILM_SAVE_SCENES_0239:
+        conn.execute(MIGRATION_0241.read_text(encoding="utf-8"))
 
 
 def migration_files() -> list[Path]:

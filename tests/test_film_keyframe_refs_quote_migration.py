@@ -346,7 +346,11 @@ class FilmKeyframeRefsQuoteMigration(unittest.TestCase):
             self.assertLess(LAB.index(lst.format("0236_film_clip_sound_gate.sql")), LAB.index(lst.format("0239_film_keyframe_refs_quote.sql")))
         on_0124 = LAB[LAB.index("ON_0124 = ("):]
         on_0124 = on_0124[:on_0124.index(")\n")]
-        self.assertTrue(on_0124.rstrip().endswith('"0239_film_keyframe_refs_quote.sql"'), on_0124[-200:])
+        # Last, or followed only by 0241 (on 0239's film_price and film_save_scenes).
+        tail = on_0124.rstrip()
+        self.assertTrue(tail.endswith('"0239_film_keyframe_refs_quote.sql"') or
+                        (tail.endswith('"0241_film_scene_dialogue.sql"') and
+                         tail.rindex('"0239_film_keyframe_refs_quote.sql"') < tail.rindex('"0241_film_scene_dialogue.sql"')), on_0124[-200:])
 
     def test_the_header_says_it_depends_on_0235_and_names_the_worker_side(self):
         for words in ("DEPENDS ON 0235 (0235_film_operator_preview.sql) AND 0236", "neither start_film nor film_take_job", "reserved_slots=len(film refs)",

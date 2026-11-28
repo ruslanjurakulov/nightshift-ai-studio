@@ -57,8 +57,16 @@ def bought(f: Film, scenes=None, has_audio=True) -> Film:
     return f
 
 
+#: A saved dialogue scene carries its lines (0241: film_scenes.dialogue exactly when sound_role is dialogue).
+LINES = [{"speaker": "Aziz", "line": "Dada, qachon kelasiz?", "lang": "uz"}]
+
+
 def role(f: Film, scene: int, sound_role: str, has_audio=True) -> Film:
     f.scenes[scene]["sound_role"] = sound_role
+    if sound_role == "dialogue":
+        f.scenes[scene]["dialogue"] = [dict(x) for x in LINES]
+    else:
+        f.scenes[scene].pop("dialogue", None)
     for t in f.takes:
         if t["scene_id"] == f.scenes[scene]["id"] and has_audio is not None:
             f.assets[t["result_asset_id"]]["has_audio"] = has_audio
@@ -408,6 +416,7 @@ class SoundFilm:
                 sc["sound_role"] = "ambience"
             elif k == "dialogue":
                 sc["sound_role"] = "dialogue"
+                sc["dialogue"] = [dict(x) for x in LINES]
             f.assets[aid]["has_audio"] = k != "silent"
             if k in ("narrated", "silent"):
                 f.segments.append({"scene_id": sc["id"], "start_s": i * self.S + 0.25, "end_s": i * self.S + 2.25})
@@ -820,10 +829,11 @@ class NoUnusedSound(unittest.TestCase):
             out = fo.without_unused_sound(self.request(model), ca.resolve(model, env={}), {"sound_role": None})
             self.assertIs(out.params.get("audio"), False, model)
 
-    def test_a_dialogue_scene_keeps_the_vendors_sound(self):
-        out = fo.without_unused_sound(self.request("ltx-2.5-pro"), ca.resolve("ltx-2.5-pro", env={}),
-                                      {"sound_role": "dialogue"})
-        self.assertNotIn("audio", out.params)
+    def test_a_dialogue_scene_asks_for_the_sound_explicitly(self):
+        # Never left to the vendor's default (0241): a dialogue scene's clip must carry its lines' sound.
+        for model in ("ltx-2.5-pro", "seedance-2.0", "vidu-q3-pro", "grok-imagine-video-1.5"):
+            out = fo.without_unused_sound(self.request(model), ca.resolve(model, env={}), {"sound_role": "dialogue"})
+            self.assertIs(out.params.get("audio"), True, model)
 
     def test_a_priced_sound_choice_is_never_changed(self):
         for model, choice in (("kling-v3", True), ("seedance-1.5-pro", False)):

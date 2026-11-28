@@ -155,7 +155,9 @@ def _md5s(c):
 
 
 def test_the_bodies_are_0239s_internal_and_carry_their_marks(db):
-    with psycopg.connect(db.dsn, autocommit=True) as c:
+    # 0241 sits on this file's film_price and film_save_scenes (its own lab is test_sec_film_dialogue_0241.py): off for the look.
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0241(c)
         assert _md5s(c) == AFTER
         for sig in REPLACED:
             for role in ("anon", "authenticated", "service_role"):
@@ -163,6 +165,7 @@ def test_the_bodies_are_0239s_internal_and_carry_their_marks(db):
             assert "-- 0239" in c.execute("select prosrc from pg_proc where oid = to_regprocedure(%s)", [sig]).fetchone()[0], sig
         # 0239 replaces neither start_film nor film_take_job (a later file does): 0198's / 0215's bodies stay.
         assert "0239" not in c.execute("select prosrc from pg_proc where oid = 'public.film_take_job(uuid, text)'::regprocedure").fetchone()[0]
+        c.rollback()
     for path in (MIGRATION, ROLLBACK):
         assert "\\" not in path.read_text(encoding="utf-8"), path.name
 
@@ -172,6 +175,9 @@ def scratch():
     admin = sec_db.admin_dsn()
     name = f"ns_m0239_{uuid.uuid4().hex[:8]}"
     dsn = sec_db.build(admin, name)
+    # 0241 sits on this file's film_price and film_save_scenes (its own lab is test_sec_film_dialogue_0241.py): off, so 0239 is the top.
+    with psycopg.connect(dsn, autocommit=True) as c:
+        sec_db.take_off_0241(c)
     try:
         yield dsn
     finally:
@@ -214,6 +220,9 @@ def test_the_lab_chain_takes_0239_off_before_0235_0218_and_0215_and_puts_it_back
             off(c)
             assert not sec_db.has_0239(c) and not gone(c), off.__name__
             on(c)
+            # The put-back chain ends on 0241 (on 0239's bodies): it comes back too, and off again here so 0239 is the top.
+            assert sec_db.has_0241(c), on.__name__
+            sec_db.take_off_0241(c)
             assert gone(c) and sec_db.has_0239(c) and _md5s(c) == AFTER, on.__name__
         # The text form the money lab runs (rollback_0218_if_on starts with 0235's, which starts with 0239's).
         c.execute(sec_db.rollback_0235_if_on())

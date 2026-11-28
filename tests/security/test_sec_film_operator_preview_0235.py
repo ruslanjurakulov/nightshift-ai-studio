@@ -348,8 +348,10 @@ def test_the_two_overloads_are_internal_and_the_three_argument_check_is_unchange
     assert md5(db, SIGS["problem3"]) == "d828ee349aa5da3aa05ea9db4d8f1b94"
     assert md5(db, SIGS["check4"]) == sec_db.FILM_CHECK_MODEL_0235
     assert md5(db, SIGS["problem4"]) == sec_db.FILM_MODEL_PROBLEM_0235
-    # 0236 (next in Atlas's order) replaces this file's film_price with one marked hunk; 0239 replaces 0236's; any is 0235's line of bodies.
-    assert md5(db, "public.film_price(public.films)") in (sec_db.FILM_PRICE_0235, sec_db.FILM_PRICE_0236, sec_db.FILM_PRICE_0239)
+    # 0236 (next in Atlas's order) replaces this file's film_price with one marked hunk; 0239 replaces 0236's, 0241 0239's; any is 0235's
+    # line of bodies.
+    assert md5(db, "public.film_price(public.films)") in (sec_db.FILM_PRICE_0235, sec_db.FILM_PRICE_0236, sec_db.FILM_PRICE_0239,
+                                                          sec_db.FILM_PRICE_0241)
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
         db.svc(f"select public.film_model_problem('{PREVIEW}', array['tts'], 'voice.model', '{EXEMPT}'::uuid)")
 

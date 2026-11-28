@@ -232,6 +232,12 @@ class FilmOperatorPreviewMigration(unittest.TestCase):
                     # 0239 replaces 0236's film_price (this file's plus 0236's hunk), never this file's own.
                     self.assertIn("('public.film_price(public.films)', 'af0fb80cce8e92fd2360aa6d5366a942',", text)
                     continue
+                if f == "0241_film_scene_dialogue.sql" and name in ("film_save_scenes", "film_price"):
+                    # 0241 replaces 0239's two bodies (never this file's own) with its marked hunks and refuses any other base
+                    # (tests/test_film_scene_dialogue_migration.py undoes them back to 0239's bodies).
+                    self.assertIn("'4115ba8800b1b1a702585267d27af17c', '50942d89b6c407fc7438fe158cdd8115'" if name == "film_save_scenes"
+                                  else "'02016cc4a695a54c5693a5066247269b', '3607297484f191d45ff9a1f63a11c5b5'", text)
+                    continue
                 self.assertNotIn(f"function public.{name}(", text, (f, name))
 
     def test_the_number_is_unique_and_the_lab_knows_the_chain(self):
@@ -257,9 +263,10 @@ class FilmOperatorPreviewMigration(unittest.TestCase):
         self.assertIn('ON_0139 = (*(f for f in ON_0139 if f != "0235_film_operator_preview.sql"), "0235_film_operator_preview.sql")', LAB)
         on_0124 = LAB[LAB.index("ON_0124 = ("):]
         on_0124 = on_0124[:on_0124.index(")\n")]
-        # ... or on 0236, which sits on this file's film_price and comes right after it, then 0239 (on 0236's), last.
+        # ... or on 0236, which sits on this file's film_price and comes right after it, then 0239 (on 0236's), then 0241 (on 0239's).
         self.assertRegex(on_0124, r'"0235_film_operator_preview\.sql"(,\s*(#[^\n]*\s*)*"0236_film_clip_sound_gate\.sql")?'
-                                  r'(,\s*(#[^\n]*\s*)*"0239_film_keyframe_refs_quote\.sql")?\s*$')
+                                  r'(,\s*(#[^\n]*\s*)*"0239_film_keyframe_refs_quote\.sql")?'
+                                  r'(,\s*(#[^\n]*\s*)*"0241_film_scene_dialogue\.sql")?\s*$')
         self.assertLess(LAB.index('ON_0156 = (*(f for f in ON_0156 if f != "0230_geo_gate_allow_list.sql")'),
                         LAB.index('ON_0156 = (*ON_0156, "0235_film_operator_preview.sql")'))
 
