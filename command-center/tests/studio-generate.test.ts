@@ -160,7 +160,7 @@ describe("jobs", () => {
       // 0048: a video can take a style kit; this job had none.
       styleKitId: null,
     });
-    expect(prefillFromJob(job({ capability: "music" }))).toBeNull();
+    expect(prefillFromJob(job({ capability: "video_music" }))).toBeNull();
   });
 
   it("truncates long prompts", () => {

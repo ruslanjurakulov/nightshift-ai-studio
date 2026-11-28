@@ -128,7 +128,7 @@ describe("the desks (pure)", () => {
     expect(deskFromQuery({ hasRunPrefill: true })).toBe("youtube");
     expect(deskFromQuery({ desk: "youtube", tool: "t2i" })).toBe("youtube");
     // Junk falls through, never throws.
-    expect(deskFromQuery({ desk: "<script>", tool: "sfx" })).toBe("overview");
+    expect(deskFromQuery({ desk: "<script>", tool: "captions" })).toBe("overview");
     expect(deskFromQuery({ desk: ["video", "image"] })).toBe("video");
     expect(isDesk("overview")).toBe(true);
     expect(deskHref("overview")).toBe("/create");
@@ -187,9 +187,10 @@ describe("a desk's composer", () => {
     render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} desk="voice" />));
     const tts = document.getElementById("gen-tab-tts") as HTMLElement;
     expect(tts.getAttribute("aria-selected")).toBe("true");
+    // Left from the first tool wraps to the desk's last one (the sound tools close the Voice desk's row).
     fireEvent.keyDown(tts, { key: "ArrowLeft" });
-    expect(document.getElementById("gen-tab-dub")?.getAttribute("aria-selected")).toBe("true");
-    expect(document.activeElement?.id).toBe("gen-tab-dub");
+    expect(document.getElementById("gen-tab-sfx")?.getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement?.id).toBe("gen-tab-sfx");
   });
 
   it("Video: prices the shot and creates with exactly the quoted price and a fresh key", async () => {
@@ -362,7 +363,7 @@ describe("a desk's results", () => {
     render(withI18n(<JobFeed orgId={ORG} models={MODELS} capabilities={DESK_TOOLS.voice} variant="takes" />));
     await waitFor(() => expect(fetchMock.mock.calls.some(([u]) => String(u).startsWith("/api/creative/jobs"))).toBe(true));
     const url = String(fetchMock.mock.calls.find(([u]) => String(u).startsWith("/api/creative/jobs"))?.[0]);
-    expect(url).toBe(`/api/creative/jobs?org_id=${ORG}&capability=${encodeURIComponent("tts,voice_change,dub")}`);
+    expect(url).toBe(`/api/creative/jobs?org_id=${ORG}&capability=${encodeURIComponent("tts,voice_change,dub,music,sfx")}`);
   });
 
   it("Try again and Use as picture on a desk only fill the form", async () => {

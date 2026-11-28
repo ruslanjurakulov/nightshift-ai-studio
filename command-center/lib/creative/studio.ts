@@ -100,8 +100,16 @@ export const PICTURE_OPS = PICTURE_OP_CAPABILITIES;
  */
 export const VIDEO_OPS = VIDEO_OP_CAPABILITIES;
 
+/**
+ * The sound tools: music from a description (0228: Lyria 3.5, priced per request, no length) and a sound effect from a description.
+ * Offered like the AI edits: on the Voice desk (and by a link that names them), not in the sidebar's tool rows, because a row
+ * there would open a tool nobody can use until the owner has proven and priced a model for it. Nothing here makes either one
+ * available: the form offers exactly the models the database sells for the capability, like every other tool.
+ */
+export const SOUND_TOOLS = ["music", "sfx"] as const satisfies readonly CreativeCapability[];
+
 /** Everything the composer can make, in the order its tabs show the tools. */
-export const PANEL_CAPABILITIES = [...COMPOSER_CAPABILITIES, ...PICTURE_OPS, ...VIDEO_OPS] as const;
+export const PANEL_CAPABILITIES = [...COMPOSER_CAPABILITIES, ...PICTURE_OPS, ...VIDEO_OPS, ...SOUND_TOOLS] as const;
 export type StudioCapability = (typeof PANEL_CAPABILITIES)[number];
 
 /** The tools that start from a picture in the library (migration 0046). */
@@ -125,6 +133,27 @@ export function isVideoOp(c: unknown): c is (typeof VIDEO_OPS)[number] {
 /** An AI edit tool (0099, 0100): nothing is sold for it until the owner proves and prices a model. */
 export function isAiEdit(c: unknown): boolean {
   return isPictureOp(c) || isVideoOp(c);
+}
+
+export function isSoundTool(c: unknown): c is (typeof SOUND_TOOLS)[number] {
+  return typeof c === "string" && (SOUND_TOOLS as readonly string[]).includes(c);
+}
+
+/**
+ * A tool that is in the composer before anything is sold for it (the AI edits, the sound tools): with no model its form says
+ * "not available yet", the plain truth, rather than the generic "no model can make this right now", which reads as an outage.
+ */
+export function awaitsFirstModel(c: unknown): boolean {
+  return isAiEdit(c) || isSoundTool(c);
+}
+
+/**
+ * The tools whose length is a setting picked from the model's own list (spec.durations_s; 0159 refuses any other). A sound effect
+ * is one (0228's creative_params_problem requires duration_s for sfx). Music is not: Lyria takes no length, and a per-request music
+ * model is sent none.
+ */
+export function takesLength(c: unknown): boolean {
+  return c === "t2v" || c === "i2v" || c === "sfx";
 }
 
 /** The tools asked by a shape: an expand extends a picture to it, a reframe changes a video to it. */
@@ -522,8 +551,8 @@ export function modelSettings(
     const list = modelShapes(m, cap);
     out.aspect_ratio = list === null ? (m.fixedShape ? null : aspect) : list.length ? snapShape(aspect, list) : null;
   }
+  if (takesLength(cap)) out.duration_s = snapSeconds(seconds, m.durations ?? []);
   if (cap === "t2v" || cap === "i2v") {
-    out.duration_s = snapSeconds(seconds, m.durations ?? []);
     out.resolution = resolution && resolution !== m.defaultResolution && resolutionsFor(m, false).includes(resolution) ? resolution : null;
   }
   return out;
@@ -577,7 +606,7 @@ export function capabilityLine(t: Dictionary, m: StudioModel, cap: string): stri
     if (shapes && shapes.length === 0) parts.push(g.factOwnShape);
     else if (shapes) parts.push(...shapes.slice(0, 3), ...(shapes.length > 3 ? [fmt(g.factMore, { n: shapes.length - 3 })] : []));
   }
-  if ((cap === "t2v" || cap === "i2v") && m.durations && m.durations.length) {
+  if (takesLength(cap) && m.durations && m.durations.length) {
     const s = orderSeconds(m.durations);
     const lo = s[0];
     const hi = s[s.length - 1];
@@ -944,6 +973,14 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
     case "video_upscale":
       // The length (and so the price) is the video's own: never sent.
       return { source_asset_id: source, target_resolution: form.target ?? "" };
+    case "music":
+      // The words alone. No length (a per-request model is sent none, and Lyria has no such field), and no lyrics, seed, negative
+      // prompt or loop: Lyria has none of these, and only instrumental music is offered (modules/capabilities/google_interactions.py).
+      // A music model sold by the second would be refused by name (0228's creative_price), never sent a guessed length.
+      return { prompt };
+    case "sfx":
+      // The length is required (creative_params_problem) and is one the picked model lists (0159; the panel snaps it to durationsFor).
+      return { prompt, duration_s: form.duration };
     default:
       // Speech: the words are the prompt (the price counts their characters)
       // and the voice is the one picked — the speech provider needs one.
@@ -1029,6 +1066,9 @@ export const WORDS_FREE_PRICE: readonly StudioCapability[] = [
   "video_edit",
   "video_reframe",
   "video_remove_bg",
+  // 0228: music per request (Lyria), a sound effect by its seconds: neither reads the words.
+  "music",
+  "sfx",
 ];
 const PRICE_STAND_IN = "price check";
 

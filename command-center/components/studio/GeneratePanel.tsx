@@ -39,6 +39,7 @@ import {
   STUDIO_VOICES,
   apiErrorMessage,
   asCreativeError,
+  awaitsFirstModel,
   blockedReason,
   buildParams,
   canQuote,
@@ -53,6 +54,7 @@ import {
   generateLabel,
   isAiEdit,
   isPictureOp,
+  isSoundTool,
   modelSettings,
   modelShapes,
   modelsFor,
@@ -70,6 +72,7 @@ import {
   snapSeconds,
   snapShape,
   soundQuoteParams,
+  takesLength,
   takesQuality,
   takesShape,
   takesSound,
@@ -109,9 +112,13 @@ function shapeGlyph(a: string): CSSProperties | undefined {
 /** What a tool starts from in the library: switching to a tool that starts from another kind starts the pick again. */
 const startsFrom = (c: StudioCapability) =>
   needsSource(c) ? "picture" : needsRecording(c) ? "recording" : needsVideo(c) ? "video" : null;
-const MAKE_KINDS = PANEL_CAPABILITIES.filter((c) => startsFrom(c) === null);
-/** The picture tools (0046), the voice tools (0050) and the video tools (0052): each starts from something in the library. */
-const MEDIA_TOOLS = PANEL_CAPABILITIES.filter((c) => startsFrom(c) !== null);
+/**
+ * The mode switch outside a desk: Image, Video, Voice. The sound tools start from words too, but stay in the tool row: the switch is
+ * the three things this panel has always made, and a mode nobody can use yet would be the first thing on it.
+ */
+const MAKE_KINDS = PANEL_CAPABILITIES.filter((c) => startsFrom(c) === null && !isSoundTool(c));
+/** The tool row: the picture tools (0046), the voice tools (0050) and the video tools (0052), which start from a library file, then the sound tools. */
+const MEDIA_TOOLS = PANEL_CAPABILITIES.filter((c) => !MAKE_KINDS.includes(c));
 
 /** The longest recording each voice tool takes (0050's source check; the database still decides). */
 const RECORDING_MAX_SECONDS: Record<"voice_change" | "dub", number> = { voice_change: 300, dub: 1800 };
@@ -427,13 +434,16 @@ export function GeneratePanel({
   // buy). 0155 refuses a shape the model does not list and 0159 a length, so offering a fixed list sold refusals.
   const textShape = capability === "t2i" || capability === "t2v";
   const clip = capability === "t2v" || capability === "i2v";
+  // A clip, or a sound effect: the length is picked from the model's own list (0159 refuses any other; 0228 requires one for sfx).
+  const timed = takesLength(capability);
   const pool = usable.length ? usable : available;
   const shapeList = textShape ? shapesFor(pool, current, routed, capability) : [];
   const ownShapes = !routed && textShape ? modelShapes(current, capability) : null;
   // A model whose spec lists no aspect ratio makes its own shape: no shape is offered or sent for it (Auto: not known, as above).
   const shapeless = !routed && textShape && (ownShapes ? ownShapes.length === 0 : current?.fixedShape === true);
   const effectiveAspect = snapShape(aspect, shapeList);
-  const lengths = clip ? durationsFor(pool, current, routed) : [];
+  // A sound effect with no model offers no length: durationsFor's stand-in list is for a spec not read, never for no model at all.
+  const lengths = clip || (timed && available.length > 0) ? durationsFor(pool, current, routed) : [];
   const effectiveSeconds = snapSeconds(duration, lengths);
   // A resolution only on a hand-picked model whose price follows it; the default stands for "send none".
   const resolutions = clip ? resolutionsFor(current, routed) : [];
@@ -442,12 +452,12 @@ export function GeneratePanel({
   const effectiveRes = resolutions.length > 0 && shownRes && shownRes !== defaultRes ? shownRes : null;
   // A model whose spec lists no clip length at all cannot be sold a clip (0159 refuses every length): no price is asked for a
   // stand-in length, the reason is named instead.
-  const noLength = clip && !routed && !!current && Array.isArray(current.durations) && current.durations.length === 0;
+  const noLength = timed && !routed && !!current && Array.isArray(current.durations) && current.durations.length === 0;
   // What was asked for (a retried job, a link, a setting kept from another model) and is NOT what will be sent: said in one line,
   // never changed silently (CLAUDE.md #4).
   const snapped: Array<[string, string]> = [];
   if (textShape && !shapeless && shapeList.length > 0 && aspect !== effectiveAspect) snapped.push([aspect, effectiveAspect]);
-  if (clip && lengths.length > 0 && duration !== effectiveSeconds)
+  if (timed && lengths.length > 0 && duration !== effectiveSeconds)
     snapped.push([fmt(t.gen.seconds, { n: duration }), fmt(t.gen.seconds, { n: effectiveSeconds })]);
   if (clip && !routed && current && resolution && resolution !== shownRes)
     snapped.push([resolutionLabel(resolution), shownRes ? resolutionLabel(shownRes) : t.gen.snapModelDefault]);
@@ -596,7 +606,7 @@ export function GeneratePanel({
   // Each model's own shape, length and resolution for the sheet's prices, and, where they are not the form's, those settings in
   // words beside its price ("at 8 s · 16:9"): a number asked at other settings is never shown as if it were this form's.
   const sheetSettings =
-    textShape || clip
+    textShape || timed
       ? Object.fromEntries(
           available.map((m) => [m.id, modelSettings(m, capability, effectiveAspect, effectiveSeconds, m.id === effectiveModel ? effectiveRes : null)]),
         )
@@ -793,7 +803,7 @@ export function GeneratePanel({
     ? t.modelSwitch.studio.offBody
     : noLength && current
       ? fmt(t.gen.noLength, { model: current.displayName })
-      : blocked === "no_model" && isAiEdit(capability)
+      : blocked === "no_model" && awaitsFirstModel(capability)
       ? t.gen.notAvailableYet
       : blocked === "need_words" && current && promptRule(capability) === "optional"
       ? // Optional for the kind, required by this model (registry inputs.prompt_required): say which model and what it needs.
@@ -953,6 +963,7 @@ export function GeneratePanel({
     (capability === "t2i" && !shapeless && shapeList.length > 0) ||
     capability === "t2v" ||
     capability === "i2v" ||
+    (capability === "sfx" && lengths.length > 0) ||
     capability === "upscale" ||
     (filmed && targets.length > 0) ||
     (takesShape(capability) && shapes.length > 0);
@@ -975,7 +986,7 @@ export function GeneratePanel({
         !shapeless &&
         shapeList.length > 0 &&
         choice(t.gen.aspectLabel, arrange ? null : RectangleHorizontal, shapeList, effectiveAspect, setAspect, aspectText, (a) => a, true)}
-      {clip &&
+      {timed &&
         lengths.length > 0 &&
         choice(t.gen.durationLabel, Clock, lengths, effectiveSeconds, setDuration, durationText, (d) => fmt(t.gen.seconds, { n: d }))}
       {clip &&
@@ -991,7 +1002,7 @@ export function GeneratePanel({
           (r) => (r === defaultRes ? fmt(t.gen.resolutionDefault, { r: resolutionLabel(r) }) : resolutionLabel(r)),
           true,
         )}
-      {routed && (textShape || clip) && (
+      {routed && (textShape || timed) && (
         <span className="basis-full text-xs text-[var(--color-muted)]" data-testid="gen-auto-settings">
           {t.gen.autoSettingsNote}
         </span>
@@ -1191,7 +1202,7 @@ export function GeneratePanel({
     </div>
   ) : (
     <p className="studio-field p-3 text-sm text-[var(--color-muted)]" data-testid="gen-no-model">
-      {isAiEdit(capability) ? t.gen.notAvailableYet : t.gen.noModels}
+      {awaitsFirstModel(capability) ? t.gen.notAvailableYet : t.gen.noModels}
     </p>
   );
 
@@ -1476,6 +1487,25 @@ export function GeneratePanel({
       </div>
     ) : null;
 
+  // Music: what the tool makes and where the rules for it are written (lib/legal-docs: what is sent to the model's maker, how long it
+  // is kept, the watermark, the use policy). Only once a model can be picked: with none, the form's one line is "not available yet".
+  const musicNote =
+    capability === "music" && current ? (
+      <span className="flex flex-col gap-1 text-xs text-[var(--color-muted)]" data-testid="gen-music-note">
+        <span>{t.gen.musicNote}</span>
+        <span>
+          {t.gen.musicRules}{" "}
+          <Link href="/privacy#processors" target="_blank" className="tap-link text-[var(--color-primary)] underline">
+            {t.legal.privacy}
+          </Link>
+          {" · "}
+          <Link href="/terms#third-parties" target="_blank" className="tap-link text-[var(--color-primary)] underline">
+            {t.legal.terms}
+          </Link>
+        </span>
+      </span>
+    ) : null;
+
   // The words, with the settings that ride under them (or, on Enhance, set apart above).
   const settingsInField = arrange !== "enhance";
   const promptBlock =
@@ -1488,7 +1518,9 @@ export function GeneratePanel({
               : t.gen.voiceTextLabel
             : isAiEdit(capability)
               ? (t.gen.opWords as Record<string, string>)[capability]
-              : arrange === "video"
+              : isSoundTool(capability)
+                ? t.gen.soundWords[capability]
+                : arrange === "video"
                 ? t.desk.shot
                 : t.gen.promptLabel}
           {words === "optional" && <span> · {t.gen.optional}</span>}
@@ -1529,6 +1561,7 @@ export function GeneratePanel({
             {t.gen.mentionHint}
           </span>
         )}
+        {musicNote}
       </div>
     ) : settingsInField ? (
       settings
@@ -1919,7 +1952,7 @@ export function GeneratePanel({
     // The settings key's own words: what is set now (the shape, the length, the size), never a price.
     const summary = [
       textShape && !shapeless && shapeList.length > 0 ? effectiveAspect : null,
-      clip ? fmt(t.gen.seconds, { n: effectiveSeconds }) : null,
+      clip || (timed && lengths.length > 0) ? fmt(t.gen.seconds, { n: effectiveSeconds }) : null,
       effectiveRes ? resolutionLabel(effectiveRes) : null,
       capability === "upscale" ? fmt(t.gen.factor, { n: factor }) : null,
       effectiveTarget ? effectiveTarget.replace(/k$/, "K") : null,
@@ -2017,7 +2050,13 @@ export function GeneratePanel({
             {words !== "none" && (
               <>
                 <label htmlFor="gen-prompt" className="sr-only">
-                  {isVoice ? t.gen.voiceTextLabel : isAiEdit(capability) ? (t.gen.opWords as Record<string, string>)[capability] : t.gen.promptLabel}
+                  {isVoice
+                    ? t.gen.voiceTextLabel
+                    : isAiEdit(capability)
+                      ? (t.gen.opWords as Record<string, string>)[capability]
+                      : isSoundTool(capability)
+                        ? t.gen.soundWords[capability]
+                        : t.gen.promptLabel}
                   {words === "optional" ? ` · ${t.gen.optional}` : ""}
                 </label>
                 <textarea
@@ -2163,6 +2202,7 @@ export function GeneratePanel({
           )}
         </div>
         {attachNote && <div className="sc-foot sc-attach-note">{attachNote}</div>}
+        {musicNote && <div className="sc-foot">{musicNote}</div>}
         <div className="sc-foot">
           {status}
           <span id="sc-enter-hint" className="sc-hint">

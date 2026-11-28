@@ -178,7 +178,7 @@ describe("prefillFromQuery from a sidebar link", () => {
     expect(prefillFromQuery("edit", undefined)).toMatchObject({ capability: "edit", sourceId: null });
     expect(prefillFromQuery("i2v", "../etc")).toBeNull();
     expect(prefillFromQuery("i2v", [PIC])).toBeNull();
-    expect(prefillFromQuery("sfx", undefined)).toBeNull();
+    expect(prefillFromQuery("captions", undefined)).toBeNull();
     expect(prefillFromQuery("<script>", undefined)).toBeNull();
   });
 });
