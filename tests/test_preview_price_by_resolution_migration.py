@@ -192,6 +192,8 @@ class TheMiniMaxVideoEntriesItTurnsOn(unittest.TestCase):
                 continue
             if v["by"] == "quality":
                 continue            # 0153's: tests/test_preview_price_by_quality_migration.py
+            if v["by"] == "image_size":
+                continue            # 0243's: tests/test_preview_price_by_image_size_migration.py
             # by resolution, with the pinned resolution priced: a Studio request names none, so that is the one quoted
             self.assertEqual(v["by"], "resolution", e.id)
             self.assertIsNotNone(e.default_resolution, e.id)

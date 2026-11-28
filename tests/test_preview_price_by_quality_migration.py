@@ -162,7 +162,9 @@ class PreviewPriceByQualityMigration(unittest.TestCase):
 #: Every entry the registry marks operator_preview today. A new one is a decision (a hidden model the operator can run in the Studio),
 #: so it is added here on purpose, with its figure.
 PREVIEW_SET = {"minimax-h3", "minimax-h3-highspeed", "minimax-h3-lite", "minimax-h3-max", "runway-gen4.5", "runway-gen4-turbo",
-               "grounded-image-1.0", "ideogram-3", "ideogram-4", "ideogram-4.5"}
+               "grounded-image-1.0", "ideogram-3", "ideogram-4", "ideogram-4.5",
+               # 0243 (priced by image_size, the requested size's own figure): tests/test_preview_price_by_image_size_migration.py.
+               "gemini-3-pro-image", "gemini-nano-banana-2.1"}
 
 #: The image models the owner asked to preview. The vendor states no per-image figure for any of them (2026-11-13): OpenAI bills GPT
 #: Image 2.5 by token ("The GPT Image 2 calculator does not estimate GPT-Image-2.5 token consumption"), so neither is marked and
@@ -179,7 +181,7 @@ def _figure_ok(x):
 
 
 class NoPreviewIsADeadEnd(unittest.TestCase):
-    """The registry side: every entry marked operator_preview is one 0139, 0149 or 0153 can price at what the Studio sends."""
+    """The registry side: every entry marked operator_preview is one 0139, 0149, 0153 or 0243 can price at what the Studio sends."""
 
     def setUp(self):
         self.r = reg.load()
