@@ -281,3 +281,26 @@ baseline, same stub:
 
 Confirm → first lit and the reload after Create are not this PR's: they are LIVE_CREATION_PLAN items 9 (Create in place) and 12
 (Realtime). The skeleton's measured clock ticks once a second, so the planning wait is never a still screen.
+
+## 7. Create in place (LIVE_CREATION_PLAN item 9)
+
+Evidence: section 1B step 2 and the timing harness's "1 reload after Create". Change: after the confirmed start, the panel no longer
+calls `window.location.assign(?view=live&film=)`. It sends `nightshift:brain-handoff` (`{session_id, film_id}`, added to the copied
+contract in `lib/studio/brainActivity.ts` for #989 to mirror) and adds `&film=` to the URL with `history.replaceState` (`?brain=`
+kept). The Plan column finds the film from that event, then the brief's handoff (the server's record), then `&film=`; reads it with
+`useLiveGraph`; and folds it into the same board model, so the position-keyed cards change state without remounting. The film's lane
+mounts under the board. Below 1024 px the handoff opens the Plan tab. `?view=live` is unchanged. The activity log is not shown in the
+column: at 1440×900 the board already shares the column's height with the lane.
+
+`tools/visual-qa/timing/brain-flow.mjs`, same stub, 1440 dark. Before: #993 at `42701eea`.
+
+| Measure | #993 L=2 s | this, L=2 s | #993 L=8 s | this, L=8 s |
+|---|---|---|---|---|
+| Full-page reloads after Create | 1 | 0 | 1 | 0 |
+| Confirm → first live card | 1.35 s | 0.44 s | 1.29 s | 0.48 s |
+| Confirm → first working card | 7.26 s | 6.46 s | 7.11 s | 6.53 s |
+| Longest unchanged stretch (confirm → first lit) | 5.81 s | 5.32 s | 5.81 s | 5.33 s |
+
+The 0.44–0.48 s includes the stub's 300 ms start answer. The remaining stretch is `useLiveGraph`'s 6 s poll: item 12 (Realtime).
+The film read is the fake's fixed film, not the one planned. `ns:` marks now emitted: `ns:plan:first-card`,
+`ns:plan:storyboard-start`, `ns:create:confirm`, `ns:live:first-card`, `ns:live:first-lit`.

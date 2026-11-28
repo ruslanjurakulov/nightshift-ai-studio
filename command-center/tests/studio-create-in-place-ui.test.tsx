@@ -12,6 +12,8 @@ import type { ReactNode } from "react";
 import { studioLiveEn as c } from "../lib/i18n/studio-live/en";
 import { clearBrainActivity, dispatchBrainCanvas, isBrainHandoff } from "../lib/studio/brainActivity";
 import { nsMarkOnce, resetNsMarks } from "../lib/studio/nsMark";
+import { hasLitStep } from "../lib/studio/boardModel";
+import type { LiveGraph, LiveNode } from "../lib/studio/liveGraph";
 import { FILM, S1, filmJson, sceneJson } from "./films-fixtures";
 
 vi.mock("@/lib/i18n/context", async () => {
@@ -215,6 +217,14 @@ describe("the handoff event's contract", () => {
 });
 
 describe("timing marks", () => {
+  it("a board is lit by a working step or a made one, not by the idea and script a film has from the start", () => {
+    const g = (nodes: Partial<LiveNode>[]) => ({ nodes: nodes.map((n, i) => ({ id: `n${i}`, col: 0, row: 0, ...n })), edges: [] }) as unknown as LiveGraph;
+    expect(hasLitStep(g([{ kind: "idea", status: "done" }, { kind: "script", status: "done" }, { kind: "keyframe", status: "waiting" }]))).toBe(false);
+    expect(hasLitStep(g([{ kind: "character", status: "done" }]))).toBe(false);
+    expect(hasLitStep(g([{ kind: "keyframe", status: "working" }]))).toBe(true);
+    expect(hasLitStep(g([{ kind: "clip", status: "done" }]))).toBe(true);
+  });
+
   it("each fires once through the flow: plan card, then live card, then the first lit step", async () => {
     search = new URLSearchParams(`brain=${SID}`);
     render(ui(SID));
