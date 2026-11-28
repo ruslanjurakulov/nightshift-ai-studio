@@ -23,8 +23,8 @@ import {
   slugToSelection,
   slugifyChannelId,
   unscopedScope,
-  voiceOwners,
 } from "@/lib/channels";
+import { voiceOwners } from "@/lib/channel-voices";
 import type {
   ChannelCredentialRow,
   ChannelRow,

@@ -29,6 +29,14 @@ Never paying twice: a take's job that recorded 'submitting' but no task id (the 
 worker_lost, never submitted again; a synchronous answer held only in memory (task id ``sync:``/``film-tts:``) cannot be fetched again
 and fails as no_output. Both are charged 0 (0171), and 0171 plans the retry.
 
+Cost rows (0037, reporting only): every call that reached a vendor (a task id or a synchronous answer came back) gets exactly one
+creative_job_costs row, whatever the take's outcome, because the takes that fail are the ones whose vendor spend the platform absorbs.
+A delivered answer writes the vendor's usage; a failed one, a timeout, an answer without a file, or a call abandoned with nobody left
+to poll it writes the adapter's usage for what was asked (``price_source`` failed_call, usd None: an estimate, never a measurement). A
+take left with its task id stored writes nothing: the claim that polls it next writes its row. A retry is a second call and a second
+row; each narration scene is one call and one row. Not covered: a submit that raised (nothing says whether the vendor took it), and a
+worker that died between storing a ``sync:`` key and polling it.
+
 The narration is voiced one scene at a time and laid out on the film's clock (docs/FILM_STUDIO.md, P4a): each scene's words start
 NARRATION_LEAD_S into the scene. The file's provenance carries the per-scene ``segments`` and the measured ``loudness_lufs`` /
 ``true_peak_db`` (null when not measured, never a default: CLAUDE.md #5), which the assembly reads.
@@ -688,9 +696,18 @@ class FilmOrchestrator:
                                        quantity=float(take["quantity"]) if take.get("quantity") is not None else None)
         if task:
             if str(task).startswith(("sync:", "film-tts:")):
+                # No row here: the worker that made the call polled a synchronous answer (and each narration scene) right after it,
+                # and wrote its row then; what was lost is the storing (module doc, "Cost rows", for the one window not covered).
                 raise _TakeFailed("no_output", "the worker stopped after the provider answered and before the result was stored")
-            files = self._poll(adapter, str(task), request, work / "out", lease)
-            return self._deliver(seg, take, tj, job, request, files, str(task), work, None, processing=status == "processing")
+            # The worker that submitted this task left it stored, without its row, for this claim to poll. A job already
+            # 'processing' had its poll answered and its row written before the storing began: never a second row.
+            call = cw.VendorCall(recorded=status == "processing")
+            try:
+                files = self._poll(adapter, str(task), request, work / "out", lease, call)
+                return self._deliver(seg, take, tj, job, request, files, str(task), work, None, processing=status == "processing")
+            except _TakeFailed:
+                cw.record_unfinished_call(self.db, adapter, request, call)
+                raise
         if tj.get("submit_started"):
             # The paid call may have reached the vendor: it is never made again (0171 plans the retry, charged once).
             raise _TakeFailed("worker_lost", "the worker stopped during the provider call; it is never submitted twice")
@@ -706,12 +723,25 @@ class FilmOrchestrator:
             raise _TakeFailed(film_error_code(cw.error_code_of(e), vendor_code=_vendor_code(adapter),
                                               http_status=getattr(e, "http_status", None), capability=request.capability),
                               cw.error_text_of(e)) from None
-        if not task or not isinstance(task, str):
-            raise _TakeFailed("no_output", "the provider accepted the take without a task id")
-        if not self.db.advance_job(job, self.worker_id, "submitted", task, {"model": model}):
-            raise _Stop("job_lost")
-        files = self._poll(adapter, task, request, work / "out", lease)
-        return self._deliver(seg, take, tj, job, request, files, task, work, None)
+        # The vendor answered: from here the call has exactly one cost row, whatever the take's outcome (module doc, "Cost rows").
+        call, stored = cw.VendorCall(), False
+        try:
+            if not task or not isinstance(task, str):
+                raise _TakeFailed("no_output", "the provider accepted the take without a task id")
+            if not self.db.advance_job(job, self.worker_id, "submitted", task, {"model": model}):
+                raise _Stop("job_lost")
+            stored = True
+            files = self._poll(adapter, task, request, work / "out", lease, call)
+            return self._deliver(seg, take, tj, job, request, files, task, work, None)
+        except _TakeFailed:
+            cw.record_unfinished_call(self.db, adapter, request, call)
+            raise
+        except BaseException:
+            # Left without an outcome. With its task id stored, the next claim polls the same task and writes the row; without
+            # it, no claim ever will (submit_started with no task fails as worker_lost), so it is written here.
+            if not stored:
+                cw.record_unfinished_call(self.db, adapter, request, call)
+            raise
 
     def _still_on_sale(self, request: cw.GenerationRequest) -> None:
         """The take's model must still be on sale for the take's capability right before the paid call (the creative worker's rule,
@@ -756,7 +786,7 @@ class FilmOrchestrator:
             request = replace(request, reference_files=tuple(refs) + tuple(request.reference_files))
         return request
 
-    def _poll(self, adapter, task: str, request: cw.GenerationRequest, out: Path, lease: _Lease) -> List[Path]:
+    def _poll(self, adapter, task: str, request: cw.GenerationRequest, out: Path, lease: _Lease, call: cw.VendorCall) -> List[Path]:
         deadline = self.clock() + self.max_poll_seconds
         errors = 0
         while True:
@@ -773,14 +803,13 @@ class FilmOrchestrator:
             if res.state == cw.SUCCEEDED:
                 files = [Path(f) for f in res.files if Path(f).is_file() and Path(f).stat().st_size > 0]
                 if not files:
+                    cw.record_unfinished_call(self.db, adapter, request, call, res.usage)
                     raise _TakeFailed("no_output", "the provider reported success without an output file")
-                if res.usage is not None:
-                    try:
-                        self.db.record_cost(request.job_id, res.usage)
-                    except Exception as e:  # reporting only
-                        logger.warning("job %s: provider cost not recorded (%s)", request.job_id, type(e).__name__)
+                # Written here, before the result is stored: a storing that fails later still paid for this answer.
+                cw.record_call_cost(self.db, request.job_id, res.usage, call)
                 return files
             if res.state == cw.FAILED:
+                cw.record_unfinished_call(self.db, adapter, request, call, res.usage)
                 raise _TakeFailed(film_error_code(res.error_code, capability=request.capability),
                                   res.error or "the provider failed the task")
             if self.clock() >= deadline:
@@ -813,7 +842,14 @@ class FilmOrchestrator:
                                                   http_status=getattr(e, "http_status", None), capability="tts"),
                                   cw.error_text_of(e), voiced or None) from None
             first_task = first_task or task
-            files = self._poll(adapter, str(task), req, work / f"scene_{n}", lease)
+            # Each scene is its own paid call and its own row. None of them is stored as a task id until every scene is voiced,
+            # so a narration left here for any reason is never polled again: every scene's row is written here.
+            call = cw.VendorCall()
+            try:
+                files = self._poll(adapter, str(task), req, work / f"scene_{n}", lease, call)
+            except BaseException:
+                cw.record_unfinished_call(self.db, adapter, req, call)
+                raise
             seconds = self.media.duration(files[0])
             if seconds is None:
                 raise _TakeFailed("no_output", "a scene's narration could not be measured", voiced + len(text))
