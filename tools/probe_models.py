@@ -42,6 +42,7 @@ import argparse
 import logging
 import math
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -151,11 +152,24 @@ class RegistryDB:
             raise RuntimeError(f"{fn}: could not reach the database ({type(e).__name__})") from None
         if r.status_code >= 300:
             hint = " — is migration 0035 applied?" if r.status_code in (404, 400) else ""
-            raise RpcError(f"{fn}: HTTP {r.status_code}{hint}", r.status_code)
+            raise RpcError(f"{fn}: HTTP {r.status_code}{hint}", r.status_code, *_pg_error(r))
         return r.json()
 
     def sync(self, rows: List[dict]) -> int:
-        return int(self.rpc("sync_model_registry", {"p_rows": rows}) or 0)
+        try:
+            return int(self.rpc("sync_model_registry", {"p_rows": rows}) or 0)
+        except RpcError as e:
+            # One row whose capability the database's check does not list fails the whole sync (every model). On a database
+            # without 0228 that is a `music` row: say which migration is missing, not "is 0035 applied?".
+            if e.sqlstate == "23514" and e.constraint_hint == "model_registry_capabilities_check":
+                if any("music" in row.get("capabilities", []) for row in rows):
+                    raise RpcError("sync_model_registry: the database does not know capability music: apply migration 0228 "
+                                   "(supabase/migrations/0228_music_per_request_price.sql), then sync again", e.status,
+                                   e.sqlstate, e.constraint_hint) from None
+                raise RpcError("sync_model_registry: a row names a capability the database's model_registry_capabilities_check "
+                               "does not list: a migration that adds it is missing", e.status, e.sqlstate,
+                               e.constraint_hint) from None
+            raise
 
     def record(self, *, model: str, adapter: str, vendor_model: str, capability: str, ok: bool,
                error_code: Optional[str], error: Optional[str], latency_ms: int,
@@ -181,11 +195,33 @@ class RegistryDB:
 
 
 class RpcError(RuntimeError):
-    """A database refusal, with its HTTP status (the message carries no URL, key or body)."""
+    """A database refusal, with its HTTP status (the message carries no URL, key or body). ``sqlstate`` is PostgREST's ``code``
+    and ``constraint_hint`` the one constraint name this tool asks about, when the body names it: neither is ever printed raw."""
 
-    def __init__(self, message: str, status: int):
+    def __init__(self, message: str, status: int, sqlstate: Optional[str] = None, constraint_hint: Optional[str] = None):
         super().__init__(message)
         self.status = status
+        self.sqlstate = sqlstate
+        self.constraint_hint = constraint_hint
+
+
+#: The constraints a refusal is matched against, by name. Only a name on this list leaves _pg_error: the rest of the body (which
+#: for a CHECK violation holds the failing row) is never kept.
+_KNOWN_CONSTRAINTS = ("model_registry_capabilities_check",)
+
+
+def _pg_error(r):
+    try:
+        body = r.json()
+    except Exception:  # noqa: BLE001 — a body that is not JSON says nothing we act on
+        return None, None
+    if not isinstance(body, dict):
+        return None, None
+    code = body.get("code")
+    code = code if isinstance(code, str) and re.fullmatch(r"[0-9A-Z]{5}", code) else None
+    message = body.get("message") if isinstance(body.get("message"), str) else ""
+    hint = next((c for c in _KNOWN_CONSTRAINTS if f'"{c}"' in message), None)
+    return code, hint
 
 
 # ── one probe ───────────────────────────────────────────────────────────────
