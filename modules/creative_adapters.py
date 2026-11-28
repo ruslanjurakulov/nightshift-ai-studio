@@ -93,6 +93,8 @@ from modules.creative_worker import (
     GenerationRequest,
     ProviderPoll,
     ProviderUsage,
+    vendor_percent,
+    vendor_word,
 )
 
 SYNC_PREFIX = "sync:"
@@ -257,7 +259,9 @@ class RegistryAdapter:
         else:
             result = self.adapter.poll(ProviderTask(self.adapter.key, self._vendor_model(cap), task_id))
         if result.state == PENDING:
-            return ProviderPoll(JOB_PENDING)
+            # The vendor's own percent and status word, passed on only once checked (a figure outside 0-100 is dropped).
+            return ProviderPoll(JOB_PENDING, progress=vendor_percent(getattr(result, "progress", None)),
+                                vendor_state=vendor_word(getattr(result, "vendor_state", None)))
         if result.state == FAILED:
             err = result.error or AdapterError("bad_response", "the provider failed the task without a reason")
             return ProviderPoll(JOB_FAILED, error_code=err.code, error=err.message)

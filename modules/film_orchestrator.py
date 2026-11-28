@@ -116,6 +116,11 @@ DEFAULT_HEARTBEAT_SECONDS = 60.0
 DEFAULT_POLL_SECONDS = 5.0
 DEFAULT_MAX_POLL_SECONDS = 45 * 60
 MAX_POLL_ERRORS = 10
+#: A running take's vendor percent and status word (0246) are written at most once per this many seconds, and only when one
+#: of them changed; a new status word is written at once. Why 15: the vendors are polled every 5 s (DEFAULT_POLL_SECONDS), so
+#: every poll would be three writes a take-minute, each a row update the live view (and 0247's broadcast) fans out; a video
+#: take runs one to several minutes, and a percent that moves every 15 s reads as live. The heartbeat (60 s) is too slow.
+TAKE_PROGRESS_SECONDS = 15.0
 MAX_ERROR_CHARS = 2000
 _WORD = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 
@@ -221,6 +226,46 @@ class DriveOutcome:
 
 
 # ── the lease ───────────────────────────────────────────────────────────────
+
+class TakeProgress:
+    """What a running take reports of its vendor (0246's film_take_progress), throttled (TAKE_PROGRESS_SECONDS). Reporting
+    only: a write that fails is logged by its type and never changes the take; a database without 0246 (the function is
+    missing) switches this reporter off for the take. Nothing is written until the vendor said something (both unknown is
+    the column's own null); after that a None is written as it is, because "not known now" must not leave an old figure."""
+
+    def __init__(self, write: Callable[[Optional[float], Optional[str]], Any], *, clock: Callable[[], float],
+                 every: float = TAKE_PROGRESS_SECONDS, what: str = "take"):
+        self._write, self._clock, self._every, self._what = write, clock, float(every), what
+        self._last: Optional[Tuple[Optional[float], Optional[str]]] = None
+        self._at: Optional[float] = None
+        self.off = False
+
+    def report(self, progress: Optional[float], state: Optional[str]) -> bool:
+        """True when a write was made. ``progress`` and ``state`` are already checked (cw.vendor_percent, cw.vendor_word)."""
+        if self.off:
+            return False
+        key = (progress, state)
+        if self._last is None and key == (None, None):
+            return False
+        if key == self._last:
+            return False
+        now = self._clock()
+        new_word = self._last is None or state != self._last[1]
+        if self._at is not None and not new_word and now - self._at < self._every:
+            return False
+        self._at = now
+        try:
+            self._write(progress, state)
+        except FilmFunctionMissing:
+            self.off = True
+            logger.warning("%s progress is not recorded: film_take_progress is missing (is 0246 applied?)", self._what)
+            return False
+        except Exception as e:  # noqa: BLE001 — reporting only; the next change tries again after the interval
+            logger.warning("%s progress not recorded (%s)", self._what, type(e).__name__)
+            return False
+        self._last = key
+        return True
+
 
 class _Lease:
     """Keeps the segment's lease (and the running take's creative job) alive while this worker drives it. ``lost`` is set the moment
@@ -703,7 +748,7 @@ class FilmOrchestrator:
             # 'processing' had its poll answered and its row written before the storing began: never a second row.
             call = cw.VendorCall(recorded=status == "processing")
             try:
-                files = self._poll(adapter, str(task), request, work / "out", lease, call)
+                files = self._poll(adapter, str(task), request, work / "out", lease, call, self._take_progress(tid))
                 return self._deliver(seg, take, tj, job, request, files, str(task), work, None, processing=status == "processing")
             except _TakeFailed:
                 cw.record_unfinished_call(self.db, adapter, request, call)
@@ -731,7 +776,7 @@ class FilmOrchestrator:
             if not self.db.advance_job(job, self.worker_id, "submitted", task, {"model": model}):
                 raise _Stop("job_lost")
             stored = True
-            files = self._poll(adapter, task, request, work / "out", lease, call)
+            files = self._poll(adapter, task, request, work / "out", lease, call, self._take_progress(tid))
             return self._deliver(seg, take, tj, job, request, files, task, work, None)
         except _TakeFailed:
             cw.record_unfinished_call(self.db, adapter, request, call)
@@ -786,7 +831,14 @@ class FilmOrchestrator:
             request = replace(request, reference_files=tuple(refs) + tuple(request.reference_files))
         return request
 
-    def _poll(self, adapter, task: str, request: cw.GenerationRequest, out: Path, lease: _Lease, call: cw.VendorCall) -> List[Path]:
+    def _take_progress(self, take_id: str) -> Optional[TakeProgress]:
+        write = getattr(self.db, "take_progress", None)
+        if not callable(write):
+            return None
+        return TakeProgress(lambda p, w: write(take_id, self.worker_id, p, w), clock=self.clock)
+
+    def _poll(self, adapter, task: str, request: cw.GenerationRequest, out: Path, lease: _Lease, call: cw.VendorCall,
+              progress: Optional[TakeProgress] = None) -> List[Path]:
         deadline = self.clock() + self.max_poll_seconds
         errors = 0
         while True:
@@ -800,6 +852,10 @@ class FilmOrchestrator:
                 if code not in cw.RETRYABLE_POLL_CODES or errors >= MAX_POLL_ERRORS:
                     raise _TakeFailed(film_error_code(code, capability=request.capability), cw.error_text_of(e)) from None
                 res = cw.ProviderPoll(cw.PENDING)
+            else:
+                if progress is not None and res.state == cw.PENDING:
+                    # Only a real answer: a poll that failed says nothing about the vendor, and must not wipe what it said.
+                    progress.report(getattr(res, "progress", None), getattr(res, "vendor_state", None))
             if res.state == cw.SUCCEEDED:
                 files = [Path(f) for f in res.files if Path(f).is_file() and Path(f).stat().st_size > 0]
                 if not files:
@@ -997,6 +1053,11 @@ class FilmRest:
 
     def heartbeat(self, segment: str, worker_id: str) -> bool:
         return bool(self.rpc("film_heartbeat_segment", {"p_segment": segment, "p_worker": worker_id}))
+
+    def take_progress(self, take: str, worker_id: str, progress: Optional[float], vendor_state: Optional[str]) -> bool:
+        """0246: a running take's vendor percent and status word. False when the take is not this worker's running take."""
+        return bool(self.rpc("film_take_progress", {"p_take": take, "p_worker": worker_id, "p_progress": progress,
+                                                     "p_vendor_state": vendor_state}))
 
     def studio_on_for(self, org: str) -> bool:
         return self.rpc("film_studio_on_for", {"p_org": org}) is True

@@ -149,7 +149,7 @@ class LumaImageAdapter(SafeResultMixin, HttpAdapter):
             code = _FAILURES.get(str(data.get("failure_code") or ""), E_UNAVAILABLE)
             text = self.message(data.get("failure_reason") or data.get("failure_code") or "the generation failed")
             return PollResult(FAILED, error=AdapterError(code, f"{text}. {SPEND_UNKNOWN}"))
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=state)
 
 
 ADAPTERS = (LumaImageAdapter,)

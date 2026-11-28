@@ -369,7 +369,7 @@ class ElevenLabsDubbingAdapter(_ElevenLabs):
             raise AdapterError(E_BAD_RESPONSE, "poll: not an object")
         status = body.get("status")
         if status in ("queued", "processing"):
-            return PollResult(PENDING)
+            return PollResult(PENDING, vendor_state=status)
         if status == "completed":
             url = dig(body, "outputs", "lossless_audio")
             if not isinstance(url, str) or not is_url(url):

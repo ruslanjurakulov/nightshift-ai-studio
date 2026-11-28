@@ -199,7 +199,7 @@ class KlingOmniEditAdapter(SafeResultMixin, HttpAdapter):
             return self.checked_outputs(PollResult(SUCCEEDED, [Output("video/mp4", url=url)]))
         if status == "failed":
             return _failed(self, item.get("status_msg") or item.get("message") or "task failed")
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=status)
 
 
 # ── BytePlus Seedance 2.5, edit mode (docs.byteplus.com/en/docs/ModelArk/2607688) ─

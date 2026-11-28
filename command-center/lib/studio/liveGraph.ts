@@ -107,6 +107,31 @@ export interface LiveSegment {
   assemblyConfirmedCredits: number | null;
   assemblyChargedCredits: number | null;
   createdAt: string | null;
+  /** 0246: the running assembly's measured percent (0..100); null = not known (not reported, or 0246 not applied). */
+  assemblyProgress?: number | null;
+  assemblyProgressAt?: string | null;
+}
+
+/** 0246: what a running take's vendor last said, as film_takes stores it. Every field null = not known, never 0. */
+export interface TakeProgress {
+  /** The vendor's own percent (0..100), or null. */
+  progress: number | null;
+  /** The vendor's own status word (queued, running, ...), or null. */
+  vendorState: string | null;
+  /** When either was written. */
+  at: string | null;
+}
+
+/**
+ * 0248: how long a completed take of a model usually took in this workspace: the median of its last (up to 20) takes, and n,
+ * how many. The plan shows "usually ~N s here (last n takes)" only when n >= 3; the caller decides.
+ */
+export interface TypicalSeconds {
+  model: string;
+  /** t2i (key frames), i2v (clips and extensions), tts (narration). */
+  capability: string;
+  medianS: number;
+  n: number;
 }
 
 /** Per take id, the money columns 0171 added to film_takes. */
@@ -130,6 +155,32 @@ export interface FilmReading {
   pauseReason?: string | null;
   /** film_json's events (0166 film_events, the newest 50) as raw rows: filmGraph numbers their scenes. */
   rawEvents?: { rows: Record<string, unknown>[]; total: number | null } | null;
+  /** 0246 per take id; null when the columns could not be read (not known, never "no progress"). */
+  progress?: ReadonlyMap<string, TakeProgress> | null;
+  /** 0248's medians; null when they could not be read. */
+  typical?: TypicalSeconds[] | null;
+}
+
+const VENDOR_WORD = /^[a-z][a-z0-9_]{0,31}$/;
+/** A percent the view may show: a number in [0, 100]; anything else is not known (null), never clamped. */
+function percent(v: unknown): number | null {
+  const n = num(v);
+  return n !== null && n >= 0 && n <= 100 ? n : null;
+}
+
+function coerceTypical(raw: unknown): TypicalSeconds[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: TypicalSeconds[] = [];
+  for (const x of raw) {
+    const o = rec(x);
+    const model = o && str(o.model);
+    const capability = o && str(o.capability);
+    const medianS = o ? num(o.median_s) : null;
+    const n = o ? num(o.n) : null;
+    if (!model || !capability || medianS === null || !(medianS > 0) || n === null || !Number.isInteger(n) || n < 1) continue;
+    out.push({ model, capability, medianS, n });
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ activity --------------------------------------------------- */
@@ -230,12 +281,16 @@ export function coerceFilmLive(raw: unknown): FilmReading | null {
           assemblyConfirmedCredits: num(s.assembly_confirmed_credits),
           assemblyChargedCredits: num(s.assembly_charged_credits),
           createdAt: str(s.created_at),
+          assemblyProgress: percent(s.assembly_progress),
+          assemblyProgressAt: str(s.assembly_progress_at),
         }))
     : null;
   const money = new Map<string, LiveCredits>();
   const errors = new Map<string, string>();
   const bases = new Map<string, string>();
   let basesRead = false;
+  const progress = new Map<string, TakeProgress>();
+  let progressRead = false;
   for (const t of Array.isArray(r.takes) ? r.takes : []) {
     const o = rec(t);
     const id = o && str(o.id);
@@ -247,6 +302,11 @@ export function coerceFilmLive(raw: unknown): FilmReading | null {
       basesRead = true;
       const b = str(o.charge_basis);
       if (b) bases.set(id, b);
+    }
+    if ("progress" in o || "vendor_state" in o) {
+      progressRead = true;
+      const word = str(o.vendor_state);
+      progress.set(id, { progress: percent(o.progress), vendorState: word && VENDOR_WORD.test(word) ? word : null, at: str(o.progress_at) });
     }
   }
   const filmRow = rec(rec(r.film)?.film);
@@ -261,6 +321,8 @@ export function coerceFilmLive(raw: unknown): FilmReading | null {
     errors,
     pauseReason: filmRow ? str(filmRow.pause_reason) : null,
     rawEvents: rows ? { rows, total } : null,
+    progress: progressRead ? progress : null,
+    typical: coerceTypical(r.typical),
   };
 }
 

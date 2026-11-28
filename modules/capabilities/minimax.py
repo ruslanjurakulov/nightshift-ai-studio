@@ -259,7 +259,7 @@ class MiniMaxH3Adapter(SafeResultMixin, HttpAdapter):
             raise AdapterError(E_BAD_RESPONSE, "the status answer carries no task object")
         status = str(info.get("status") or "").lower()
         if status in ("queued", "running"):
-            return PollResult(PENDING)
+            return PollResult(PENDING, vendor_state=status)
         if status == "succeeded":
             url = dig(info, "content", "url")
             if not isinstance(url, str) or not url:

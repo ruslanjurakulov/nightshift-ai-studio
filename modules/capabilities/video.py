@@ -355,7 +355,7 @@ class KlingAdapter(HttpAdapter):
             return PollResult(SUCCEEDED, [Output("video/mp4", url=str(url))])
         if status == "failed":
             return _failed(self, data.get("task_status_msg") or "task failed")
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=status)
 
 
 # ── MiniMax Hailuo (v1 flow; the H3 models use /v2 and are not wired here) ──
@@ -420,7 +420,7 @@ class MiniMaxVideoAdapter(HttpAdapter):
             return PollResult(SUCCEEDED, [Output("video/mp4", url=str(url))])
         if status == "fail":
             return _failed(self, "the vendor reported the task failed")
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=status)
 
 
 # ── Runway ──────────────────────────────────────────────────────────────────
@@ -550,7 +550,19 @@ class RunwayAdapter(HttpAdapter):
             # A word the docs do not list is a docs change to read, not a reason to drop a task Runway may still finish and bill.
             logger.warning("runway: task status %r is not one the docs list; treated as pending",
                            self.message(status)[:40] or "(none)")
-        return PollResult(PENDING, progress=data.get("progress"))
+        return PollResult(PENDING, vendor_state=status, progress=_runway_percent(data.get("progress")))
+
+
+def _runway_percent(value) -> Optional[float]:
+    """Runway's GET /v1/tasks/{id} ``progress`` is a FRACTION, "number 0-1" (docs.dev.runwayml.com/api, read 2026-11-28),
+    and PollResult.progress is a percent. A value that is not a number in [0, 1] is dropped (None: not known), never
+    clamped: a 45 would otherwise read as done."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    v = float(value)
+    if v != v or v < 0 or v > 1:
+        return None
+    return v * 100.0
 
 
 #: What Runway's video inputs document (docs.dev.runwayml.com/assets/inputs):
@@ -1279,7 +1291,7 @@ class LumaAdapter(HttpAdapter):
             code = self._FAILURES.get(str(data.get("failure_code") or ""), E_UNAVAILABLE)
             return PollResult(FAILED, error=AdapterError(
                 code, self.message(data.get("failure_reason") or data.get("failure_code") or "failed")))
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=state)
 
 
 # ── ByteDance Seedance (BytePlus ModelArk, international) ───────────────────
@@ -1364,7 +1376,7 @@ class SeedanceAdapter(HttpAdapter):
         if status in ("failed", "cancelled", "expired"):
             code = self._map(dig(data, "error", "code")) or E_UNAVAILABLE
             return PollResult(FAILED, error=AdapterError(code, self.message(dig(data, "error", "message") or status)))
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=status)
 
 
 # ── ByteDance Seedance 2.x (BytePlus ModelArk, international) ───────────────
@@ -1506,7 +1518,7 @@ class SeedanceV2Adapter(SafeResultMixin, SeedanceAdapter):
         if status in ("failed", "cancelled", "expired"):
             code = self._map(dig(data, "error", "code")) or E_UNAVAILABLE
             return PollResult(FAILED, error=AdapterError(code, self.message(dig(data, "error", "message") or status)))
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=status)
 
 
 # ── Alibaba Wan (Model Studio, international) ───────────────────────────────
@@ -1597,7 +1609,7 @@ class WanAdapter(HttpAdapter):
         if status in ("FAILED", "CANCELED", "UNKNOWN"):
             code = self._map(out.get("code")) or E_UNAVAILABLE
             return PollResult(FAILED, error=AdapterError(code, self.message(out.get("message") or status)))
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=status)
 
 
 # ── Black Forest Labs FLUX video ────────────────────────────────────────────
@@ -1658,7 +1670,7 @@ class FluxVideoAdapter(HttpAdapter):
             code = E_POLICY if "Moderated" in status else (
                 E_NOT_FOUND if status == "Task not found" else E_UNAVAILABLE)
             return PollResult(FAILED, error=AdapterError(code, f"job ended with status {status!r}"))
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=status)
 
 
 ADAPTERS = (VeoAdapter, KlingAdapter, MiniMaxVideoAdapter, RunwayAdapter, RunwayVideoUpscaleAdapter,

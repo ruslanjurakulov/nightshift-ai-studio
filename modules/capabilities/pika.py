@@ -334,7 +334,7 @@ class PikaVideoAdapter(SafeResultMixin, HttpAdapter):
         raw_status = data.get("status")
         status = raw_status.lower() if isinstance(raw_status, str) else None
         if status in _IN_FLIGHT:
-            return PollResult(PENDING)
+            return PollResult(PENDING, vendor_state=status)
         billing = data.get("billing") if isinstance(data.get("billing"), dict) else {}
         charge = billing.get("charge_micro_usd")
         charge = charge if isinstance(charge, int) and not isinstance(charge, bool) else None

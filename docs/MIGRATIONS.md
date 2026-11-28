@@ -3383,3 +3383,39 @@ database doors it used.
   The two rows now have no terms gate, so `--all` in the Probe models workflow includes them: one paid call each.
 - **Tests.** `tests/test_country_sale_allow_list_migration.py`, `tests/test_geoip_build.py` (`RegistryField`),
   `tests/test_google_requires_adult.py`, `tests/security/test_sec_country_sale_0238.py`, `tests/security/test_sec_country_block.py`.
+
+## A running take's vendor percent and status word, and the assembly's measured percent (0246)
+
+- **Why.** The live view showed a running take as "running" from its first poll to its last. Runway answers a progress
+  fraction (0..1, `docs.dev.runwayml.com/api`, read 2026-11-28) and every adapter parses its vendor's status word; both were
+  dropped in `modules/creative_adapters.py`. The assembly's ffmpeg was never asked how far it was.
+- **Columns.** `film_takes.progress` (a percent 0..100), `vendor_state` (one short lowercase word), `progress_at`;
+  `film_segments.assembly_progress` (0..100), `assembly_progress_at`. NULL is "not known", never 0. CHECKs hold the rule.
+- **Writers.** `film_take_progress(take, worker, progress, word)` and `film_segment_assembly_progress(segment, worker,
+  progress)`: SECURITY DEFINER, service_role only, and they write only for the worker that holds the segment (0171's
+  `film_heartbeat_segment` rule) while the take, or the assembly, runs; anything else answers false. A figure outside 0..100
+  (or NaN) is stored as NULL, never clamped; a word that is not `^[a-z][a-z0-9_]{0,31}$` is NULL (no prompt, error, task id or
+  money can pass). The worker writes a take at most once per 15 s (a new status word at once), the assembly once per 10 s
+  and a whole point (`TAKE_PROGRESS_SECONDS`, `ASSEMBLY_PROGRESS_SECONDS`, with the reasons beside them).
+- **The assembly's percent** is measured: each segment's seconds count when its ffmpeg finished, then the final pass's
+  `out_time_us` from ffmpeg's own `-progress` report, over twice the timeline's seconds (`render_backend.RenderProgress`).
+  A figure above 100 is not reported.
+- **Readers.** Members read the five columns through RLS (column grants to `authenticated`); `/api/films/[id]/live` returns
+  them with the person's own session, and the shape before 0246 when it is not applied.
+- **Lab.** `tests/security/test_sec_take_progress_0246_0248.py`. Unit: `tests/test_take_progress.py`.
+- **Requires** 0171. Replaces no body. **Undo.** `docs/sql/rollback_0246_film_take_progress.sql`.
+
+## How long a take of a model usually takes here (0248)
+
+- **What.** `film_take_typical_seconds(film)`: per model and capability (keyframe t2i, clip and extend i2v, narration tts),
+  the median seconds (`started_at` .. `finished_at`) of the film organization's last 20 completed takes, and n. The plan shows
+  "usually ~N s here (last n takes)" only with n of 3 or more; n is always returned so the caller decides. Failed takes, takes
+  that never started or ran 6 hours or more are left out.
+- **Who.** SECURITY DEFINER (`started_at` is not a member column), executable by `authenticated` only, and it answers only a
+  member of the film's organization; anyone else gets not_found whether or not the film exists. No id of a take, film,
+  organization or person is returned.
+- **Scope.** The caller's own organization only. The live creation plan says "from our own film_takes timings" and does not
+  settle whether one workspace's timings may inform another's: until Atlas does, nothing crosses an organization.
+- **Lab.** `tests/security/test_sec_take_progress_0246_0248.py` (n < 3 returned with n, another organization's takes never
+  counted, not_found for a non-member, no ids).
+- **Requires** 0166, 0171 and 0043. **Undo.** `docs/sql/rollback_0248_film_take_typical_seconds.sql`.

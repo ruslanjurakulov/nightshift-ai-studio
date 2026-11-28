@@ -124,7 +124,7 @@ class AsyncTranscriptionAdapter(HttpAdapter):
             raise AdapterError(E_BAD_RESPONSE, "poll: not an object")
         status = body.get("status")
         if status in ("queued", "processing"):
-            return PollResult(PENDING)
+            return PollResult(PENDING, vendor_state=status)
         if status == "completed":
             words = body.get("words")
             if words is None:

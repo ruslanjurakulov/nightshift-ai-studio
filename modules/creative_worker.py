@@ -375,6 +375,35 @@ class ProviderPoll:
     #: What the adapter says every output carries (Lyria: ``synthid``), added to each library row's provenance. Never overrides
     #: what the worker itself records (the job, the model, the rights).
     provenance: Mapping[str, Any] = field(default_factory=dict)
+    #: PENDING only: the vendor's own percent (0-100) and status word, already checked (vendor_percent, vendor_word). None is
+    #: "not known", never 0 (CLAUDE.md #5).
+    progress: Optional[float] = None
+    vendor_state: Optional[str] = None
+
+
+_VENDOR_WORD = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+
+
+def vendor_percent(value: Any) -> Optional[float]:
+    """A vendor's progress as a percent the platform may show: a real number in [0, 100], rounded to 0.01. Anything else
+    (missing, a bool, text, NaN, an infinity, -3, 140) is dropped, None, never clamped: an out-of-range figure is a figure
+    we do not understand, and showing 100 for it would be a guess."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    v = float(value)
+    if v != v or v < 0 or v > 100:
+        return None
+    return round(v, 2)
+
+
+def vendor_word(value: Any) -> Optional[str]:
+    """A vendor's status word as the platform may store and show it: one short lowercase word ("queued", "in_progress").
+    Spaces and dashes become underscores; anything longer or with other characters (a sentence, an id, an error text) is
+    dropped, None."""
+    if not isinstance(value, str):
+        return None
+    w = re.sub(r"[\s-]+", "_", value.strip().lower())
+    return w if _VENDOR_WORD.match(w) else None
 
 
 class CreativeAdapter(Protocol):

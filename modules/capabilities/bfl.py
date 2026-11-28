@@ -170,7 +170,7 @@ class Flux3ImageAdapter(SafeResultMixin, FluxAdapter):
             raise AdapterError(E_BAD_RESPONSE, f"the status answer has a status this adapter does not know "
                                                f"({self.message(status)!r})")
         if status in _PENDING:
-            return PollResult(PENDING)
+            return PollResult(PENDING, vendor_state=status)
         if status == "Ready":
             sample = dig(data, "result", "sample")
             if not isinstance(sample, str) or not sample:

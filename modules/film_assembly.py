@@ -51,6 +51,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -445,6 +446,11 @@ class AssemblyStore:
         return self._call("film_record_assembly", {"p_segment": segment_id, "p_worker": worker, "p_ok": bool(ok),
                                                    "p_result_asset": asset_id}) or {}
 
+    def assembly_progress(self, segment_id: str, worker: str, pct: Optional[float]) -> bool:
+        """0246: the running assembly's measured percent. False when it is not this worker's running assembly."""
+        return self._call("film_segment_assembly_progress", {"p_segment": segment_id, "p_worker": worker,
+                                                             "p_progress": pct}, missing_ok=True) is True
+
     def discard_unrecorded(self, segment_id: str, asset_id: str) -> int:
         return int(self._call("film_discard_unrecorded_assembly", {"p_segment": segment_id, "p_asset": asset_id}) or 0)
 
@@ -496,11 +502,44 @@ def probe_output(ffprobe: str, path: Path) -> Probed:
 
 
 def render_strict(norm, resolver, out: str, *, ffmpeg: str, workdir: str, jobs: int, timeout_s: float,
-                  timings: render_backend.RenderTimings) -> str:
+                  timings: render_backend.RenderTimings, progress: Optional[Callable[[float], None]] = None) -> str:
     """The editor's render (timeline_render.render) with its timings kept, so the caller can see which segment
-    encode was used: render_backend falls back to the compact one without raising (Lens L2)."""
+    encode was used: render_backend falls back to the compact one without raising (Lens L2). ``progress``: the render's
+    measured percent (render_backend.RenderProgress)."""
     spec = timeline_render.to_render_spec(norm, resolver, out)
-    return render_backend.render(spec, ffmpeg=ffmpeg, workdir=workdir, jobs=jobs, timeout_s=timeout_s, timings=timings)
+    return render_backend.render(spec, ffmpeg=ffmpeg, workdir=workdir, jobs=jobs, timeout_s=timeout_s, timings=timings,
+                                 progress=progress)
+
+
+#: The assembly's percent (0246's film_segment_assembly_progress) is written at most once per this many seconds, and only
+#: when it moved by a whole point. Why 10: a render of a few minutes reports a figure every second (ffmpeg -progress), the
+#: live view wants a moving bar, and one row update every 10 s is nothing next to the render itself.
+ASSEMBLY_PROGRESS_SECONDS = 10.0
+
+
+class AssemblyProgress:
+    """Throttles the render's percent into film_segment_assembly_progress. Reporting only: a failed write is logged by its
+    type and the render goes on; a database without 0246 (the function missing: None from a missing_ok call) is fine."""
+
+    def __init__(self, store: "AssemblyStore", segment_id: str, worker: str, *, clock: Callable[[], float] = time.monotonic,
+                 every: float = ASSEMBLY_PROGRESS_SECONDS):
+        self._store, self._seg, self._worker, self._clock, self._every = store, segment_id, worker, clock, float(every)
+        self._last: Optional[float] = None
+        self._at: Optional[float] = None
+        self._lock = threading.Lock()
+
+    def __call__(self, pct: float) -> None:
+        with self._lock:
+            now = self._clock()
+            if self._last is not None and (abs(pct - self._last) < 1.0 and pct < 100.0):
+                return
+            if self._at is not None and now - self._at < self._every and pct < 100.0:
+                return
+            self._at, self._last = now, pct
+        try:
+            self._store.assembly_progress(self._seg, self._worker, pct)
+        except Exception as e:  # noqa: BLE001 — reporting only
+            logger.warning("segment %s: assembly progress not recorded (%s)", self._seg, type(e).__name__)
 
 
 def _latest_completed(takes: Sequence[Mapping], kind: str) -> Optional[Mapping]:
@@ -815,7 +854,7 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
     budget = tl.render_timeout_s(cut.length_s)
     try:
         deps.render(norm, resolver, str(out), ffmpeg=tools.ffmpeg, workdir=str(work), jobs=1, timeout_s=budget,
-                    timings=timings)
+                    timings=timings, progress=AssemblyProgress(store, seg_id, worker))
     except render_backend.RenderTimeout:
         raise AssemblyFailed("render_timed_out", f"the render ran past its {budget:.0f} s limit: retry when the "
                              "server is less busy") from None
