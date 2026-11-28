@@ -3167,3 +3167,27 @@ found no non-member staff activity on any of these paths in production.
 - **Requires** 0215 (`is_org_spender`) and the files above.
 - **Undo.** `docs/sql/rollback_0226_org_spender_everywhere.sql` (owner-applied): the twenty-eight earlier bodies back, verbatim, with
   their grants. It adds nothing else, so nothing else is undone.
+
+## Film clip sound: refused until the cut keeps it (0236, provisional)
+
+0236 (`0236_film_clip_sound_gate.sql`) closes Breach BR-SG-01 (S1). On main, `modules/film_timeline.py` dropped a clip's own sound,
+while 0218's `film_price` sold the priced sound option (`clip_params.audio = true`: kling-v3, seedance-1.5-pro) at its with-sound
+rate: the person paid for sound the film never played.
+
+- **The switch**: `film_studio_settings.clip_sound_kept`, a new column on 0171's one-row switch table, boolean, **default false**.
+  No API role reads or writes the table (0171's grants, said again; RLS on). The owner writes it from the SQL editor.
+- **`film_price`** replaced on 0218's body (`3c22f87b…` -> `b873f893f3f185b3eab3698d349f3379`, white space folded) with one
+  six-line hunk, every line marked `-- 0236`: while the switch is off, each clip line of a scene asking for clip sound is
+  `clip_sound_not_kept` ("scene N: clip sound is not yet kept in the final film; turn the scene's sound option off"), unpriced, so
+  the total is NULL. quote_film, start_film and the resume paths inherit it, so the refusal is server-side on every path;
+  `/api/films/[id]/start` answers the same word, with its sentence in `lib/i18n/studio-timeline/{en,ru,uz}.ts`. `film_precheck`
+  is not replaced (start_film always reaches `film_price`).
+- **Owner step, in this order**: deploy the media worker carrying the S2 clip-sound fix (`CLIP_SOUND_IN_CUT = True` in
+  `modules/film_timeline.py`, `modules/film_mix.py`), then `update public.film_studio_settings set clip_sound_kept = true,
+  updated_at = now() where id;`. Turning it on earlier sells sound a running worker still drops.
+- **Overlap**: 0235 (unmerged) also replaces `film_price` on 0218's body. Whichever merges second rebases on the other (guard, end
+  state, rollback and the lab's take-off order).
+- **No backslash** in the file or its rollback: 0218's one backslash goes through `chr(92)`.
+- **Lab**: `tests/security/test_sec_film_clip_sound_0236.py`; `sec_db.take_off_0236` / `put_back_0236` ride on
+  `take_off_0218` / `put_back_0218` / `rollback_0218_if_on`.
+- Rollback: `docs/sql/rollback_0236_film_clip_sound_gate.sql` (0218's body back byte for byte, the column dropped).
