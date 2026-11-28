@@ -66,7 +66,7 @@ import { en } from "../lib/i18n/en";
 import { ru } from "../lib/i18n/ru";
 import { uz } from "../lib/i18n/uz";
 import { COMPOSER_CAPABILITIES, prefillFromQuery } from "../lib/creative/studio";
-import { CAPABILITIES } from "../lib/creative/registry";
+import { CAPABILITIES, coerceSellableModels } from "../lib/creative/registry";
 import { readCustomerModels, readOperatorModels, readPurchased } from "../lib/server/model-discovery";
 import { FAILED, supabaseStub, type StubResult } from "./helpers/supabaseStub";
 
@@ -346,6 +346,28 @@ describe("availability", () => {
     expect(fromAdminRow(admin({ availability: "hidden" }), null, p).state).toBe("unavailable");
     expect(fromAdminRow(admin({ entitlement: "models_image:premium" }), null, p).state).toBe("unavailable");
     expect(fromAdminRow(admin({ entitlement: "paid" }), null, p).state).toBe("plan_gated");
+  });
+
+  it("never offers a music model, though 0228 lets the database hold one (the rows sync dark: hidden, gated, unpriced)", () => {
+    // google-lyria-3.5 and sonilo-music now have registry rows. No screen may list them until a person opens one: music is not a
+    // capability any reader takes, so even a row that read beta (which 0035's terms CHECK refuses while terms_gate is set) is dropped.
+    expect(REGISTRY_CAPABILITIES as readonly string[]).not.toContain("music");
+    expect(CAPABILITIES as readonly string[]).not.toContain("music");
+    const song = { capabilities: ["music"], credit_unit: "model_google_lyria_3_5_request", spec: { ...videoSpec, terms_gate: null } };
+    expect(fromSellableRow(sellable({ id: "google-lyria-3.5", ...song }), null)).toBeNull();
+    expect(fromSellableRow(sellable({ id: "google-lyria-3.5", ...song, availability: "hidden" }), null)).toBeNull();
+    expect(coerceSellableModels([sellable({ id: "google-lyria-3.5", ...song })])).toEqual([]);
+    // The operator sees the synced row for what it is: not probed, gated, hidden, and with no tool to open.
+    const dark = fromAdminRow(
+      admin({ id: "google-lyria-3.5", capabilities: ["music"], availability: "hidden", verifiedAt: null, termsGate: "terms_review_required",
+        creditUnit: "model_google_lyria_3_5_request" }),
+      null,
+      {},
+    );
+    expect(dark.state).toBe("needs_probe");
+    expect(dark.capabilities).toEqual([]);
+    expect(dark.reasons.map((r) => r.kind)).toEqual(expect.arrayContaining(["not_verified", "terms_gate", "hidden"]));
+    expect(linksFor(dark)).toEqual([]);
   });
 
   it("calls a model unpriced only when the list was read and holds no positive rate for it", () => {

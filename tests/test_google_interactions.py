@@ -162,22 +162,29 @@ class RegistryEntryTests(unittest.TestCase):
         self.assertIn("video.gemini_omni", ADAPTERS)
         self.assertIn("image.gemini_interactions", ADAPTERS)
 
-    def test_neither_can_be_sold_or_reach_the_api_until_the_owners_lawyer_has_read_googles_terms(self):
+    def test_neither_can_reach_the_api_and_omni_stays_gated_until_googles_terms_are_cleared(self):
+        # 2026-11-28: the owner cleared the 18+ and consumer-use clauses for NB (its terms_notes, migration 0238); OMNI keeps its gate.
+        # The sublicensing clause (§4(a)) stays open for both, so neither reaches the API or MCP.
         for mid in (OMNI, NB):
             e = self.r[mid]
-            self.assertEqual(e.terms_gate, "terms_review_required", mid)
             self.assertEqual(e.api_exposure, "web_only", mid)
             notes = " ".join(e.raw["terms_notes"])
             for needle in ("18+", "likely to be accessed by people under 18", "not for consumer use", "§4(a)",
                            "sublicensing an API", "lawyer", "Gate stays open"):
                 self.assertIn(needle, notes, f"{mid}: {needle}")
+        self.assertEqual(self.r[OMNI].terms_gate, "terms_review_required")
+        self.assertIsNone(self.r[NB].terms_gate)
+        nb = " ".join(self.r[NB].raw["terms_notes"])
+        for needle in ("Owner decision 2026-11-28", "Europe included", "Still OPEN after 2026-11-28", "§17.a", "§4(a)"):
+            self.assertIn(needle, nb, needle)
 
     def test_the_gate_and_the_web_only_flag_reach_the_database_row(self):
         # sellable_models() (migration 0035) refuses any row whose spec.terms_gate is non-empty, and hides
         # api_exposure web_only models from the API and MCP surfaces.
         rows = {row["id"]: row for row in reg.sync_rows(list(self.r.values()))}
+        self.assertEqual(rows[OMNI]["spec"]["terms_gate"], "terms_review_required")
+        self.assertIsNone(rows[NB]["spec"]["terms_gate"])            # cleared 2026-11-28; 0142/0238 and availability keep it hidden
         for mid in (OMNI, NB):
-            self.assertEqual(rows[mid]["spec"]["terms_gate"], "terms_review_required", mid)
             self.assertEqual(rows[mid]["spec"]["api_exposure"], "web_only", mid)
 
     def test_no_migration_or_price_file_prices_them(self):
@@ -999,16 +1006,17 @@ class DownloadHeaderHostTests(unittest.TestCase):
 # ── probes: dark means never reached by --all ──────────────────────────────────────────
 
 class ProbeTests(unittest.TestCase):
-    def test_all_leaves_both_out_and_a_named_one_comes_back(self):
+    def test_all_leaves_omni_out_takes_nb_since_its_terms_were_cleared_and_a_named_one_comes_back(self):
         from tools import probe_models
 
         entries = list(reg.registry().values())
         chosen = {e.id for e in probe_models.select(entries, [], None, True)}
-        self.assertFalse(chosen & {OMNI, NB})
+        self.assertNotIn(OMNI, chosen)
+        self.assertIn(NB, chosen)                                    # ungated since 2026-11-28: one real, paid call under --all
         for mid in (OMNI, NB):
             self.assertIn(mid, {e.id for e in probe_models.select(entries, [mid], None, True)})
         for cap in ("t2v", "i2v", "t2i", "edit"):
-            self.assertFalse({e.id for e in probe_models.select(entries, [], cap, True)} & {OMNI, NB}, cap)
+            self.assertNotIn(OMNI, {e.id for e in probe_models.select(entries, [], cap, True)}, cap)
 
 
 if __name__ == "__main__":

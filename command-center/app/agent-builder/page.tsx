@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AgentBuilder, type ProviderPreviews } from "@/components/agent-builder/AgentBuilder";
 import { planProviderSelection } from "@/lib/agent-providers";
 import { guardOperatorPage } from "@/lib/auth/org-roles";
+import { getDictionary } from "@/lib/i18n/server";
 
 export const metadata: Metadata = {
   title: "Agent Node Builder — Nightshift Preview",
@@ -25,5 +26,8 @@ export default async function AgentBuilderPage() {
     ideogram: planProviderSelection({ provider: "ideogram", capability: "vector" }),
     byteplus: planProviderSelection({ provider: "byteplus", capability: "video" }),
   };
-  return <AgentBuilder providerPreviews={providerPreviews} />;
+  // The canvas's words, in the visitor's language. Handed over as a prop: this page sits outside the app's I18nProvider, and the
+  // full dictionaries must not reach a page's client bundle (scripts/public-bundle-check.mjs).
+  const { t } = await getDictionary();
+  return <AgentBuilder providerPreviews={providerPreviews} copy={t.agentBuilder} />;
 }

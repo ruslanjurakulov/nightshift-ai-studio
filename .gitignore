@@ -42,6 +42,9 @@
 # The Studio's effects (docs/EFFECTS.md): ids, English prompts, model ids, shapes and colours, no credentials.
 # Without this line the blanket rule hides it and the build ships no catalog (command-center/tests/effects-catalog.test.ts checks it).
 !command-center/lib/effects/effects.json
+# Which capabilities each model's adapter sends reference pictures on (model ids and capability names, no credentials), written by
+# tools/ref_capabilities_twin.py; without this line the build has no gate facts (tests/test_ref_capabilities_twin.py checks it).
+!command-center/lib/brain/ref-capabilities.json
 # The labelled claims tools/factcheck_calibration.py measures the fact-checker against: public history, no credentials.
 # Without this line the blanket rule above hides the file and CI fails the calibration tests
 # (tests/test_factcheck_calibration.py checks it is not ignored).
