@@ -680,6 +680,41 @@ def put_back_0230(conn_or_session) -> None:
         conn.execute(MIGRATION_0230.read_text(encoding="utf-8"))
 
 
+MIGRATION_0234 = MIGRATIONS / "0234_agent_drafts_operator_only.sql"
+ROLLBACK_0234 = REPO / "docs" / "sql" / "rollback_0234_agent_drafts_operator_only.sql"
+#: md5 (white space folded) of save_agent_workflow_draft: 0130's body (rollback_0130 pins it), and 0234's operator check on it.
+AGENT_SAVE_0130 = "7fe9d1359748e6e311f95678843a6b2e"
+AGENT_SAVE_0234 = "3ec1e1922060eb771bf57be879d5bfb2"
+AGENT_DELETE_0234 = "2f7e029a513675feeed6aded38622c63"
+
+
+def has_0234(conn_or_session) -> bool:
+    """0234 replaces both draft functions in one transaction, so the save's body is enough to tell."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return _md5_of(conn, "public.save_agent_workflow_draft(uuid, integer, jsonb)") == AGENT_SAVE_0234
+
+
+def rollback_0234_body() -> str:
+    """0234's rollback without its own begin / commit, to run inside a test's transaction."""
+    text = ROLLBACK_0234.read_text(encoding="utf-8")
+    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+
+
+def take_off_0234(conn_or_session) -> None:
+    """0234 replaces 0130's two draft functions, and rollback_0130 refuses any body but 0130's. A test that applies rollback_0130 (or
+    replays 0130) on a database that has 0234 takes 0234 off first with its own rollback, and puts it back with put_back_0234."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0234(conn):
+        conn.execute(rollback_0234_body())
+
+
+def put_back_0234(conn_or_session) -> None:
+    """0234 again where 0130's save body is live (a replay of 0130 puts 0130's bodies back over 0234's)."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if _md5_of(conn, "public.save_agent_workflow_draft(uuid, integer, jsonb)") == AGENT_SAVE_0130:
+        conn.execute(MIGRATION_0234.read_text(encoding="utf-8"))
+
+
 def rollback_0159_body() -> str:
     """0159's rollback without its own begin / commit, to run inside a test's transaction (or as one statement on a scratch database).
     0208 sits on 0159's creative_price, so its rollback runs first: on a database without 0208 it finds the earlier bodies, puts the

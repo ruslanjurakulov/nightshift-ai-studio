@@ -7,8 +7,9 @@ import type { OrgContext } from "../lib/orgs-server";
  *
  * The real guards run here (guardOperatorPage, requireOperator, the same ones the Providers page and the operator API routes use);
  * only the session, the organization lookup and the database underneath are faked. What would break without these: a customer
- * seeing the builder or reaching a draft route; a signed-out visitor no longer sent to /login; and an operator opening the draft
- * routes while NIGHTSHIFT_AGENT_DRAFTS_ENABLED is off (the switch is a second lock, not replaced by the role).
+ * seeing the builder or reaching a draft route; a customer telling the switch's state from the answer (the role is asked first, so
+ * every non-operator gets the same 403 whatever NIGHTSHIFT_AGENT_DRAFTS_ENABLED says); a signed-out visitor no longer sent to
+ * /login; and an operator opening the draft routes while the switch is off (it is a second lock, not replaced by the role).
  */
 
 vi.mock("server-only", () => ({}));
@@ -157,7 +158,23 @@ describe("the draft routes", () => {
     expect(state.draftCalls).toEqual([]);
   });
 
-  it("signed out: 401 unauthorized from every route", async () => {
+  it.each(["on", "off", ""])("a customer gets the same 403 with the switch %j: the answer does not tell whether it is on", async (flag) => {
+    customer();
+    vi.stubEnv("NIGHTSHIFT_AGENT_DRAFTS_ENABLED", flag);
+    for (const res of await Promise.all(routes())) {
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "forbidden" });
+    }
+    expect(state.draftCalls).toEqual([]);
+  });
+
+  it("signed out: 401 unauthorized from every route, switch on or off", async () => {
+    vi.stubEnv("NIGHTSHIFT_AGENT_DRAFTS_ENABLED", "off");
+    for (const res of await Promise.all(routes())) {
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: "unauthorized" });
+    }
+    vi.stubEnv("NIGHTSHIFT_AGENT_DRAFTS_ENABLED", "on");
     for (const res of await Promise.all(routes())) {
       expect(res.status).toBe(401);
       expect(await res.json()).toEqual({ error: "unauthorized" });

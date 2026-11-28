@@ -12,9 +12,9 @@ type Params = { params: Promise<{ id: string }> };
 function json(body: unknown, status: number) {
   return NextResponse.json(body, { status, headers: NO_STORE });
 }
-/** The switch is off: the same 404 as a route that does not exist, before the session is read. */
+/** The switch is off: the same 404 as a route that does not exist, before the drafts or the database are touched. */
 const disabled = () => json({ error: "not_found" }, 404);
-/** Operators only until launch, after the switch and before anything else (the list route says why). */
+/** Operators only until launch, asked before the switch and everything else (the list route says why). */
 async function operatorRefusal() {
   const access = await requireOperator();
   return access.ok ? null : json({ error: access.error }, access.status);
@@ -32,9 +32,9 @@ async function session() {
  * cross-user IDs are indistinguishable from missing IDs, and so is a version the database pruned.
  */
 export async function GET(request: Request, { params }: Params) {
-  if (!agentDraftsEnabled()) return disabled();
   const refused = await operatorRefusal();
   if (refused) return refused;
+  if (!agentDraftsEnabled()) return disabled();
   const { id } = await params;
   if (!DRAFT_ID.test(id)) return json({ error: "invalid_id" }, 400);
   const db = await session();
@@ -59,9 +59,9 @@ export async function GET(request: Request, { params }: Params) {
 
 /** The owner deletes one plan and every version of it (delete_agent_workflow_draft, 0130). Another person's id is not_found. */
 export const DELETE = requireSameOrigin(async function DELETE(_request: Request, { params }: Params) {
-  if (!agentDraftsEnabled()) return disabled();
   const refused = await operatorRefusal();
   if (refused) return refused;
+  if (!agentDraftsEnabled()) return disabled();
   const { id } = await params;
   if (!DRAFT_ID.test(id)) return json({ error: "invalid_id" }, 400);
   const db = await session();

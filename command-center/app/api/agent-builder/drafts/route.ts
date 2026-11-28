@@ -22,12 +22,13 @@ async function session() {
 function response(body: unknown, status: number) {
   return NextResponse.json(body, { status, headers });
 }
-/** The switch is off: the same 404 as a route that does not exist, before the session is read. */
+/** The switch is off: the same 404 as a route that does not exist, before the drafts or the database are touched. */
 const disabled = () => response({ error: "not_found" }, 404);
 /**
- * Operators only until launch, like the /agent-builder page. Asked after the switch, so an operator alone never opens the routes
- * while it is off; asked before anything else, so a customer learns nothing about drafts, ids or bodies. The refusal is
- * requireOperator's own (401 signed out, 403 a customer), the answer every operator-only route gives.
+ * Operators only until launch, like the /agent-builder page (and the database, migration 0234). Asked FIRST, before the switch:
+ * asked after it, a customer told 404 from 403 and so learned whether the switch was on (Breach, PR #960). Now every non-operator
+ * gets requireOperator's own answer (401 signed out, 403 a customer) whatever the switch, ids or bodies say. The switch is still a
+ * second lock: an operator gets the 404 while it is off.
  */
 async function operatorRefusal() {
   const access = await requireOperator();
@@ -36,9 +37,9 @@ async function operatorRefusal() {
 
 /** List ONLY the signed-in author's own draft metadata via owner-id RLS. */
 export async function GET() {
-  if (!agentDraftsEnabled()) return disabled();
   const refused = await operatorRefusal();
   if (refused) return refused;
+  if (!agentDraftsEnabled()) return disabled();
   const db = await session();
   if (!db) return response({ error: "unauthorized" }, 401);
   const { data, error } = await db.from("agent_workflow_drafts")
@@ -50,9 +51,9 @@ export async function GET() {
 
 /** Saves a validated client-side plan atomically; never runs a model. */
 export const POST = requireSameOrigin(async function POST(req: NextRequest) {
-  if (!agentDraftsEnabled()) return disabled();
   const refused = await operatorRefusal();
   if (refused) return refused;
+  if (!agentDraftsEnabled()) return disabled();
   const db = await session();
   if (!db) return response({ error: "unauthorized" }, 401);
   const parsed = await readJsonBodyCapped(req, BODY_LIMIT);
