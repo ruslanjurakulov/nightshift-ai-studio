@@ -157,3 +157,36 @@ describe("a long sheet opens at the top", () => {
     expect(dlg.className).toContain("max-h-");
   });
 });
+
+describe("on the shared Radix Dialog (S5 dialogs 2/2)", () => {
+  it("while the work runs, neither Escape nor a press outside closes it or answers no", async () => {
+    // What would break: Radix dismisses on Escape and on an outside press; without the lock check a person could close
+    // the sheet while money moves, and the caller would hear "no" for work that may still succeed.
+    let finish: (v: boolean) => void = () => {};
+    const run = vi.fn(() => new Promise<boolean>((r) => (finish = r)));
+    const done = await open({ title: "t", message: "m", confirmLabel: "Go", run });
+    const sheet = screen.getByRole("alertdialog");
+    await act(async () => {
+      within(sheet).getByRole("button", { name: "Go" }).click();
+    });
+    const esc = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    await act(async () => {
+      document.activeElement!.dispatchEvent(esc);
+      fireEvent.pointerDown(document.body);
+    });
+    expect(screen.getByRole("alertdialog")).toBe(sheet);
+    expect(done).not.toHaveBeenCalled();
+    // The Escape was still spent here: a page-level Escape handler (SectionShell) sees it as handled.
+    expect(esc.defaultPrevented).toBe(true);
+    await act(async () => finish(true));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(done).toHaveBeenCalledWith(true);
+  });
+
+  it("is an alertdialog named by its title and described by its message, with no extra close key", async () => {
+    await open({ title: "Remove ana@x.uz?", message: "She loses access.", confirmLabel: "Remove" });
+    const sheet = screen.getByRole("alertdialog", { name: "Remove ana@x.uz?" });
+    expect(document.getElementById(sheet.getAttribute("aria-describedby")!)?.textContent).toBe("She loses access.");
+    expect(within(sheet).getAllByRole("button").map((b) => b.textContent)).toEqual([en.ux.confirmCancel, "Remove"]);
+  });
+});
