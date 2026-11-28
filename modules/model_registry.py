@@ -35,6 +35,7 @@ from modules.capabilities import ADAPTERS
 from modules.capabilities.base import (
     CAPTIONS,
     DESCRIBE,
+    MUSIC,
     DUB,
     ERASE,
     EXPAND,
@@ -560,6 +561,11 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
         if VIDEO_MUSIC in caps and not m["limits"].get("max_source_seconds"):
             # The vendor bills the video's seconds: without a documented longest input a length it refuses would be sold.
             errors.append(_err(mid, "video_music needs limits.max_source_seconds"))
+        if m["pricing"]["unit"] == "request" and not set(caps) <= {MUSIC, DESCRIBE}:
+            # BR-0228-01/02: 0228 quotes a per-request MUSIC model for one request, and every other capability by its own quantity
+            # (a region edit by its regions, a video op by its source's seconds). A per-request price on any other capability would
+            # be multiplied by that quantity, or by none: refused here until a migration says how such a model is quoted.
+            errors.append(_err(mid, "pricing.unit request is for music and describe models only"))
         if REGISTRY_ONLY_CAPABILITIES & set(caps):
             # The database's capability lists (0100) do not hold these. The entry is left out of the sync, so it must be
             # dark by its own fields too, and must not carry a capability the sync would then silently drop with it.

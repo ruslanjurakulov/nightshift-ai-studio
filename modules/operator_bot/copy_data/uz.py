@@ -540,4 +540,22 @@ TABLE = {
     "film.sweep_unreadable": "Film tozalashi: nomaʼlum (holat kechikkanmi yoki yoʻqmi, aytmadi)",
     "film.sweep_overdue": "Film tozalashi: <b>KECHIKDI</b> — {last}",
     "film.sweep_ok": "Film tozalashi: oʻz vaqtida — {last}",
+
+    # -- film spend watch (the hard cap of a paid test film) ----------------
+    "alert.film_spend_warn": "Film {film} — tashkilot {org}: provayderlarda hozircha USD {usd}, {basis}. Bu USD {warn} ogohlantirish chegarasidan past emas (toʻxtatish chegarasi USD {stop}). Har bir dubldan keyin tekshiring: python tools/film_spend.py --film &lt;film id&gt;.",
+    "alert.film_spend_stop": "Film {film} — tashkilot {org}: provayderlarda USD {usd}, {basis}. Bu USD {stop} TOʻXTATISH chegarasidan past emas. Filmni hozir qoʻlda toʻxtating (yoʻriqnomaning 6-qadami, docs/studio/S2_LIVE_TEST.md), eng yumshogʻidan boshlab: 1) ish maydoni kalitini oʻchiring, set_org_film_studio_enabled(&lt;org&gt;, false); 2) segmentni bekor qiling, film_cancel_segment(&lt;segment&gt;, cancelled); 3) ishchini oʻchiring, NIGHTSHIFT_FILM_WORKER boʻsh, soʻng qayta deploy. Nomaʼlum qatorlar hisobga olinmagan: provayderlarning toʻlov sahifalarini tekshiring.",
+    "alert.film_spend_unrecorded": "Film {film} — tashkilot {org}: {n} ta provayder qatorida dollar summasi yoʻq (narx qatori yoʻq tugagan dubl, miqdori yoʻq qator yoki reyestrda narxi yoʻq model). Ular uchun USD {warn} / {stop} chegaralarini kuzatib boʻlmaydi. Hozircha maʼlum: USD {usd}, {basis}. Provayderlarning toʻlov sahifalarini tekshiring.",
+    "film.spend_estimated": "taxminiy (reyestrdagi narx)",
+    "film.spend_estimated_highest": "taxminiy (eng qimmat variant)",
+    "film.spend_estimated_mixed": "taxminiy (reyestrdagi narx; narxi variantga bogʻliq joyda eng qimmat variant)",
+    "film.spend_recorded": "yozilgan",
+    "film.spend_nothing_known": "hali birorta dollar summasi maʼlum emas",
+    "film.spend_unknown_lines": ", yana {n} ta nomaʼlum qator, hisobga olinmagan",
+    "film.spend": "Film xarajatlari (oxirgi 24 soat): {n} ta film; eng kattasi {film}: USD {usd}, {basis}; jami nomaʼlum qatorlar {unknown}; chegaralar: ogohlantirish USD {warn}, toʻxtatish USD {stop}{cut}",
+    "film.spend_none": "Film xarajatlari (oxirgi 24 soat): ochiq yoki yaqinda yopilgan segmentli film yoʻq; chegaralar: ogohlantirish USD {warn}, toʻxtatish USD {stop}",
+    "film.spend_unknown": "Film xarajatlari: {why}",
+    "film.spend_refused": "Film xarajatlari kuzatuvi: RAD ETILDI, {variable} {why}. Oʻzgaruvchini tuzating: shungacha ogohlantirishlar oʻtishi ishga tushmaydi.",
+    "film.spend_reason.not_usd": "AQSh dollaridagi summa emas (6 yoki 6.50 kabi yozing)",
+    "film.spend_reason.not_positive": "0 dan katta boʻlishi kerak",
+    "film.spend_reason.not_below_stop": "NIGHTSHIFT_FILM_SPEND_STOP_USD dan kichik boʻlishi kerak",
 }

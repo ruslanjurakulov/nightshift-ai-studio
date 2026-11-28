@@ -7,8 +7,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
-import { PROVIDERS } from "@/lib/providers";
-import { IMAGE_GENERATORS, imageGeneratorById } from "@/lib/imageProviders";
+import type { RoutingDefaults, RoutingOption, RoutingVariables } from "@/lib/provider-types";
 
 /**
  * Pipeline routing — choose which generator the pipeline actually uses.
@@ -39,15 +38,6 @@ import { IMAGE_GENERATORS, imageGeneratorById } from "@/lib/imageProviders";
 const TRUTHY = new Set(["1", "true", "yes", "on"]);
 const truthy = (v: string | undefined) => !!v && TRUTHY.has(v.trim().toLowerCase());
 
-const VIDEO_PROVIDERS = PROVIDERS.filter((p) => p.category === "video");
-// Pexels is the stock fallback ("off"), not a generator option. Two generators
-// reuse an LLM key (OpenAI, Gemini), so they come from their own list.
-const IMAGE_PROVIDERS = IMAGE_GENERATORS;
-
-function secretFor(id: string): string | undefined {
-  return PROVIDERS.find((p) => p.id === id)?.secretName;
-}
-
 type Vars = Record<string, string>;
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -55,30 +45,45 @@ export function PipelineRouting({
   initial,
   configured,
   githubConfigured,
+  defaults,
+  vars,
+  videoProviders,
+  imageGenerators,
 }: {
+  /** The video generators (lib/providers.ts, server-only), from the page: the vendor list is not in a static chunk. */
+  videoProviders: RoutingOption[];
+  /** The image generators (lib/imageProviders.ts, server-only). Pexels is the stock fallback ("off"), not one of them;
+   *  two of them reuse an LLM key (OpenAI, Gemini), which is why they are their own list. */
+  imageGenerators: RoutingOption[];
   /** Current values of the routing variables, name→value (absent = default). */
   initial: Vars;
   /** Secret names GitHub reports as set — used to warn when a key is missing. */
   configured: string[];
   githubConfigured: boolean;
+  /** The pipeline's defaults (config.py), from the server: a vendor id here would ship in this page's static chunk. */
+  defaults: RoutingDefaults;
+  /** The routing variables' names, from the server (lib/server/pipeline-options.ts): one of them names the b-roll vendor. */
+  vars: RoutingVariables;
 }) {
   const { t } = useI18n();
   const configuredSet = useMemo(() => new Set(configured), [configured]);
+  const secretFor = (id: string) => videoProviders.find((p) => p.id === id)?.secretName;
+  const imageGeneratorById = (id: string) => imageGenerators.find((g) => g.id === id);
 
   // Derive the current selection from the raw variables, mirroring config.py.
   const initialVideo = (() => {
-    const vp = (initial.CHRONOS_VIDEO_PROVIDER || "minimax").toLowerCase();
-    if (truthy(initial.CHRONOS_ENABLE_VIDEO_GEN) && vp !== "minimax") return vp;
-    if (truthy(initial.CHRONOS_ENABLE_MINIMAX_BROLL)) return "minimax";
+    const vp = (initial[vars.videoProvider] || defaults.video).toLowerCase();
+    if (truthy(initial[vars.videoGen]) && vp !== defaults.broll) return vp;
+    if (truthy(initial[vars.broll])) return defaults.broll;
     return "off";
   })();
-  const initialImage = truthy(initial.CHRONOS_ENABLE_IMAGE_GEN)
-    ? (initial.CHRONOS_IMAGE_PROVIDER || "leonardo").toLowerCase()
+  const initialImage = truthy(initial[vars.imageGen])
+    ? (initial[vars.imageProvider] || defaults.image).toLowerCase()
     : "off";
 
   const [video, setVideo] = useState(initialVideo);
   const [image, setImage] = useState(initialImage);
-  const [autopilot, setAutopilot] = useState(truthy(initial.CHRONOS_AGENT_AUTOPILOT));
+  const [autopilot, setAutopilot] = useState(truthy(initial[vars.autopilot]));
   const [state, setState] = useState<SaveState>("idle");
   const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
   const toast = useToast();
@@ -108,14 +113,14 @@ export function PipelineRouting({
 
   const videoVars = (id: string): Vars =>
     id === "off"
-      ? { CHRONOS_ENABLE_VIDEO_GEN: "0", CHRONOS_ENABLE_MINIMAX_BROLL: "0" }
-      : id === "minimax"
-        ? { CHRONOS_VIDEO_PROVIDER: "minimax", CHRONOS_ENABLE_MINIMAX_BROLL: "1", CHRONOS_ENABLE_VIDEO_GEN: "0" }
-        : { CHRONOS_VIDEO_PROVIDER: id, CHRONOS_ENABLE_VIDEO_GEN: "1", CHRONOS_ENABLE_MINIMAX_BROLL: "0" };
+      ? { [vars.videoGen]: "0", [vars.broll]: "0" }
+      : id === defaults.broll
+        ? { [vars.videoProvider]: defaults.broll, [vars.broll]: "1", [vars.videoGen]: "0" }
+        : { [vars.videoProvider]: id, [vars.videoGen]: "1", [vars.broll]: "0" };
   const imageVars = (id: string): Vars =>
-    id === "off" ? { CHRONOS_ENABLE_IMAGE_GEN: "0" } : { CHRONOS_IMAGE_PROVIDER: id, CHRONOS_ENABLE_IMAGE_GEN: "1" };
+    id === "off" ? { [vars.imageGen]: "0" } : { [vars.imageProvider]: id, [vars.imageGen]: "1" };
 
-  const videoName = (id: string) => (id === "off" ? t.providers.routingStock : (VIDEO_PROVIDERS.find((p) => p.id === id)?.name ?? id));
+  const videoName = (id: string) => (id === "off" ? t.providers.routingStock : (videoProviders.find((p) => p.id === id)?.name ?? id));
   const imageName = (id: string) => (id === "off" ? t.providers.routingStock : (imageGeneratorById(id)?.name ?? id));
 
   /** One change at a time; the lock is set before the first await, so a second tap is ignored. */
@@ -156,14 +161,14 @@ export function PipelineRouting({
         confirmLabel: t.ownerSafety.routeAutopilotConfirm,
         tone: "primary",
         successMessage: t.providers.routingSaved,
-        run: async () => (await save({ CHRONOS_AGENT_AUTOPILOT: "1" })) ?? true,
+        run: async () => (await save({ [vars.autopilot]: "1" })) ?? true,
       });
       lock.current = false;
       if (ok) setAutopilot(true);
       return;
     }
     // Turning it off is the safe direction: no sheet, but the switch moves only once the save landed.
-    const problem = await save({ CHRONOS_AGENT_AUTOPILOT: "0" });
+    const problem = await save({ [vars.autopilot]: "0" });
     lock.current = false;
     if (problem) {
       toast.error(`${problem} ${t.ownerSafety.routeNotSaved}`, { title: t.providers.routingTitle });
@@ -213,7 +218,7 @@ export function PipelineRouting({
             className={selectCls}
           >
             <option value="off">{t.providers.routingStock}</option>
-            {VIDEO_PROVIDERS.map((p) => (
+            {videoProviders.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
@@ -237,7 +242,7 @@ export function PipelineRouting({
             className={selectCls}
           >
             <option value="off">{t.providers.routingStock}</option>
-            {IMAGE_PROVIDERS.map((p) => (
+            {imageGenerators.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
