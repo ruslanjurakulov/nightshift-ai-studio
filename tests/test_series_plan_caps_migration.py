@@ -193,8 +193,8 @@ class Numbering(unittest.TestCase):
         # 0230 replaces only 0208's creative_jobs_geo_gate (the allow-list read), outside these pins.
         # 0238 (0142's CHECK on model_registry narrowed: a country-listed row may go on sale with an allow-list, once 0230's
         # gate is live; no function, policy, grant or row) was reviewed the same way: it names nothing these pin.
-        # 0250 (sellable_models knows music: 0192's body with `music` appended to its list of known capabilities; no table, grant or
-        # row) was reviewed the same way: it names nothing these pin.
+        # 0250 (music in the job path: 0192's sellable_models with `music` known and web-only off the web, and 0188's
+        # api_creative_model_ok excluding music like captions; no table, grant or row) was reviewed the same way: it names nothing these pin.
         # 0233 (nobody changes the platform roster from a browser: EXECUTE on 0107's three roster functions and INSERT, UPDATE, DELETE
         # on app_members revoked from the API roles; no body, table or policy) was reviewed the same way: it names nothing these pin.
         reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194", "0195", "0196", "0197", "0198", "0199", "0200", "0201", "0202", "0203", "0204", "0205", "0208", "0209", "0222", "0212", "0215", "0218", "0219", "0225", "0214", "0211", "0227", "0230", "0224", "0232", "0231", "0233", "0228", "0234", "0238", "0250")

@@ -12,6 +12,12 @@
 --   0250's nor 0188's (a later file changed it: take that out first). 1. REFUSES, naming them, while any music model is beta or ga:
 --   with it on sale, the rollback would bring back the dead end above (routed quotes find nothing, the worker's failover raises
 --   22023). Take them off sale (availability hidden) first. 2. Puts both earlier bodies back. 3. Asserts the end state.
+-- EMERGENCY PROCEDURE, in this order and never the other way round (Atlas, 28 Nov):
+--   1. Take every music model off sale: update public.model_registry set availability = 'hidden' where 'music' = any (capabilities).
+--      One update; it stops new money at once (no quote, no hold, no new job), while the jobs already running finish.
+--   2. Then run this file. There is deliberately no force switch: a force is what gets used in a hurry.
+--   The NOTICE this file prints lists the routed music jobs still in flight: after the revert their worker failover raises 22023, so
+--   let them finish (or cancel them, which refunds) before relying on the revert.
 -- No backslash anywhere in this file (0219's header); the pattern is written [-][-] so that no literal holds two dashes in a row.
 
 begin;
@@ -21,6 +27,7 @@ do $$
 declare
   h text;
   onsale text;
+  inflight text;
 begin
   select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p
    where p.oid = to_regprocedure('public.sellable_models(text, text)');
@@ -34,6 +41,13 @@ begin
   end if;
   select string_agg(id || ' (' || availability || ')', ', ' order by id) into onsale
     from public.model_registry where 'music' = any (capabilities) and availability in ('beta', 'ga');
+  select string_agg(j.id::text || ' (' || j.mode || ', ' || j.status || ')', ', ' order by j.created_at) into inflight
+    from public.creative_jobs j
+   where j.capability = 'music' and j.mode <> 'exact'
+     and j.status in ('queued', 'running', 'provider_pending', 'processing', 'rendering');
+  if inflight is not null then
+    raise notice 'rollback 0250: routed music jobs still in flight (their worker failover raises 22023 once 0250 is out): %', inflight;
+  end if;
   if onsale is not null then
     raise exception 'rollback 0250: these music models are on sale, and without 0250 routing finds none of them and a failover raises 22023: %. Take them off sale (availability hidden) first', onsale;
   end if;

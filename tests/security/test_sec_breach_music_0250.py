@@ -439,13 +439,11 @@ def test_the_guard_ignores_comments_only(db):
 
 
 def test_the_api_never_sells_music_whatever_api_exposure_says(db):
-    """FAILING ON PURPOSE (a hole). API_CREATIVE_CAPABILITIES (command-center/lib/api/operations.ts) says music is 'never on the API',
-    and 0250's header files api_creative_models' exclusion under 'must stay so'. But quoteCreative / createCreative do not check that
-    list, and api_creative_quote / _create ask only api_creative_model_ok -> sellable_models(cap, 'api'), whose surface rule reads
-    the row's api_exposure with a default of 'any'. Before 0250 the 22023 kept every music row off the API; after it, a music row
-    that is not marked web_only (absent counts as 'any'; nothing in modules/model_registry.py requires web_only for music) is quoted,
-    held and queued for an API key. The fix belongs in the database (music refused on the 'api' surface, as captions are), not in
-    each row's data."""
+    """BR-S6-06 regression pin (Breach found it red on 0250's first body; fixed in the same PR). A music row whose api_exposure is
+    'any' (or absent, which reads as 'any') must never be listed, quoted, held or queued for an API key. Held in the database:
+    sellable_models refuses music on every surface but 'web', as it does captions, and api_creative_model_ok excludes it. Held
+    again in modules/model_registry.py (a music entry needs api_exposure exactly web_only) and in lib/api/operations.ts (quote and
+    create refuse a capability outside API_CREATIVE_CAPABILITIES before the database)."""
     seen = []
     with psycopg.connect(db.dsn, autocommit=False) as c:
         for exp in ("any", None):
@@ -473,8 +471,8 @@ def test_the_api_never_sells_music_whatever_api_exposure_says(db):
 
 
 def test_the_api_router_never_picks_music(db):
-    """FAILING ON PURPOSE (the same hole through the routed door: api_creative_quote(..., p_mode) -> creative_route_quote(..., 'api')
-    -> route_model -> sellable_models('music', 'api'))."""
+    """BR-S6-06 regression pin, the routed door: api_creative_quote(..., p_mode) -> creative_route_quote(..., 'api') -> route_model
+    -> sellable_models('music', 'api') must find no music model."""
     with psycopg.connect(db.dsn, autocommit=False) as c:
         c.execute("update public.model_registry set availability = 'beta' where id = %s", [API_SONG])
         become(c, "anon")

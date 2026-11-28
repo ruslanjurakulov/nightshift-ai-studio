@@ -354,6 +354,22 @@ def test_the_rollback_refuses_while_a_music_model_is_on_sale(db):
         assert prosrc(c) == live and sec_db.has_0250(c)
 
 
+def test_the_rollback_names_routed_music_jobs_still_in_flight(db):
+    """The emergency order is: hide music, then revert (no force switch). A routed music job already running would hit the 22023 in
+    its failover after the revert, so the rollback names it in a NOTICE instead of letting it fail unannounced."""
+    jid = routed_job(db, "m250-w5")
+    try:
+        with psycopg.connect(db.dsn, autocommit=False) as c:
+            notices = []
+            c.add_notice_handler(lambda d: notices.append(d.message_primary or ""))
+            sec_db.rollback_0250_on_sale(c)
+            text = " ".join(notices)
+            assert "routed music jobs still in flight" in text and jid in text, notices
+            c.rollback()
+    finally:
+        drain(db, "m250-w5")
+
+
 def test_the_guards_refuse_a_drifted_body(db):
     with psycopg.connect(db.dsn, autocommit=False) as c:
         live = prosrc(c)

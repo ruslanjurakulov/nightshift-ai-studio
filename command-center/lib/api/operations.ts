@@ -624,8 +624,8 @@ export async function oauthQuoteCreative(caller: ApiCaller, body: unknown): Prom
   const parsed = parseCreativeBody(b ? { capability: b.capability, model: b.model, params: b.params } : body, { requireMaxCredits: false });
   if (!parsed.ok) return parsed.result;
   const r = parsed.request;
-  if (!(API_CREATIVE_CAPABILITIES as readonly string[]).includes(r.capability))
-    return bad("capability_not_supported", `capability must be one of: ${API_CREATIVE_CAPABILITIES.join(", ")}.`);
+  const offApi = refuseOffApiCapability(r.capability);
+  if (offApi) return offApi;
   return call(caller, "oauth_creative_quote", { p_capability: r.capability, p_model: r.model, p_params: r.params }, "0191");
 }
 
