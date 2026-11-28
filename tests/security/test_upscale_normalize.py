@@ -577,6 +577,12 @@ class NormalizedUploadPins(_Tmp):
             inner.append(full[len(prefix):])
         self.assertIn("h264_mp4toannexb", inner[0])
         self.assertEqual(inner[0][-1], "pipe:1")
+        # #966 round 2, Breach F1: without -copyinkf a stream copy drops every
+        # packet before the first keyframe, and a stream with none counts 0.
+        for one in inner:
+            self.assertIn("-copyinkf", one)
+            self.assertLess(one.index("-copyinkf"), len(one) - 1, "an output option, before the output")
+            self.assertGreater(one.index("-copyinkf"), one.index("-i"))
         self.assertEqual(inner[1][inner[1].index("-protocol_whitelist") + 1], "pipe")
         self.assertEqual(inner[1][inner[1].index("-f") + 1], "h264")
         for one, whitelisted in ((argv, "file"), (inner[0], "file"), (inner[1], "pipe")):
@@ -681,6 +687,14 @@ class CopyCheckPins(_Tmp):
         # A field-coded stream kept a field to a sample: the quote overstates, never understates.
         err, calls = self._run(self.R(), self.R(), units=30)
         self.assertIsNone(err, err and err.message)
+
+    def test_br_l_211_a_count_of_none_or_far_below_the_samples_is_refused_not_passed(self):
+        # #966 round 2, Breach F1: a no-keyframe stream counted 0 access units
+        # and passed as "fewer than samples". Field coding halves the count at
+        # most (one sample of slack); below that the count missed pictures.
+        for units in (0, 29, 1):
+            with self.subTest(units=units):
+                self.assertRefused("could not be counted", self.R(), self.R(), units=units)
 
 
 def _watched(a, peaks):
@@ -859,6 +873,58 @@ class OutputCapPins(_Tmp):
 
 
 @unittest.skipUnless(HAVE_TOOLS and "libx264" in ENCODERS, "needs ffmpeg (libx264) and ffprobe")
+def hevc_without_keyframes(src_hevc: Path, dst_hevc: Path) -> None:
+    """Breach's hevc_cra_to_trail.py (#966 round 2, F1): everything before
+    the first CRA dropped, then each CRA (21) relabelled TRAIL_R (1). The
+    slice-header syntax of the two is the same, so each picture still
+    decodes, but the stream holds no IRAP and the raw parser flags no packet
+    as a keyframe."""
+    import re
+    d = src_hevc.read_bytes()
+    idx = [m.start() for m in re.finditer(b"\x00\x00\x01", d)]
+    nals = []
+    for k, i in enumerate(idx):
+        n = d[i + 3:idx[k + 1] if k + 1 < len(idx) else len(d)]
+        nals.append(bytearray(n.rstrip(b"\x00") if k + 1 < len(idx) else n))
+
+    def kind(n):
+        return (n[0] >> 1) & 63
+    out = [n for n in nals if kind(n) in (32, 33, 34)][:3]
+    start = next(k for k, n in enumerate(nals) if kind(n) == 21)
+    for n in nals[start:]:
+        if kind(n) in (32, 33, 34, 35, 39, 40):
+            continue
+        if kind(n) == 21:
+            n[0] = (n[0] & 0x81) | (1 << 1)
+        out.append(n)
+    dst_hevc.write_bytes(b"".join(b"\x00\x00\x00\x01" + bytes(n) for n in out))
+
+
+@unittest.skipUnless(HAVE_TOOLS and "libx265" in ENCODERS, "needs ffmpeg (libx265) and ffprobe")
+class NoKeyframePins(_Tmp):
+    def test_br_l_211_a_packed_hevc_stream_with_no_keyframe_is_counted_and_refused(self):
+        # #966 round 2, Breach F1: nt_k8.mp4 counted 0 access units and was
+        # submitted at 30 fps; Runway's decoder sees 240.
+        raw, bare, plain, packed = (self.tmp / n for n in ("h.hevc", "nt.hevc", "nt.mp4", "nt_k8.mp4"))
+        _ffmpeg("-f", "lavfi", "-i", "testsrc2=s=320x240:r=240:d=6.2", "-c:v", "libx265", "-preset", "ultrafast",
+                "-x265-params", "log-level=error:keyint=240:min-keyint=240:bframes=0:open-gop=1:scenecut=0",
+                "-f", "hevc", str(raw))
+        hevc_without_keyframes(raw, bare)
+        _ffmpeg("-r", "240", "-f", "hevc", "-i", str(bare), "-c", "copy", "-copyinkf", "-video_track_timescale",
+                "7680", "-tag:v", "hvc1", str(plain))
+        pack2(plain, packed, 8, 256)
+        source = video.read_frames(str(packed))
+        self.assertIsNone(source.refusal)
+        norm = video.normalize_for_upload(packed, source, self.work())
+        self.assertGreaterEqual(norm.access_units, 8 * source.frames - 8, "every picture is counted, none dropped")
+        a = _adapter()
+        err = _submit(a, packed)
+        self.assertIsNotNone(err, "a no-keyframe packed stream was submitted at its container's rate")
+        self.assertEqual(err.code, E_BAD_REQUEST)
+        self.assertIn("this video runs at 240 frames a second of picture", err.message)
+        self.assertEqual(a.session.calls, [])
+
+
 class CodecAllowListPins(_Tmp):
     """#966 round 1, Breach F2: 8 pictures packed into each sample of an
     MPEG-2, MPEG-4 Part 2, Motion JPEG or ProRes file read 150 frames at 30
@@ -891,6 +957,21 @@ class CodecAllowListPins(_Tmp):
                 self.assertEqual(err.code, E_BAD_REQUEST)
                 self.assertIn("export it again as H.264 or HEVC MP4", err.message)
                 self.assertEqual(a.session.calls, [])
+
+    def test_vp8_is_refused_deliberately_before_upload(self):
+        # #966 round 2, Breach F2: VP8 has no superframe count here and packs
+        # like the others; it stays refused until something counts it.
+        if "libvpx" not in ENCODERS:
+            self.skipTest("needs libvpx")
+        clip = self.tmp / "vp8.webm"
+        _ffmpeg("-f", "lavfi", "-i", "testsrc=size=64x64:rate=30:duration=2", "-c:v", "libvpx", "-an", str(clip))
+        self.assertNotIn("vp8", video.RunwayVideoUpscaleAdapter.CODECS)
+        a = _adapter()
+        err = _submit(a, clip)
+        self.assertIsNotNone(err, "a VP8 file was submitted")
+        self.assertEqual(err.code, E_BAD_REQUEST)
+        self.assertIn("export it again as H.264 or HEVC MP4", err.message)
+        self.assertEqual(a.session.calls, [])
 
     def test_prores_is_refused_without_ffprobe_too(self):
         if "prores_ks" not in ENCODERS:

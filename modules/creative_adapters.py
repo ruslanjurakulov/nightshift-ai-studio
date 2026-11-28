@@ -150,14 +150,16 @@ _CANCEL_CONFIRMED = (200, 202, 204, 404)
 
 def _estimate_number(v) -> Optional[float]:
     """An adapter's estimate as a finite positive float, else None: the seam
-    does not trust each vendor adapter to have checked (CLAUDE.md #5)."""
+    does not trust each vendor adapter to have checked (CLAUDE.md #5).
+    Credits are whole: a fraction is another unit, never "within" (#966
+    round 2, Breach F3)."""
     if isinstance(v, bool) or not isinstance(v, (int, float)):
         return None
     try:
         f = float(v)
     except (OverflowError, ValueError):
         return None
-    return f if 0 < f < float("inf") else None
+    return f if 1 <= f < float("inf") and f.is_integer() else None
 
 
 def _int(v) -> Optional[int]:

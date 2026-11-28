@@ -611,6 +611,23 @@ class EstimatePins(Worker):
         _, cost = self.assertCancelledAndReleased({"credits": 10 ** 400}, "estimate_unreadable", self.UNREADABLE)
         self.assertIsNone(cost.quantity)
 
+    def test_an_estimate_that_is_not_a_whole_number_of_credits_is_unreadable_not_within(self):
+        # Breach r2 F3 (#966): 0.34 and 1e-300 read as "within" any hold. A
+        # fraction is another unit (dollars?), never a count of credits.
+        for credits in (0.34, 1e-300, 0.5, 33.5, 702.0001):
+            with self.subTest(credits=credits):
+                _, cost = self.assertCancelledAndReleased({"credits": credits}, "estimate_unreadable",
+                                                          self.UNREADABLE)
+                self.assertIsNone(cost.quantity)
+
+    def test_the_seam_refuses_a_fractional_estimate_even_when_the_adapter_passes_it(self):
+        # The seam does not trust the vendor adapter's own check.
+        def fraction(built):
+            built.estimated_credits = lambda _tid: 0.34
+        _, cost = self.assertCancelledAndReleased({"credits": 34}, "estimate_unreadable", self.UNREADABLE,
+                                                  tweak=fraction)
+        self.assertIsNone(cost.quantity)
+
     def test_any_failure_after_the_task_exists_cancels_it_and_records_the_usage(self):
         def boom(built):
             def estimated_credits(_tid):
@@ -622,7 +639,7 @@ class EstimatePins(Worker):
         self.assertIsNone(cost.quantity)
 
     def test_an_estimate_within_what_the_price_covers_proceeds(self):
-        for credits in (702, 34, 0.5):
+        for credits in (702, 34, 34.0, 1):
             with self.subTest(credits=credits):
                 q, session = self.run_estimate({"credits": credits})
                 self.assertTrue(q.finished["ok"], q.finished)

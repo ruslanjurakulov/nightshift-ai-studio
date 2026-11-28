@@ -1583,14 +1583,18 @@ def normalize_for_upload(src: Path, reading: FrameReading, work: Path, *, timeou
     # sample bounds every real file. More is refused, never truncated.
     samples = reading.frames if isinstance(reading.frames, int) and reading.frames > 0 else 0
     stream_cap = 2 * copy.stat().st_size + (samples + 1) * int(reading.extradata or 0) + _STREAM_SLACK
+    # framecrc: one line per packet, from ffmpeg alone (the Probe models
+    # runner has no ffprobe), on 6.1.1 and 7.0.2. -copyinkf on both: a
+    # stream copy drops every packet before the first keyframe, and the raw
+    # parser flags none in a stream with no IRAP (CRA relabelled TRAIL_R,
+    # each picture still decodes), so 1248 pictures counted 0 and passed as
+    # "fewer than samples" (#966 round 2, Breach F1).
     producer = ffmpeg_limits.limited_argv(
         [*head, "-protocol_whitelist", "file", "-f", demuxer, *cap, "-i", str(copy), "-map", "0:v:0",
-         "-c", "copy", "-bsf:v", bsf, "-f", raw, "pipe:1"], fsize_bytes=_PIPE_ONLY_FSIZE)
-    # framecrc: one line per packet, from ffmpeg alone (the Probe models
-    # runner has no ffprobe), on 6.1.1 and 7.0.2.
+         "-c", "copy", "-copyinkf", "-bsf:v", bsf, "-f", raw, "pipe:1"], fsize_bytes=_PIPE_ONLY_FSIZE)
     counter = ffmpeg_limits.limited_argv(
         [*head, "-protocol_whitelist", "pipe", "-f", raw, *cap, "-i", "pipe:0", "-map", "0:v:0", "-c", "copy",
-         "-f", "framecrc", "pipe:1"], fsize_bytes=_PIPE_ONLY_FSIZE)
+         "-copyinkf", "-f", "framecrc", "pipe:1"], fsize_bytes=_PIPE_ONLY_FSIZE)
     units = _count_access_units(producer, counter, timeout=left(), max_bytes=stream_cap, what=what)
     return Normalized(copy, units)
 
@@ -1607,7 +1611,9 @@ def _credits(value) -> Optional[float]:
         f = float(value)
     except (OverflowError, ValueError):
         return None
-    return f if 0 < f < float("inf") else None
+    # Credits are whole: 0.34 or 1e-300 is not a count of them but another
+    # unit (dollars?) read as "within the hold" (#966 round 2, Breach F3).
+    return f if 1 <= f < float("inf") and f.is_integer() else None
 
 
 class RunwayVideoUpscaleAdapter(RunwayAdapter):
@@ -1762,10 +1768,13 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
         """The parser's count (each access unit its own packet) against the
         copy's samples. Only the frames: the raw stream has no timing, so the
         rate is the parser's frames over the COPY's picture length, which is
-        what the ceiling was checked against. Fewer access units than samples
-        (a field-coded stream kept a field to a sample) only overstates the
-        bill the member is quoted, and passes."""
-        if frames is None or copy.frames is None or not copy.seconds:
+        what the ceiling was checked against. Down to half the samples (a
+        field-coded stream kept a field to a sample) only overstates the bill
+        the member is quoted, and passes; fewer than that is a count that
+        missed pictures, not a reading of them (0 of a no-keyframe stream:
+        #966 round 2, Breach F1), and is refused."""
+        if frames is None or copy.frames is None or not copy.seconds or frames < 1 \
+                or 2 * frames + 1 < copy.frames:
             raise AdapterError(E_BAD_REQUEST, "the frames of this video could not be counted, so its upscale cannot "
                                               "be priced; export it again as H.264 MP4")
         if frames <= copy.frames + 1:
