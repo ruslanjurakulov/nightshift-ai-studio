@@ -40,7 +40,7 @@ const exact: Plan = (parts, data) => ({ ok: true, tokensIn: 100, tokensOut: 200,
   const k = Math.max(Math.ceil(p.seconds / 30), Math.min(room, Math.ceil(p.seconds / 10)));
   const lens = Array.from({ length: k }, (_, i) => Math.floor(p.seconds / k) + (i < p.seconds % k ? 1 : 0));
   return { id: p.id, scenes: lens.map((d, n) => ({ title: `${p.id}-${n}`, duration_s: d, visual_prompt: `shot of ${p.id}`, character_ids: ["c1"], location_id: "l1",
-    dialogue: n === 0 ? [{ character_id: "c1", line: "Hold the line!" }] : [] })) };
+    dialogue: [] /* wordless: only speech "none" can be planned today (speechAllowed) */ })) };
 }) }) });
 
 const outlineOk = (o: Record<string, unknown> = {}) => (data: Record<string, unknown>) => ({ ok: true, tokensIn: 50, tokensOut: 80, text: JSON.stringify({

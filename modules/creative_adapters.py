@@ -137,7 +137,9 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         voice_id=_str(p.get("voice_id")),
         # tts: the language the text is in, when the job names one. No SQL path stores one yet
         # (the creative quote does not take it); the film studio will, and is refused here then.
-        text_language=_str(p.get("language")) if request.capability == "tts" else None,
+        # music: the language a song is SUNG in. No SQL path stores one yet (0036's checks refuse language on music), so every
+        # music job reaches the adapter without one, and a Lyria job is then made instrumental (modules/capabilities/google_interactions.py).
+        text_language=_str(p.get("language")) if request.capability in ("tts", "music") else None,
         scale=_int(p.get("factor")),
         # An opaque per-organization id for the vendors that ask for one.
         end_user=hashlib.sha256(f"nightshift-org:{request.org_id}".encode()).hexdigest()[:32],
@@ -259,13 +261,28 @@ class RegistryAdapter:
         if result.state == FAILED:
             err = result.error or AdapterError("bad_response", "the provider failed the task without a reason")
             return ProviderPoll(JOB_FAILED, error_code=err.code, error=err.message)
+        # Asked before anything is stored, so an adapter bug (a non-mapping) fails before the held outputs are dropped.
+        provenance = self.provenance(request)
         # A failed download raises (retried by the worker with the same task);
         # held synchronous outputs are dropped only once they are on disk.
         files = self.adapter.fetch(result, out_dir, stem="output")
         if task_id.startswith(SYNC_PREFIX):
             with self._lock:
                 self._held.pop(task_id, None)
-        return ProviderPoll(JOB_SUCCEEDED, files=list(files), usage=self.usage(request, len(files)))
+        return ProviderPoll(JOB_SUCCEEDED, files=list(files), usage=self.usage(request, len(files)),
+                            provenance=provenance)
+
+    def provenance(self, request: GenerationRequest) -> Dict[str, object]:
+        """What the adapter says every file of this job carries (Lyria: Google's SynthID watermark), for the library row. {} for an
+        adapter that says nothing: a watermark is recorded only where its maker documents one, never assumed."""
+        say = getattr(self.adapter, "output_provenance", None)
+        if not callable(say):
+            return {}
+        out = say(capability_request(request), self._vendor_model(request.capability))
+        if not isinstance(out, dict):
+            # BR-L-208: an adapter that says something other than a mapping has a bug; hiding it would drop a watermark silently.
+            raise CreativeAdapterError("bad_response", f"{self.adapter.key} stated its output provenance as {type(out).__name__}, not a mapping")
+        return dict(out)
 
     def usage(self, request: GenerationRequest, n_files: int) -> ProviderUsage:
         """What the provider charged in its own unit (0037). USD stays None:

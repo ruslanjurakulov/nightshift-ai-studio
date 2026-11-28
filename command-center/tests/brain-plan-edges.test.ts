@@ -23,7 +23,7 @@ const outline = (seconds: number[], target: number) => readScenario(outlineRaw(s
 const scene = (seconds: number, o: Record<string, unknown> = {}) => ({ title: "s", duration_s: seconds, visual_prompt: "riders on dunes", character_ids: ["c1"], location_id: "l1", ...o });
 
 /** What an obedient model writes for one window: each part in as few scenes as the longest scene allows, adding up exactly. */
-function obey(w: PlanWindow, limits: PlanLimits, dialogue = true): string {
+function obey(w: PlanWindow, limits: PlanLimits, dialogue = false): string {
   return JSON.stringify({ chapters: w.parts.map((p) => {
     const k = Math.ceil(p.seconds / limits.sceneMax);
     const lens = Array.from({ length: k }, (_, i) => Math.floor(p.seconds / k) + (i < p.seconds % k ? 1 : 0));
@@ -133,7 +133,8 @@ describe("Unicode and very long input in a plan", () => {
       title: "Qoʻriqchi va karvon 🐫 — Страж",
       visual_prompt: "a caravan at dusk 🐫" + "\ud83d",
       dialogue: [{ character_id: "c1", line: "Toʻxta! Стой! 🛑" }],
-    })] }] }), w, refsOf(o), limits);
+    })] }] }), w, refsOf(o), limits, "", undefined, [], undefined, ["in_clip", "none"]);
+    // The reader keeps every script in a line when in-clip speech is allowed (it is not, today: speechAllowed).
     expect(r.ok).toBe(true);
     const s = r.ok ? r.parts[0][0] : null;
     expect(s?.title).toBe("Qoʻriqchi va karvon 🐫 — Страж");
@@ -222,9 +223,9 @@ describe("shots per scene from the clip model's lengths", () => {
     expect(shotCount(15, { durations: [5], maxShots: 3 })).toBe(3);
   });
 
-  it("a dialogue scene asks for the clip's audio on every length, and a silent one never does", () => {
+  it("no scene asks for the clip's audio while the cut drops clip sound, a dialogue scene included (S1, BR-SG-01)", () => {
     const talk = filmFromBrief(brief([30, 3], true), { durations: [10], maxShots: 3 })!;
-    expect(talk.scenes.every((s) => (s.clip_params as { audio?: boolean } | undefined)?.audio === true)).toBe(true);
+    expect(talk.scenes.every((s) => !("clip_params" in s))).toBe(true);
     expect(filmFromBrief(brief([30, 3]), null)!.scenes.every((s) => !("clip_params" in s))).toBe(true);
   });
 });

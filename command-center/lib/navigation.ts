@@ -132,7 +132,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/getting-started", key: "onboarding" },
       { href: "/organization", key: "organization" },
       { href: "/developers", key: "developers" },
-      { href: "/members", key: "members" },
       { href: "/security", key: "security" },
       { href: "/approvals", key: "approvals" },
       // The brand channel's posts, approved here by the owner; the page is off unless NIGHTSHIFT_MARKETING_POSTS is on.
@@ -207,7 +206,7 @@ export const SECTION_ITEMS: readonly SectionItem[] = [
  * The sections a customer's workspace is made of — everything a person who
  * signed up with an email needs to make and publish videos, buy credits and
  * run their workspace. The rest of NAV_GROUPS is the platform operator's
- * console (providers, agents, the intelligence stack, logs, the platform team)
+ * console (providers, agents, the intelligence stack, logs)
  * and is shown only to a platform owner/admin.
  *
  * The setup checklist ("onboarding", /getting-started) is not here either: it
@@ -274,7 +273,7 @@ export const STUDIO_HOUSED_KEYS: readonly NavKey[] = [
   "pipeline",
 ];
 
-export const RAIL_HIDDEN_KEYS: readonly NavKey[] = ["accounts", "members", "trends", ...STUDIO_HOUSED_KEYS];
+export const RAIL_HIDDEN_KEYS: readonly NavKey[] = ["accounts", "trends", ...STUDIO_HOUSED_KEYS];
 
 /** The customer's Trends screen: the trend templates (S3's /api/templates), each one opening Create prefilled. */
 export const TRENDS = "/trends";

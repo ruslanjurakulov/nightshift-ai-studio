@@ -12,8 +12,6 @@ export const confirmSheetsEn = {
   dAfter: "After",
   dVideo: "Video",
   dRequestedBy: "Requested by",
-  dAccount: "Account",
-  dRole: "Role",
   dKey: "API key",
   dEffect: "Effect",
   dAutoPublish: "Auto publish",
@@ -96,12 +94,6 @@ export const confirmSheetsEn = {
   limitKeySet: "A limit is added: this key stops when it is reached.",
   limitKeyBlocked: "A limit of $0 blocks every call made with this key until you raise it.",
   limitCeilingBinds: "You entered {entered} but your plan ceiling is {cap}, so {cap} applies.",
-
-  // Team: claiming ownership
-  claimTitle: "Make yourself the owner?",
-  claimBody:
-    "You become the owner of this workspace, with full access to keys, providers, credits and the team. Your own role cannot be changed from here afterwards: only another owner can do that.",
-  claimConfirm: "Become the owner",
 };
 
 export type ConfirmSheetsDictionary = typeof confirmSheetsEn;

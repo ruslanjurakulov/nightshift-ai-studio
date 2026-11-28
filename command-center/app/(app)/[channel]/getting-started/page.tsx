@@ -44,7 +44,7 @@ async function tableCount(
  * Every item reflects REAL state: Supabase config, the signed-in user, the
  * GitHub forwarding token, which provider secrets and routing variables GitHub
  * actually reports, a connected YouTube credential (or the OAuth capability),
- * and the channel / team / series row counts. Nothing is marked done unless its
+ * and the channel / series row counts. Nothing is marked done unless its
  * signal is genuinely true, and each item links to the page that fixes it.
  */
 export default async function GettingStartedPage() {
@@ -84,7 +84,6 @@ export default async function GettingStartedPage() {
 
   // --- Supabase-backed counts (soft when a table isn't migrated yet). ---
   let hasChannel = false;
-  let hasMember = false;
   let hasSeries = false;
   let credentialConnected = false;
   const supabase = await createClient();
@@ -92,14 +91,12 @@ export default async function GettingStartedPage() {
     // The checklist is about the organization being set up, not every tenant
     // a platform admin can read.
     const scope = orgWide(await getChannelScope());
-    const [channels, members, series, creds] = await Promise.all([
+    const [channels, series, creds] = await Promise.all([
       tableCount(supabase, "channels", scope),
-      tableCount(supabase, "app_members"),
       tableCount(supabase, "content_series", scope),
       scopeQuery(supabase.from("channel_credentials").select("status"), scope),
     ]);
     hasChannel = channels > 0;
-    hasMember = members > 0;
     hasSeries = series > 0;
     credentialConnected = ((creds.data as Pick<ChannelCredentialRow, "status">[]) ?? []).some(
       (c) => c.status === "connected",
@@ -116,7 +113,6 @@ export default async function GettingStartedPage() {
     // so an operator can connect one from the Providers page.
     youtubeConnected: credentialConnected || isGoogleOAuthConfigured,
     hasChannel,
-    hasMember,
     hasSeries,
   });
 

@@ -18,7 +18,7 @@ from pathlib import Path
 from unittest import mock
 
 from modules.capabilities import video
-from modules.capabilities.video import RunwayVideoUpscaleAdapter, mp4_fps, video_fps
+from modules.capabilities.video import RunwayVideoUpscaleAdapter, mp4_fps, read_frames, video_fps
 
 
 def box(kind: bytes, payload: bytes) -> bytes:
@@ -29,21 +29,32 @@ def full(kind: bytes, payload: bytes, version: int = 0) -> bytes:
     return box(kind, bytes([version, 0, 0, 0]) + payload)
 
 
-def track(handler: bytes, timescale: int, stts: list, mdhd_version: int = 0, extra_minf: bytes = b"") -> bytes:
+def track(handler: bytes, timescale: int, stts: list, mdhd_version: int = 0, extra_minf: bytes = b"",
+          codec: bytes = b"avc1") -> bytes:
+    """A trak as a muxer writes one. Since BR-L-211 reached this path the read
+    also needs what the ffprobe path counts with: stsd's sample entry (frames
+    are samples only for H.264 / HEVC / ProRes), stsz's count (unknown unless it
+    is the stts total), and the mdhd / tkhd lengths (the stts total time)."""
+    total, ticks = sum(n for n, _ in stts), sum(n * d for n, d in stts)
     if mdhd_version == 1:
-        mdhd = full(b"mdhd", struct.pack(">QQIQ", 0, 0, timescale, 0) + b"\x00" * 4, 1)
+        mdhd = full(b"mdhd", struct.pack(">QQIQ", 0, 0, timescale, ticks) + b"\x00" * 4, 1)
     else:
-        mdhd = full(b"mdhd", struct.pack(">IIII", 0, 0, timescale, 0) + b"\x00" * 4)
+        mdhd = full(b"mdhd", struct.pack(">IIII", 0, 0, timescale, ticks) + b"\x00" * 4)
+    tkhd = full(b"tkhd", struct.pack(">IIIII", 0, 0, 1, 0, ticks * 1000 // timescale if timescale else 0)
+                + b"\x00" * 60)
     hdlr = full(b"hdlr", struct.pack(">I", 0) + handler + b"\x00" * 12 + b"\x00")
+    stsd = full(b"stsd", struct.pack(">I", 1) + box(codec, b"\x00" * 78))
     table = full(b"stts", struct.pack(">I", len(stts)) + b"".join(struct.pack(">II", n, d) for n, d in stts))
-    minf = box(b"minf", extra_minf + box(b"stbl", table))
-    return box(b"trak", box(b"mdia", mdhd + hdlr + minf))
+    stsz = full(b"stsz", struct.pack(">II", 0, total))
+    minf = box(b"minf", extra_minf + box(b"stbl", stsd + table + stsz))
+    return box(b"trak", tkhd + box(b"mdia", mdhd + hdlr + minf))
 
 
 def mp4(*tracks: bytes, moov_last: bool = True) -> bytes:
     ftyp = box(b"ftyp", b"isom\x00\x00\x02\x00isomiso2")
     mdat = box(b"mdat", b"\x00" * 600)
-    moov = box(b"moov", full(b"mvhd", b"\x00" * 96) + b"".join(tracks))
+    # mvhd's 1000-tick timescale with no length of its own: the tracks' lengths decide.
+    moov = box(b"moov", full(b"mvhd", struct.pack(">IIII", 0, 0, 1000, 0) + b"\x00" * 80) + b"".join(tracks))
     return ftyp + (mdat + moov if moov_last else moov + mdat)
 
 
@@ -131,7 +142,11 @@ class TheContainerRead(Base):
         def fake_run(argv, **kw):
             calls.append(argv)
             import subprocess  # noqa: PLC0415
-            return subprocess.CompletedProcess(argv, 0, b'{"streams":[{"avg_frame_rate":"25/1"}]}', b"")
+            # A whole -count_packets answer: an average alone is unknown since BR-L-211.
+            return subprocess.CompletedProcess(argv, 0, b'{"streams":[{"index":0,"codec_type":"video",'
+                                               b'"codec_name":"h264","avg_frame_rate":"25/1","nb_frames":"50",'
+                                               b'"nb_read_packets":"50","duration":"2.0"}],'
+                                               b'"format":{"duration":"2.0"}}', b"")
 
         with mock.patch.object(video.shutil, "which", return_value="/usr/bin/ffprobe"), \
                 mock.patch.object(video.subprocess, "run", side_effect=fake_run):
@@ -148,10 +163,14 @@ class TheProbeClip(Base):
         self.clip = str(probe_video(self.dir / "probe_video.mp4"))
 
     def test_the_adapter_reads_the_drawn_clip_without_ffprobe(self):
-        # Before the change this was None: the probe's refusal of 2026-11-27.
-        self.assertIs(RunwayVideoUpscaleAdapter.fps_of, video_fps)
+        # Before the change this was None: the probe's refusal of 2026-11-27. The adapter reads through
+        # read_frames (BR-L-211), which is what must accept the live probe input with ffprobe absent.
+        self.assertIs(RunwayVideoUpscaleAdapter.fps_of, read_frames)
         with no_ffprobe():
-            self.assertEqual(RunwayVideoUpscaleAdapter.fps_of(self.clip), 24.0)
+            reading = RunwayVideoUpscaleAdapter.fps_of(self.clip)
+            self.assertIsNone(reading.refusal)
+            self.assertEqual((reading.rate, reading.frames, reading.seconds), (24.0, 48, 2.0))
+            self.assertEqual(video_fps(self.clip), 24.0)
 
     @unittest.skipUnless(shutil.which("ffprobe"), "needs ffprobe to compare with")
     def test_the_container_read_agrees_with_ffprobe(self):

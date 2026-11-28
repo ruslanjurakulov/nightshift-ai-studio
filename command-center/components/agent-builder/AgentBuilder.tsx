@@ -6,10 +6,14 @@ import { createCampaignWorkflow, inspectWorkflow, NODE_TYPES, type AgentWorkflow
 import { addNode, checkConnection, removeNode, PORTS, clampPosition, type NodePosition } from "@/lib/agent-graph-editor";
 import { canvasEdges, defaultNodePosition, exportWorkflowDraft, importWorkflowDraft } from "@/lib/agent-draft";
 import { planCreativeRequest, type CreativeIntent } from "@/lib/agent-planner";
-import { planProviderSelection, type DirectProvider } from "@/lib/agent-providers";
+import type { DirectProvider, ProviderPlan } from "@/lib/agent-providers";
 import styles from "./agent-builder.module.css";
 
-export function AgentBuilder() {
+/** The review card for each direct provider, planned on the server (lib/agent-providers.ts is server-only: its registry names
+ *  each provider's licensing and pricing state, which no static chunk may carry). */
+export type ProviderPreviews = Record<DirectProvider, ProviderPlan | { error: string }>;
+
+export function AgentBuilder({ providerPreviews }: { providerPreviews: ProviderPreviews }) {
   const [graph, setGraph] = useState<AgentWorkflow>(createCampaignWorkflow);
   const [source, setSource] = useState("brand");
   const [target, setTarget] = useState("prompt");
@@ -30,7 +34,7 @@ export function AgentBuilder() {
   const report = useMemo(() => inspectWorkflow(graph), [graph]);
   const nodeMap = useMemo(() => new Map(graph.nodes.map(n => [n.id, n])), [graph]);
   const paths = useMemo(() => canvasEdges(graph, positions), [graph, positions]);
-  const providerPreview = planProviderSelection({provider, capability: provider === "ideogram" ? "vector" : "video"});
+  const providerPreview = providerPreviews[provider];
   const generatePlan = () => {
     const planned = planCreativeRequest(requestText, planType);
     if (!planned.ok) { setNotice("Planner refused request: " + planned.error); return; }

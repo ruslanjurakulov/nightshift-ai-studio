@@ -12,6 +12,7 @@ import hashlib
 import importlib.util
 import ipaddress
 import json
+import re
 import struct
 import unittest
 from pathlib import Path
@@ -55,6 +56,21 @@ class Build(unittest.TestCase):
         self.assertEqual(v4, want4)
         self.assertEqual(v6, want6)
         self.assertIn("ZZ", codes)
+
+    def test_br_s6_03_a_code_that_is_not_a_country_is_written_as_unknown(self):
+        # EU, AP, QQ are DB-IP placeholders or typos: on no deny-list and not on Google's list, so a reader would let them through.
+        lines = ["0.0.0.0,127.255.255.255,EU", "128.0.0.0,255.255.255.255,XK", "::,ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff,AP"]
+        codes, v4, v6 = read(gb.build_table(lines))
+        self.assertEqual([c for _, c in v4], ["ZZ", "XK"])
+        self.assertEqual([c for _, c in v6], ["ZZ"])
+        self.assertNotIn("EU", codes)
+
+    def test_the_iso_list_is_the_twin_of_the_web_one(self):
+        ts = (ROOT / "command-center" / "lib" / "geo" / "blocked.ts").read_text(encoding="utf-8")
+        block = ts[ts.index("export const ISO_3166_ALPHA2"):]
+        block = block[:block.index("];")]
+        self.assertEqual(set(re.findall(r'"([A-Z]{2})"', block)), set(gb.ISO_3166_ALPHA2))
+        self.assertEqual(len(gb.ISO_3166_ALPHA2), 249)
 
     def test_the_committed_fixture_is_what_the_tool_writes(self):
         # The TypeScript reader's test reads this file: the two implementations meet here.
