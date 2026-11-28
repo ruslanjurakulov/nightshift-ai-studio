@@ -39,7 +39,10 @@ BUILD_ONLY = {"NEXT_OUTPUT", "NODE_ENV"}
 # VERCEL is "1" on Vercel's own deploys only: command-center/lib/geo/client-ip.ts reads it to know that no Caddy is in
 # front there (so the header Caddy writes is not believed, and the platform's own is). Unset on the box is the intended state.
 # NEXT_RUNTIME is set by Next.js itself ("nodejs" or "edge") when it runs instrumentation.ts, on every host.
-PLATFORM_PROVIDED = {"VERCEL_PROJECT_PRODUCTION_URL", "VERCEL", "NEXT_RUNTIME"}
+# CI is "true" on GitHub Actions runners: command-center/scripts/media-bundle-check.mjs reads it so that a build without
+# components/site/showcase cannot fall back to the unbound label exemption in CI. It is a CI script's switch, never an
+# operator's setting; unset on the box is the intended state.
+PLATFORM_PROVIDED = {"VERCEL_PROJECT_PRODUCTION_URL", "VERCEL", "NEXT_RUNTIME", "CI"}
 
 DOT_ACCESS = re.compile(r"process\.env\.([A-Z][A-Z0-9_]*)")
 BRACKET_ACCESS = re.compile(r"""process\.env\[\s*["']([A-Z][A-Z0-9_]*)["']\s*\]""")
