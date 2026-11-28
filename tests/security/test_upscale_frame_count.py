@@ -850,6 +850,21 @@ class ContainerReadPins(unittest.TestCase):
         self.assertAccepted(_movie(_trak(90000, [(1, 1)], codec=b"mp4v", esds=esds(0x6C)), main, movie_ticks=4000))
         self.assertRefused(_movie(_trak(90000, [(1, 1)], codec=b"mp4v", esds=esds(0x20)), main, movie_ticks=4000),
                            "this file holds 2 video streams")
+        # PNG (0x6D) is the same still, one sample only.
+        self.assertAccepted(_movie(_trak(90000, [(1, 1)], codec=b"mp4v", esds=esds(0x6D)), main, movie_ticks=4000))
+
+    def test_an_mp4v_jpeg_track_of_more_than_one_sample_is_a_second_video(self):
+        # A "JPEG" mp4v track of several samples is a video of stills, not a thumbnail: the one-sample rule of the
+        # jpeg/png stills applies to it too, so it is a second picture stream and the file is refused (Atlas, 28 Nov).
+        def esds(oti):
+            dc = bytes([0x04, 13, oti, 0x11]) + b"\x00" * 11
+            return _full(b"esds", bytes([0x03, 3 + len(dc), 0, 1, 0]) + dc)
+
+        main = _trak(15360, [(120, 512)])
+        for oti in (0x6C, 0x6D):
+            with self.subTest(oti=hex(oti)):
+                self.assertRefused(_movie(_trak(90000, [(2, 1)], codec=b"mp4v", esds=esds(oti)), main, movie_ticks=4000),
+                                   "this file holds 2 video streams")
 
     def test_a_jpeg_trak_of_two_samples_is_a_second_video(self):
         thumb = _trak(90000, [(2, 1)], codec=b"jpeg")
