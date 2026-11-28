@@ -4,6 +4,8 @@ import type { LiveNodesDictionary } from "./en";
 export const liveNodesRu: LiveNodesDictionary = {
   kind: {
     script: "Сценарий",
+    scene: "Сцена {n}",
+    sceneUnnumbered: "Сцена",
     shot: "Кадр {n}",
     shotUnnumbered: "Кадр",
     ofShot: "{kind} · кадр {n}",
@@ -24,6 +26,7 @@ export const liveNodesRu: LiveNodesDictionary = {
     failed: "Нужно ваше решение",
     disabled: "Недоступно",
     insufficient: "Не хватает кредитов",
+    unknown: "Неизвестно",
   },
   phase: {
     queued: "В очереди",
@@ -35,6 +38,9 @@ export const liveNodesRu: LiveNodesDictionary = {
   measured: "Готово на {pct}%, по данным провайдера",
   progressLabel: "Прогресс",
   written: "Написано",
+  checking: "Проверяется",
+  duration: { measured: "{s} с", requested: "~{s} с", planned: "{s} с план" },
+  durationLabel: { measured: "Длина, измерена", requested: "Длина, как запрошено", planned: "Длина, по плану" },
   prompt: "Промпт",
   model: "Модель",
   price: "{n} {unit}",

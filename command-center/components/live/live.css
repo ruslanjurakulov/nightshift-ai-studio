@@ -54,6 +54,21 @@
 .live-node-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .live-node-kind { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ds-text-2); overflow-wrap: anywhere; }
 .live-node-dot { flex: none; width: 6px; height: 6px; border-radius: var(--ds-r-pill); background: var(--live-hue); }
+.live-node-head { flex-wrap: wrap; }
+.live-node-head > .live-node-kind { margin-inline-end: auto; }
+.live-node-length { flex: none; font-size: var(--ds-fs-caption, 13px); color: var(--ds-text-2); white-space: nowrap; }
+/* Not measured: the planned or requested length is quieter than a measured one. */
+.live-node-length:not([data-basis="measured"]) { color: var(--ds-muted); }
+.live-node-flag { flex: none; padding: 1px 6px; border: 1px dashed var(--ds-border-strong); border-radius: var(--ds-r-pill); color: var(--ds-text-2); }
+.live-node-summary {
+  margin: 0;
+  color: var(--ds-text-2);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
 .live-node-price { flex: none; font-size: var(--ds-fs-caption, 13px); color: var(--ds-text-2); white-space: nowrap; }
 .live-node-title { margin: 0; min-width: 0; overflow-wrap: anywhere; color: var(--ds-text); }
 
@@ -145,6 +160,9 @@
 .live-node[data-state="disabled"] { border-style: dotted; border-color: var(--ds-border-strong); background: transparent; box-shadow: none; }
 .live-node[data-state="disabled"] .live-node-note { color: var(--ds-text-2); }
 .live-node[data-state="insufficient"] { border-color: var(--ds-warning); }
+/* Unknown: not a state the step is in, a reading we do not have. Dashed like a sketch, said in words. */
+.live-node[data-state="unknown"] { border-style: dashed; border-color: var(--ds-border-strong); }
+.live-node[data-state="unknown"] .live-node-word { color: var(--ds-text-2); }
 .live-node[data-state="insufficient"] .live-node-word { color: var(--ds-warning); }
 /* A person's mark: lime, as the border and the select glow. Focus is the outline outside it, so both can show at once. */
 .live-node[data-selected="true"] { border-color: var(--ds-focus); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ds-text) 7%, transparent), var(--ds-glow-select); }

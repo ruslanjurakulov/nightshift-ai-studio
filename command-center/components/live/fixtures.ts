@@ -16,6 +16,17 @@ export type LiveFixture = Omit<LiveNodeProps, "onOpen" | "onRetry">;
 
 export function liveFixtures(now: number): LiveFixture[] {
   return [
+    {
+      id: "scene",
+      kind: "scene",
+      scene: 4,
+      state: "ghost",
+      title: "The keeper climbs the stairs",
+      summary: "Night. A spiral stair inside the tower, lamplight above; Mara climbs with the letter in her hand.",
+      durationS: 8,
+      durationBasis: "planned",
+      provisional: true,
+    },
     { id: "ghost", kind: "shot", shot: 4, state: "ghost", title: "The keeper climbs the stairs" },
     {
       id: "queued",
@@ -88,6 +99,16 @@ export function liveFixtures(now: number): LiveFixture[] {
       state: "disabled",
       title: "Score",
       reason: "Music is not available on this workspace's plan yet.",
+    },
+    {
+      id: "unknown",
+      kind: "clip",
+      shot: 6,
+      state: "unknown",
+      title: "Shot 06: the keeper reads",
+      reason: "This step's result could not be read.",
+      durationS: 5,
+      durationBasis: "measured",
     },
     {
       id: "insufficient",

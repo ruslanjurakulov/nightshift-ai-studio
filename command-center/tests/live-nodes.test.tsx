@@ -99,7 +99,7 @@ describe("LiveNode: only what was measured or computed is shown", () => {
   });
 
   it("runs the edge light and the shimmer only while working", () => {
-    for (const state of ["ghost", "queued", "arrived", "failed", "disabled", "insufficient"] as const) {
+    for (const state of ["ghost", "queued", "arrived", "failed", "disabled", "insufficient", "unknown"] as const) {
       const { container } = card({ state });
       expect(container.querySelector("[data-fx=beam]"), state).toBeNull();
       expect(container.querySelector("[data-fx=shimmer]"), state).toBeNull();
@@ -191,6 +191,51 @@ describe("LiveNode: failed, disabled and short of credits are never dead ends", 
     const { container } = card({ state: "insufficient", shortfallCredits: null, topUpHref: "/c" });
     expect(screen.getByRole("link", { name: en.insufficient.topUp })).toBeTruthy();
     expect(container.querySelector(".live-node-short p")).toBeNull();
+  });
+});
+
+describe("LiveNode: scenes, lengths and what is not known", () => {
+  it("labels a scene card by its scene number", () => {
+    const { container } = card({ kind: "scene", scene: 4, state: "ghost" });
+    expect(container.querySelector(".live-node-kind")?.textContent).toBe("Scene 04");
+  });
+
+  it("marks a length by where it came from, and shows none without both the number and its basis", () => {
+    const at = (p: Partial<LiveNodeProps>) => {
+      const el = card(p).container.querySelector(".live-node-length");
+      const out = el ? el.textContent : null;
+      cleanup();
+      return out;
+    };
+    expect(at({ durationS: 8, durationBasis: "measured" })).toContain("8 s");
+    expect(at({ durationS: 8, durationBasis: "measured" })).not.toContain("~");
+    expect(at({ durationS: 7.5, durationBasis: "requested" })).toContain("~7.5 s");
+    expect(at({ durationS: 8, durationBasis: "planned" })).toContain("8 s plan");
+    expect(at({ durationS: 8, durationBasis: null })).toBeNull();
+    expect(at({ durationS: null, durationBasis: "measured" })).toBeNull();
+    expect(at({ durationS: 0, durationBasis: "measured" })).toBeNull();
+  });
+
+  it("labels a provisional card Checking", () => {
+    card({ kind: "scene", scene: 1, state: "ghost", provisional: true });
+    expect(screen.getByText(en.checking)).toBeTruthy();
+    cleanup();
+    card({ kind: "scene", scene: 1, state: "ghost" });
+    expect(screen.queryByText(en.checking)).toBeNull();
+  });
+
+  it("shows a scene's summary as plan text, not as a written prompt", () => {
+    const { container } = card({ kind: "scene", scene: 2, state: "ghost", summary: "A spiral stair inside the tower" });
+    expect(container.querySelector(".live-node-summary")?.textContent).toBe("A spiral stair inside the tower");
+    expect(container.textContent).not.toContain(en.written);
+    expect(container.querySelector(".live-node-summary")?.className).not.toContain("mono");
+  });
+
+  it("says Unknown for a reading it does not have, never queued, ready or not available", () => {
+    const { container } = card({ state: "unknown", reason: "The result could not be read." });
+    expect(container.querySelector(".live-node-word")?.textContent).toBe(en.state.unknown);
+    expect(screen.getByText("The result could not be read.")).toBeTruthy();
+    expect(container.querySelector("[data-fx=beam]")).toBeNull();
   });
 });
 
@@ -503,7 +548,10 @@ describe("live.css", () => {
 
   it("caps a long prompt with a wrapper height, not a line-clamp the reveal's grid would override", () => {
     expect(code).toMatch(/\.live-node-prompt-text \{[^}]*max-height: calc\(4 \* 1\.5em\)/);
-    expect(code).not.toMatch(/line-clamp/);
+    const promptRule = code.match(/\.live-node-prompt-text \{[^}]*\}/)?.[0] ?? "";
+    expect(promptRule).not.toMatch(/line-clamp/);
+    // The scene summary is a plain block, so a real line clamp works there.
+    expect(code).toMatch(/\.live-node-summary \{[^}]*-webkit-line-clamp: 2/);
   });
 
   it("keeps the selection ring when a card glows: the glow is its own layer", () => {

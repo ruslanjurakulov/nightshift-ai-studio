@@ -4,6 +4,8 @@ import type { LiveNodesDictionary } from "./en";
 export const liveNodesUz: LiveNodesDictionary = {
   kind: {
     script: "Ssenariy",
+    scene: "Sahna {n}",
+    sceneUnnumbered: "Sahna",
     shot: "Kadr {n}",
     shotUnnumbered: "Kadr",
     ofShot: "{kind} · {n}-kadr",
@@ -24,6 +26,7 @@ export const liveNodesUz: LiveNodesDictionary = {
     failed: "Sizning qaroringiz kerak",
     disabled: "Mavjud emas",
     insufficient: "Kredit yetmaydi",
+    unknown: "Nomaʼlum",
   },
   phase: {
     queued: "Navbatda",
@@ -35,6 +38,9 @@ export const liveNodesUz: LiveNodesDictionary = {
   measured: "Provayder maʼlumotiga koʻra {pct}% tayyor",
   progressLabel: "Jarayon",
   written: "Yozildi",
+  checking: "Tekshirilmoqda",
+  duration: { measured: "{s} s", requested: "~{s} s", planned: "{s} s reja" },
+  durationLabel: { measured: "Uzunlik, oʻlchangan", requested: "Uzunlik, soʻralganidek", planned: "Uzunlik, reja boʻyicha" },
   prompt: "Prompt",
   model: "Model",
   price: "{n} {unit}",

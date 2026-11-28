@@ -28,10 +28,10 @@ import { BorderBeam, TextShimmer } from "@/components/ui/effects";
 import { Button, buttonClass } from "@/components/ds/Button";
 import { RevealText } from "./RevealText";
 import { formatElapsed, useElapsed } from "./useElapsed";
-import { LANDED_GLOW_MS, MEDIA_OF, isAppPath, landDelay, type LiveNodeKind, type LiveNodeState, type LivePhase } from "./model";
+import { LANDED_GLOW_MS, MEDIA_OF, formatSeconds, isAppPath, landDelay, type LiveDurationBasis, type LiveNodeKind, type LiveNodeState, type LivePhase } from "./model";
 import "./live.css";
 
-export type { LiveNodeKind, LiveNodeState, LivePhase, LiveMediaType } from "./model";
+export type { LiveNodeKind, LiveNodeState, LivePhase, LiveMediaType, LiveDurationBasis } from "./model";
 
 export interface LiveNodeProps {
   /** The board's id for this card: passed back to onOpen and onRetry. */
@@ -42,6 +42,15 @@ export interface LiveNodeProps {
   title: string;
   /** The shot this card belongs to (a shot, or a still or clip made for one), 1-based. */
   shot?: number | null;
+  /** The scene number of a `scene` card, 1-based. */
+  scene?: number | null;
+  /** The first line of what the scene shows, in the person's words (plan text, not a prompt): two lines at most. */
+  summary?: string | null;
+  /** A length in seconds, and where it came from. No chip without both. */
+  durationS?: number | null;
+  durationBasis?: LiveDurationBasis | null;
+  /** Still inside a window the server has not checked yet (plan §3.5): labelled "Checking", never read as final. */
+  provisional?: boolean;
   /** The checked prompt or line, in mono. */
   prompt?: string | null;
   /** True when `prompt` has just arrived in front of the person: it is revealed. False on a refresh: shown at once. */
@@ -158,6 +167,11 @@ function LiveNodeView(props: LiveNodeProps) {
     state,
     title,
     shot,
+    scene,
+    summary,
+    durationS,
+    durationBasis,
+    provisional = false,
     prompt,
     revealPrompt = false,
     model,
@@ -193,9 +207,25 @@ function LiveNodeView(props: LiveNodeProps) {
   const mediaType = MEDIA_OF[kind];
   const H = `h${headingLevel}` as const;
 
-  const n = typeof shot === "number" && Number.isFinite(shot) && shot > 0 ? String(Math.floor(shot)).padStart(2, "0") : null;
+  const num = (v: number | null | undefined) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? String(Math.floor(v)).padStart(2, "0") : null);
+  const n = num(shot);
+  const sn = num(scene);
   const kindLabel =
-    kind === "shot" ? (n ? fmt(l.kind.shot, { n }) : l.kind.shotUnnumbered) : n ? fmt(l.kind.ofShot, { kind: l.kind[kind], n }) : l.kind[kind];
+    kind === "scene"
+      ? sn
+        ? fmt(l.kind.scene, { n: sn })
+        : l.kind.sceneUnnumbered
+      : kind === "shot"
+        ? n
+          ? fmt(l.kind.shot, { n })
+          : l.kind.shotUnnumbered
+        : n
+          ? fmt(l.kind.ofShot, { kind: l.kind[kind], n })
+          : l.kind[kind];
+  const length =
+    typeof durationS === "number" && Number.isFinite(durationS) && durationS > 0 && durationBasis
+      ? { text: fmt(l.duration[durationBasis], { s: formatSeconds(durationS) }), basis: durationBasis }
+      : null;
   const credits = (c: number) => fmt(l.price, { n: formatCredits(c, locale), unit: creditUnit(c, locale, t.shell.creditUnit) });
   const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
   const measured = finite(progress) && progress >= 0 && progress <= 1 ? Math.round(progress * 100) : null;
@@ -209,6 +239,7 @@ function LiveNodeView(props: LiveNodeProps) {
       data-state={state}
       data-media={mediaType}
       data-kind={kind}
+      data-provisional={provisional ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
       data-landed={landed ? "true" : undefined}
       data-instant={instant ? "true" : undefined}
@@ -221,6 +252,13 @@ function LiveNodeView(props: LiveNodeProps) {
           <span className="live-node-dot" aria-hidden />
           {kindLabel}
         </span>
+        {provisional ? <span className="live-node-flag ds-t-label">{l.checking}</span> : null}
+        {length ? (
+          <span className="live-node-length ds-mono" data-basis={length.basis}>
+            <span className="ds-sr-only">{l.durationLabel[length.basis]}: </span>
+            {length.text}
+          </span>
+        ) : null}
         {finite(price) ? (
           <span className="live-node-price ds-mono">
             <span className="ds-sr-only">{l.priceLabel}: </span>
@@ -239,6 +277,8 @@ function LiveNodeView(props: LiveNodeProps) {
           <span id={titleId}>{title}</span>
         )}
       </H>
+
+      {summary ? <p className="live-node-summary ds-t-body-sm">{summary}</p> : null}
 
       {mediaType !== "text" && (state === "arrived" || state === "working" || state === "queued") ? (
         state === "arrived" && mediaSrc ? (
@@ -322,6 +362,7 @@ function LiveNodeView(props: LiveNodeProps) {
       ) : null}
 
       {state === "disabled" ? <p className="live-node-note ds-t-caption">{reason || l.disabledNoReason}</p> : null}
+      {state === "unknown" && reason ? <p className="live-node-note ds-t-caption">{reason}</p> : null}
 
       {state === "insufficient" ? (
         <div className="live-node-short">

@@ -6,6 +6,8 @@
 export const liveNodesEn = {
   kind: {
     script: "Script",
+    scene: "Scene {n}",
+    sceneUnnumbered: "Scene",
     shot: "Shot {n}",
     shotUnnumbered: "Shot",
     ofShot: "{kind} · shot {n}",
@@ -26,6 +28,7 @@ export const liveNodesEn = {
     failed: "Needs you",
     disabled: "Not available",
     insufficient: "Needs credits",
+    unknown: "Unknown",
   },
   /** A working card's phase word: what the job is doing, as the server reported it. */
   phase: {
@@ -42,6 +45,11 @@ export const liveNodesEn = {
   progressLabel: "Progress",
   /** Over a prompt revealed on the card: the server already checked this text. */
   written: "Written",
+  /** A provisional card (plan §3.5): the server has not checked its window yet. */
+  checking: "Checking",
+  /** A length chip: measured from the file, requested by the person, planned by the brain. */
+  duration: { measured: "{s} s", requested: "~{s} s", planned: "{s} s plan" },
+  durationLabel: { measured: "Length, measured", requested: "Length, as requested", planned: "Length, as planned" },
   prompt: "Prompt",
   model: "Model",
   price: "{n} {unit}",

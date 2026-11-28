@@ -3,14 +3,22 @@
  * import these to prepare a board's data, and a value exported from a client module turns into a client reference on the
  * server (dotting into MEDIA_OF or calling landDelay there throws at request time, and typechecks fine).
  */
-export type LiveNodeKind = "script" | "shot" | "character" | "location" | "prop" | "still" | "clip" | "voice" | "music" | "film";
+export type LiveNodeKind = "script" | "scene" | "shot" | "character" | "location" | "prop" | "still" | "clip" | "voice" | "music" | "film";
 /** The data a card carries, which colours its dot and its connectors (SYSTEM.md §4: type hues are media identity only). */
 export type LiveMediaType = "text" | "image" | "video" | "audio";
-export type LiveNodeState = "ghost" | "queued" | "working" | "arrived" | "failed" | "disabled" | "insufficient";
+/**
+ * unknown: what the step is cannot be read (a missing row, an unreadable answer, "done" with no readable result). It says
+ * so, in words, and is never drawn as queued, ready or disabled (CLAUDE.md rule 5).
+ */
+export type LiveNodeState = "ghost" | "queued" | "working" | "arrived" | "failed" | "disabled" | "insufficient" | "unknown";
+/** Where a length came from: measured from the file, requested by the person, or planned by the brain. */
+export type LiveDurationBasis = "measured" | "requested" | "planned";
 export type LivePhase = "queued" | "making" | "storing";
 
 export const MEDIA_OF: Readonly<Record<LiveNodeKind, LiveMediaType>> = {
   script: "text",
+  /* A scene card shows its key picture. */
+  scene: "image",
   shot: "text",
   character: "image",
   location: "image",
@@ -57,6 +65,12 @@ export function formatElapsed(seconds: number): string {
   const m = Math.floor((s % 3600) / 60);
   const ss = String(s % 60).padStart(2, "0");
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+}
+
+/** 8 → "8", 7.5 → "7.5", 7.25 → "7.3": a length in seconds as a chip shows it (one decimal at most, never a trailing .0). */
+export function formatSeconds(s: number): string {
+  const r = Math.round(s * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
 
 /**
