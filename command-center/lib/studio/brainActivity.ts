@@ -34,7 +34,7 @@ export type BrainActivityPlan = { windows: number; of: number; chapters_written:
  */
 export type BrainActivity =
   | { session_id: string; phase: BrainPhase | "end"; plan?: BrainActivityPlan }
-  | { session_id: null; phase: "thinking"; plan?: never }
+  | { session_id: null; phase: "thinking"; reason?: never; plan?: never }
   /** A first send that made no session ended without an answer (Atlas, 28 Nov): only after a null "thinking", never with a plan. */
   | { session_id: null; phase: "end"; reason: "failed"; plan?: never };
 
