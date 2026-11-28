@@ -32,12 +32,9 @@ export function OwnerSecurityPanel({
   const { t, locale } = useI18n();
   const s = t.ownerRpc.security;
   const credits = (n: number | null) => (n === null ? s.unknown : fmt(s.creditsValue, { n: formatCredits(n, locale) }));
-  const roleLabel: Record<string, string> = {
-    owner: t.members.roleOwner,
-    admin: t.members.roleAdmin,
-    editor: t.members.roleEditor,
-    viewer: t.members.roleViewer,
-  };
+  // The list holds the platform's owners and admins only (owner_security_get), so those are the two labels; anything else
+  // the database ever sent is shown as it came rather than guessed into one of them.
+  const roleLabel: Record<string, string> = { owner: s.roleOwner, admin: s.roleAdmin };
   const why = (code: string | null) => (s.why as Record<string, string>)[code ?? ""] ?? s.why.other;
 
   return (

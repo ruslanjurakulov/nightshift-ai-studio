@@ -23,7 +23,7 @@
  * Unit-tested in tests/channel-dna.test.ts.
  */
 import { HOME_LANGUAGES } from "@/lib/home";
-import { VOICES } from "@/lib/ttsModels";
+import { VOICES } from "@/lib/voices";
 import { charLength, parseChannelRef, parseStyleId } from "@/lib/style-kits";
 import type { StudioPrefill } from "@/lib/creative/studio";
 import type { ChannelRow } from "@/lib/types";

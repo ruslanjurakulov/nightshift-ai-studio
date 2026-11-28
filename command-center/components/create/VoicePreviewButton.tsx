@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Play, Square } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
-import { isVoiceId } from "@/lib/ttsModels";
+import { isVoiceId } from "@/lib/voices";
 
 /**
  * Listen to a narrator voice before choosing it. Plays the clip the

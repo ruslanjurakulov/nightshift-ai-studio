@@ -33,7 +33,7 @@ const exact: Plan = (parts, data) => ({ ok: true, tokensIn: 100, tokensOut: 200,
   const k = Math.max(Math.ceil(p.seconds / 30), Math.min(room, Math.ceil(p.seconds / 10)));
   const lens = Array.from({ length: k }, (_, i) => Math.floor(p.seconds / k) + (i < p.seconds % k ? 1 : 0));
   return { id: p.id, scenes: lens.map((d, n) => ({ title: `${p.id}-${n}`, duration_s: d, visual_prompt: `shot of ${p.id}`, character_ids: ["c1"], location_id: "l1",
-    dialogue: n === 0 ? [{ character_id: "c1", line: "Hold the line!" }] : [] })) };
+    dialogue: [] /* wordless: only speech "none" can be planned today (speechAllowed) */ })) };
 }) }) });
 
 /** An outline call that obeys: every chapter the server named, titled, with one beat. */
@@ -201,8 +201,8 @@ describe("POST /api/brain/film: the press", () => {
     const patch = save[0].p_patch as { scenes: { planned_seconds: number; shot_count?: number; clip_params?: unknown; negative_prompt?: unknown; seed?: unknown }[]; clip_model?: string; keyframe_model?: string };
     expect(patch.scenes.reduce((a, s) => a + s.planned_seconds, 0)).toBe(180);
     expect(patch.scenes).toHaveLength(d.scenes);
-    // G3: a scene with a line asks the clip for its sound; G4: shots from the clip model's longest (10 s) shot.
-    expect(patch.scenes[0].clip_params).toEqual({ audio: true });
+    // S1 story grammar: a wordless plan never asks a clip for its sound (the cut drops it); G4: shots from the 10 s longest shot.
+    for (const s of patch.scenes) expect(s).not.toHaveProperty("clip_params");
     for (const s of patch.scenes) {
       expect(s.shot_count).toBe(Math.min(3, Math.ceil(s.planned_seconds / 10)));
       expect(s).not.toHaveProperty("negative_prompt");

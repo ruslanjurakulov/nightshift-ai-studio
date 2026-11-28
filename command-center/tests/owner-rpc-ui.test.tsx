@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 /**
  * The owner screens while NIGHTSHIFT_OWNER_RPC is on: grant (with its reason, limits, key and refusals), reversal,
- * prices (the explicit big-change step, the history and Restore), the team through the server, the Billing spend
- * panel and the read-only Security panel. And the other half of the promise: with the flag off (no `rpc` prop, no
- * `ownerRpc` prop) the old forms write the old way and never call /api/owner.
+ * prices (the explicit big-change step, the history and Restore), the Billing spend panel and the read-only Security
+ * panel. And the other half of the promise: with the flag off (no `rpc` prop) the old forms write the old way and
+ * never call /api/owner.
  *
  * Nothing is sent on the first tap; a double tap sends once; a retry reuses the request key; a refusal is shown in
  * the sheet in plain words with the keys live again; an unknown is never drawn as a zero.
@@ -20,7 +20,6 @@ const h = vi.hoisted(() => ({
   insert: vi.fn(),
   update: vi.fn(),
   del: vi.fn(),
-  members: [] as Record<string, unknown>[],
   refresh: vi.fn(),
   toast: vi.fn(),
 }));
@@ -43,7 +42,7 @@ vi.mock("@/lib/supabase/client", () => ({
   createClient: () => ({
     rpc: vi.fn(),
     from: () => ({
-      select: () => ({ order: async () => ({ data: h.members, error: null }) }),
+      select: () => ({ order: async () => ({ data: [], error: null }) }),
       upsert: h.upsert,
       insert: h.insert,
       update: (v: unknown) => ({ eq: (...a: unknown[]) => h.update(v, ...a) }),
@@ -56,7 +55,6 @@ import { OwnerGrantForm, type GrantLimits } from "../components/credits/OwnerGra
 import { OwnerRecentGrants } from "../components/credits/OwnerRecentGrants";
 import { OwnerPriceHistory } from "../components/credits/OwnerPriceHistory";
 import { CreditPricesEditor } from "../components/credits/CreditPricesEditor";
-import { MembersBoard } from "../components/members/MembersBoard";
 import { ProviderSpendPanel } from "../components/billing/ProviderSpendPanel";
 import { OwnerSecurityPanel } from "../components/security/OwnerSecurityPanel";
 import { summarizeProviderSpend, type OwnerSecurity, type PriceHistoryEntry, type SecurityEvent } from "../lib/owner-reads";
@@ -611,86 +609,6 @@ describe("OwnerPriceHistory", () => {
   });
 });
 
-// ─── Team ───────────────────────────────────────────────────────────────────────────────────────
-
-describe("MembersBoard through the server", () => {
-  const MEMBERS = [
-    { id: "11111111-1111-4111-8111-111111111111", user_id: "u-me", email: "me@a.uz", role: "owner", created_at: "2026-01-01" },
-    { id: "22222222-2222-4222-8222-222222222222", user_id: "u-b", email: "b@a.uz", role: "admin", created_at: "2026-01-02" },
-    { id: "33333333-3333-4333-8333-333333333333", user_id: "u-c", email: "c@a.uz", role: "owner", created_at: "2026-01-03" },
-  ];
-  const row = (email: string) => screen.getAllByRole("listitem").find((r) => r.textContent?.includes(email))!;
-  // "Role" also labels the legend section, so pick the select.
-  const addRole = () => screen.getAllByLabelText(en.members.addRole).find((el) => el.tagName === "SELECT")!;
-  const show = (ownerRpc: boolean) => {
-    h.members = MEMBERS;
-    return render(<MembersBoard myRole="owner" myEmail="me@a.uz" myUserId="u-me" ownerRpc={ownerRpc} />);
-  };
-
-  it("remove: the sheet first, then ONE call to /api/owner/team; the table is not written", async () => {
-    show(true);
-    await act(async () => {});
-    await tap(within(row("b@a.uz")).getByRole("button", { name: en.members.remove }));
-    expect(h.fetch).not.toHaveBeenCalled();
-    await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.memberRemoveConfirm }));
-    expect(sent()).toEqual({ url: "/api/owner/team", body: { action: "remove", member: MEMBERS[1].id } });
-    expect(h.del).not.toHaveBeenCalled();
-  });
-
-  it("change role goes through the server with the member id", async () => {
-    show(true);
-    await act(async () => {});
-    fireEvent.change(within(row("b@a.uz")).getByRole("combobox"), { target: { value: "viewer" } });
-    await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.roleChangeConfirm }));
-    expect(sent()).toEqual({ url: "/api/owner/team", body: { action: "role", member: MEMBERS[1].id, role: "viewer" } });
-    expect(h.update).not.toHaveBeenCalled();
-  });
-
-  it("add (an admin, with a sheet) goes through the server; the table is not written", async () => {
-    show(true);
-    await act(async () => {});
-    change(screen.getByLabelText(en.members.addEmail), "New@A.uz");
-    change(addRole(), "admin");
-    await tap(screen.getByRole("button", { name: en.members.add }));
-    await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.memberAddConfirm }));
-    expect(sent()).toEqual({ url: "/api/owner/team", body: { action: "add", email: "new@a.uz", role: "admin" } });
-    expect(h.insert).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ["last_owner", o.err.last_owner],
-    ["self_change", o.err.self_change],
-    ["owner_required", o.err.owner_required],
-    ["no_such_member", o.err.no_such_member],
-  ])("the server's refusal %s is worded in the sheet", async (error, text) => {
-    h.fetch.mockImplementation(async () => jsonRes({ ok: false, error }, 422));
-    show(true);
-    await act(async () => {});
-    await tap(within(row("b@a.uz")).getByRole("button", { name: en.members.remove }));
-    await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.memberRemoveConfirm }));
-    expect(within(sheet()).getByRole("alert").textContent).toBe(text);
-  });
-
-  it("adding a viewer (no sheet) shows the refusal inline: already_member and bad_email", async () => {
-    h.fetch.mockImplementation(async () => jsonRes({ ok: false, error: "already_member" }, 422));
-    show(true);
-    await act(async () => {});
-    change(screen.getByLabelText(en.members.addEmail), "b@a.uz");
-    change(addRole(), "viewer");
-    await tap(screen.getByRole("button", { name: en.members.add }));
-    expect(screen.getByRole("alert").textContent).toBe(o.err.already_member);
-  });
-
-  it("with the flag off the board writes app_members as before and never calls /api/owner", async () => {
-    show(false);
-    await act(async () => {});
-    await tap(within(row("b@a.uz")).getByRole("button", { name: en.members.remove }));
-    await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.memberRemoveConfirm }));
-    expect(h.del).toHaveBeenCalledWith("id", MEMBERS[1].id);
-    expect(h.fetch).not.toHaveBeenCalled();
-  });
-});
-
 // ─── Billing and Security panels ────────────────────────────────────────────────────────────────
 
 const spendRow = (over: Record<string, unknown>) => ({
@@ -784,6 +702,10 @@ describe("OwnerSecurityPanel", () => {
     expect(screen.getByText(o.security.noFactor)).toBeTruthy();
     expect(screen.getByText(o.security.factorsUnknown)).toBeTruthy();
     expect(screen.getByText(o.security.readyNo)).toBeTruthy();
+    // the role words now live with the panel (the Team page and its dictionary are gone)
+    expect(screen.getAllByText(o.security.roleOwner).length).toBe(1);
+    expect(screen.getAllByText(o.security.roleAdmin).length).toBe(1);
+    expect(screen.getByText(`${o.security.roleAdmin} · ${o.security.notSignedIn}`)).toBeTruthy();
     expect(screen.getByText(o.security.switchNote)).toBeTruthy();
     expect(screen.getByText("Credits given")).toBeTruthy();
     expect(screen.getByText("something.new")).toBeTruthy();
