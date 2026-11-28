@@ -107,6 +107,8 @@ export const SECTIONS = [
   "autonomy",
   "feedback-loop",
   "getting-started",
+  // The Team page is gone (workspaces have one person); the name stays reserved so no channel takes the slug, and an
+  // old /{channel}/members bookmark redirects to Settings.
   "members",
   "organization",
   "developers",

@@ -1,16 +1,15 @@
 // @vitest-environment jsdom
 /**
- * Owner access and money sheets, part 2: the team roster, recording a provider
- * payment and replacing a provider key. Own row and last owner are blocked in
- * the UI; every other change names the person; payments and keys write once.
+ * Owner money sheets, part 2: recording a provider payment and replacing a
+ * provider key. Payments and keys write once. (The team roster that used to be
+ * part 1 of this file has no screen any more.)
  */
 import { jsonRes } from "./helpers/response";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { en } from "../lib/i18n/en";
 
 const h = vi.hoisted(() => ({
-  members: [] as Record<string, unknown>[],
   update: vi.fn(),
   del: vi.fn(),
   insert: vi.fn(),
@@ -32,7 +31,7 @@ vi.mock("@/components/feedback/ToastProvider", () => ({
 vi.mock("@/lib/supabase/client", () => ({
   createClient: () => ({
     from: () => ({
-      select: () => ({ order: async () => ({ data: h.members, error: null }) }),
+      select: () => ({ order: async () => ({ data: [], error: null }) }),
       update: (v: unknown) => ({ eq: (...a: unknown[]) => h.update(v, ...a) }),
       delete: () => ({ eq: h.del }),
       insert: h.insert,
@@ -40,7 +39,6 @@ vi.mock("@/lib/supabase/client", () => ({
   }),
 }));
 
-import { MembersBoard } from "../components/members/MembersBoard";
 import { PayPanel } from "../components/billing/TopupControls";
 import { ProvidersBoard } from "../components/providers/ProvidersBoard";
 import type { ProviderView } from "../components/billing/BillingBoard";
@@ -66,100 +64,6 @@ const tap = async (el: HTMLElement) => {
     fireEvent.click(el);
   });
 };
-const row = (email: string) => screen.getAllByRole("listitem").find((r) => r.textContent?.includes(email))!;
-
-describe("MembersBoard", () => {
-  const rows = (...r: [string, string, string | null, string][]) =>
-    r.map(([id, email, user_id, role]) => ({ id, email, user_id, role, created_at: "2026-01-01" }));
-
-  it("removing a person names them, deletes nothing before the second tap, and Cancel changes nothing", async () => {
-    h.members = rows(["1", "me@a.uz", "u-me", "owner"], ["2", "b@a.uz", "u-b", "admin"]);
-    render(<MembersBoard myRole="owner" myEmail="me@a.uz" myUserId="u-me" />);
-    await waitFor(() => screen.getByText("b@a.uz"));
-    await tap(within(row("b@a.uz")).getByRole("button", { name: en.members.remove }));
-    expect(sheet().textContent).toContain("Remove b@a.uz from the team?");
-    expect(h.del).not.toHaveBeenCalled();
-    await tap(within(sheet()).getByRole("button", { name: en.ux.confirmCancel }));
-    expect(h.del).not.toHaveBeenCalled();
-    await tap(within(row("b@a.uz")).getByRole("button", { name: en.members.remove }));
-    const key = within(sheet()).getByRole("button", { name: en.ownerSafety.memberRemoveConfirm });
-    fireEvent.click(key);
-    fireEvent.click(key);
-    expect(h.del).toHaveBeenCalledTimes(1);
-    expect(h.del).toHaveBeenCalledWith("id", "2");
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-    expect(h.toast).toHaveBeenCalledWith("b@a.uz removed.");
-  });
-
-  it("a failed removal shows in the sheet and keeps the person", async () => {
-    h.members = rows(["1", "me@a.uz", "u-me", "owner"], ["2", "b@a.uz", "u-b", "admin"]);
-    h.del.mockResolvedValueOnce({ error: { message: "rls" } });
-    render(<MembersBoard myRole="owner" myEmail="me@a.uz" myUserId="u-me" />);
-    await waitFor(() => screen.getByText("b@a.uz"));
-    await tap(within(row("b@a.uz")).getByRole("button", { name: en.members.remove }));
-    await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.memberRemoveConfirm }));
-    expect(within(sheet()).getByRole("alert").textContent).toBe(en.members.saveFailed);
-    expect(within(sheet()).getByRole("button", { name: en.ownerSafety.memberRemoveConfirm }).hasAttribute("disabled")).toBe(false);
-  });
-
-  it("a role change shows from → to and writes only on confirm", async () => {
-    h.members = rows(["1", "me@a.uz", "u-me", "owner"], ["2", "b@a.uz", "u-b", "admin"]);
-    render(<MembersBoard myRole="owner" myEmail="me@a.uz" myUserId="u-me" />);
-    await waitFor(() => screen.getByText("b@a.uz"));
-    fireEvent.change(within(row("b@a.uz")).getByRole("combobox"), { target: { value: "viewer" } });
-    await act(async () => {});
-    expect(sheet().textContent).toContain("Change the role of b@a.uz?");
-    expect(within(sheet()).getByText(`${en.members.roleAdmin} → ${en.members.roleViewer}`)).toBeTruthy();
-    expect(h.update).not.toHaveBeenCalled();
-    await tap(within(sheet()).getByRole("button", { name: en.ownerSafety.roleChangeConfirm }));
-    expect(h.update).toHaveBeenCalledWith({ role: "viewer" }, "id", "2");
-  });
-
-  it("adding an admin names who gets which role before anything is written; adding a viewer needs no sheet", async () => {
-    h.members = rows(["1", "me@a.uz", "u-me", "owner"]);
-    render(<MembersBoard myRole="owner" myEmail="me@a.uz" myUserId="u-me" />);
-    await waitFor(() => screen.getByText("me@a.uz"));
-    fireEvent.change(screen.getByLabelText(en.members.addEmail), { target: { value: "New@A.uz" } });
-    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "admin" } });
-    await tap(screen.getByRole("button", { name: en.members.add }));
-    expect(sheet().textContent).toContain("Give new@a.uz the role “Admin”?");
-    expect(h.insert).not.toHaveBeenCalled();
-    const key = within(sheet()).getByRole("button", { name: en.ownerSafety.memberAddConfirm });
-    fireEvent.click(key);
-    fireEvent.click(key);
-    expect(h.insert).toHaveBeenCalledTimes(1);
-    expect(h.insert).toHaveBeenCalledWith({ email: "new@a.uz", role: "admin", created_by: "u-me" });
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-    fireEvent.change(screen.getByLabelText(en.members.addEmail), { target: { value: "v@a.uz" } });
-    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "viewer" } });
-    await tap(screen.getByRole("button", { name: en.members.add }));
-    expect(screen.queryByRole("alertdialog")).toBeNull();
-    expect(h.insert).toHaveBeenCalledTimes(2);
-  });
-
-  it("the only owner cannot be demoted or removed: no select, no remove key, a clear note", async () => {
-    h.members = rows(["1", "me@a.uz", "u-me", "owner"], ["2", "b@a.uz", "u-b", "admin"]);
-    render(<MembersBoard myRole="owner" myEmail="me@a.uz" myUserId="u-me" />);
-    await waitFor(() => screen.getByText("me@a.uz"));
-    const mine = row("me@a.uz");
-    expect(within(mine).queryByRole("combobox")).toBeNull();
-    expect(within(mine).queryByRole("button", { name: en.members.remove })).toBeNull();
-    expect(mine.textContent).toContain(en.members.lastOwnerNote);
-  });
-
-  it("your own row is blocked even when another owner exists", async () => {
-    h.members = rows(["1", "me@a.uz", "u-me", "owner"], ["2", "b@a.uz", "u-b", "owner"], ["3", "c@a.uz", null, "editor"]);
-    render(<MembersBoard myRole="owner" myEmail="me@a.uz" myUserId="u-me" />);
-    await waitFor(() => screen.getByText("me@a.uz"));
-    const mine = row("me@a.uz");
-    expect(within(mine).queryByRole("combobox")).toBeNull();
-    expect(within(mine).queryByRole("button", { name: en.members.remove })).toBeNull();
-    expect(mine.textContent).toContain(en.ownerSafety.blockSelf);
-    // another person's row is still manageable
-    expect(within(row("c@a.uz")).getByRole("button", { name: en.members.remove })).toBeTruthy();
-    expect(within(row("b@a.uz")).getByRole("button", { name: en.members.remove })).toBeTruthy();
-  });
-});
 
 describe("PayPanel (record a provider payment)", () => {
   const provider: ProviderView = {
