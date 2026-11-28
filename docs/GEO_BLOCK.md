@@ -5,8 +5,9 @@ Command Center then neither offers nor quotes nor starts that model, through its
 from one of them. The database does not know where a request comes from, so the check lives in the web process, in the
 routes and pickers listed below. **The web check alone is not in front of every call that prices, holds or queues
 anything:** a signed-in user can call the database functions directly and skip it. Migration 0208 adds the database's own
-check (below: a job on a model with a list needs a country our web server signed); until a later migration decides to open
-such a model, 0142 still keeps every model with a list off sale.
+check (below: a job on a model with a list needs a country our web server signed). 0142 kept every model with a list off
+sale; since 0238 a row with a list may go on sale only when it also carries its vendor's allow-list (`available_countries`),
+and only once 0230's gate is live. A deny-list-only row stays off sale. Opening one is still the owner's act.
 
 ## Google's models: an allow-list (2026-11-21)
 
@@ -64,6 +65,16 @@ capital letters) passed the database. Since 0230 every Google row also carries `
 `country_blocked`. A row with `available_countries` is asked even when it has no `blocked_countries`. A Google row synced before
 0230 has no allow-list and is refused every job until the sync runs (step 1 above; it may run before 0230 is applied, which avoids
 that window; 0230 raises a NOTICE). A non-Google deny-list-only model (`grounded-image-1.0`) keeps 0208's rule.
+
+**A model with both lists may be put on sale (0238).** 0142's CHECK `model_registry_countries_before_sale` (same name) now
+refuses `beta`/`ga` for a row with a non-empty `blocked_countries` only when its spec has no non-empty `available_countries`
+array. 0238 refuses to apply unless `creative_jobs_geo_gate` is 0230's body and its trigger is attached and enabled; the CHECK
+reads the row, not the gate, so the order of undoing is fixed: take such a model off sale, roll back 0238, then 0230 or 0208
+(both rollbacks refuse while a country-listed row is on sale). No row changes availability in 0238. The registry validator
+holds the same line: `blocked_countries` with no `terms_gate` needs `available_countries`. The two Google image models the owner
+cleared on 2026-11-28 (`gemini-3-pro-image`, `gemini-nano-banana-2.1`) stay `hidden` and unpriced, and are not operator previews
+(priced by size, which the preview fallback cannot price yet; docs/MIGRATIONS.md, 0238). A Film Studio take carries no visitor,
+so the gate refuses it (`country_unverified`) for these rows.
 
 ## How a request's country is known
 

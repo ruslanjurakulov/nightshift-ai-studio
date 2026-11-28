@@ -30,6 +30,8 @@ const state = {
   filmOpen: true,
   /** Answers given in order before state.llm (a re-ask's second answer). */
   queue: [] as Record<string, unknown>[],
+  /** save_film's scenes (0166 film_read), when a test needs them. */
+  savedScenes: null as { id: string; position: number }[] | null,
 };
 const rpc = vi.fn();
 const llm = vi.fn();
@@ -57,7 +59,7 @@ const client = {
     // The owner's model reaches the server only as a reference (0199): never the id a member could read.
     if (fn === "ai_chat_quota") return { data: { used: 3, limit: 30, model_ref: ref("anthropic-claude-sonnet-5-5") }, error: null };
     if (fn === "create_film_draft") return { data: { film: { id: FILM, version: 1 } }, error: null };
-    if (fn === "save_film") return { data: { film: { id: FILM, version: 2 } }, error: null };
+    if (fn === "save_film") return { data: { film: { id: FILM, version: 2 }, ...(state.savedScenes ? { scenes: state.savedScenes } : {}) }, error: null };
     if (fn === "quote_film") return { data: { priced: true, total: 240, quote_id: `fq-2-${"a".repeat(32)}`, startable: true, available: 500 }, error: null };
     return { data: null, error: null };
   },
@@ -103,6 +105,7 @@ beforeEach(() => {
   state.payload = null;
   state.filmOpen = true;
   state.queue = [];
+  state.savedScenes = null;
   state.llm = { ok: true, text: JSON.stringify({ reply: "Which kind?", slots: {}, card: { thread_title: "New video", question: "Long or short?", options: ["Long", "Short", "Not sure"] } }), tokensIn: 10, tokensOut: 20 };
 });
 
@@ -243,5 +246,33 @@ describe("S1 story grammar through /api/brain/turn", () => {
     expect(await res.json()).toMatchObject({ error: "looks_too_long", limit: 2000, in_frame: 3 });
     expect(called("ai_chat_plan_begin")).toHaveLength(0);
     expect(called("ai_chat_reserve_turn")).toHaveLength(0);
+  });
+});
+
+describe("character sheets survive a chat turn (Lens H1)", () => {
+  it("a turn's BRIEF carries the stored ref_sheets and film_link, read again just before the write", async () => {
+    const sheet = { character_id: "c1", stage: null, views: [{ view: "front", prompt: "p", asset_id: "eeeeeeee-0000-4000-8000-000000000001", status: "approved", attempt: 0 }] };
+    const link = { film_id: FILM, scenes: [{ brief: "s1", film: "dddddddd-0000-4000-8000-000000000901" }] };
+    state.session = { ...state.session!, step: "ready", brief: { kind: "short", ref_sheets: [sheet], film_link: link } };
+    await turn();
+    const finish = called("ai_chat_finish_turn").find((c) => (c[1] as { p_outcome?: string }).p_outcome === "ok");
+    const brief = (finish![1] as { p_brief: Record<string, unknown> }).p_brief;
+    expect(brief.ref_sheets).toEqual([expect.objectContaining({ character_id: "c1", views: [expect.objectContaining({ status: "approved" })] })]);
+    expect(brief.film_link).toEqual(link);
+  });
+});
+
+describe("the draft's film link (Lens M3)", () => {
+  it("choosing writes which film scene each BRIEF scene became, from save_film's own answer, with the carried sheets", async () => {
+    state.session = { ...state.session!, slots: FULL_SHORT, step: "proposing", brief: { ref_sheets: [{ character_id: "c1", stage: null, views: [] }] } };
+    const quiet = (t: string) => ({ title: t, duration_s: 30, visual_prompt: "v", speech: "none" });
+    state.payload = { scenarios: [scen({ scenes: [quiet("a"), quiet("b")] }), scen()] };
+    state.savedScenes = [{ id: "dddddddd-0000-4000-8000-000000000902", position: 1 }, { id: "dddddddd-0000-4000-8000-000000000901", position: 0 }];
+    const d = await (await post({ action: "choose", session: SESSION, index: 0 })).json();
+    const saves = called("ai_chat_save_brief").map((c) => (c[1] as { p_brief: Record<string, unknown> }).p_brief);
+    const last = saves[saves.length - 1];
+    expect(last.film_link).toEqual({ film_id: FILM, scenes: [
+      { brief: d.brief.scenes[0].id, film: "dddddddd-0000-4000-8000-000000000901" }, { brief: d.brief.scenes[1].id, film: "dddddddd-0000-4000-8000-000000000902" }] });
+    expect(last.ref_sheets).toEqual([{ character_id: "c1", stage: null, views: [] }]);
   });
 });
