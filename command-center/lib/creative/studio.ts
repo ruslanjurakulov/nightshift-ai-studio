@@ -45,7 +45,7 @@ import {
   isImageQuality,
   isUuid,
 } from "@/lib/creative/operations";
-import { VOICES } from "@/lib/ttsModels";
+import { VOICES } from "@/lib/voices";
 import { registryName } from "@/lib/creative/model-names";
 import { planGate } from "@/lib/models-discovery";
 import { formatCredits } from "@/lib/credits";

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { AgentBuilder } from "@/components/agent-builder/AgentBuilder";
+import { AgentBuilder, type ProviderPreviews } from "@/components/agent-builder/AgentBuilder";
+import { planProviderSelection } from "@/lib/agent-providers";
 import { guardOperatorPage } from "@/lib/auth/org-roles";
 
 export const metadata: Metadata = {
@@ -18,5 +19,11 @@ export const dynamic = "force-dynamic";
  */
 export default async function AgentBuilderPage() {
   await guardOperatorPage();
-  return <AgentBuilder />;
+  // Each provider's review card, with the capability the builder has always previewed it for. Planned here, after the guard: the
+  // registry behind it is server-only, and a plan carries the blockers only, never the registry's licensing or pricing state.
+  const providerPreviews: ProviderPreviews = {
+    ideogram: planProviderSelection({ provider: "ideogram", capability: "vector" }),
+    byteplus: planProviderSelection({ provider: "byteplus", capability: "video" }),
+  };
+  return <AgentBuilder providerPreviews={providerPreviews} />;
 }

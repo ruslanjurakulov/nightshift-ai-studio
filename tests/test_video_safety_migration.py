@@ -123,14 +123,14 @@ class TheJobErrorMapping(unittest.TestCase):
 
     def test_the_prefix_rule_is_the_workers_and_the_typescript_layers(self):
         py = (REPO / "modules" / "render_error.py").read_text(encoding="utf-8")
-        ts = (REPO / "command-center" / "lib" / "runBackend.ts").read_text(encoding="utf-8")
+        ts = (REPO / "command-center" / "lib" / "job-errors.ts").read_text(encoding="utf-8")  # the codes, out of runBackend.ts
         self.assertIn(r'PREFIX_RE = re.compile(r"^\[code:([a-z_]+)\][ \t]?")', py)
         self.assertIn(r"/^\[code:([a-z_]+)\][ \t]?/.exec(error)", ts)
         self.assertIn(r"regexp_match(p_error, '^\[code:([a-z_]+)\][ \t]?')", self.helper)
 
     def test_the_code_list_is_the_closed_set_of_the_worker_and_of_typescript(self):
         py = (REPO / "modules" / "render_error.py").read_text(encoding="utf-8")
-        ts = (REPO / "command-center" / "lib" / "runBackend.ts").read_text(encoding="utf-8")
+        ts = (REPO / "command-center" / "lib" / "job-errors.ts").read_text(encoding="utf-8")  # the codes, out of runBackend.ts
         self.assertEqual(re.findall(r"\w+", re.search(r"JOB_ERROR_CODES = \[(.*?)\] as const", ts, re.S).group(1)), CODES)
         for c in CODES:
             self.assertRegex(py, rf'{c.upper()} = "{c}"')

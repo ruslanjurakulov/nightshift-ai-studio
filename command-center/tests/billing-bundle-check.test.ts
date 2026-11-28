@@ -68,10 +68,14 @@ describe("billing-bundle-check", () => {
     expect(r.out).toContain(expected);
   });
 
-  it("does not count a URL that is also the vendor's API-key console (lib/providers.ts, lib/model-keys.ts)", () => {
+  // It used to be exempt (the Providers page's chunk carried lib/providers.ts); that list is server-only now, so a vendor
+  // billing page that is also its key console is a leak like any other.
+  it("counts a billing URL that is also the vendor's API-key console", () => {
     const root = fakeBuild();
     put(root, "static/chunks/10-keys.js", 'k={consoleUrl:"https://kling.ai/dev"}');
-    expect(run(root).code).toBe(0);
+    const r = run(root);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("kling.ai/dev");
   });
 
   // Positive controls: a pass must never come from scanning nothing, or from a source the script can no longer read.

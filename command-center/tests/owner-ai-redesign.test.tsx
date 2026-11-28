@@ -275,6 +275,7 @@ describe("the chat", () => {
           verifyHref="/verify"
           signInHref="/login"
           configuredModels={{ "anthropic-claude-sonnet-5-5": true, "openai-gpt-6-luna": false, "gemini-3.6-flash": true }}
+          preferredModel="gemini-3.6-flash"
         />,
       );
       const picker = () => screen.getByRole("combobox", { name: a.modelPicker.label }) as HTMLSelectElement;
