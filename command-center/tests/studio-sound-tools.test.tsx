@@ -1,16 +1,18 @@
 // @vitest-environment jsdom
 /**
- * The Studio's sound tools: Music (0228: Lyria 3.5, priced per request, instrumental only) and Sound effects. They are built so they go
- * live by themselves the day the database sells a model for them, and until then they say plainly that they are not available yet.
+ * The Studio's sound tool: Sound effects. It is built so it goes live by itself the day the database sells a model for it, and until
+ * then it says plainly that it is not available yet. Music is NOT a Studio tool: Lyria's terms (Google APIs Terms 4(a)) allow it only
+ * inside a project's workflow, never as a free-standing prompt-to-song tab.
  *
  * What would break without these:
- *  - the music form growing a length, lyrics, a seed, a negative prompt or a loop control that no music model takes (0228 has a
- *    per-request price with no duration, and only instrumental music is offered), so the press is refused after the person filled it;
+ *  - a Music tab reappearing in the composer, the desks or a link;
+ *  - Lyria read as open to some workspace while its entitlement is a plan tier no workspace is sold;
  *  - a sound effect with no model drawn as a working form, or the Generate key pressable without a reason;
+ *  - a sound effect sent without the length the database requires, or with one the model does not list;
  *  - a price on the key that the server did not quote;
  *  - a refusal (bad settings, a country, no price, a lock, too few credits) shown as a generic failure, or not at all;
  *  - a language missing the new words, or Uzbek written with a typewriter apostrophe;
- *  - the sound tools leaking into the sidebar's tool rows, where they would open a tool nobody can use yet.
+ *  - the sound tool leaking into the sidebar's tool rows, where it would open a tool nobody can use yet.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -36,7 +38,7 @@ import { dictionaries } from "@/lib/i18n";
 import { GeneratePanel } from "@/components/studio/GeneratePanel";
 import { DESK_TOOLS, deskFor, deskFromQuery } from "@/lib/creative/desks";
 import { STUDIO_TOOLS } from "@/lib/navigation";
-import { LEGAL_TEXTS } from "@/lib/legal-docs";
+import { planGate } from "@/lib/models-discovery";
 import { resetCreditsLive, seedCredits } from "@/lib/credits-live";
 import {
   COMPOSER_CAPABILITIES,
@@ -44,6 +46,8 @@ import {
   SOUND_TOOLS,
   WORDS_FREE_PRICE,
   buildParams,
+  isStudioCapability,
+  modelLock,
   outputKind,
   prefillFromQuery,
   promptRule,
@@ -59,10 +63,9 @@ const withI18n = (ui: ReactNode) => <I18nProvider locale="en">{ui}</I18nProvider
 const json = (body: unknown, status = 200) =>
   Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
 
-const form = (over: Partial<StudioForm>): StudioForm => ({ capability: "music", prompt: "", aspect: "16:9", duration: 5, ...over });
+const form = (over: Partial<StudioForm>): StudioForm => ({ capability: "sfx", prompt: "", aspect: "16:9", duration: 5, ...over });
 
-// The real ids, so nothing here passes only for a made-up model. Neither is on sale today; these stand for the day one is.
-const LYRIA: StudioModel = { id: "google-lyria-3.5", displayName: "Lyria 3.5", capabilities: ["music"], beta: true };
+// The real id, so nothing here passes only for a made-up model. It is not on sale today; this stands for the day it is.
 const SFX: StudioModel = { id: "elevenlabs-sfx", displayName: "Sound Effects", capabilities: ["sfx"], beta: true, durations: [1, 2, 5, 10] };
 const SPEECH: StudioModel = { id: "speech", displayName: "Speech", capabilities: ["tts"], beta: false };
 
@@ -99,36 +102,31 @@ afterEach(() => {
 });
 
 const press = () => screen.getByRole("button", { name: /^Generate/ }) as HTMLButtonElement;
-const openTool = (c: "music" | "sfx") => fireEvent.click(screen.getByRole("tab", { name: new RegExp(t.desk.tools[c]) }));
+const openSfx = () => fireEvent.click(screen.getByRole("tab", { name: new RegExp(t.desk.tools.sfx) }));
 const status = () => document.getElementById("gen-status")?.textContent ?? "";
 
 // ── the request ──────────────────────────────────────────────────────────────
 
 describe("what the sound tools send", () => {
-  it("music sends its words and nothing else: no length, lyrics, seed, negative prompt or loop, whatever the form held", () => {
-    expect(buildParams(form({ prompt: "  calm piano  ", duration: 30 }))).toEqual({ prompt: "calm piano" });
-    // The sheet's stand-in price check is held to the same rule.
-    expect(Object.keys(sheetQuoteParams(form({})) ?? {})).toEqual(["prompt"]);
-    expect(promptRule("music")).toBe("required");
-  });
-
   it("a sound effect sends its words and the length picked (0228 requires one for sfx)", () => {
     expect(buildParams(form({ capability: "sfx", prompt: "door knock", duration: 2 }))).toEqual({ prompt: "door knock", duration_s: 2 });
     expect(promptRule("sfx")).toBe("required");
   });
 
-  it("both are priced without reading the words (per request, or per second), so the model sheet can price them before typing", () => {
-    for (const c of SOUND_TOOLS) expect(WORDS_FREE_PRICE).toContain(c);
+  it("a sound effect is priced by its seconds, not its words, so the model sheet can price it before typing", () => {
+    expect(WORDS_FREE_PRICE).toContain("sfx");
+    expect(sheetQuoteParams(form({ duration: 2 }))).toEqual({ prompt: "price check", duration_s: 2 });
   });
 
   it("the result is a sound, shown with a player like a voice", () => {
-    for (const c of SOUND_TOOLS) expect(outputKind(c)).toBe("audio");
+    expect(outputKind("sfx")).toBe("audio");
   });
 });
 
 describe("where the sound tools live", () => {
-  it("on the Voice desk, after the speech tools; not in the sidebar's tool rows", () => {
-    expect(DESK_TOOLS.voice).toEqual(["tts", "voice_change", "dub", "music", "sfx"]);
+  it("Sound effects is on the Voice desk, after the speech tools; not in the sidebar's tool rows", () => {
+    expect(SOUND_TOOLS).toEqual(["sfx"]);
+    expect(DESK_TOOLS.voice).toEqual(["tts", "voice_change", "dub", "sfx"]);
     for (const c of SOUND_TOOLS) {
       expect(deskFor(c)).toBe("voice");
       expect(deskFromQuery({ tool: c })).toBe("voice");
@@ -138,76 +136,63 @@ describe("where the sound tools live", () => {
       expect(COMPOSER_CAPABILITIES as readonly string[]).not.toContain(c);
     }
   });
+
+  it("music is no Studio tool at all: no tab, no desk, no link opens a prompt-to-song form (Lyria's terms, 4(a))", () => {
+    expect(isStudioCapability("music")).toBe(false);
+    expect(PANEL_CAPABILITIES as readonly string[]).not.toContain("music");
+    for (const tools of Object.values(DESK_TOOLS)) expect(tools as readonly string[]).not.toContain("music");
+    expect(prefillFromQuery("music", undefined)).toBeNull();
+    expect(deskFromQuery({ tool: "music" })).toBe("overview");
+    for (const d of Object.values(dictionaries)) {
+      expect("music" in d.gen.tabs).toBe(false);
+      expect("music" in d.desk.tools).toBe(false);
+    }
+  });
+});
+
+describe("Lyria's state today, in the library (no UI)", () => {
+  it("its plan-tier entitlement (models_audio:premium) is not on sale to any workspace, purchase or not", () => {
+    // S6's price migration flips the entitlement to `any`; this test changes with it.
+    expect(modelLock("models_audio:premium", null)).toBe("not_on_sale");
+    expect(modelLock("models_audio:premium", true)).toBe("not_on_sale");
+    expect(planGate("models_audio:premium", true)?.kind).toBe("not_open");
+    expect(modelLock("any", null)).toBeNull();
+  });
 });
 
 // ── the composer ─────────────────────────────────────────────────────────────
 
 describe("with no model on sale (today)", () => {
-  it.each(["sfx", "music"] as const)("%s shows the unavailable state and a disabled key with its reason, and asks nothing", async (c) => {
+  it("Sound effects shows the unavailable state and a disabled key with its reason, and asks nothing", async () => {
     render(withI18n(<GeneratePanel orgId={ORG} models={[SPEECH]} desk="voice" />));
-    openTool(c);
+    openSfx();
     expect(screen.getByTestId("gen-no-model").textContent).toBe(t.gen.notAvailableYet);
     expect(status()).toBe(t.gen.notAvailableYet);
     expect(press().disabled).toBe(true);
     // The key's reason is read with it.
     expect(press().getAttribute("aria-describedby")).toContain("gen-status");
-    // No length is offered for a model that does not exist, and no music note invites a request.
+    // No length is offered for a model that does not exist.
     expect(screen.queryByRole("group", { name: t.gen.durationLabel })).toBeNull();
-    expect(screen.queryByTestId("gen-music-note")).toBeNull();
-    fireEvent.change(screen.getByLabelText(new RegExp(t.gen.soundWords[c])), { target: { value: "rain on a tin roof" } });
+    fireEvent.change(screen.getByLabelText(new RegExp(t.gen.soundWords.sfx)), { target: { value: "rain on a tin roof" } });
     await new Promise((r) => setTimeout(r, 700));
     expect(quotes).toEqual([]);
     expect(creates).toEqual([]);
     expect(press().textContent).not.toMatch(/\d/);
   });
 
-  it("no other model is offered in its place: speech is never the music tool's fallback", () => {
-    render(withI18n(<GeneratePanel orgId={ORG} models={[SPEECH]} desk="voice" initial={{ capability: "music", model: "speech", prompt: "", aspect: "16:9", duration: 5 }} />));
-    expect(screen.getByRole("tab", { name: new RegExp(t.desk.tools.music) }).getAttribute("aria-selected")).toBe("true");
+  it("no other model is offered in its place: speech is never the sound effect tool's fallback", () => {
+    render(withI18n(<GeneratePanel orgId={ORG} models={[SPEECH]} desk="voice" initial={{ capability: "sfx", model: "speech", prompt: "", aspect: "16:9", duration: 5 }} />));
+    expect(screen.getByRole("tab", { name: new RegExp(t.desk.tools.sfx) }).getAttribute("aria-selected")).toBe("true");
     expect(screen.queryByTestId("gen-model-name")).toBeNull();
     expect(screen.getByTestId("gen-no-model").textContent).toBe(t.gen.notAvailableYet);
   });
 });
 
-describe("the music form, once a model is sold", () => {
-  it("has the words and the model, and no length, lyrics, seed, negative prompt or loop control", async () => {
-    render(withI18n(<GeneratePanel orgId={ORG} models={[LYRIA]} desk="voice" initial={{ capability: "music", model: LYRIA.id, prompt: "", aspect: "16:9", duration: 5 }} />));
-    const words = screen.getByLabelText(t.gen.soundWords.music) as HTMLTextAreaElement;
-    expect(words.tagName).toBe("TEXTAREA");
-    expect(screen.getByTestId("gen-model-name").textContent).toBe("Lyria 3.5");
-    const panel = screen.getByRole("tabpanel");
-    expect(within(panel).queryByRole("group", { name: t.gen.durationLabel })).toBeNull();
-    expect(within(panel).queryByRole("combobox")).toBeNull();
-    expect(panel.querySelectorAll("textarea")).toHaveLength(1);
-    expect(panel.querySelectorAll("input")).toHaveLength(0);
-    expect(panel.textContent ?? "").not.toMatch(/\b(lyrics? field|seed|negative|loop)\b/i);
-    // What it makes, and where the rules for it are written (the existing legal text, never new words here).
-    const note = screen.getByTestId("gen-music-note");
-    expect(note.textContent).toContain(t.gen.musicNote);
-    const links = within(note).getAllByRole("link").map((a) => a.getAttribute("href"));
-    expect(links).toEqual(["/privacy#processors", "/terms#third-parties"]);
-
-    fireEvent.change(words, { target: { value: "calm solo piano" } });
-    const key = await screen.findByRole("button", { name: "Generate · 3 credits" }, { timeout: 2000 });
-    expect(quotes.at(-1)).toEqual({ org_id: ORG, capability: "music", model: LYRIA.id, params: { prompt: "calm solo piano" } });
-    fireEvent.click(key);
-    await waitFor(() => expect(creates).toHaveLength(1));
-    expect(creates[0]).toMatchObject({ capability: "music", model: LYRIA.id, max_credits: 3, params: { prompt: "calm solo piano" } });
-  });
-
-  it("the legal sections it points to exist in every language and name the music model", () => {
-    for (const loc of ["en", "ru", "uz"] as const) {
-      const privacy = LEGAL_TEXTS[loc].privacy.sections.find((s) => s.id === "processors");
-      const terms = LEGAL_TEXTS[loc].terms.sections.find((s) => s.id === "third-parties");
-      expect(JSON.stringify(privacy)).toContain("Lyria");
-      expect(JSON.stringify(terms)).toContain("Lyria");
-    }
-  });
-});
-
 describe("the sound effect form, once a model is sold", () => {
-  it("offers the model's own lengths and sends the one picked", async () => {
+  it("has the words, the model and the model's own lengths, and sends the one picked", async () => {
     render(withI18n(<GeneratePanel orgId={ORG} models={[SFX]} desk="voice" initial={{ capability: "sfx", model: SFX.id, prompt: "a door knock", aspect: "16:9", duration: 7 }} />));
+    expect((screen.getByLabelText(t.gen.soundWords.sfx) as HTMLElement).tagName).toBe("TEXTAREA");
+    expect(screen.getByTestId("gen-model-name").textContent).toBe("Sound Effects");
     const lengths = within(screen.getByRole("group", { name: t.gen.durationLabel })).getAllByRole("button");
     expect(lengths).toHaveLength(4);
     // 7 s is not on the list: the nearest listed length is sent, and the form says so.
@@ -216,12 +201,23 @@ describe("the sound effect form, once a model is sold", () => {
     expect(screen.getByTestId("gen-snap-note").textContent).toContain("5 s");
     fireEvent.click(lengths[1]);
     await waitFor(() => expect(quotes.at(-1)?.params).toEqual({ prompt: "a door knock", duration_s: 2 }), { timeout: 2000 });
+    fireEvent.click(await screen.findByRole("button", { name: "Generate · 3 credits" }, { timeout: 2000 }));
+    await waitFor(() => expect(creates).toHaveLength(1));
+    expect(creates[0]).toMatchObject({ capability: "sfx", model: SFX.id, max_credits: 3, params: { prompt: "a door knock", duration_s: 2 } });
+  });
+
+  it("a model that lists no length is not priced: the reason is named", async () => {
+    render(withI18n(<GeneratePanel orgId={ORG} models={[{ ...SFX, durations: [] }]} desk="voice" initial={{ capability: "sfx", model: SFX.id, prompt: "a door knock", aspect: "16:9", duration: 5 }} />));
+    expect(status()).toBe(t.gen.noLength.replace("{model}", "Sound Effects"));
+    expect(press().disabled).toBe(true);
+    await new Promise((r) => setTimeout(r, 700));
+    expect(quotes).toEqual([]);
   });
 });
 
 describe("the price is the server's", () => {
   const start = () =>
-    render(withI18n(<GeneratePanel orgId={ORG} models={[LYRIA]} desk="voice" initial={{ capability: "music", model: LYRIA.id, prompt: "calm piano", aspect: "16:9", duration: 5 }} />));
+    render(withI18n(<GeneratePanel orgId={ORG} models={[SFX]} desk="voice" initial={{ capability: "sfx", model: SFX.id, prompt: "a door knock", aspect: "16:9", duration: 5 }} />));
 
   it("no number is on the key while the quote is pending", async () => {
     quoteReply = () => new Promise<Response>(() => {});
@@ -242,8 +238,8 @@ describe("the price is the server's", () => {
 });
 
 describe("each refusal in its own words, with the key disabled", () => {
-  const start = (model: StudioModel = LYRIA) =>
-    render(withI18n(<GeneratePanel orgId={ORG} models={[model]} desk="voice" initial={{ capability: "music", model: model.id, prompt: "calm piano", aspect: "16:9", duration: 5 }} />));
+  const start = (model: StudioModel = SFX) =>
+    render(withI18n(<GeneratePanel orgId={ORG} models={[model]} desk="voice" initial={{ capability: "sfx", model: model.id, prompt: "a door knock", aspect: "16:9", duration: 5 }} />));
 
   it.each([
     ["invalid_params", 400, t.creative.errors.invalid_params],
@@ -261,15 +257,15 @@ describe("each refusal in its own words, with the key disabled", () => {
 
   it("entitlement: a first purchase opens it, with the way to buy", async () => {
     quoteReply = () => json({ error: "entitlement_required", detail: "available after the organization's first credit purchase" }, 403);
-    start({ ...LYRIA, entitlement: "paid" });
+    start({ ...SFX, entitlement: "paid" });
     await waitFor(() => expect(screen.getByTestId("gen-locked").getAttribute("data-lock")).toBe("first_purchase"), { timeout: 2000 });
     expect(status()).toContain(t.gen.lockWhy.first_purchase);
     expect(within(screen.getByTestId("gen-locked")).getByRole("link", { name: t.gen.lockBuy })).toBeTruthy();
     expect(press().disabled).toBe(true);
   });
 
-  it("entitlement: a plan-tier model (Lyria's models_audio:premium) is not on sale to any workspace, and is not even quoted", async () => {
-    start({ ...LYRIA, entitlement: "models_audio:premium", lock: "not_on_sale" });
+  it("entitlement: a plan-tier model (ElevenLabs SFX's models_audio:basic) is not on sale to any workspace, and is not even quoted", async () => {
+    start({ ...SFX, entitlement: "models_audio:basic", lock: "not_on_sale" });
     expect(screen.getByTestId("gen-locked").textContent).toBe(t.gen.lockWhy.not_on_sale);
     expect(press().disabled).toBe(true);
     await new Promise((r) => setTimeout(r, 700));
@@ -277,7 +273,7 @@ describe("each refusal in its own words, with the key disabled", () => {
   });
 
   it("entitlement: adults only, until the person confirms their age", async () => {
-    start({ ...LYRIA, adultOnly: true, lock: "adult_only" });
+    start({ ...SFX, adultOnly: true, lock: "adult_only" });
     expect(screen.getByTestId("gen-locked").textContent).toBe(t.gen.lockWhy.adult_only);
     expect(press().disabled).toBe(true);
     await new Promise((r) => setTimeout(r, 700));
@@ -307,18 +303,11 @@ describe("each refusal in its own words, with the key disabled", () => {
 
 describe("copy", () => {
   const newWords = (d: (typeof dictionaries)[keyof typeof dictionaries]) => [
-    d.gen.tabs.music,
     d.gen.tabs.sfx,
-    d.desk.tools.music,
     d.desk.tools.sfx,
-    d.desk.toolFrom.music,
     d.desk.toolFrom.sfx,
-    d.gen.promptPh.music,
     d.gen.promptPh.sfx,
-    d.gen.soundWords.music,
     d.gen.soundWords.sfx,
-    d.gen.musicNote,
-    d.gen.musicRules,
   ];
 
   it("every language has every new word, and ru and uz are not English left in place", () => {
@@ -334,7 +323,7 @@ describe("copy", () => {
     expect(newWords(dictionaries.uz).join(" ")).toMatch(/ʻ/);
   });
 
-  it("names no price, no provider and no plan: those come from the server and the legal text", () => {
+  it("names no price, no provider and no plan: those come from the server", () => {
     for (const d of Object.values(dictionaries)) {
       for (const w of newWords(d)) {
         expect(w).not.toMatch(/\d|\$|credit|кредит|kredit/i);

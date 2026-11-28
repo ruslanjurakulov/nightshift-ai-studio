@@ -3873,7 +3873,6 @@ export const en = {
       video_edit: "What to change — make the scene look like dusk, keep the people and the motion",
       video_reframe: "",
       video_remove_bg: "",
-      music: "Calm solo piano, slow and warm, for a quiet evening scene",
       sfx: "A heavy wooden door creaking open, then a soft thud",
     },
     toolsLabel: "Start from a picture",
@@ -3895,9 +3894,7 @@ export const en = {
     looks: { soft: "Soft", warm: "Warm", cool: "Cool", golden_hour: "Golden hour", dramatic: "Dramatic", studio: "Studio" },
     lookOrWords: "Or describe the light below. Your words replace the chosen light.",
     opWords: { expand: "What the new areas show", relight: "Describe the light", erase: "What to erase", video_edit: "What to change" },
-    soundWords: { music: "Describe the music", sfx: "Describe the sound" },
-    musicNote: "Instrumental only: describe the instruments, the mood and the pace in plain words. Lyrics and vocals are not offered.",
-    musicRules: "What is sent to the model's maker, how long it is kept, and the rules for music:",
+    soundWords: { sfx: "Describe the sound" },
     expandNote: "The picture is extended to the shape you pick and the new edges are filled in. The result is saved to your Library as a new version. The price is the same for every shape.",
     relightNote: "Only the light and the shadows change. Pick a light or describe it. The result is saved to your Library as a new version.",
     eraseNote: "Name one object. It is taken out and the space is filled in; nothing to draw. The result is saved to your Library as a new version.",
@@ -4053,7 +4050,7 @@ export const en = {
     dismiss: "Dismiss",
     cancel: "Cancel",
     cancelling: "Cancelling…",
-    tabs: { t2i: "Image", t2v: "Video", tts: "Voice", edit: "Edit", i2v: "Animate", upscale: "Upscale", remove_bg: "Cut out", voice_change: "Change voice", dub: "Dub / translate", video_upscale: "Upscale video", describe: "Describe", expand: "Extend", relight: "Relight", erase: "Erase", video_edit: "Edit video", video_reframe: "Reframe", video_remove_bg: "Video cut-out", music: "Music", sfx: "Sound effect" },
+    tabs: { t2i: "Image", t2v: "Video", tts: "Voice", edit: "Edit", i2v: "Animate", upscale: "Upscale", remove_bg: "Cut out", voice_change: "Change voice", dub: "Dub / translate", video_upscale: "Upscale video", describe: "Describe", expand: "Extend", relight: "Relight", erase: "Erase", video_edit: "Edit video", video_reframe: "Reframe", video_remove_bg: "Video cut-out", sfx: "Sound effect" },
     modelChange: "Change",
     modelChangeLabel: "Change model",
     blocked: {
@@ -5023,7 +5020,6 @@ export const en = {
       video_edit: "Edit video",
       video_reframe: "Reframe video",
       video_remove_bg: "Cut out video",
-      music: "Music",
       sfx: "Sound effect",
     },
     toolFrom: {
@@ -5044,7 +5040,6 @@ export const en = {
       video_edit: "change it by typing",
       video_reframe: "another shape, no cropping",
       video_remove_bg: "background taken out",
-      music: "instrumental, from words",
       sfx: "a short sound, from words",
     },
     voiceStyles: {

@@ -92,7 +92,7 @@ export function closedTools<T extends string>(av: ToolAvailability, tools: reado
 
 /** Known, and not one picture, clip or voice tool is on sale: say so plainly and point at what does work. */
 export function nothingOnSale(av: ToolAvailability): boolean {
-  // Only the Studio's own tools count: a model sold for captions alone opens none of these screens (music is a Voice-desk tool).
+  // Only the Studio's own tools count: a model sold for captions or music alone opens none of these screens.
   return av.state === "known" && !Object.values(DESK_TOOLS).some((tools) => tools.some((c) => av.sold.includes(c)));
 }
 

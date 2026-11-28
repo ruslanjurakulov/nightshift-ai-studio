@@ -3853,7 +3853,6 @@ export const uz: Dictionary = {
       video_edit: "Nimani oʻzgartirish kerak — sahna oqshomdek koʻrinsin, odamlar va harakat qolsin",
       video_reframe: "",
       video_remove_bg: "",
-      music: "Sokin yakkaxon pianino, sekin va iliq, tinch kechki sahna uchun",
       sfx: "Ogʻir yogʻoch eshik gʻichirlab ochiladi, keyin boʻgʻiq zarb eshitiladi",
     },
     toolsLabel: "Rasmdan boshlash",
@@ -3875,9 +3874,7 @@ export const uz: Dictionary = {
     looks: { soft: "Yumshoq", warm: "Iliq", cool: "Sovuq", golden_hour: "Oltin soat", dramatic: "Dramatik", studio: "Studiya" },
     lookOrWords: "Yoki yorugʻlikni pastda tasvirlang. Yozganingiz tanlangan yorugʻlikning oʻrnini bosadi.",
     opWords: { expand: "Yangi chetlarda nima bor", relight: "Yorugʻlikni tasvirlang", erase: "Nimani oʻchirish", video_edit: "Nimani oʻzgartirish" },
-    soundWords: { music: "Musiqani tasvirlang", sfx: "Ovozni tasvirlang" },
-    musicNote: "Faqat cholgʻu musiqasi: cholgʻular, kayfiyat va surʼatni oddiy soʻzlar bilan tasvirlang. Qoʻshiq matni va vokal taklif qilinmaydi.",
-    musicRules: "Model ishlab chiqaruvchisiga nima yuboriladi, qancha saqlanadi va musiqa qoidalari:",
+    soundWords: { sfx: "Ovozni tasvirlang" },
     expandNote: "Rasm tanlangan shaklga kengaytiriladi, yangi chetlar toʻldiriladi. Natija Kutubxonangizga yangi versiya sifatida saqlanadi. Narx har bir shakl uchun bir xil.",
     relightNote: "Faqat yorugʻlik va soyalar oʻzgaradi. Yorugʻlikni tanlang yoki tasvirlang. Natija Kutubxonangizga yangi versiya sifatida saqlanadi.",
     eraseNote: "Bitta obyektni nomlang: u olib tashlanadi, oʻrni toʻldiriladi; chizish shart emas. Natija Kutubxonangizga yangi versiya sifatida saqlanadi.",
@@ -4032,7 +4029,7 @@ export const uz: Dictionary = {
     dismiss: "Yopish",
     cancel: "Bekor qilish",
     cancelling: "Bekor qilinmoqda…",
-    tabs: { t2i: "Rasm", t2v: "Video", tts: "Ovoz", edit: "Tahrirlash", i2v: "Jonlantirish", upscale: "Kattalashtirish", remove_bg: "Qirqish", voice_change: "Ovozni almashtirish", dub: "Dublyaj / tarjima", video_upscale: "Video sifati", describe: "Tasvirlash", expand: "Kengaytirish", relight: "Yorugʻlik", erase: "Oʻchirish", video_edit: "Video tahriri", video_reframe: "Video shakli", video_remove_bg: "Video foni", music: "Musiqa", sfx: "Ovoz effekti" },
+    tabs: { t2i: "Rasm", t2v: "Video", tts: "Ovoz", edit: "Tahrirlash", i2v: "Jonlantirish", upscale: "Kattalashtirish", remove_bg: "Qirqish", voice_change: "Ovozni almashtirish", dub: "Dublyaj / tarjima", video_upscale: "Video sifati", describe: "Tasvirlash", expand: "Kengaytirish", relight: "Yorugʻlik", erase: "Oʻchirish", video_edit: "Video tahriri", video_reframe: "Video shakli", video_remove_bg: "Video foni", sfx: "Ovoz effekti" },
     modelChange: "Oʻzgartirish",
     modelChangeLabel: "Modelni oʻzgartirish",
     blocked: {
@@ -4999,7 +4996,6 @@ export const uz: Dictionary = {
       video_edit: "Videoni tahrirlash",
       video_reframe: "Video shakli",
       video_remove_bg: "Videoni qirqish",
-      music: "Musiqa",
       sfx: "Ovoz effekti",
     },
     toolFrom: {
@@ -5020,7 +5016,6 @@ export const uz: Dictionary = {
       video_edit: "soʻzlar bilan",
       video_reframe: "kesmasdan boshqa shaklga",
       video_remove_bg: "fon olib tashlanadi",
-      music: "cholgʻu, tavsif boʻyicha",
       sfx: "qisqa ovoz, tavsif boʻyicha",
     },
     voiceStyles: {

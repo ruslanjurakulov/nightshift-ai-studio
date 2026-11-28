@@ -229,7 +229,7 @@ describe("params (0052's rules)", () => {
     expect([...PANEL_CAPABILITIES]).toEqual([
       ...COMPOSER_CAPABILITIES,
       ...["expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg"],
-      ...["music", "sfx"],
+      "sfx",
     ]);
     // The Library's "Use in Studio" picture links never offer the video tool for a picture.
     expect(SOURCE_CAPABILITIES as readonly string[]).not.toContain("video_upscale");

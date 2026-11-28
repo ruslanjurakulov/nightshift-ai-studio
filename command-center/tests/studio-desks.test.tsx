@@ -363,7 +363,7 @@ describe("a desk's results", () => {
     render(withI18n(<JobFeed orgId={ORG} models={MODELS} capabilities={DESK_TOOLS.voice} variant="takes" />));
     await waitFor(() => expect(fetchMock.mock.calls.some(([u]) => String(u).startsWith("/api/creative/jobs"))).toBe(true));
     const url = String(fetchMock.mock.calls.find(([u]) => String(u).startsWith("/api/creative/jobs"))?.[0]);
-    expect(url).toBe(`/api/creative/jobs?org_id=${ORG}&capability=${encodeURIComponent("tts,voice_change,dub,music,sfx")}`);
+    expect(url).toBe(`/api/creative/jobs?org_id=${ORG}&capability=${encodeURIComponent("tts,voice_change,dub,sfx")}`);
   });
 
   it("Try again and Use as picture on a desk only fill the form", async () => {

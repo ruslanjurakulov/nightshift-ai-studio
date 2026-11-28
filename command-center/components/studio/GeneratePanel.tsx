@@ -1487,25 +1487,6 @@ export function GeneratePanel({
       </div>
     ) : null;
 
-  // Music: what the tool makes and where the rules for it are written (lib/legal-docs: what is sent to the model's maker, how long it
-  // is kept, the watermark, the use policy). Only once a model can be picked: with none, the form's one line is "not available yet".
-  const musicNote =
-    capability === "music" && current ? (
-      <span className="flex flex-col gap-1 text-xs text-[var(--color-muted)]" data-testid="gen-music-note">
-        <span>{t.gen.musicNote}</span>
-        <span>
-          {t.gen.musicRules}{" "}
-          <Link href="/privacy#processors" target="_blank" className="tap-link text-[var(--color-primary)] underline">
-            {t.legal.privacy}
-          </Link>
-          {" · "}
-          <Link href="/terms#third-parties" target="_blank" className="tap-link text-[var(--color-primary)] underline">
-            {t.legal.terms}
-          </Link>
-        </span>
-      </span>
-    ) : null;
-
   // The words, with the settings that ride under them (or, on Enhance, set apart above).
   const settingsInField = arrange !== "enhance";
   const promptBlock =
@@ -1561,7 +1542,6 @@ export function GeneratePanel({
             {t.gen.mentionHint}
           </span>
         )}
-        {musicNote}
       </div>
     ) : settingsInField ? (
       settings
@@ -2202,7 +2182,6 @@ export function GeneratePanel({
           )}
         </div>
         {attachNote && <div className="sc-foot sc-attach-note">{attachNote}</div>}
-        {musicNote && <div className="sc-foot">{musicNote}</div>}
         <div className="sc-foot">
           {status}
           <span id="sc-enter-hint" className="sc-hint">

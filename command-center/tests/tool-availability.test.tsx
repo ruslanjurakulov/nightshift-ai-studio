@@ -117,9 +117,7 @@ describe("the availability itself (pure)", () => {
 
   it("only the Studio's own tools count: a model sold for captions alone is still 'nothing on sale here'", () => {
     expect(nothingOnSale(NONE)).toBe(true);
-    expect(nothingOnSale({ state: "known", sold: ["captions"] })).toBe(true);
-    // Music is a Voice-desk tool (lib/creative/studio SOUND_TOOLS): the day a music model is sold, that desk has something on it.
-    expect(nothingOnSale({ state: "known", sold: ["music"] })).toBe(false);
+    expect(nothingOnSale({ state: "known", sold: ["captions", "music"] })).toBe(true);
     expect(nothingOnSale(PICTURES)).toBe(false);
   });
 });
