@@ -15,6 +15,7 @@ import { X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { cn } from "@/lib/cn";
 import { keepOpenOnNotice } from "@/components/ui/notices";
+import { useReturnFocus } from "@/components/ui/returnFocus";
 import "./primitives.css";
 
 const Dialog = DialogPrimitive.Root;
@@ -35,10 +36,11 @@ function DialogContent({
   /** The close key's accessible name, from lib/i18n; null draws no close key (the content brings its own). */
   closeLabel: string | null;
 }) {
+  const focusBack = useReturnFocus(props.onOpenAutoFocus, props.onCloseAutoFocus);
   return (
     <DialogPortal>
       <DialogOverlay />
-      <DialogPrimitive.Content data-slot="dialog-content" className={cn("ui-dialog", className)} {...props} onInteractOutside={keepOpenOnNotice(props.onInteractOutside)}>
+      <DialogPrimitive.Content data-slot="dialog-content" className={cn("ui-dialog", className)} aria-modal="true" {...props} {...focusBack} onInteractOutside={keepOpenOnNotice(props.onInteractOutside)}>
         {children}
         {closeLabel !== null && (
           <DialogPrimitive.Close className="ui-close absolute right-3 top-3" aria-label={closeLabel}>

@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useId, useRef, useState, type CSSProperties } from "react";
 import { ShieldCheck, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
-import { nextFocusIndex } from "@/lib/feedback";
 import {
   RIGHTS_TERMS_HREF,
   acknowledgeProblem,
@@ -15,7 +13,7 @@ import {
   type RightsSubjectKey,
 } from "@/lib/rights-acknowledgement";
 
-const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/Sheet";
 
 /** What the Studio knows when it opens the dialog. */
 export type RightsAckState =
@@ -65,59 +63,26 @@ export function RightsAcknowledgementDialog({
 }) {
   const { t } = useI18n();
   const d = t.rightsAck;
-  const titleId = useId();
-  const descId = useId();
-  const panel = useRef<HTMLDivElement>(null);
-  const opener = useRef<HTMLElement | null>(null);
   // What is still to acknowledge: the database's list, minus what this dialog has recorded.
   const [done, setDone] = useState<ReadonlySet<string>>(() => new Set());
   const remaining = state.phase === "ask" ? state.missing.filter((m) => !done.has(`${m.kind}|${m.textVersion}|${m.subject}`)) : [];
   const group = nextGroup(remaining);
-  // The portal exists only in a browser, and only after hydration: a server render and the first client render agree (both
-  // nothing), so a page that renders the dialog open never mismatches.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
-  useLayoutEffect(() => {
-    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      const el = opener.current;
-      if (el && el.isConnected) el.focus();
-    };
-  }, []);
-
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      onClose();
-      return;
-    }
-    if (e.key !== "Tab" || !panel.current) return;
-    const items = Array.from(panel.current.querySelectorAll<HTMLElement>(FOCUSABLE));
-    const next = nextFocusIndex(items.indexOf(document.activeElement as HTMLElement), items.length, e.shiftKey);
-    if (next < 0) return;
-    e.preventDefault();
-    items[next].focus();
-  }
-
-  if (!mounted) return null;
-  return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-end justify-center sm:items-center sm:p-4" onKeyDown={onKeyDown}>
-      <div aria-hidden className="absolute inset-0 bg-[var(--studio-scrim)]" onClick={onClose} />
-      <div
-        ref={panel}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descId}
+  // The shared Sheet (components/ui, Radix Dialog) traps focus, closes on Escape or a press outside, hides and freezes the
+  // page behind and gives focus back to what opened it. Radix's portal renders nothing until mounted, so a server render
+  // and the first client render still agree (both nothing).
+  return (
+    <Sheet open onOpenChange={(open) => !open && onClose()}>
+      <SheetContent
+        side="auto"
+        closeLabel={null}
         aria-busy={state.phase === "checking"}
         data-testid="rights-ack"
         data-phase={state.phase}
-        className="relative flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-t-[var(--ns-r-sheet)] border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] sm:max-h-[85vh] sm:max-w-[560px] sm:rounded-[var(--ns-r-sheet)]"
+        style={{ "--ui-sheet-w": "560px" } as CSSProperties}
+        // Escape is this dialog's: the composer behind must not also act on it.
+        onKeyDown={(e) => {
+          if (e.key === "Escape") e.stopPropagation();
+        }}
       >
         <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4 sm:px-6 sm:pt-5">
           <div className="flex min-w-0 items-start gap-3">
@@ -128,22 +93,13 @@ export function RightsAcknowledgementDialog({
               <ShieldCheck className="size-4" strokeWidth={2} />
             </span>
             <div className="flex min-w-0 flex-col gap-1">
-              <h2 id={titleId} className="text-base font-semibold leading-snug text-[var(--color-fg)]">
-                {d.title}
-              </h2>
-              <p id={descId} className="text-sm leading-relaxed text-[var(--color-muted)]">
-                {d.intro}
-              </p>
+              <SheetTitle className="text-base font-semibold leading-snug text-[var(--ds-text)]">{d.title}</SheetTitle>
+              <SheetDescription className="text-sm leading-relaxed text-[var(--ds-muted)]">{d.intro}</SheetDescription>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={d.close}
-            className="tap-icon grid size-9 shrink-0 place-items-center rounded-[var(--ns-r-key)] text-[var(--color-muted)] hover:bg-[var(--studio-field)] hover:text-[var(--color-fg)]"
-          >
+          <SheetClose aria-label={d.close} className="ui-close tap-icon shrink-0">
             <X aria-hidden className="size-4" />
-          </button>
+          </SheetClose>
         </div>
 
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-4 sm:px-6 sm:pb-5">
@@ -169,9 +125,8 @@ export function RightsAcknowledgementDialog({
             />
           )}
         </div>
-      </div>
-    </div>,
-    document.body,
+      </SheetContent>
+    </Sheet>
   );
 }
 

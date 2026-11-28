@@ -14,6 +14,7 @@ import { X } from "lucide-react";
 import { Dialog as SheetPrimitive } from "radix-ui";
 import { cn } from "@/lib/cn";
 import { keepOpenOnNotice } from "@/components/ui/notices";
+import { useReturnFocus } from "@/components/ui/returnFocus";
 import "./primitives.css";
 
 const Sheet = SheetPrimitive.Root;
@@ -36,10 +37,11 @@ function SheetContent({
   /** The close key's accessible name, from lib/i18n; null draws no close key (the content brings its own). */
   closeLabel: string | null;
 }) {
+  const focusBack = useReturnFocus(props.onOpenAutoFocus, props.onCloseAutoFocus);
   return (
     <SheetPrimitive.Portal>
       <SheetPrimitive.Overlay data-slot="sheet-overlay" className="ui-overlay" />
-      <SheetPrimitive.Content data-slot="sheet-content" data-side={side} className={cn("ui-sheet", className)} {...props} onInteractOutside={keepOpenOnNotice(props.onInteractOutside)}>
+      <SheetPrimitive.Content data-slot="sheet-content" data-side={side} className={cn("ui-sheet", className)} aria-modal="true" {...props} {...focusBack} onInteractOutside={keepOpenOnNotice(props.onInteractOutside)}>
         {children}
         {closeLabel !== null && (
           <SheetPrimitive.Close className="ui-close absolute right-3 top-3" aria-label={closeLabel}>
