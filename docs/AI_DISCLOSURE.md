@@ -320,7 +320,20 @@ manifest valid, so the new file carries none:
 * the library's `thumb.jpg` and the 480p `proxy.mp4`, made next to the untouched original;
 * an editor export (stored as `render`) and the pipeline's composite video. Both are new works, and the platforms'
   AI label (above) is what discloses them;
-* the JPEG display copy of a HEIC upload: uploads only, never a vendor file.
+* the JPEG display copy of a HEIC upload: uploads only, never a vendor file;
+* the public site's model samples (`tools/export_showcase.py`): each clip is re-encoded to four web copies
+  (clip.mp4 / clip.webm at 1280 and 640 wide) and its first frame re-saved as two WebP posters. What survives is
+  only the source's format-level container tags, copied as they are into every clip (MiniMax's signed TC260 `AIGC`
+  label among them; `-movflags use_metadata_tags` so the MP4s keep it too). What does not: a C2PA manifest (a
+  re-encode cannot keep it valid, so none is written), and anything in the posters (Pillow re-saves them with no
+  EXIF, XMP or C2PA). The copied TC260 signature was made over the maker's file, so it cannot verify against the
+  re-encoded picture: the label still says who made it, but it is no longer a signature over these bytes.
+
+**Open owner decision (the site's samples).** (a) The posters carry no maker label at all. (b) Whether the Runway
+and Ideogram sources of the other samples carry C2PA is not verified (no manifest was read); if they do, the
+site's copies have lost it. (c) Whether a maker's signed label is acceptable on a re-encode whose signature no
+longer verifies, or should be shown otherwise. Until the owner decides, the samples stay as they are and the label
+is kept, never stripped (decision 2026-11-12 above).
 
 ## NOT verified (no real platform call was made)
 

@@ -607,6 +607,26 @@ class RepositoryStateTest(unittest.TestCase):
         out = subprocess.run(["git", "check-ignore", "-q", str(x.DATA_FILE)], cwd=x.ROOT)
         self.assertEqual(out.returncode, 1, "command-center/lib/site/showcase.json must be committed (.gitignore re-includes it)")
 
+    @unittest.skipUnless(shutil.which("ffprobe"), "ffprobe is not installed here, so the clips' tags cannot be read")
+    def test_every_mp4_carries_the_same_makers_label_as_its_webm(self):
+        # docs/AI_DISCLOSURE.md: a maker's invisible label is always kept. The exporter's MP4 muxer once dropped it
+        # (no use_metadata_tags), so the MiniMax samples' MP4s went out unlabelled while their WebMs kept it.
+        def aigc(p: Path):
+            out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags=AIGC", "-of", "json", str(p)],
+                                 stdin=subprocess.DEVNULL, capture_output=True, check=True).stdout
+            return (json.loads(out).get("format") or {}).get("tags", {}).get("AIGC")
+
+        labelled = 0
+        for job in sorted(p for p in x.OUT_ROOT.iterdir() if (p / "clip.webm").is_file()):
+            for webm, mp4 in (("clip.webm", "clip.mp4"), ("clip-sm.webm", "clip-sm.mp4")):
+                value = aigc(job / webm)
+                if value is None:
+                    continue
+                labelled += 1
+                # Compared, never printed: the value holds the maker's job id.
+                self.assertTrue(aigc(job / mp4) == value, f"{job.name}/{mp4} does not carry {webm}'s AIGC label")
+        self.assertGreater(labelled, 0, "no showcase WebM carries a maker's label, so this pins nothing")
+
 
 class WorkflowTest(unittest.TestCase):
     def setUp(self):
@@ -795,6 +815,19 @@ class SoundTest(unittest.TestCase):
         self.assertEqual(cmd[cmd.index("-f") + 1], "matroska")
         self.assertEqual(cmd[cmd.index("-protocol_whitelist") + 1], "file")
         self.assertLess(cmd.index("-t"), cmd.index("-i"))
+
+    def test_every_rendition_keeps_the_sources_tags_and_the_mp4s_can_write_a_custom_key(self):
+        # docs/AI_DISCLOSURE.md: a maker's invisible label is always kept. Without use_metadata_tags the MP4 muxer drops the
+        # maker's AIGC tag without a word (measured), which is stripping by omission.
+        for name, c in self.by_output(x.video_commands("ffmpeg", Path("src"), "video/mp4", Path("out"), audio=True)).items():
+            after = c[c.index("-i"):]
+            self.assertNotIn("-map_chapters", after, name)
+            self.assertFalse(any(a.startswith("-metadata") for a in after), name)
+            if name == "frame0.png":
+                continue
+            self.assertEqual(after[after.index("-map_metadata") + 1], "0", name)
+            if name.endswith(".mp4"):
+                self.assertIn("use_metadata_tags", after[after.index("-movflags") + 1], name)
 
     def test_the_kept_track_is_cut_at_the_pictures_length(self):
         cmds = self.by_output(x.video_commands("ffmpeg", Path("src"), "video/mp4", Path("out"), audio=True, seconds=2.0))
@@ -996,6 +1029,21 @@ class DerivativesTest(unittest.TestCase):
         self.assertIn("opus,audio", codecs("clip.webm"))
         for name in ("clip-sm.mp4", "clip-sm.webm"):
             self.assertFalse([c for c in codecs(name) if c.endswith(",audio")], name)
+
+    def test_a_makers_label_on_the_source_survives_into_all_four_renditions(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        src = tmp / "src.mp4"
+        # The shape of a maker's signed implicit label; the values are stand-ins.
+        label = json.dumps({"Label": "1", "ContentProducer": "Vendorco", "ProduceID": "ab" * 16, "ReservedCode1": "{}",
+                            "ContentPropagator": "Vendorco", "PropagateID": "", "ReservedCode2": ""}, separators=(",", ":"))
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=24:duration=1",
+                        "-pix_fmt", "yuv420p", "-metadata", f"AIGC={label}", "-movflags", "use_metadata_tags", str(src)], check=True)
+        x.make_derivatives(src, "video", "video/mp4", tmp / "out")
+        for name in ("clip.mp4", "clip.webm", "clip-sm.mp4", "clip-sm.webm"):
+            out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags=AIGC", "-of", "json",
+                                  str(tmp / "out" / name)], stdout=subprocess.PIPE, check=True).stdout.decode()
+            self.assertEqual(json.loads(out)["format"].get("tags", {}).get("AIGC"), label, name)
 
 
 if __name__ == "__main__":
