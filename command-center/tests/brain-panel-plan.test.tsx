@@ -479,3 +479,27 @@ describe("Nightshift AI panel: a film with no model set is fixed in its project 
     expect(screen.queryByRole("link", { name: en.openProject })).toBeNull();
   });
 });
+
+describe("Nightshift AI panel: what it tells the canvas (S3, Atlas 28 Nov)", () => {
+  it('a first send that makes no session ends as {session_id: null, phase: "end", reason: "failed"}, never as "planning" forever', async () => {
+    stub(false);
+    holdTurn = false;
+    turnReply = { status: 502, body: { error: "unavailable" } };
+    const seen: unknown[] = [];
+    const on = (e: Event) => seen.push((e as CustomEvent).detail);
+    window.addEventListener("nightshift:brain-activity", on);
+    try {
+      render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" fresh /></I18nProvider>);
+      const input = () => document.getElementById("ns-ai-input") as HTMLTextAreaElement | null;
+      await waitFor(() => expect(input()?.disabled).toBe(false));
+      const box = input()!;
+      fireEvent.change(box, { target: { value: "A girl and a kite" } });
+      await act(async () => fireEvent.keyDown(box, { key: "Enter" }));
+      await waitFor(() => expect(sent).toHaveLength(1));
+      await waitFor(() => expect(seen).toContainEqual({ session_id: null, phase: "end", reason: "failed" }));
+      expect(seen[0]).toEqual({ session_id: null, phase: "thinking" });
+    } finally {
+      window.removeEventListener("nightshift:brain-activity", on);
+    }
+  });
+});

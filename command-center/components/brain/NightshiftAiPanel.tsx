@@ -702,6 +702,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       inFlight.current = false;
       setBusy(false);
       if (sessionRef.current) dispatchBrainCanvas({ kind: "activity", detail: { session_id: sessionRef.current, phase: "end" } });
+      // A first send that made no session: the canvas is told it ended without an answer, so it never keeps "planning" (Atlas).
+      else dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "end", reason: "failed" } });
       // A card's option that was pressed is gone with the card: focus goes back to the box, not to <body> (Pixel P5).
       setTimeout(refocus, 0);
     }
