@@ -724,3 +724,23 @@ def test_applying_the_migration_twice_keeps_links_settings_and_rewards(conn):
             assert not out.ok and out.sqlstate == "42501"
     finally:
         _restore_defaults(conn)
+
+
+# ── an invite link is not membership (the Team page went, 0233) ─────────────────
+
+def test_a_counted_join_adds_nobody_to_any_workspace_or_the_platform_roster(conn):
+    # "Invite friends" counts new accounts for a credit reward. It never made anybody a member of the link owner's
+    # workspace; now that workspaces have one person and the roster is closed (0091, 0233) this pins that it still does not.
+    with world(conn) as s:
+        settings(s)
+        owner, org, token = new_owner(s)
+        roster = s.value("select count(*) from public.app_members")
+        friend, status = join_new(s, token)
+        assert status == "counted"
+        as_owner(s)
+        assert s.value("select count(*) from public.org_members where org_id = %s", [org]) == 1
+        assert s.value("select count(*) from public.org_members where user_id = %s", [friend.uid]) == 0
+        assert s.value("select count(*) from public.app_members") == roster
+        for fn in ("join_friend_invite", "create_friend_invite", "claim_friend_invite_reward", "friend_invite_pay_locked"):
+            src = s.value("select string_agg(prosrc, ' ') from pg_proc where proname = %s and pronamespace = 'public'::regnamespace", [fn])
+            assert src and "org_members" not in src.replace("is_org_member", "") and "app_members" not in src, fn

@@ -1415,6 +1415,32 @@ def put_back_0219(conn_or_session) -> None:
     conn.execute(MIGRATION_0219.read_text(encoding="utf-8"))
 
 
+MIGRATION_0233 = MIGRATIONS / "0233_platform_roster_closed.sql"
+ROLLBACK_0233 = REPO / "docs" / "sql" / "rollback_0233_platform_roster_closed.sql"
+
+
+def has_0233(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return not conn.execute("select has_function_privilege('authenticated', 'public.owner_add_member(text,text,text)', 'EXECUTE')").fetchone()[0]
+
+
+def take_off_0233(conn_or_session) -> None:
+    """0233 (nobody changes the platform roster from a browser) revokes EXECUTE on 0107's three roster functions and INSERT, UPDATE,
+    DELETE on app_members from the API roles. The 0107 tests of those functions' own checks (last owner, self change, owner-only) and
+    of the direct-write trail take it off with its rollback inside their rolled-back transaction: the functions are still in the
+    database, and their checks are what a later re-grant would rely on."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0233(conn):
+        text = ROLLBACK_0233.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0233(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0233(conn):
+        conn.execute(MIGRATION_0233.read_text(encoding="utf-8"))
+
+
 def migration_files() -> list[Path]:
     """Every migration, in sorted filename order — the order a fresh project
     applies them. Numbers need not be contiguous (migrations can merge out of

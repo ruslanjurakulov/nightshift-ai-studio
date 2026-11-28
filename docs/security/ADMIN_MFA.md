@@ -371,12 +371,13 @@ e-mail flow was built: the notice e-mail to the existing owner is not sent.
 Residual: with "Confirm email" OFF in the Supabase project a new address is signed
 in at once, so the two cases still differ (the live project has confirmation on).
 
-### Team page last-owner guard, app layer only (BR-S-024, always on)
+### Team page last-owner guard (BR-S-024): superseded
 
-The page no longer offers (and refuses) demoting or removing the only bound owner
-(`lib/members-guard.ts`). Anyone writing `app_members` directly bypasses it; the
-database guard (`owner_set_member_role` / `owner_remove_member` refusing to leave zero
-owners, owner-only admin minting) is migration 0107 (dormant until the page uses it).
+The Team page and its app-layer guard (`lib/members-guard.ts`) were removed on
+2026-11-28 (the site has the operator and users; nobody is added to anybody's
+workspace), and migration 0233 closes the roster functions and the direct
+`app_members` writes to every browser role (BR-L-213). The operator's roster is
+changed in the SQL editor; keep at least one bound owner with a confirmed address.
 
 ### What is NOT in PR A
 

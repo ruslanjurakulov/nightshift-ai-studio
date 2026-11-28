@@ -109,8 +109,8 @@ describe("Settings", () => {
 });
 
 describe("the operator's roster is the operator's", () => {
-  it("a customer cannot open the team, approvals or platform screens", () => {
-    for (const s of ["members", "approvals", "providers", "margin", "accounts"]) {
+  it("a customer cannot open the approvals or platform screens, and nobody has a Team screen", () => {
+    for (const s of ["approvals", "providers", "margin", "accounts"]) {
       expect(isOperatorOnlySection(s)).toBe(true);
       expect(sectionAllowed(s, false)).toBe(false);
       expect(sectionAllowed(s, true)).toBe(true);

@@ -20,6 +20,7 @@ import {
   navGroupsFor,
   navShown,
   sectionAllowed,
+  SECTION_ITEMS,
 } from "@/lib/navigation";
 import { accountPlan, coerceAccountSummary, creditsSpent, derivePlan, packFromPurchase } from "@/lib/account";
 import { coerceBillingSummary } from "@/lib/plans";
@@ -99,15 +100,14 @@ describe("nav filtering by role", () => {
     expect(navGroupsFor(false).map((g) => g.label)).toEqual([undefined]);
   });
 
-  it("still lists All Accounts and Team for breadcrumbs and tab titles", () => {
-    const all = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.key));
+  it("still lists All Accounts for breadcrumbs and tab titles, and no Team page at all", () => {
+    const all: string[] = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.key));
     expect(all).toContain("accounts");
-    expect(all).toContain("members");
+    expect(all).not.toContain("members");
   });
 
   it("marks every non-customer section operator-only, and nothing else", () => {
     expect(isOperatorOnlySection("accounts")).toBe(true);
-    expect(isOperatorOnlySection("members")).toBe(true);
     expect(isOperatorOnlySection("pipeline")).toBe(true);
     expect(isOperatorOnlySection("logs")).toBe(true);
     expect(isOperatorOnlySection("getting-started")).toBe(true);
@@ -122,12 +122,12 @@ describe("nav filtering by role", () => {
 
   it("keeps team features away from a self-serve customer: no Team page, no two-person approvals", () => {
     // A workspace has one person and no roles, so a second approver cannot
-    // exist; both screens stay for the platform operator.
-    for (const s of ["members", "approvals"]) {
-      expect(isOperatorOnlySection(s), s).toBe(true);
-      expect(sectionAllowed(s, false), s).toBe(false);
-      expect(sectionAllowed(s, true), s).toBe(true);
-    }
+    // exist; approvals stays for the platform operator. The Team page is gone for
+    // everyone: /members is no screen any more, only a redirect to Settings.
+    expect(isOperatorOnlySection("approvals")).toBe(true);
+    expect(sectionAllowed("approvals", false)).toBe(false);
+    expect(sectionAllowed("approvals", true)).toBe(true);
+    expect(SECTION_ITEMS.some((i) => i.href === "/members")).toBe(false);
     expect(keys(false)).not.toContain("approvals");
     expect(keys(true)).toContain("approvals");
   });
@@ -185,7 +185,7 @@ describe("appRedirect", () => {
 
   it("sends a customer on an operator-only screen to that channel's Home, dropping the query", () => {
     expect(
-      appRedirect({ ...base, selection: "default", path: "/chronos/members", search: "?x=1", honestSlug: "chronos", operator: false }),
+      appRedirect({ ...base, selection: "default", path: "/chronos/approvals", search: "?x=1", honestSlug: "chronos", operator: false }),
     ).toBe("/chronos/home");
     expect(appRedirect({ ...base, path: "/all-channels/accounts", honestSlug: "all-channels", operator: false })).toBe(
       "/chronos/home",

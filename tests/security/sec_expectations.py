@@ -891,3 +891,9 @@ sec_geo_allowlist_0230.extend(TABLES, FUNCTIONS)
 import sec_cancel_audit_0231  # noqa: E402
 
 sec_cancel_audit_0231.extend(TABLES, FUNCTIONS)
+
+# Migration 0233 (nobody adds, re-roles or removes a person on the platform roster from a browser, BR-L-213): no table, no new
+# function; 0107's three roster functions become SERVICE. tests/security/sec_platform_roster_0233.py
+import sec_platform_roster_0233  # noqa: E402
+
+sec_platform_roster_0233.extend(TABLES, FUNCTIONS)
