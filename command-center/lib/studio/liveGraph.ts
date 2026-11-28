@@ -125,13 +125,13 @@ export interface TakeProgress {
 /**
  * 0248: how long a completed take of a model usually takes (Atlas's rule, #985). `basis`:
  * - "yours": this workspace's own median over its last (up to 20) takes, with n >= 3;
- * - "platform": the median of at least 5 workspaces' own medians (20 takes at least); no n is given, by design;
+ * - "nightshift": the operator workspace's own median (3 takes at least), never another customer's; no n is given, by design;
  * - null: neither, and no duration: show elapsed time only.
  * Seconds are whole.
  */
 export type TypicalSeconds =
   | { model: string; capability: string; basis: "yours"; medianS: number; n: number }
-  | { model: string; capability: string; basis: "platform"; medianS: number }
+  | { model: string; capability: string; basis: "nightshift"; medianS: number }
   | { model: string; capability: string; basis: null };
 
 /** Per take id, the money columns 0171 added to film_takes. */
@@ -183,8 +183,8 @@ function coerceTypical(raw: unknown): TypicalSeconds[] | null {
       // "yours" needs its own n of 3 or more behind it; anything else is not shown as a figure.
       if (seconds !== null && n !== null && Number.isInteger(n) && n >= 3) out.push({ model, capability, basis: "yours", medianS: seconds, n });
       else out.push({ model, capability, basis: null });
-    } else if (o.basis === "platform" && seconds !== null) {
-      out.push({ model, capability, basis: "platform", medianS: seconds });
+    } else if (o.basis === "nightshift" && seconds !== null) {
+      out.push({ model, capability, basis: "nightshift", medianS: seconds });
     } else {
       out.push({ model, capability, basis: null });
     }

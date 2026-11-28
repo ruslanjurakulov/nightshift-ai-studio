@@ -55,7 +55,7 @@ def write(db, take, worker, pct, word):
 def test_the_live_bodies_and_grants_are_the_files(db):
     assert db.su(FOLD, [TAKE_PROGRESS])[0][0] == "28911b1d6dbdd1bb6176c9617c1aba8c"
     assert db.su(FOLD, [ASSEMBLY_PROGRESS])[0][0] == "bac224571284b836694d51f2aed8bccb"
-    assert db.su(FOLD, [TYPICAL])[0][0] == "8e988e75f11d8fa798d2504b71483727"
+    assert db.su(FOLD, [TYPICAL])[0][0] == "2b78ecab9db4e806d97d9774d1f61c61"
     for sig in (TAKE_PROGRESS, ASSEMBLY_PROGRESS):
         row = db.su("select has_function_privilege('service_role', %s, 'execute'), has_function_privilege('authenticated', %s, "
                     "'execute'), has_function_privilege('anon', %s, 'execute'), p.prosecdef from pg_proc p "
@@ -153,7 +153,7 @@ _MODEL_N = [0]
 
 
 def _model():
-    """A model id of this test's own: the platform window spans every organization of the lab, so no other test may feed it."""
+    """A model id of this test's own: the operator's figure is shared by every test of the lab, so no other test may feed it."""
     _MODEL_N[0] += 1
     return f"lab-median-{_MODEL_N[0]}"
 
@@ -189,51 +189,70 @@ def test_yours_with_three_takes_gives_its_median_and_n_in_whole_seconds(db, a):
     assert row_for(db, a.viewer, film, m) == {"model": m, "capability": "t2i", "basis": "yours", "median_s": 11, "n": 3}
 
 
-def test_fewer_than_three_of_yours_and_five_workspaces_of_four_give_the_platform_figure_with_no_n_and_no_count(db, a):
+OPERATOR_ORG = "00000000-0000-0000-0000-000000000001"   # public.default_org_id(): the organization the credits exempt (0020)
+_OPERATOR = {}
+
+
+def operator(db):
+    """The operator's organization (credits_exempt), with four people of its own, as an Org the money lab's helpers take."""
+    if "o" not in _OPERATOR:
+        import uuid as _uuid
+
+        from test_sec_films_money import Org
+
+        assert db.su("select public.credits_exempt(%s)", [OPERATOR_ORG])[0][0] is True
+        if not db.su("select 1 from public.organizations where id = %s", [OPERATOR_ORG]):
+            db.su("insert into public.organizations (id, name, slug) values (%s, 'Nightshift', 'nightshift-lab')", [OPERATOR_ORG])
+        people = [str(_uuid.uuid4()) for _ in range(4)]
+        for u, role in zip(people, ("owner", "admin", "editor", "viewer")):
+            db.su("insert into auth.users (id, email) values (%s, %s)", [u, f"{role}-{u[:8]}@operator.lab"])
+            db.su("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, %s, %s)",
+                  [OPERATOR_ORG, u, f"{role}-{u[:8]}@operator.lab", role])
+        db.film_org_on(OPERATOR_ORG)
+        _OPERATOR["o"] = Org(OPERATOR_ORG, *people)
+    return _OPERATOR["o"]
+
+
+def test_two_of_yours_and_the_operators_three_give_nightshifts_figure_with_no_n(db, a):
     m = _model()
     film = _takes(db, a, m, [500, 600])                  # yours: n = 2, not enough
-    for secs in ([10, 12, 14, 16], [20, 22, 24, 26], [30, 31, 32, 33], [40, 41, 42, 43], [50, 50, 50, 50]):
-        _takes(db, db.new_org(), m, secs)
+    _takes(db, operator(db), m, [40, 44, 47.6])
     r = row_for(db, a.viewer, film, m)
-    # The median of the six workspaces' own medians (550, 13, 23, 31.5, 41.5, 50): (31.5 + 41.5) / 2 = 36.5, whole seconds 37.
-    assert r == {"model": m, "capability": "t2i", "basis": "platform", "median_s": 37}
+    assert r == {"model": m, "capability": "t2i", "basis": "nightshift", "median_s": 44}
     assert set(r) == {"model", "capability", "basis", "median_s"}
 
 
-def test_four_workspaces_however_busy_give_nothing(db, a):
+def test_the_operators_two_takes_give_nothing(db, a):
     m = _model()
-    film = _takes(db, a, m, [60], status="failed")       # the film has a take of the model; a failed one is not a duration
-    for _ in range(4):
-        _takes(db, db.new_org(), m, [30] * 30)
+    film = _takes(db, a, m, [60], status="failed")
+    _takes(db, operator(db), m, [40, 44])
     assert row_for(db, a.viewer, film, m) == {"model": m, "capability": "t2i", "basis": None}
 
 
-def test_one_busy_workspace_does_not_set_the_platform_figure(db, a):
-    # One workspace of 100 slow takes and four of one fast take each: 20 (its cap) + 4 = 24 takes from 5 workspaces passes the
-    # floor, and the figure is the median of the five workspaces' medians (1000, 10, 20, 30, 40) = 30, never near the busy one's.
+def test_a_hundred_customer_workspaces_give_nothing(db, a):
     m = _model()
-    film = _takes(db, a, m, [5], status="failed")
-    _takes(db, db.new_org(), m, [1000] * 100)
-    for secs in (10, 20, 30, 40):
-        _takes(db, db.new_org(), m, [secs])
-    assert row_for(db, a.viewer, film, m) == {"model": m, "capability": "t2i", "basis": "platform", "median_s": 30}
+    film = _takes(db, a, m, [60], status="failed")
+    for i in range(100):
+        _takes(db, db.new_org(image=False), m, [10 + i])
+    assert row_for(db, a.viewer, film, m) == {"model": m, "capability": "t2i", "basis": None}
 
 
-def test_both_floors_hold_five_workspaces_and_twenty_takes(db, a):
-    # One workspace of 100 and three of one: 4 workspaces, nothing, however many takes.
+def test_customer_takes_never_move_the_operators_figure(db, a):
     m = _model()
-    film = _takes(db, a, m, [5], status="failed")
-    _takes(db, db.new_org(), m, [100] * 100)
-    for secs in (10, 20, 30):
-        _takes(db, db.new_org(), m, [secs])
-    assert row_for(db, a.viewer, film, m)["basis"] is None
-    # Five workspaces with 15 + 4 = 19 takes: below 20, nothing.
-    m2 = _model()
-    film2 = _takes(db, a, m2, [5], status="failed")
-    _takes(db, db.new_org(), m2, [100] * 15)
-    for secs in (10, 20, 30, 40):
-        _takes(db, db.new_org(), m2, [secs])
-    assert row_for(db, a.viewer, film2, m2)["basis"] is None
+    film = _takes(db, a, m, [60], status="failed")
+    _takes(db, operator(db), m, [30, 31, 32])
+    before = row_for(db, a.viewer, film, m)
+    assert before == {"model": m, "capability": "t2i", "basis": "nightshift", "median_s": 31}
+    for secs in ([1] * 20, [5000] * 20, [31] * 3, [2, 3, 4]):
+        _takes(db, db.new_org(image=False), m, secs)
+    assert row_for(db, a.viewer, film, m) == before
+
+
+def test_the_operator_itself_gets_its_own_figure_as_yours(db):
+    m = _model()
+    op = operator(db)
+    film = _takes(db, op, m, [20, 22, 24])
+    assert row_for(db, op.viewer, film, m) == {"model": m, "capability": "t2i", "basis": "yours", "median_s": 22, "n": 3}
 
 
 def test_a_workspace_counts_over_its_own_last_twenty_only(db, a):

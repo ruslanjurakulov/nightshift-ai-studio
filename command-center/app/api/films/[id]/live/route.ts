@@ -78,8 +78,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     }
   }
 
-  // 0248: how long a take of each of this film's models usually takes (basis yours | platform | null; no ids). Only the named fields
-  // pass, and n only for "yours": the platform figure never says how many takes or workspaces it rests on. Null when not readable.
+  // 0248: how long a take of each of this film's models usually takes (basis yours | nightshift | null; no ids). Only the named
+  // fields pass, and n only for "yours": Nightshift's own figure never says how many takes it rests on. Null when not readable.
   let typical: unknown[] | null = null;
   try {
     const m = await gate.supabase.rpc("film_take_typical_seconds", { p_film: filmId });
@@ -88,7 +88,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         const r = (row && typeof row === "object" ? row : {}) as Record<string, unknown>;
         const base = { model: r.model, capability: r.capability };
         if (r.basis === "yours") return { ...base, basis: "yours", median_s: r.median_s, n: r.n };
-        if (r.basis === "platform") return { ...base, basis: "platform", median_s: r.median_s };
+        if (r.basis === "nightshift") return { ...base, basis: "nightshift", median_s: r.median_s };
         return { ...base, basis: null };
       });
     }

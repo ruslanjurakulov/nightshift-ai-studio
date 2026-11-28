@@ -74,7 +74,7 @@ describe("the live answer carries 0246 and 0248, read through the person's own s
       typical: {
         data: [
           { model: "vid-clip", capability: "i2v", basis: "yours", median_s: 93, n: 4 },
-          { model: "img-key", capability: "t2i", basis: "platform", median_s: 12, n: 999, orgs: 7 },
+          { model: "img-key", capability: "t2i", basis: "nightshift", median_s: 12, n: 999, orgs: 7 },
           { model: "tts-a", capability: "tts", basis: null },
         ],
         error: null,
@@ -85,10 +85,10 @@ describe("the live answer carries 0246 and 0248, read through the person's own s
     const body = await r.json();
     expect(segCols[0]).toContain("assembly_progress,assembly_progress_at");
     expect(takeCols[0]).toContain("progress,vendor_state,progress_at");
-    // A platform row never carries n or a workspace count past the route, even if the database sent one.
+    // A nightshift row never carries n or a count past the route, even if the database sent one.
     expect(body.typical).toEqual([
       { model: "vid-clip", capability: "i2v", basis: "yours", median_s: 93, n: 4 },
-      { model: "img-key", capability: "t2i", basis: "platform", median_s: 12 },
+      { model: "img-key", capability: "t2i", basis: "nightshift", median_s: 12 },
       { model: "tts-a", capability: "tts", basis: null },
     ]);
     expect(h.rpc).toHaveBeenCalledWith("film_take_typical_seconds", { p_film: FILM });
@@ -108,7 +108,7 @@ describe("the live answer carries 0246 and 0248, read through the person's own s
     expect(view.segments!.find((x) => x.id === "s2")!.assemblyProgress).toBeNull();
     expect(view.typical).toEqual([
       { model: "vid-clip", capability: "i2v", basis: "yours", medianS: 93, n: 4 },
-      { model: "img-key", capability: "t2i", basis: "platform", medianS: 12 },
+      { model: "img-key", capability: "t2i", basis: "nightshift", medianS: 12 },
       { model: "tts-a", capability: "tts", basis: null },
     ]);
   });
@@ -135,9 +135,9 @@ describe("the live answer carries 0246 and 0248, read through the person's own s
       typical: [
         { model: "a", capability: "i2v", basis: "yours", median_s: 10, n: 3 },
         { model: "b", capability: "i2v", basis: "yours", median_s: 10, n: 2 },
-        { model: "c", capability: "t2i", basis: "platform", median_s: 0 },
-        { model: "d", capability: "t2i", basis: "platform", median_s: 8.5 },
-        { model: "e", capability: "t2i", basis: "platform", median_s: 8 },
+        { model: "c", capability: "t2i", basis: "nightshift", median_s: 0 },
+        { model: "d", capability: "t2i", basis: "nightshift", median_s: 8.5 },
+        { model: "e", capability: "t2i", basis: "nightshift", median_s: 8 },
         { capability: "i2v", basis: "yours", median_s: 10, n: 5 },
         { model: "f", capability: "tts", basis: "guess", median_s: 4, n: 9 },
       ],
@@ -147,7 +147,7 @@ describe("the live answer carries 0246 and 0248, read through the person's own s
       { model: "b", capability: "i2v", basis: null },
       { model: "c", capability: "t2i", basis: null },
       { model: "d", capability: "t2i", basis: null },
-      { model: "e", capability: "t2i", basis: "platform", medianS: 8 },
+      { model: "e", capability: "t2i", basis: "nightshift", medianS: 8 },
       { model: "f", capability: "tts", basis: null },
     ]);
   });
@@ -156,13 +156,13 @@ describe("the live answer carries 0246 and 0248, read through the person's own s
     const { studioLiveEn } = await import("../lib/i18n/studio-live/en");
     const { studioLiveRu } = await import("../lib/i18n/studio-live/ru");
     const { studioLiveUz } = await import("../lib/i18n/studio-live/uz");
-    expect([studioLiveEn.typicalYours, studioLiveEn.typicalPlatform]).toEqual(["usually ~{n} s", "usually ~{n} s on Nightshift"]);
+    expect([studioLiveEn.typicalYours, studioLiveEn.typicalNightshift]).toEqual(["usually ~{n} s", "usually ~{n} s on Nightshift"]);
     for (const d of [studioLiveRu, studioLiveUz]) {
       expect(d.typicalYours).toContain("{n}");
-      expect(d.typicalPlatform).toContain("{n}");
-      expect(d.typicalPlatform).toContain("Nightshift");
+      expect(d.typicalNightshift).toContain("{n}");
+      expect(d.typicalNightshift).toContain("Nightshift");
       expect(d.typicalYours).not.toBe(studioLiveEn.typicalYours);
     }
-    expect(studioLiveUz.typicalPlatform).toContain("Nightshift\u02bcda");
+    expect(studioLiveUz.typicalNightshift).toContain("Nightshift\u02bcda");
   });
 });

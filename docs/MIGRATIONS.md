@@ -3416,15 +3416,16 @@ database doors it used.
   t2i, clip and extend i2v, narration tts), from completed takes of the last 90 days with a real duration (`started_at` ..
   `finished_at`, under 6 hours; failed takes left out):
   1. `basis: 'yours'`: the film organization's last 20 hold 3 or more. Its median in whole seconds, and n.
-  2. `basis: 'platform'`: otherwise, the median of the organizations' own medians (each over its last 20: one workspace, one
-     vote, so no busy workspace sets it), only with at least 5 organizations and 20 takes behind it (a k-anonymity floor).
-     Whole seconds only: no n, no organization count, no id.
+  2. `basis: 'nightshift'`: otherwise, the operator organization's own median (the organization the credits exempt,
+     `credits_exempt`, as 0171's `start_film`), when it holds 3 or more. Whole seconds only: no n, no id. No customer's takes
+     are ever in another customer's answer: a median over customers' organizations, even one vote each behind a floor of
+     five, can be steered by whoever makes enough organizations (Breach B-0248-1, -2, -3).
   3. `basis: null`: neither, and no duration: the live view shows elapsed time only.
 - **Who.** SECURITY DEFINER, executable by `authenticated` only; it answers only a member of the film's organization, and
   anyone else gets not_found, with no figure of any kind. Only the film's own model and capability pairs are answered.
-- **Copy** for S5: `studioLive.typicalYours` "usually ~{n} s" and `studioLive.typicalPlatform` "usually ~{n} s on Nightshift"
+- **Copy** for S5: `studioLive.typicalYours` "usually ~{n} s" and `studioLive.typicalNightshift` "usually ~{n} s on Nightshift"
   (en / ru / uz).
-- **Lab.** `tests/security/test_sec_take_progress_0246_0248.py` (yours with n of 3; platform with 5 organizations of 4 takes,
-  no n and no count; 4 organizations of 30 takes give nothing; one organization of 100 and four of 1 give the median of the five
-  medians; whole seconds; not_found for a non-member).
-- **Requires** 0166, 0171 and 0043. **Undo.** `docs/sql/rollback_0248_film_take_typical_seconds.sql`.
+- **Lab.** `tests/security/test_sec_take_progress_0246_0248.py` (yours with n of 3; the operator's 3 takes give nightshift, 2
+  give nothing, 100 customer organizations give nothing and never move the operator's figure; whole seconds; not_found for a
+  non-member) and `tests/security/test_sec_take_typical_0248_breach.py` (Breach's three holes, now pins).
+- **Requires** 0166, 0171, 0043 and 0020. **Undo.** `docs/sql/rollback_0248_film_take_typical_seconds.sql`.
