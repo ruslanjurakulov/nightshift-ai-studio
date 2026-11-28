@@ -218,6 +218,11 @@ class FilmOperatorPreviewMigration(unittest.TestCase):
         for f in later:
             text = (MIG / f).read_text(encoding="utf-8")
             for name, _n in AFTER:
+                if f == "0236_film_clip_sound_gate.sql" and name == "film_price":
+                    # 0236 (next in Atlas's order) replaces it with this file's body plus one marked hunk and refuses any other
+                    # base (tests/test_film_clip_sound_migration.py undoes the hunk back to this file's body).
+                    self.assertIn(f"'{AFTER[('film_price', 1)]}', 'af0fb80cce8e92fd2360aa6d5366a942'", text)
+                    continue
                 self.assertNotIn(f"function public.{name}(", text, (f, name))
 
     def test_the_number_is_unique_and_the_lab_knows_the_chain(self):
@@ -243,7 +248,11 @@ class FilmOperatorPreviewMigration(unittest.TestCase):
         self.assertIn('ON_0139 = (*(f for f in ON_0139 if f != "0235_film_operator_preview.sql"), "0235_film_operator_preview.sql")', LAB)
         on_0124 = LAB[LAB.index("ON_0124 = ("):]
         on_0124 = on_0124[:on_0124.index(")\n")]
-        self.assertTrue(on_0124.rstrip().endswith('"0235_film_operator_preview.sql"'), on_0124[-200:])
+        # ... or on 0236, which sits on this file's film_price and comes right after it.
+        tail = on_0124.rstrip()
+        self.assertTrue(tail.endswith('"0235_film_operator_preview.sql"') or tail.endswith(
+            '"0235_film_operator_preview.sql",\n           # 0236 replaces 0235\'s film_price and 0215\'s film_assembly_retryable and refuses '
+            'to apply without them: last.\n           "0236_film_clip_sound_gate.sql"'), on_0124[-300:])
         self.assertLess(LAB.index('ON_0156 = (*(f for f in ON_0156 if f != "0230_geo_gate_allow_list.sql")'),
                         LAB.index('ON_0156 = (*ON_0156, "0235_film_operator_preview.sql")'))
 

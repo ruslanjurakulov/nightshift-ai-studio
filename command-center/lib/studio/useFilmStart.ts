@@ -91,6 +91,9 @@ export const START_REMEDIES: Readonly<Record<string, StartRemedy>> = {
   // the person picks another voice model; nothing is swapped (rule 4).
   voice_language_unsupported: "fix_and_requote",
   voice_language_unknown: "fix_and_requote",
+  // 0236 (BR-SG-01): film_price refuses a scene that asks for its clip's own sound while the cut does not keep it yet. The person turns
+  // the scene's sound option off; nothing is bought that the film would drop.
+  clip_sound_not_kept: "fix_and_requote",
   limit_reached: "wait",
   rate_limited: "wait",
   rate_limit_unavailable: "wait",
