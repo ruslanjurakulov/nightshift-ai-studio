@@ -910,6 +910,12 @@ import sec_country_sale_0238  # noqa: E402
 
 sec_country_sale_0238.extend(TABLES, FUNCTIONS)
 
+# Migration 0235 (Film Studio: the operator's preview models, in the operator's own organization only): two internal four-argument
+# overloads of 0166's film_check_model and 0171's film_model_problem, revoked from every API role. tests/security/sec_film_operator_preview_0235.py
+import sec_film_operator_preview_0235  # noqa: E402
+
+sec_film_operator_preview_0235.extend(TABLES, FUNCTIONS)
+
 # Migration 0249 (the one writer of a Nightshift AI conversation's character sheets and film link, under its row lock; a trigger
 # keeps them from every other BRIEF writer): tests/security/sec_sheets_writer_0249.py
 import sec_sheets_writer_0249  # noqa: E402

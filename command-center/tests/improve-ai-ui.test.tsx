@@ -213,14 +213,27 @@ describe("Captions", () => {
     expect(spendingCalls()).toHaveLength(0);
   });
 
-  it("in the editor: goes to the Captions panel without leaving", () => {
-    const onCaptions = vi.fn();
-    mount(<ImproveWithAi assetId={FILE} kind="video" name="Trip" available={null} onCaptions={onCaptions} />);
+  it("in the editor: goes to the Captions panel without leaving, and focus stays on that panel", async () => {
+    // What would break (Lens on the dialog move): the editor's goCaptions focuses the captions panel; called while the
+    // dialog's focus trap was live, focus was pulled back and then handed to the Improve key, scrolling the editor back.
+    const onCaptions = vi.fn(() => document.getElementById("captions-panel")!.focus());
+    mount(
+      <>
+        <ImproveWithAi assetId={FILE} kind="video" name="Trip" available={null} onCaptions={onCaptions} />
+        <section id="captions-panel" tabIndex={-1}>
+          captions
+        </section>
+      </>,
+    );
     const dialog = openMenu();
     pick(dialog, "captions");
     fireEvent.click(within(dialog).getByTestId("improve-captions"));
-    expect(onCaptions).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId("improve-with-ai-dialog")).toBeNull();
+    await waitFor(() => expect(onCaptions).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(document.activeElement?.id).toBe("captions-panel"));
+    // And it stays there: nothing hands focus back to the Improve key a tick later.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(document.activeElement?.id).toBe("captions-panel");
   });
 
   it("when captions are not sold, they are the honest state and do nothing", () => {
@@ -394,14 +407,15 @@ describe("the editor", () => {
     expect(sendHref(dialog)).toBe(`/chronos/create?tool=video_upscale&source=${CLIP.id}&project=${P1}`);
   });
 
-  it("the clip's Captions entry scrolls to the Captions panel", () => {
+  it("the clip's Captions entry scrolls to the Captions panel", async () => {
     const scroll = vi.fn();
     HTMLElement.prototype.scrollIntoView = scroll;
     editor({ aiTools: null });
     const dialog = openMenu();
     pick(dialog, "captions");
     fireEvent.click(within(dialog).getByTestId("improve-captions"));
-    expect(scroll).toHaveBeenCalled();
+    // Once the dialog has gone (LibraryDialog afterClose): its focus trap would otherwise pull focus back.
+    await waitFor(() => expect(scroll).toHaveBeenCalled());
   });
 
   it("a picture overlay offers the picture tools (no captions)", () => {
@@ -467,7 +481,7 @@ describe("the editor", () => {
     expect(screen.queryByText(en.editor.unsaved)).toBeNull();
   });
 
-  it("Captions on a second clip preselects that clip's recording in the Captions panel", () => {
+  it("Captions on a second clip preselects that clip's recording in the Captions panel", async () => {
     HTMLElement.prototype.scrollIntoView = vi.fn();
     editor({
       offerAssetId: CLIP2.id,
@@ -482,7 +496,7 @@ describe("the editor", () => {
     const dialog = openMenu();
     pick(dialog, "captions");
     fireEvent.click(within(dialog).getByTestId("improve-captions"));
-    expect(source().value).toBe(CLIP2.id);
+    await waitFor(() => expect(source().value).toBe(CLIP2.id));
   });
 
   it("opens on the Captions panel when asked", async () => {

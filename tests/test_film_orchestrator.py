@@ -28,6 +28,7 @@ from unittest import mock
 
 from modules import creative_worker as cw
 from modules import film_orchestrator as fo
+from modules import credits as credit_rules
 
 ORG = "0a000000-0000-4000-8000-00000000000a"
 FILM = "0f000000-0000-4000-8000-00000000000f"
@@ -69,6 +70,8 @@ class FakeDb:
         self.settles = []
         self.failed = []
         self.off_sale = set()
+        self.registry = {}
+        self.switched_off = set()
         self.sale_down = False
 
     @staticmethod
@@ -226,10 +229,15 @@ class FakeDb:
         return [m for m in ("img-key", "vid-clip", "tts-a") if m not in self.off_sale]
 
     def model_switched_on(self, model):
-        return True
+        self.calls.append(("model_switched_on", model))
+        return model not in self.switched_off
 
     def registry_row(self, model):
-        raise AssertionError("a film take never reads a registry row: Film Studio sells no operator preview")
+        # 0235: only a take of the operator's own exempt organization may ask about an operator preview; a customer's never does.
+        self.calls.append(("registry_row", model))
+        if self.seg["org_id"] != credit_rules.DEFAULT_ORG_ID:
+            raise AssertionError("a customer organization's take read a registry row: previews are the exempt organization's only")
+        return self.registry.get(model)
 
     def count(self, name):
         return sum(1 for c in self.calls if c[0] == name)
