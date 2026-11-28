@@ -388,6 +388,9 @@ ON_0156 = (*(f for f in ON_0156 if f != "0219_oauth_creative_operator_models.sql
 #: 0224 (dated credit prices) sits on 0218's creative_price and refuses any other body; it names nothing of 0219's. After
 #: 0219, as applied live (0218, 0219, 0224, 0230).
 ON_0156 = (*(f for f in ON_0156 if f != "0224_dated_credit_price.sql"), "0224_dated_credit_price.sql")
+#: 0228 (music per request, S6) sits on 0224's creative_price and 0218's creative_params_problem, and refuses any other body: right
+#: after 0224, wherever they go.
+ON_0156 = (*(f for f in ON_0156 if f != "0228_music_per_request_price.sql"), "0228_music_per_request_price.sql")
 #: 0230 (the country gate reads an allow-list vendor's own list) replaces 0208's creative_jobs_geo_gate and refuses to apply without
 #: it: a sequence that leaves 0208 out leaves 0230 out too, and puts it back last.
 ON_0156 = (*(f for f in ON_0156 if f != "0230_geo_gate_allow_list.sql"), "0230_geo_gate_allow_list.sql")
@@ -425,6 +428,8 @@ ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0218.name), MIGRATION_0218.nam
 ON_0139 = (*(f for f in ON_0139 if f != "0219_oauth_creative_operator_models.sql"), "0219_oauth_creative_operator_models.sql")
 #: 0224 sits on 0218's creative_price: after 0219, as applied live.
 ON_0139 = (*(f for f in ON_0139 if f != "0224_dated_credit_price.sql"), "0224_dated_credit_price.sql")
+#: 0228 (music per request) sits on 0224's creative_price and 0218's creative_params_problem: right after 0224.
+ON_0139 = (*(f for f in ON_0139 if f != "0228_music_per_request_price.sql"), "0228_music_per_request_price.sql")
 #: 0226 (only a member spends, on every path) replaces 0192's create_creative_job and start_workflow_run and calls 0215's
 #: is_org_spender, and refuses to apply without 0215: after it, in both lists, for the same reason.
 ON_0139 = (*ON_0139, "0226_org_spender_everywhere.sql")
@@ -461,6 +466,8 @@ ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164
            "0219_oauth_creative_operator_models.sql",
            # 0224 sits on 0218's creative_price (and refuses any other body): out and back with it, after 0219, as applied live.
            "0224_dated_credit_price.sql",
+           # 0228 sits on 0224's creative_price and 0218's creative_params_problem: out and back with them, after them.
+           "0228_music_per_request_price.sql",
            # 0230 replaces 0208's creative_jobs_geo_gate and refuses to apply without 0208: out and back with it, last.
            "0230_geo_gate_allow_list.sql")
 
@@ -649,7 +656,7 @@ def has_0159(conn_or_session) -> bool:
     return bool(conn.execute(
         "select coalesce((select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) = any (%s) from pg_proc "
         "where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')), false)",
-        [[CREATIVE_PRICE_0159, CREATIVE_PRICE_0208, CREATIVE_PRICE_0218, CREATIVE_PRICE_0218_0224]]).fetchone()[0])
+        [[CREATIVE_PRICE_0159, CREATIVE_PRICE_0208, CREATIVE_PRICE_0218, CREATIVE_PRICE_0218_0224, CREATIVE_PRICE_0228]]).fetchone()[0])
 
 
 def has_0208(conn_or_session) -> bool:
@@ -658,7 +665,7 @@ def has_0208(conn_or_session) -> bool:
     return bool(conn.execute(
         "select coalesce((select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) = any (%s) from pg_proc "
         "where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')), false)",
-        [[CREATIVE_PRICE_0208, CREATIVE_PRICE_0218, CREATIVE_PRICE_0218_0224]]).fetchone()[0])
+        [[CREATIVE_PRICE_0208, CREATIVE_PRICE_0218, CREATIVE_PRICE_0218_0224, CREATIVE_PRICE_0228]]).fetchone()[0])
 
 
 def has_0224(conn_or_session) -> bool:
@@ -670,13 +677,16 @@ def rollback_0224_body() -> str:
     """0224's rollback without its own begin / commit. Harmless where 0224 is not on (it leaves any other creative_price alone); the
     schedule table stays either way (the rollback keeps the owner's rows)."""
     text = ROLLBACK_0224.read_text(encoding="utf-8")
-    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+    # 0228 sits on 0224's creative_price and 0224's rollback refuses a later body: 0228's rollback (harmless where it is not on) first,
+    # so that every caller of this helper, not only take_off_0224, can take 0224 off.
+    return rollback_0228_body() + "\n" + "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
 
 
 def take_off_0224(conn_or_session) -> None:
     """0224 sits on 0218's creative_price. 0218's rollback would keep its line (0218 carries a 0224 branch) without 0224's list guard
     and reader being undone with it, so 0224 comes off first with its own rollback."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0228(conn)
     if conn.execute("select to_regprocedure('public.credits_per_unit_now(text)') is not null").fetchone()[0]:
         conn.execute(rollback_0224_body())
 
@@ -686,6 +696,8 @@ def put_back_0224(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if not has_0224(conn) and _md5_of(conn, "public.creative_price(uuid, text, text, jsonb)") == CREATIVE_PRICE_0218:
         conn.execute(MIGRATION_0224.read_text(encoding="utf-8"))
+    # 0228 on it again (it applies only on 0224's creative_price and does nothing where it is on already).
+    put_back_0228(conn)
 
 
 def rollback_0208_body() -> str:
@@ -806,7 +818,8 @@ def _md5_of(conn, sig: str):
 def has_0218(conn_or_session) -> bool:
     """0218 replaces all three in one transaction, so its creative_price body is enough to tell."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
-    return _md5_of(conn, "public.creative_price(uuid, text, text, jsonb)") in (CREATIVE_PRICE_0218, CREATIVE_PRICE_0218_0224)
+    return _md5_of(conn, "public.creative_price(uuid, text, text, jsonb)") in (CREATIVE_PRICE_0218, CREATIVE_PRICE_0218_0224,
+                                                                               CREATIVE_PRICE_0228)
 
 
 def rollback_0218_body() -> str:
@@ -831,6 +844,7 @@ def take_off_0218(conn_or_session) -> None:
     replays and rollbacks refuse any other body. A test that replays or rolls back 0208 (and so 0159 or 0156) or 0171 takes 0218 off
     first with its own rollback (take_off_0208 and take_off_0171 do it), and puts it back with put_back_0218 once all three are on."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    # 0228 sits on 0224's creative_price and 0218's creative_params_problem: take_off_0224 takes it off first.
     take_off_0224(conn)
     if has_0218(conn):
         conn.execute(rollback_0218_body())
@@ -843,7 +857,44 @@ def put_back_0218(conn_or_session) -> None:
         live["public.creative_price(uuid, text, text, jsonb)"], live["public.creative_price(uuid, text, text, jsonb)"])
     if not has_0218(conn) and live == _BEFORE_0218:
         conn.execute(migration_0218_lab())
+    # 0224 first, then 0228, which applies only on 0224's creative_price.
     put_back_0224(conn)
+    put_back_0228(conn)
+
+
+#: 0228 (music per request, S6): 0224's creative_price and 0218's creative_params_problem, one marked hunk each. Its guard accepts
+#: only 0224's creative_price (CREATIVE_PRICE_0218_0224) and 0218's creative_params_problem, or its own bodies.
+MIGRATION_0228 = MIGRATIONS / "0228_music_per_request_price.sql"
+ROLLBACK_0228 = REPO / "docs" / "sql" / "rollback_0228_music_per_request_price.sql"
+CREATIVE_PRICE_0228 = "33bb0ea77aedd1ffc3df339034adc6d3"
+CREATIVE_PARAMS_PROBLEM_0228 = "0570bb5a1f749b7e3d556c87443bf17b"
+
+
+def rollback_0228_body() -> str:
+    """0228's rollback without its own begin / commit. Harmless where 0228 is not on (it puts a body back only from 0228's own)."""
+    text = ROLLBACK_0228.read_text(encoding="utf-8")
+    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+
+
+def has_0228(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return _md5_of(conn, "public.creative_price(uuid, text, text, jsonb)") == CREATIVE_PRICE_0228
+
+
+def take_off_0228(conn_or_session) -> None:
+    """0228 sits on 0224's creative_price and 0218's creative_params_problem, and their rollbacks refuse (or leave) its bodies: it comes
+    off first, with its own rollback."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0228(conn) or _md5_of(conn, "public.creative_params_problem(text, jsonb)") == CREATIVE_PARAMS_PROBLEM_0228:
+        conn.execute(rollback_0228_body())
+
+
+def put_back_0228(conn_or_session) -> None:
+    """0228 again, only on 0224's creative_price and 0218's creative_params_problem (its drift guard refuses any other body)."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if (not has_0228(conn) and _md5_of(conn, "public.creative_price(uuid, text, text, jsonb)") == CREATIVE_PRICE_0218_0224
+            and _md5_of(conn, "public.creative_params_problem(text, jsonb)") == CREATIVE_PARAMS_PROBLEM_0218):
+        conn.execute(MIGRATION_0228.read_text(encoding="utf-8"))
 
 
 def migration_0218_lab() -> str:
