@@ -19,6 +19,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -567,14 +568,18 @@ _RUNWAY_URI = re.compile(r"^runway://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]{1,4990
 _FPS_DEMUXERS = {".mp4": "mov", ".mov": "mov", ".webm": "matroska", ".mkv": "matroska"}
 
 
-#: Codecs whose packet in MP4 / MOV / WebM / MKV decodes to at most one shown
-#: frame, so ``-count_packets`` can stand in for decoding (BR-L-211). FFmpeg's
-#: h264, hevc and prores decoders return one frame per packet and no bitstream
-#: filter splits their packets; field-coded H.264 stores a field per packet,
-#: which only overcounts. ProRes is intra-only and each sample is one ``icpf``
-#: frame. Not VP9 (a superframe holds up to 8 shown frames), not MPEG-4 Part 2
-#: (packed B-frames put 2 in a packet), not AV1 or anything else unchecked:
-#: those are decoded and counted, within the same time limit.
+#: Codecs whose packets ``-count_packets`` counts instead of decoding them
+#: (BR-L-211): FFmpeg's h264, hevc and prores decoders return one frame per
+#: packet, so decoding would count no more. That is NOT one frame per sample:
+#: a muxer can pack several access units (H.264 / HEVC) or several ``icpf``
+#: frames (ProRes) into one sample, and the decoder then shows only the first
+#: (Breach, #955 round 3 and #966 round 1: 8 to a sample read 150 of 1200).
+#: H.264 / HEVC are therefore also counted by their parser in the upscale's
+#: copy (``normalize_for_upload``); ProRes has no such count and the upscale
+#: refuses it (``RunwayVideoUpscaleAdapter.CODECS``). Not VP9 (a superframe
+#: holds up to 8 shown frames), not MPEG-4 Part 2 (packed B-frames put 2 in a
+#: packet), not AV1 or anything else unchecked: those are decoded and
+#: counted, within the same time limit.
 _ONE_FRAME_PER_PACKET = frozenset({"h264", "hevc", "prores"})
 
 #: Still-image codecs: FFmpeg's decoder for each returns exactly one picture
@@ -618,6 +623,23 @@ class FrameReading:
     length: Optional[float] = None
     #: The counted picture's codec in ffmpeg's name ("h264", "hevc", ...).
     codec: Optional[str] = None
+    #: Bytes of the picture's codec configuration (avcC / hvcC /
+    #: CodecPrivate: ffprobe's ``extradata_size``, which it prints only when
+    #: there is any, so absent is 0). The container read reports its whole
+    #: sample description, an upper bound of it. None is unknown.
+    extradata: Optional[int] = None
+
+
+#: The most codec configuration the upscale prepares a file with. The Annex B
+#: filters write the whole of it again before every IDR / IRAP picture, so a
+#: file can multiply it by its keyframes (#966, Lens H1 = Breach F1: a 1.95 MB
+#: avcC x 600 IDRs wrote 2.34 GB from a 2 MB file). Measured 2026-11-28 with
+#: ffmpeg 6.1.1: x264's avcC 35-48 bytes (4:2:2 10-bit too), x265's hvcC 2.4-2.5
+#: KB (its settings SEI), an HDR10 x265 hvcC with mastering display and
+#: content light level 2540 bytes; an SPS or PPS is at most a few hundred
+#: bytes. 64 KiB is 25 times the largest, and 1800 keyframes of it (30 s at
+#: 60 fps, all IDR) is 113 MiB, which only ever flows through a pipe.
+MAX_EXTRADATA_BYTES = 64 * 1024
 
 
 #: The most of ffprobe's answer kept: one file's stream list is a few KB. A
@@ -729,6 +751,17 @@ def _positive(value) -> Optional[float]:
     except (TypeError, ValueError):
         return None
     return f if 0 < f < float("inf") else None
+
+
+def _extradata_size(stream: dict) -> Optional[int]:
+    """ffprobe's ``extradata_size`` (printed only when there is any, so
+    absent is 0); None for anything that is not a whole non-negative number."""
+    if "extradata_size" not in stream:
+        return 0
+    v = stream.get("extradata_size")
+    if isinstance(v, bool) or not isinstance(v, int) or v < 0:
+        return None
+    return v
 
 
 def _is_still(stream: dict) -> bool:
@@ -924,6 +957,9 @@ class _Mp4Track:
     media_ticks: int = 0
     track_ticks: int = 0
     malformed: bool = False
+    #: The stsd payload's size: every byte of the sample entry, its avcC /
+    #: hvcC included, so an upper bound of the codec configuration.
+    description: Optional[int] = None
 
     def is_still(self) -> bool:
         # ``_is_still``'s rule: a still codec and at most one sample, both read.
@@ -986,6 +1022,7 @@ def _mp4_track(buf: bytes, start: int, end: int) -> Optional[_Mp4Track]:
                 stsz_count = int.from_bytes(buf[ps + 8:ps + 12], "big")
             else:
                 t.entry = _sample_entry(buf, ps, pe)
+                t.description = pe - ps
     # The walk finishes even after a malformed box, so a broken audio track is still known to be "not video".
     if handler != b"vide":
         return None
@@ -1091,7 +1128,7 @@ def mp4_frames(path: str) -> FrameReading:
     # without one it is unknown, never the picture's own guess.
     length = movie_ticks / movie_scale if movie_scale and movie_ticks > 0 else None
     return FrameReading(rate=rate, avg=parse_rate(avg), frames=t.samples, seconds=seconds, index=index,
-                        length=length, codec=_MP4_CODECS.get(t.entry))
+                        length=length, codec=_MP4_CODECS.get(t.entry), extradata=t.description)
 
 
 def mp4_fps(path: str) -> Optional[float]:
@@ -1141,7 +1178,7 @@ def read_frames(path: str, *, timeout: int = 30) -> FrameReading:
         data, _ = _ffprobe_run(ffmpeg_limits.limited_argv(
             [*base, "-count_packets", "-show_entries",
              "stream=index,codec_type,codec_name,avg_frame_rate,nb_frames,nb_read_packets,"
-             "duration:stream_disposition=attached_pic:format=duration",
+             "duration,extradata_size:stream_disposition=attached_pic:format=duration",
              "-of", "json", str(path)]), timeout, env=ffmpeg_limits.child_env())
     except subprocess.TimeoutExpired:
         # Counting packets is reading the file once, whatever its codec (which
@@ -1210,7 +1247,8 @@ def read_frames(path: str, *, timeout: int = 30) -> FrameReading:
     return FrameReading(rate=counted_rate(stream, fmt, slack_frames=1), avg=parse_rate(stream.get("avg_frame_rate")),
                         frames=frame_count(stream), seconds=shortest_length(stream, fmt), packed=packed,
                         index=index if isinstance(index, int) and not isinstance(index, bool) and index >= 0 else None,
-                        length=_positive(fmt.get("duration")), codec=codec or None)
+                        length=_positive(fmt.get("duration")), codec=codec or None,
+                        extradata=_extradata_size(stream))
 
 
 def video_fps(path: str, *, timeout: int = 30) -> Optional[float]:
@@ -1245,20 +1283,184 @@ def ffmpeg_exe() -> Optional[str]:
 @dataclass(frozen=True)
 class Normalized:
     """What the upscale prepared from a member's file. ``path`` is uploaded
-    and nothing else is. ``parsed`` (H.264 / HEVC only) is the same picture
-    with each access unit its own sample: its FRAMES are counted (its timing
-    is made up by the raw demuxer and means nothing), and it is never
-    uploaded."""
+    and nothing else is. ``access_units`` (H.264 / HEVC only, else None) is
+    the copy's picture as its parser cuts it, one access unit each: the
+    frames a decoder shows, whatever the samples say."""
 
     path: Path
-    parsed: Optional[Path] = None
+    access_units: Optional[int] = None
 
 
 _REWRITE_FAILED = ("this video could not be rewritten without re-encoding, so it was not sent; export it again as "
                    "H.264 MP4 and upscale the new copy")
+_SOUND_FAILED = ("the sound of this video could not be copied as it is, so it was not sent; export it again with AAC "
+                 "sound (or none) and upscale the new copy")
+#: The prefix of the upscale's work folders in the temp folder (``sweep_stale_work``).
+WORK_PREFIX = "nightshift-upscale-"
+#: A work folder older than this was left by a worker that died mid-job: one
+#: upscale's folder lives for its remux (60 s) and upload (300 s) at most.
+STALE_WORK_S = 3600
+#: RLIMIT_FSIZE of the two count processes, which write only pipes: any
+#: regular file they were made to write would be a bug, so it gets nothing.
+_PIPE_ONLY_FSIZE = 0
+#: Bytes added to the count stream's cap for the parameter sets a raw stream
+#: opens with and the start codes of a short file.
+_STREAM_SLACK = 1024 * 1024
 
 
-def normalize_for_upload(src: Path, reading: FrameReading, work: Path, *, timeout: float = 60.0) -> Normalized:
+def sweep_stale_work(root: Optional[Path] = None, *, older_than_s: float = STALE_WORK_S) -> None:
+    """Remove the upscale work folders a dead worker left in ``root`` (the
+    temp folder): each holds a copy of a member's video. ``rmtree`` in a
+    ``finally`` cleans up every refusal and error, but not a process killed
+    by the OOM killer or a deploy. Only this user's folders with the prefix,
+    older than ``older_than_s``; a link is never followed; failures are
+    ignored (the next upscale tries again)."""
+    base = Path(root) if root is not None else Path(tempfile.gettempdir())
+    cutoff = time.time() - older_than_s
+    try:
+        entries = list(os.scandir(base))
+    except OSError:
+        return
+    for entry in entries:
+        try:
+            if not entry.name.startswith(WORK_PREFIX) or not entry.is_dir(follow_symlinks=False):
+                continue
+            st = entry.stat(follow_symlinks=False)
+            if st.st_uid != os.getuid() or st.st_mtime > cutoff:
+                continue
+            shutil.rmtree(entry.path, ignore_errors=True)
+        except OSError:
+            continue
+
+
+def _count_access_units(producer: List[str], counter: List[str], *, timeout: float, max_bytes: int,
+                        what: str) -> int:
+    """The packets ``counter`` lists (ffmpeg's ``framecrc``: one line per
+    packet, ``#`` header lines first) for the raw stream ``producer`` writes
+    to its stdout, relayed here at most ``max_bytes``. Nothing touches the
+    disk: the raw stream of a file whose extradata is repeated before every
+    keyframe was 2.34 GB on disk (#966, Lens H1).
+
+    Every way it can end short is a REFUSAL, never a count: a truncated
+    stream counts fewer access units, and fewer passes the check against the
+    copy's samples. So: either process exiting non-zero, the relay passing
+    ``max_bytes``, a refusal marker on either stderr (the frame cap, memory),
+    or the deadline. Both run as given (``ffmpeg_limits.limited_argv``), in
+    sessions of their own, and are killed and reaped on every way out."""
+    env = ffmpeg_limits.child_env()
+    procs: List[subprocess.Popen] = []
+
+    def kill_all() -> None:
+        for p in procs:
+            try:
+                p.kill()
+            except OSError:
+                pass
+
+    try:
+        procs.append(subprocess.Popen(producer, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE, env=env, start_new_session=True))
+        procs.append(subprocess.Popen(counter, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE, env=env, start_new_session=True))
+    except OSError as e:
+        kill_all()
+        raise AdapterError(E_NOT_CONFIGURED, f"this worker cannot prepare videos ({type(e).__name__}); "
+                                             "nothing was sent") from None
+    a, b = procs
+    watches = [ffmpeg_limits._StderrWatch(p.stderr, kill_all) for p in procs]
+    over = threading.Event()
+    packets = [0]
+
+    def relay() -> None:
+        sent = 0
+        try:
+            while True:
+                chunk = a.stdout.read1(65536)
+                if not chunk:
+                    break
+                sent += len(chunk)
+                if sent > max_bytes:
+                    over.set()
+                    kill_all()
+                    return
+                b.stdin.write(chunk)
+        except (OSError, ValueError):
+            # The counter stopped reading: the producer would block on a full
+            # pipe until the deadline and read as "too long". Both end now,
+            # and the failed exit is the refusal.
+            kill_all()
+        finally:
+            try:
+                b.stdin.close()
+            except (OSError, ValueError):
+                pass
+
+    def lines() -> None:
+        carry = b""
+        try:
+            while True:
+                chunk = b.stdout.read1(65536)
+                if not chunk:
+                    break
+                parts = (carry + chunk).split(b"\n")
+                carry = parts.pop()
+                packets[0] += sum(1 for line in parts if line and not line.startswith(b"#"))
+        except (OSError, ValueError):
+            return
+        if carry and not carry.startswith(b"#"):
+            packets[0] += 1
+
+    threads = [threading.Thread(target=relay, daemon=True), threading.Thread(target=lines, daemon=True), *watches]
+    for t in threads:
+        t.start()
+    deadline = time.monotonic() + timeout
+    timed_out = False
+    try:
+        for p in procs:
+            left = deadline - time.monotonic()
+            try:
+                p.wait(timeout=max(left, 0.001))
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                break
+    finally:
+        if timed_out or any(p.returncode is None for p in procs):
+            kill_all()
+        for p in procs:
+            try:
+                p.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
+        for t in threads:
+            t.join(5)
+        for p in procs:
+            for pipe in (p.stdin, p.stdout, p.stderr):
+                if pipe is not None:
+                    try:
+                        pipe.close()
+                    except (OSError, ValueError):
+                        pass
+    refused = [w for w in watches if w.refused]
+    if refused:
+        markers = b"\n".join(m for w in refused for m in ffmpeg_limits.REFUSAL_MARKERS if m in w.seen)
+        raise AdapterError(E_BAD_REQUEST, _decode_refusal(markers, what) or _REWRITE_FAILED)
+    if timed_out:
+        raise AdapterError(E_BAD_REQUEST, f"this {what} is too long to prepare within the time limit; "
+                                          "shorten it and upscale the shorter copy")
+    if over.is_set():
+        # Far more stream than the copy holds: parameter sets or start codes
+        # multiplied by the file's keyframes (``max_bytes``' reasoning).
+        logger.info("upscale: the access-unit stream passed its %d-byte cap", max_bytes)
+        raise AdapterError(E_BAD_REQUEST, f"this {what} expands far beyond its own size when it is prepared, so it "
+                                          "was not sent; export it again (re-encoded) and upscale the new copy")
+    if a.returncode != 0 or b.returncode != 0:
+        logger.info("upscale: the access-unit count failed (exit %s, %s)", a.returncode, b.returncode)
+        raise AdapterError(E_BAD_REQUEST, _REWRITE_FAILED)
+    return packets[0]
+
+
+def normalize_for_upload(src: Path, reading: FrameReading, work: Path, *, timeout: float = 60.0,
+                         max_bytes: int = 200 * 1024 * 1024) -> Normalized:
     """The copy of ``src`` that is priced, checked and uploaded (BR-L-211 (a)).
 
     Remuxed, never re-encoded (``-c copy``): a re-encode would change the
@@ -1268,7 +1470,9 @@ def normalize_for_upload(src: Path, reading: FrameReading, work: Path, *, timeou
     the result keeps the source's audio, and dropping it here would change
     the result without anyone knowing. Cover art, a second picture, data and
     subtitle tracks are not kept. The demuxer applies the file's edit lists,
-    so samples an edit leaves out are not sent.
+    so samples an edit leaves out are not sent. The copy may not reach
+    ``max_bytes`` + 1 (RLIMIT_FSIZE): an edit list can repeat samples, and
+    over Runway's limit it would be refused anyway.
 
     A remux to MP4 does NOT split several access units packed into one sample
     (measured with ffmpeg 6.1.1: Breach's h264p8.mp4 stays 150 samples with
@@ -1278,14 +1482,17 @@ def normalize_for_upload(src: Path, reading: FrameReading, work: Path, *, timeou
     them too, but drops the display matrix (a phone's rotation=90 was gone)
     and the imageio 7.0.2 build segfaults opening any MPEG-TS file (measured
     2026-11-28). The raw stream keeps no timing, so it is only COUNTED
-    (``parsed``): the upload is the plain copy, and the adapter refuses it
-    when the parser finds more frames than the copy has samples.
+    (``access_units``), through a pipe and never on disk
+    (``_count_access_units``): the Annex B filter writes the whole extradata
+    before every keyframe, so it is refused over ``MAX_EXTRADATA_BYTES``
+    before anything runs, and the stream is capped at what the copy can hold.
 
-    Every ffmpeg runs under ``ffmpeg_limits.run`` (address-space limit,
-    MALLOC_ARENA_MAX, the refusal watch, a deadline) with the frame cap and
-    two decoder threads before each input (``media_library.decoder_cap``):
-    opening the streams decodes a few frames. Raises AdapterError with the
-    remedy. ``work`` is the caller's to remove, whatever happens."""
+    Every ffmpeg runs under the member-media limits (``ffmpeg_limits``:
+    address-space limit, MALLOC_ARENA_MAX, the refusal watch, one deadline)
+    with the frame cap and two decoder threads before each input
+    (``media_library.decoder_cap``): opening the streams decodes a few
+    frames. Raises AdapterError with the remedy. ``work`` is the caller's to
+    remove, whatever happens."""
     exe = ffmpeg_exe()
     if not exe:
         raise AdapterError(E_NOT_CONFIGURED, "this worker has no ffmpeg to prepare the video for the upscale; "
@@ -1297,62 +1504,110 @@ def normalize_for_upload(src: Path, reading: FrameReading, work: Path, *, timeou
     if reading.index is None:
         raise AdapterError(E_BAD_REQUEST, "the video stream to upscale could not be told apart in this file, so it "
                                           "was not sent; export it again as H.264 MP4 with one video stream")
+    split = _ANNEXB.get(str(reading.codec or ""))
+    if split is not None:
+        # Before anything is written: the count multiplies this by every keyframe.
+        size = reading.extradata
+        if size is None:
+            raise AdapterError(E_BAD_REQUEST, "the codec header of this video could not be read, so it was not "
+                                              "sent; export it again as H.264 MP4 and upscale the new copy")
+        if size > MAX_EXTRADATA_BYTES:
+            raise AdapterError(E_BAD_REQUEST, f"this video's codec header is {size // 1024} KB, over the "
+                                              f"{MAX_EXTRADATA_BYTES // 1024} KB the upscale takes (an ordinary "
+                                              "file's is a few KB at most); export it again (re-encoded) as H.264 "
+                                              "or HEVC MP4 and upscale the new copy")
     cap = media_library.decoder_cap(_RUNWAY_VIDEO_TYPES[suffix])
     what = _what(reading.codec, suffix)
     deadline = time.monotonic() + timeout
-    head = [exe, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-protocol_whitelist", "file"]
+    head = [exe, "-hide_banner", "-nostdin", "-y", "-loglevel", "error"]
+    copy_cap = int(max_bytes) + 1
+    too_long = f"this {what} is too long to prepare within the time limit; shorten it and upscale the shorter copy"
+    too_big = (f"the copy prepared for the upscale would be larger than the {max_bytes // (1024 * 1024)} MB Runway "
+               "takes; shorten the video or export it at a lower bitrate")
 
-    def run(argv: List[str]) -> None:
-        left = deadline - time.monotonic()
-        if left <= 0:
-            raise AdapterError(E_BAD_REQUEST, f"this {what} is too long to prepare within the time limit; "
-                                              "shorten it and upscale the shorter copy")
+    def left() -> float:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AdapterError(E_BAD_REQUEST, too_long)
+        return remaining
+
+    def remux(argv: List[str], out: Path) -> bool:
+        """True when the copy was written whole; False when ffmpeg failed."""
         try:
-            out = ffmpeg_limits.run(argv, timeout_s=left)
+            done = ffmpeg_limits.run(argv, timeout_s=left(), fsize_bytes=copy_cap)
         except (OSError, RuntimeError) as e:
             raise AdapterError(E_NOT_CONFIGURED, f"this worker cannot prepare videos ({type(e).__name__}); "
                                                  "nothing was sent") from None
-        if out.refused:
-            raise AdapterError(E_BAD_REQUEST, _decode_refusal(b"\n".join(out.markers), what) or _REWRITE_FAILED)
-        if out.timed_out:
-            raise AdapterError(E_BAD_REQUEST, f"this {what} is too long to prepare within the time limit; "
-                                              "shorten it and upscale the shorter copy")
-        if not out.ok:
+        if done.refused:
+            raise AdapterError(E_BAD_REQUEST, _decode_refusal(b"\n".join(done.markers), what) or _REWRITE_FAILED)
+        if done.timed_out:
+            raise AdapterError(E_BAD_REQUEST, too_long)
+        # Reaching the cap is a refusal, whatever ffmpeg's exit said: a copy
+        # cut at the cap is not the member's video.
+        if out.is_file() and out.stat().st_size >= copy_cap:
+            raise AdapterError(E_BAD_REQUEST, too_big)
+        if not done.ok:
             # The tail is ffmpeg's, about the member's file: logged for the
             # operator, never put in the member's message.
-            logger.info("upscale: the remux failed (exit %s)", out.returncode)
-            raise AdapterError(E_BAD_REQUEST, _REWRITE_FAILED)
+            logger.info("upscale: the remux failed (exit %s)", done.returncode)
+            return False
+        return True
 
     copy = work / src.name
     if copy.resolve() == src.resolve():
         # ffmpeg -y would write over the member's file while reading it.
         raise ValueError("the upscale's work folder must not be the source's own")
-    run([*head, "-f", demuxer, *cap, "-i", str(src), "-map", f"0:{reading.index}", "-map", "0:a?",
-         "-c", "copy", "-map_chapters", "-1",
-         # A QuickTime timecode in the metadata makes the MP4 / MOV muxer add
-         # a tmcd track of its own: one picture and its sound is the copy.
-         *(["-write_tmcd", "0"] if muxer in ("mp4", "mov") else []), "-f", muxer, str(copy)])
+    source_in = [*head, "-protocol_whitelist", "file", "-f", demuxer, *cap, "-i", str(src),
+                 "-map", f"0:{reading.index}"]
+    # A QuickTime timecode in the metadata makes the MP4 / MOV muxer add a
+    # tmcd track of its own: one picture and its sound is the copy.
+    tail = ["-c", "copy", "-map_chapters", "-1", *(["-write_tmcd", "0"] if muxer in ("mp4", "mov") else []),
+            "-f", muxer]
+    if not remux([*source_in, "-map", "0:a?", *tail, str(copy)], copy):
+        # Was it the sound? The same copy without it tells, so the remedy is
+        # one that fixes this file ("export as H.264 MP4" would not).
+        probe = work / f"picture-only{suffix}"
+        alone = remux([*source_in, *tail, str(probe)], probe)
+        probe.unlink(missing_ok=True)
+        raise AdapterError(E_BAD_REQUEST, _SOUND_FAILED if alone else _REWRITE_FAILED)
     if not copy.is_file() or copy.stat().st_size == 0:
         raise AdapterError(E_BAD_REQUEST, _REWRITE_FAILED)
-    split = _ANNEXB.get(str(reading.codec or ""))
     if split is None:
-        # Any other codec is decoded and counted by read_frames (VP9
-        # superframes, packed B-frames), or is intra-only (ProRes).
+        # VP9 and AV1 are decoded and counted by read_frames (superframes,
+        # several shown frames in a temporal unit); the adapter takes no other.
         return Normalized(copy)
     bsf, raw = split
-    # A folder of their own: a member's file may itself be named parsed.mp4.
-    count = work / "count"
-    count.mkdir()
-    stream, parsed = count / f"parsed.{raw}", count / "parsed.mp4"
-    run([*head, "-f", demuxer, *cap, "-i", str(copy), "-map", "0:v:0", "-c", "copy",
-         "-bsf:v", bsf, "-f", raw, str(stream)])
-    # MP4 again so the count is read the way every copy is, with or without
-    # ffprobe (the container read).
-    run([*head, "-f", raw, *cap, "-i", str(stream), "-map", "0:v:0", "-c", "copy", "-f", "mp4", str(parsed)])
-    stream.unlink(missing_ok=True)
-    if not parsed.is_file() or parsed.stat().st_size == 0:
-        raise AdapterError(E_BAD_REQUEST, _REWRITE_FAILED)
-    return Normalized(copy, parsed)
+    # The raw stream is the copy's samples with start codes, plus the
+    # extradata before each keyframe: twice the copy (a 1- or 2-byte length
+    # prefix becomes a 3- or 4-byte start code) and the extradata once a
+    # sample bounds every real file. More is refused, never truncated.
+    samples = reading.frames if isinstance(reading.frames, int) and reading.frames > 0 else 0
+    stream_cap = 2 * copy.stat().st_size + (samples + 1) * int(reading.extradata or 0) + _STREAM_SLACK
+    producer = ffmpeg_limits.limited_argv(
+        [*head, "-protocol_whitelist", "file", "-f", demuxer, *cap, "-i", str(copy), "-map", "0:v:0",
+         "-c", "copy", "-bsf:v", bsf, "-f", raw, "pipe:1"], fsize_bytes=_PIPE_ONLY_FSIZE)
+    # framecrc: one line per packet, from ffmpeg alone (the Probe models
+    # runner has no ffprobe), on 6.1.1 and 7.0.2.
+    counter = ffmpeg_limits.limited_argv(
+        [*head, "-protocol_whitelist", "pipe", "-f", raw, *cap, "-i", "pipe:0", "-map", "0:v:0", "-c", "copy",
+         "-f", "framecrc", "pipe:1"], fsize_bytes=_PIPE_ONLY_FSIZE)
+    units = _count_access_units(producer, counter, timeout=left(), max_bytes=stream_cap, what=what)
+    return Normalized(copy, units)
+
+
+def _credits(value) -> Optional[float]:
+    """A vendor's credit figure as a finite positive float, else None: absent,
+    text, a bool, negative, NaN, infinite, too large for a float (a JSON
+    integer of 400 digits passed a range check, then ``float()`` raised after
+    the task existed: #966, Breach F3), or 0 (no task is free; "0" is not a
+    reading of one, CLAUDE.md #5)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        f = float(value)
+    except (OverflowError, ValueError):
+        return None
+    return f if 0 < f < float("inf") else None
 
 
 class RunwayVideoUpscaleAdapter(RunwayAdapter):
@@ -1389,6 +1644,14 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
     normalize_of = staticmethod(normalize_for_upload)
     #: Runway's longest input (OpenAPI ``videoUri``: "Maximum duration is 30 seconds").
     MAX_SECONDS = 30.0
+    #: The codecs whose frames the upscale can count however they are packed
+    #: (#966, Breach F2): H.264 and HEVC by their parser (``access_units``),
+    #: VP9 and AV1 by decoding (a superframe's or a temporal unit's shown
+    #: frames). MPEG-2, MPEG-4 Part 2, Motion JPEG and ProRes with 8 pictures
+    #: to a sample read 150 frames at 30 fps where their raw parsers find 1200,
+    #: and nothing here counts them otherwise. ProRes was accepted before
+    #: #966; it can come back with a check of each sample's ``icpf`` sizes.
+    CODECS = ("h264", "hevc", "vp9", "av1")
     #: One Runway credit in USD, and USD per OUTPUT frame by target
     #: (docs.dev.runwayml.com/guides/pricing, read 2026-11-27: credits =
     #: ceil(USD / 0.01); 720p and 1k 0.007, 2k 0.009, 4k 0.012). The
@@ -1423,6 +1686,20 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
     def estimated_credits(self, task_id: str) -> Optional[float]:
         return self._estimates.get(str(task_id or ""))
 
+    def probe_estimate(self, task: ProviderTask) -> Optional[float]:
+        """The create's ``estimatedCost.credits`` for the probe's log line
+        (tools/probe_models.py): ungating needs a live answer that has one."""
+        return self.estimated_credits(task.task_id)
+
+    def _within_length(self, reading: FrameReading) -> None:
+        if reading.length is None:
+            raise AdapterError(E_BAD_REQUEST, "the video's length could not be read, so its upscale cannot be "
+                                              "priced; export it again as H.264 MP4")
+        if reading.length > self.MAX_SECONDS:
+            raise AdapterError(E_BAD_REQUEST, f"this video runs {reading.length:.1f} seconds; the upscale takes up "
+                                              f"to {self.MAX_SECONDS:.0f}, so trim it to {self.MAX_SECONDS:.0f} "
+                                              "seconds or less and upscale the shorter copy")
+
     def counted_frames(self, task_id: str) -> Optional[int]:
         """The frames counted in the copy that was uploaded for ``task_id``."""
         return self._counted.get(str(task_id or ""))
@@ -1450,6 +1727,13 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
         refusal, with its remedy (BR-L-211)."""
         if reading.refusal:
             raise AdapterError(E_BAD_REQUEST, reading.refusal)
+        if reading.rate is not None and reading.codec not in self.CODECS:
+            # Only once the file was read: an unreadable one keeps its own
+            # remedy. An unknown codec is refused too (CLAUDE.md #5).
+            name = _CODEC_NAMES.get(str(reading.codec or "").lower())
+            raise AdapterError(E_BAD_REQUEST, f"the upscale cannot count the frames of {name or 'this'} video "
+                                              "the way Runway bills them, so it was not sent; export it again as "
+                                              "H.264 or HEVC MP4 and upscale the new copy")
         fps = reading.rate
         if fps is None:
             raise AdapterError(E_BAD_REQUEST, "the video's frame rate could not be read, so its upscale "
@@ -1474,14 +1758,13 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
                                               f"{self.MAX_FPS:.0f} frames a second or fewer")
         return fps
 
-    def _same_access_units(self, copy: FrameReading, parsed: FrameReading) -> None:
+    def _same_access_units(self, copy: FrameReading, frames: Optional[int]) -> None:
         """The parser's count (each access unit its own packet) against the
         copy's samples. Only the frames: the raw stream has no timing, so the
         rate is the parser's frames over the COPY's picture length, which is
         what the ceiling was checked against. Fewer access units than samples
         (a field-coded stream kept a field to a sample) only overstates the
         bill the member is quoted, and passes."""
-        frames = parsed.frames if not parsed.refusal else None
         if frames is None or copy.frames is None or not copy.seconds:
             raise AdapterError(E_BAD_REQUEST, "the frames of this video could not be counted, so its upscale cannot "
                                               "be priced; export it again as H.264 MP4")
@@ -1554,17 +1837,22 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
         size = path.stat().st_size
         if not self.MIN_BYTES <= size <= self.MAX_BYTES:
             raise AdapterError(E_BAD_REQUEST, "Runway takes videos from 512 bytes to 200 MB")
+        # Before this upscale's own folder: a worker killed mid-job leaves one.
+        sweep_stale_work()
         source = self.fps_of(str(path))
         self._priceable(source)
-        work = Path(tempfile.mkdtemp(prefix="nightshift-upscale-"))
+        # Fail early (CLAUDE.md #6): a file Runway can never take is not
+        # remuxed first, which costs the worker its time and disk.
+        self._within_length(source)
+        work = Path(tempfile.mkdtemp(prefix=WORK_PREFIX))
         try:
             # What is priced, checked and uploaded is the remuxed copy, never
             # the member's file as it came (BR-L-211 residual (a)).
-            norm = self.normalize_of(path, source, work)
+            norm = self.normalize_of(path, source, work, max_bytes=self.MAX_BYTES)
             copy = self.fps_of(str(norm.path))
             self._priceable(copy)
-            if norm.parsed is not None:
-                self._same_access_units(copy, self.fps_of(str(norm.parsed)))
+            if norm.access_units is not None:
+                self._same_access_units(copy, norm.access_units)
             if not self._same_picture(source, copy):
                 raise AdapterError(E_BAD_REQUEST, f"the copy prepared for the upscale holds {copy.frames} frames in "
                                                   f"{copy.seconds or 0:.1f} seconds where the file reads "
@@ -1576,13 +1864,7 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
                 raise AdapterError(E_BAD_REQUEST, "the copy prepared for the upscale is outside the 512 bytes to "
                                                   "200 MB Runway takes; shorten the video or export it at a lower "
                                                   "bitrate")
-            if copy.length is None:
-                raise AdapterError(E_BAD_REQUEST, "the video's length could not be read, so its upscale cannot be "
-                                                  "priced; export it again as H.264 MP4")
-            if copy.length > self.MAX_SECONDS:
-                raise AdapterError(E_BAD_REQUEST, f"this video runs {copy.length:.1f} seconds; the upscale takes up "
-                                                  f"to {self.MAX_SECONDS:.0f}, so trim it to {self.MAX_SECONDS:.0f} "
-                                                  "seconds or less and upscale the shorter copy")
+            self._within_length(copy)
             uri = self._upload(norm.path)
         finally:
             shutil.rmtree(work, ignore_errors=True)
@@ -1594,9 +1876,7 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
         # "The maximum credits this task may charge" (OpenAPI estimatedCost):
         # kept as Runway said it, or None, for the seam's check against the
         # job's price. Never defaulted: an absent figure is refused there.
-        est = dig(data, "estimatedCost", "credits")
-        self._estimates[tid] = float(est) if isinstance(est, (int, float)) and not isinstance(est, bool) \
-            and 0 <= est < float("inf") else None
+        self._estimates[tid] = _credits(dig(data, "estimatedCost", "credits"))
         self._counted[tid] = copy.frames
         for kept in (self._estimates, self._counted):
             while len(kept) > _RUNWAY_KEEP:

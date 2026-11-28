@@ -122,6 +122,35 @@ class DetectionTestCase(unittest.TestCase):
         old = [dict(rows[0], finished_at=ts(90))]
         self.assertEqual(self.detect({"creative_jobs": old}), [])
 
+    def test_an_estimate_refusal_whose_cancel_was_not_confirmed_never_says_cancel_sent(self):
+        # Lens M2 (#966): the line said "Cancel sent" whatever the DELETE answered. A task whose cancel was not
+        # confirmed may still be running and billing: the owner must look in Runway.
+        rows = [{"id": "5a1e0000-0000-4000-8000-000000000004", "status": "failed", "finished_at": ts(4),
+                 "error_code": "estimate_over_quote_uncancelled"},
+                {"id": "5a1e0000-0000-4000-8000-000000000005", "status": "failed", "finished_at": ts(5),
+                 "error_code": "estimate_unreadable_uncancelled"}]
+        a = self.detect({"creative_jobs": rows})
+        self.assertEqual([(x.key, x.severity) for x in a],
+                         [("creative:estimate:5a1e0000-0000-4000-8000-000000000004", "critical"),
+                          ("creative:estimate:5a1e0000-0000-4000-8000-000000000005", "critical")])
+        for x in a:
+            self.assertIn("cancel NOT confirmed; check the task in Runway", x.line)
+            self.assertNotIn("Cancel sent", x.line)
+        self.assertIn("estimated more than its price covers", a[0].line)
+        self.assertIn("no readable cost estimate", a[1].line)
+        confirmed = self.detect({"creative_jobs": [dict(rows[0], error_code="estimate_over_quote")]})
+        self.assertIn("Cancel confirmed", confirmed[0].line)
+        # The bot does not import the seam (it stays light): the two lists are held equal here instead.
+        from modules import creative_adapters
+        self.assertEqual(set(alerts.ESTIMATE_ALERTS), set(creative_adapters.ESTIMATE_CODES))
+        for lang in ("en", "ru", "uz"):
+            with self.subTest(lang=lang):
+                lines = [alerts.t(lang, k, id="5a1e0000") for k in alerts.ESTIMATE_ALERTS.values()]
+                self.assertEqual(len(set(lines)), 4, "each case reads differently, in every language")
+                for line in lines:
+                    self.assertIn("5a1e0000", line)
+                    self.assertNotIn("{", line)
+
     def test_low_elevenlabs_balance_uses_the_existing_threshold_only(self):
         low = [{"provider": "elevenlabs", "metric": "credits", "remaining": 100, "total": 1000, "unit": "credits",
                 "checked_at": ts(5)},

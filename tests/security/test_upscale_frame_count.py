@@ -71,7 +71,7 @@ def _routes():
             ("POST", "/v1/video_upscale", _Resp(200, {"id": TASK}))]
 
 
-def same_file(src, reading, work):
+def same_file(src, reading, work, **_kw):
     """The upscale's remux, replaced by a plain copy: these pins are about the
     READING, which runs again on the copy (BR-L-211 (a)) and must agree. The
     remux itself is pinned with real bytes in test_upscale_normalize.py."""
@@ -296,9 +296,13 @@ class UpscaleDecodedFramePins(_Upscale):
         p = _probe("30/1", 60, 60, 2.0, 2.0, codec="vp9", r="30/1")
         self.assertRefusedBeforeUpload(p, "takes up to 60", decoded={"streams": [{"nb_read_frames": "480"}]})
 
-    def test_br_l_211_mpeg4_packed_b_frames_are_counted_decoded(self):
+    def test_br_l_211_mpeg4_is_refused_for_its_codec_before_its_packed_b_frames_are_counted(self):
+        # Round 2 counted packed B-frames by decoding. #966 (Breach F2): 8
+        # pictures in one MPEG-4 sample decode as one, so MPEG-4 Part 2 is no
+        # longer taken at all; the remedy is a codec whose packing is counted.
         p = _probe("30/1", 60, 60, 2.0, 2.0, codec="mpeg4", r="30/1")
-        self.assertRefusedBeforeUpload(p, "takes up to 60", decoded={"streams": [{"nb_read_frames": "130"}]})
+        self.assertRefusedBeforeUpload(p, "export it again as H.264 or HEVC MP4",
+                                       decoded={"streams": [{"nb_read_frames": "130"}]})
 
     def test_a_decode_with_no_frame_count_is_unknown(self):
         p = _probe("30/1", 60, 60, 2.0, 2.0, codec="vp9")

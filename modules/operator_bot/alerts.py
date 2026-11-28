@@ -78,8 +78,11 @@ CREATIVE_BURST = 3          # failures of one error code within the hour
 CREATIVE_COOLDOWN = 3 * 60
 #: The creative seam's estimate refusals (modules/creative_adapters.ESTIMATE_CODES; not imported, the bot stays light)
 #: and their lines.
+#: "_uncancelled": the DELETE failed or was not confirmed, so the task may still run and bill.
 ESTIMATE_ALERTS = {"estimate_over_quote": "alert.creative_estimate_over",
-                   "estimate_unreadable": "alert.creative_estimate_unreadable"}
+                   "estimate_unreadable": "alert.creative_estimate_unreadable",
+                   "estimate_over_quote_uncancelled": "alert.creative_estimate_over_uncancelled",
+                   "estimate_unreadable_uncancelled": "alert.creative_estimate_unreadable_uncancelled"}
 #: How far back a payment problem is still news. Inside the 48 hours the store
 #: remembers, so an alert already sent is never sent a second time.
 PAYMENT_WINDOW = timedelta(hours=24)

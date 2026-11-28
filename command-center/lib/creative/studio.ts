@@ -1352,6 +1352,12 @@ const REASON_GROUPS: Record<string, keyof Dictionary["gen"]["reasons"]> = {
   // switched off, while the job waited. Nothing was sent and the hold was released; the remedy is another model.
   model_not_available: "service",
   model_temporarily_off: "service",
+  // The provider's own cost estimate for a created task was above the job's price, or unreadable (modules/creative_adapters.py
+  // ESTIMATE_CODES): the job was stopped and its hold released. Nothing the person changes fixes it; the owner does.
+  estimate_over_quote: "service",
+  estimate_unreadable: "service",
+  estimate_over_quote_uncancelled: "service",
+  estimate_unreadable_uncancelled: "service",
   credits_unavailable: "credits",
   no_credit_hold: "credits",
   hold_not_open: "credits",

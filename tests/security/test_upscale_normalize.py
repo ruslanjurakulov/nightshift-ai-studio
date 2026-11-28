@@ -36,6 +36,8 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -203,6 +205,200 @@ def mp4pack(src: Path, dst: Path, k: int) -> None:
     dst.write_bytes(ftyp + moov(off) + B(b"mdat", b"".join(groups)))
 
 
+def _rebuild_moov(src: Path, dst: Path, entries: tuple, config: bytes, edit) -> None:
+    """Rewrite the one codec configuration box (``config``: avcC / hvcC) of a
+    sample entry in ``entries`` with ``edit(payload) -> payload``. The file
+    must keep moov after mdat (ffmpeg's default), so no chunk offset moves."""
+    b = src.read_bytes()
+    containers = {b"moov", b"trak", b"mdia", b"minf", b"stbl"}
+
+    def parse(s, e):
+        out, i = [], s
+        while i + 8 <= e:
+            n, t = struct.unpack(">I4s", b[i:i + 8])
+            hdr = 8
+            if n == 1:
+                n, hdr = struct.unpack(">Q", b[i + 8:i + 16])[0], 16
+            if n == 0:
+                n = e - i
+            out.append((t, i, n, hdr))
+            i += n
+        return out
+
+    def box(t, payload):
+        return struct.pack(">I4s", 8 + len(payload), t) + payload
+
+    def entry(t, i, n, hdr):
+        if t not in entries:
+            return b[i:i + n]
+        return box(t, b[i + 8:i + 86] + b"".join(rebuild(*c) for c in parse(i + 86, i + n)))
+
+    def rebuild(t, i, n, hdr):
+        payload = b[i + hdr:i + n]
+        if t in containers:
+            payload = b"".join(rebuild(*c) for c in parse(i + hdr, i + n))
+        elif t == b"stsd":
+            payload = b[i + 8:i + 16] + b"".join(entry(*c) for c in parse(i + 16, i + n))
+        elif t == config:
+            payload = edit(payload)
+        return box(t, payload)
+
+    top = parse(0, len(b))
+    order = [t for t, *_ in top]
+    assert order.index(b"mdat") < order.index(b"moov"), order
+    dst.write_bytes(b"".join(rebuild(*c) if c[0] == b"moov" else b[c[1]:c[1] + c[2]] for c in top))
+
+
+def bloat_avcc(src: Path, dst: Path, count: int, size: int) -> None:
+    """Breach's avcc_bloat.py (#966 round 1, F1): ``count`` junk PPS of
+    ``size`` bytes ahead of the real one (pps_id ue(v) >= 511, so every
+    decoder drops them). ``h264_mp4toannexb`` writes the whole extradata
+    before every IDR: 1.95 MB x 600 IDRs filled 2.34 GB of the worker's disk."""
+    junk = struct.pack(">H", size) + bytes([0x0C]) + b"\xff" * (size - 2) + b"\x80"
+
+    def edit(p):
+        i = 6
+        for _ in range(p[5] & 0x1F):
+            i += 2 + struct.unpack(">H", p[i:i + 2])[0]
+        npps, j = p[i], i + 1
+        for _ in range(npps):
+            j += 2 + struct.unpack(">H", p[j:j + 2])[0]
+        return p[:i] + bytes([count + npps]) + junk * count + p[i + 1:j] + p[j:]
+
+    _rebuild_moov(src, dst, (b"avc1", b"avc3"), b"avcC", edit)
+
+
+def bloat_hvcc(src: Path, dst: Path, count: int) -> None:
+    """Breach's hvcc_bloat.py: one more hvcC array of ``count`` SEI prefix
+    units (type 39) of about 65 KB each, which ``hevc_mp4toannexb`` writes
+    before every IRAP picture like the parameter sets."""
+    pl = 65000
+    nal = bytes([39 << 1, 1, 5]) + b"\xff" * (pl // 255) + bytes([pl % 255]) + b"\xaa" * pl + b"\x80"
+    arr = bytes([39]) + struct.pack(">H", count) + (struct.pack(">H", len(nal)) + nal) * count
+
+    def edit(p):
+        return p[:22] + bytes([p[22] + 1]) + arr + p[23:]
+
+    _rebuild_moov(src, dst, (b"hvc1", b"hev1"), b"hvcC", edit)
+
+
+def pack2(src: Path, dst: Path, k: int, ticks_per_sample: int) -> None:
+    """Breach's pack2.py (#966 round 1, F2): a one-track MP4 / MOV rebuilt so
+    each sample holds ``k`` consecutive coded pictures of ANY codec, each
+    sample lasting ``ticks_per_sample``, with mdhd / mvhd / tkhd rewritten to
+    match: the container then reads 1/k of the pictures at a rate it chose."""
+    b = src.read_bytes()
+
+    def atoms(s, e):
+        i = s
+        while i < e:
+            n, t = struct.unpack(">I4s", b[i:i + 8])
+            if n == 1:
+                n = struct.unpack(">Q", b[i + 8:i + 16])[0]
+            yield t, i, n
+            i += n
+
+    def find(path, s=0, e=None):
+        e = len(b) if e is None else e
+        for t, i, n in atoms(s, e):
+            if t == path[0]:
+                if len(path) == 1:
+                    return i, n
+                return find(path[1:], i + (16 if t == b"stsd" else 8), i + n)
+        raise AssertionError(f"{path[0]!r} not found")
+
+    stbl = find([b"moov", b"trak", b"mdia", b"minf", b"stbl"])
+
+    def box(name):
+        return find([name], stbl[0] + 8, stbl[0] + stbl[1])
+
+    i, n = box(b"stsd")
+    stsd = b[i:i + n]
+    i, _ = box(b"stsz")
+    cnt = struct.unpack(">I", b[i + 16:i + 20])[0]
+    sizes = struct.unpack(">%dI" % cnt, b[i + 20:i + 20 + 4 * cnt])
+    i, _ = box(b"stco")
+    nco = struct.unpack(">I", b[i + 12:i + 16])[0]
+    offs = struct.unpack(">%dI" % nco, b[i + 16:i + 16 + 4 * nco])
+    i, _ = box(b"stsc")
+    nsc = struct.unpack(">I", b[i + 12:i + 16])[0]
+    stsc = [struct.unpack(">III", b[i + 16 + 12 * j:i + 28 + 12 * j]) for j in range(nsc)]
+    samples, s = [], 0
+    for c in range(nco):
+        o = offs[c]
+        for _ in range([e[1] for e in stsc if e[0] <= c + 1][-1]):
+            samples.append(b[o:o + sizes[s]])
+            o += sizes[s]
+            s += 1
+    mi, mn = find([b"moov", b"trak", b"mdia", b"mdhd"])
+    mdhd = bytearray(b[mi:mi + mn])
+    ti, tn = find([b"moov", b"trak", b"tkhd"])
+    tkhd = bytearray(b[ti:ti + tn])
+    vi, vn = find([b"moov", b"mvhd"])
+    mvhd = bytearray(b[vi:vi + vn])
+    hi, hn = find([b"moov", b"trak", b"mdia", b"hdlr"])
+    hdlr = b[hi:hi + hn]
+    minf = find([b"moov", b"trak", b"mdia", b"minf"])
+    (xi, xn), (di, dn) = (find([name], minf[0] + 8, minf[0] + minf[1]) for name in (b"vmhd", b"dinf"))
+    vmhd, dinf = b[xi:xi + xn], b[di:di + dn]
+    assert mdhd[8] == 0 and mvhd[8] == 0 and tkhd[8] == 0, "version 1 headers are not handled"
+    groups = [b"".join(samples[g:g + k]) for g in range(0, len(samples), k)]
+    secs = len(groups) * ticks_per_sample / struct.unpack(">I", mdhd[20:24])[0]
+    mdhd[24:28] = struct.pack(">I", len(groups) * ticks_per_sample)
+    mvts = struct.unpack(">I", mvhd[20:24])[0]
+    mvhd[24:28] = struct.pack(">I", round(secs * mvts))
+    tkhd[28:32] = struct.pack(">I", round(secs * mvts))
+
+    def B(t, body):
+        return struct.pack(">I4s", 8 + len(body), t) + body
+
+    def F(t, body):
+        return B(t, b"\x00\x00\x00\x00" + body)
+
+    ftyp = B(b"ftyp", b"isom\x00\x00\x02\x00isomiso2avc1mp41")
+
+    def moov(mdat_off):
+        st = B(b"stbl", stsd + F(b"stts", struct.pack(">III", 1, len(groups), ticks_per_sample))
+               + F(b"stss", struct.pack(">II", 1, 1)) + F(b"stsc", struct.pack(">IIII", 1, 1, len(groups), 1))
+               + F(b"stsz", struct.pack(">II", 0, len(groups)) + b"".join(struct.pack(">I", len(g)) for g in groups))
+               + F(b"stco", struct.pack(">II", 1, mdat_off)))
+        trak = B(b"trak", bytes(tkhd) + B(b"mdia", bytes(mdhd) + hdlr + B(b"minf", vmhd + dinf + st)))
+        return B(b"moov", bytes(mvhd) + trak)
+
+    off = len(ftyp) + len(moov(0)) + 8
+    dst.write_bytes(ftyp + moov(off) + B(b"mdat", b"".join(groups)))
+
+
+class FolderPeak:
+    """The largest total size of the files under a folder, sampled every few
+    milliseconds by a thread of its own while the code under test runs."""
+
+    def __init__(self, folder: Path):
+        self.folder, self.peak, self._stop = Path(folder), 0, threading.Event()
+        self._thread = threading.Thread(target=self._watch, daemon=True)
+
+    def _watch(self):
+        while not self._stop.is_set():
+            total = 0
+            for root, _, files in os.walk(self.folder):
+                for f in files:
+                    try:
+                        total += os.path.getsize(os.path.join(root, f))
+                    except OSError:
+                        pass
+            self.peak = max(self.peak, total)
+            time.sleep(0.005)
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
+        self._thread.join(5)
+        return False
+
+
 def hide_ffprobe():
     real = shutil.which
     return mock.patch.object(video.shutil, "which", lambda name, *a, **k: None if name == "ffprobe" else real(name, *a, **k))
@@ -236,7 +432,7 @@ class PackedAccessUnitPins(_Tmp):
         self.assertIsNone(source.refusal)
         self.assertEqual((source.frames, source.rate), (150, 30.0))
         norm = video.normalize_for_upload(packed, source, self.work())
-        self.assertEqual(video.read_frames(str(norm.parsed)).frames, 1200)
+        self.assertEqual(norm.access_units, 1200)
         a = _adapter()
         err = _submit(a, packed)
         self.assertIsNotNone(err, "a packed file was submitted at its container's rate")
@@ -275,8 +471,8 @@ class NormalizedUploadPins(_Tmp):
         made = []
         real = a.normalize_of
 
-        def keep(src, reading, work):
-            norm = real(src, reading, work)
+        def keep(src, reading, work, **kw):
+            norm = real(src, reading, work, **kw)
             made.append((norm.path, norm.path.read_bytes()))
             return norm
 
@@ -314,10 +510,10 @@ class NormalizedUploadPins(_Tmp):
         a = _adapter()
         # The reading is made to pass, so only the remux can stop it.
         a.fps_of = lambda _p: video.FrameReading(rate=30.0, avg=30.0, frames=60, seconds=2.0, length=2.0, index=0,
-                                                 codec="h264")
+                                                 codec="h264", extradata=40)
         made = []
         real = a.normalize_of
-        a.normalize_of = lambda src, reading, work: made.append(work) or real(src, reading, work)
+        a.normalize_of = lambda src, reading, work, **kw: made.append(work) or real(src, reading, work, **kw)
         err = _submit(a, bad)
         self.assertIsNotNone(err, "an unreadable file was uploaded")
         self.assertEqual(err.code, E_BAD_REQUEST)
@@ -350,57 +546,69 @@ class NormalizedUploadPins(_Tmp):
         clip = self.tmp / "clip.mp4"
         _ffmpeg("-f", "lavfi", "-i", "testsrc=size=64x48:rate=24:duration=2", "-c:v", "libx264",
                 "-preset", "ultrafast", str(clip))
-        seen = []
-        real = fl.run
+        seen, counts = [], []
+        real, real_count = fl.run, video._count_access_units
 
         def watch(argv, **kw):
             seen.append((list(argv), kw))
             return real(argv, **kw)
 
-        with mock.patch.object(video.ffmpeg_limits, "run", side_effect=watch):
+        def count(producer, counter, **kw):
+            counts.append((producer, counter, kw))
+            return real_count(producer, counter, **kw)
+
+        with mock.patch.object(video.ffmpeg_limits, "run", side_effect=watch), \
+                mock.patch.object(video, "_count_access_units", side_effect=count):
             norm = video.normalize_for_upload(clip, video.read_frames(str(clip)), self.work())
-        self.assertTrue(norm.parsed)
-        self.assertEqual(len(seen), 3, "the copy, then the raw stream that splits access units, then its count")
-        for argv, kw in seen:
-            with self.subTest(argv=argv[-1]):
-                self.assertGreater(kw["timeout_s"], 0)
-                src = argv.index("-i")
-                self.assertEqual(argv[argv.index("-protocol_whitelist") + 1], "file")
-                self.assertLess(argv.index("-f"), src, "the demuxer is named, never guessed")
-                self.assertEqual(argv[argv.index("-max_pixels") + 1], str(ml.decoder_max_pixels("video/mp4")))
-                self.assertLess(argv.index("-max_pixels"), src)
-                self.assertEqual(argv[argv.index("-threads") + 1], str(fl.DECODE_THREADS))
-                self.assertEqual(argv[argv.index("-c") + 1], "copy")
+        self.assertEqual(norm.access_units, 48)
+        self.assertEqual(len(seen), 1, "the copy is the one ffmpeg that writes a file")
+        argv, kw = seen[0]
+        self.assertGreater(kw["timeout_s"], 0)
+        self.assertEqual(kw["fsize_bytes"], video.RunwayVideoUpscaleAdapter.MAX_BYTES + 1,
+                         "the copy is capped at the most Runway takes")
+        self.assertEqual(argv[argv.index("-map") + 1], "0:0", "the stream read_frames counted")
+        (producer, counter, ckw), = counts
+        self.assertGreater(ckw["timeout"], 0)
+        self.assertGreater(ckw["max_bytes"], 0)
+        prefix = fl.limited_argv([], fsize_bytes=video._PIPE_ONLY_FSIZE)
+        inner = []
+        for full in (producer, counter):
+            self.assertEqual(full[:len(prefix)], prefix, "the count runs under the address-space limit")
+            inner.append(full[len(prefix):])
+        self.assertIn("h264_mp4toannexb", inner[0])
+        self.assertEqual(inner[0][-1], "pipe:1")
+        self.assertEqual(inner[1][inner[1].index("-protocol_whitelist") + 1], "pipe")
+        self.assertEqual(inner[1][inner[1].index("-f") + 1], "h264")
+        for one, whitelisted in ((argv, "file"), (inner[0], "file"), (inner[1], "pipe")):
+            with self.subTest(argv=one[-1]):
+                src = one.index("-i")
+                self.assertEqual(one[one.index("-protocol_whitelist") + 1], whitelisted)
+                self.assertLess(one.index("-f"), src, "the demuxer is named, never guessed")
+                self.assertEqual(one[one.index("-max_pixels") + 1], str(ml.decoder_max_pixels("video/mp4")))
+                self.assertLess(one.index("-max_pixels"), src)
+                self.assertEqual(one[one.index("-threads") + 1], str(fl.DECODE_THREADS))
+                self.assertEqual(one[one.index("-c") + 1], "copy")
                 for encode in ("-c:v", "-vcodec", "-vf", "-filter_complex", "-crf", "-b:v"):
-                    self.assertNotIn(encode, argv)
-        self.assertEqual(seen[0][0][seen[0][0].index("-map") + 1], "0:0", "the stream read_frames counted")
-        self.assertIn("h264_mp4toannexb", seen[1][0])
+                    self.assertNotIn(encode, one)
 
 
 class CopyCheckPins(_Tmp):
     """The checks on the copy, with the reading and the remux faked."""
 
-    def _run(self, source, copy, *, copy_bytes=4096, parsed=None):
+    def _run(self, source, copy, *, copy_bytes=4096, units=None):
         src = self.tmp / "source.mp4"
         src.write_bytes(b"\x00" * 4096)
         works = []
 
-        def normalize(path, reading, work):
+        def normalize(path, reading, work, **kw):
             works.append(work)
             out = work / path.name
             with open(out, "wb") as fh:
                 fh.truncate(copy_bytes)
-            p = None
-            if parsed is not None:
-                p = work / "parsed.mp4"
-                p.write_bytes(b"\x00" * 1024)
-            return video.Normalized(out, p)
+            return video.Normalized(out, units)
 
         def fps_of(path):
-            p = Path(path)
-            if p.name == "parsed.mp4":
-                return parsed
-            return source if p == src else copy
+            return source if Path(path) == src else copy
 
         a = _adapter()
         a.fps_of, a.normalize_of = fps_of, normalize
@@ -411,7 +619,7 @@ class CopyCheckPins(_Tmp):
 
     def R(self, frames=60, seconds=2.0, length=2.0, rate=None, avg=30.0):
         return video.FrameReading(rate=rate if rate is not None else frames / seconds, avg=avg, frames=frames,
-                                  seconds=seconds, length=length, index=0, codec="h264")
+                                  seconds=seconds, length=length, index=0, codec="h264", extradata=40)
 
     def assertRefused(self, words, *args, **kw):
         err, calls = self._run(*args, **kw)
@@ -438,6 +646,24 @@ class CopyCheckPins(_Tmp):
         long = self.R(930, 31.0, 31.0)
         self.assertRefused("runs 31.0 seconds; the upscale takes up to 30", long, long)
 
+    def test_a_source_over_30_seconds_or_of_unknown_length_is_refused_before_any_remux(self):
+        # #966 round 1 (Lens H1 a): fail early, before the remux spends the
+        # worker's disk and time on a file that can never be sent.
+        for source, words in ((self.R(930, 31.0, 31.0), "runs 31.0 seconds; the upscale takes up to 30"),
+                              (self.R(length=None), "length could not be read")):
+            with self.subTest(words=words):
+                called = []
+                src = self.tmp / "source.mp4"
+                src.write_bytes(b"\x00" * 4096)
+                a = _adapter()
+                a.fps_of = lambda _p, r=source: r
+                a.normalize_of = lambda *args, **kw: called.append(args)
+                err = _submit(a, src)
+                self.assertIsNotNone(err)
+                self.assertIn(words, err.message)
+                self.assertEqual(called, [], "the remux must not run")
+                self.assertEqual(a.session.calls, [])
+
     def test_a_copy_whose_length_is_unknown_is_refused(self):
         self.assertRefused("length could not be read", self.R(length=None), self.R(length=None))
 
@@ -447,15 +673,290 @@ class CopyCheckPins(_Tmp):
     def test_a_parsed_count_above_the_copys_samples_is_refused(self):
         # The raw stream's timing is the demuxer's 25 fps default: never read.
         self.assertRefused("keeps several frames in one sample (120 frames in 60 samples)", self.R(), self.R(),
-                           parsed=self.R(120, 4.8, rate=25.0))
-        self.assertRefused("runs at 240 frames a second", self.R(), self.R(), parsed=self.R(480, 19.2, rate=25.0))
-        self.assertRefused("could not be counted", self.R(), self.R(),
-                           parsed=video.FrameReading(refusal="anything"))
+                           units=120)
+        self.assertRefused("runs at 240 frames a second", self.R(), self.R(), units=480)
+        self.assertRefused("could not be counted", self.R(), self.R(seconds=0.0, rate=30.0), units=60)
 
     def test_a_parser_that_finds_fewer_frames_than_samples_passes(self):
         # A field-coded stream kept a field to a sample: the quote overstates, never understates.
-        err, calls = self._run(self.R(), self.R(), parsed=self.R(30, 1.2, rate=25.0))
+        err, calls = self._run(self.R(), self.R(), units=30)
         self.assertIsNone(err, err and err.message)
+
+
+def _watched(a, peaks):
+    """The adapter's real remux, with the work folder's size sampled while it runs."""
+    real = a.normalize_of
+
+    def watch(src, reading, work, **kw):
+        with FolderPeak(work) as w:
+            try:
+                return real(src, reading, work, **kw)
+            finally:
+                peaks.append(w)
+
+    a.normalize_of = watch
+    return a
+
+
+@unittest.skipUnless(HAVE_TOOLS and "libx264" in ENCODERS, "needs ffmpeg (libx264) and ffprobe")
+class ExtradataBloatPins(_Tmp):
+    """#966 round 1, Lens H1 = Breach F1: the Annex B count step filled the
+    worker's disk. ``*_mp4toannexb`` writes the whole extradata before every
+    IDR / IRAP: a 2 MB file with a 1.95 MB avcC and 600 IDRs wrote 2.34 GB,
+    Breach's 16.6 MB bloat.mp4 4 GB, and both were submitted. Each pin failed
+    on 9ee3835d6."""
+
+    def _intra(self, encoder, extra=(), seconds=2):
+        clip = self.tmp / f"intra_{encoder}.mp4"
+        _ffmpeg("-f", "lavfi", "-i", f"testsrc=size=64x64:rate=60:duration={seconds}", "-c:v", encoder, *extra,
+                "-an", str(clip))
+        return clip
+
+    def assertRefusedBounded(self, bloated, words):
+        source = video.read_frames(str(bloated))
+        self.assertIsNone(source.refusal)
+        self.assertGreater(source.extradata, video.MAX_EXTRADATA_BYTES, "the forgery did not take")
+        peaks = []
+        a = _watched(_adapter(), peaks)
+        err = _submit(a, bloated)
+        self.assertIsNotNone(err, "a file whose extradata multiplies on every keyframe was submitted")
+        self.assertEqual(err.code, E_BAD_REQUEST)
+        self.assertIn(words, err.message)
+        self.assertIn("export it again", err.message)
+        self.assertEqual(a.session.calls, [], "nothing may be uploaded or POSTed before the refusal")
+        # Refused before the copy is even written: the folder never held more
+        # than the source itself could.
+        for w in peaks:
+            self.assertLessEqual(w.peak, bloated.stat().st_size, f"the work folder reached {w.peak} bytes")
+
+    def test_br_l_211_a_big_avcc_is_refused_before_any_copy_and_the_work_folder_stays_bounded(self):
+        # 8 junk PPS of 60 000 bytes: 480 KB of avcC before each of 120 IDRs,
+        # 57 MB of raw stream (and as much again in its MP4) on 9ee3835d6.
+        bloated = self.tmp / "bigavcc.mp4"
+        bloat_avcc(self._intra("libx264", ("-preset", "ultrafast", "-g", "1")), bloated, 8, 60000)
+        self.assertRefusedBounded(bloated, "codec header")
+
+    @unittest.skipUnless("libx265" in ENCODERS, "needs libx265")
+    def test_br_l_211_an_sei_bloated_hvcc_is_refused_before_any_copy_and_the_work_folder_stays_bounded(self):
+        bloated = self.tmp / "bighvcc.mp4"
+        bloat_hvcc(self._intra("libx265", ("-preset", "ultrafast", "-x265-params", "keyint=1:log-level=error")),
+                   bloated, 8)
+        self.assertRefusedBounded(bloated, "codec header")
+
+    def test_br_l_211_the_bound_holds_without_ffprobe_too(self):
+        # The Probe models runner reads the sample description from the boxes.
+        bloated = self.tmp / "bigavcc.mp4"
+        bloat_avcc(self._intra("libx264", ("-preset", "ultrafast", "-g", "1")), bloated, 8, 60000)
+        with hide_ffprobe():
+            self.assertGreater(video.read_frames(str(bloated)).extradata, video.MAX_EXTRADATA_BYTES)
+            a = _adapter()
+            err = _submit(a, bloated)
+        self.assertIsNotNone(err)
+        self.assertIn("codec header", err.message)
+        self.assertEqual(a.session.calls, [])
+
+    def test_real_parameter_sets_stay_far_under_the_bound(self):
+        # Measured 2026-11-28 (ffmpeg 6.1.1): x264 35-48 bytes, x265 2.4-2.5 KB
+        # (its settings SEI), HDR10 x265 with mastering display 2540 bytes.
+        clips = [self._intra("libx264", ("-preset", "ultrafast", "-pix_fmt", "yuv422p10le", "-profile:v", "high422"))]
+        if "libx265" in ENCODERS:
+            hdr = self.tmp / "hdr10.mp4"
+            _ffmpeg("-f", "lavfi", "-i", "testsrc=size=640x360:rate=30:duration=1", "-c:v", "libx265", "-preset",
+                    "ultrafast", "-pix_fmt", "yuv420p10le", "-tag:v", "hvc1", "-x265-params",
+                    "log-level=error:hdr10=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:"
+                    "master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1):"
+                    "max-cll=1000,400", str(hdr))
+            clips.append(hdr)
+        for clip in clips:
+            for hidden in (False, True):
+                with self.subTest(clip=clip.name, ffprobe_hidden=hidden):
+                    if hidden:
+                        with hide_ffprobe():
+                            got = video.read_frames(str(clip)).extradata
+                    else:
+                        got = video.read_frames(str(clip)).extradata
+                    self.assertIsNotNone(got)
+                    self.assertLess(got, video.MAX_EXTRADATA_BYTES // 16)
+
+    def test_the_access_unit_count_writes_nothing_to_disk(self):
+        # On 9ee3835d6 the raw stream and its MP4 were written beside the copy.
+        clip = self._intra("libx264", ("-preset", "ultrafast", "-g", "1"), seconds=4)
+        source = video.read_frames(str(clip))
+        work = self.work()
+        with FolderPeak(work) as w:
+            norm = video.normalize_for_upload(clip, source, work)
+        self.assertEqual(norm.access_units, 240)
+        self.assertEqual(sorted(p.name for p in work.rglob("*")), [clip.name], "only the copy is written")
+        self.assertLessEqual(w.peak, norm.path.stat().st_size)
+
+
+@unittest.skipUnless(HAVE_TOOLS and "libx264" in ENCODERS, "needs ffmpeg (libx264) and ffprobe")
+class OutputCapPins(_Tmp):
+    """Every ffmpeg output of the upscale has a size cap, and reaching it is a
+    refusal, never a reading: a truncated stream counts fewer frames, and
+    fewer passes the access-unit check."""
+
+    def test_a_copy_that_would_pass_the_cap_is_refused_and_never_grows_past_it(self):
+        clip = self.tmp / "clip.mp4"
+        _ffmpeg("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=2", "-c:v", "libx264", "-preset",
+                "ultrafast", str(clip))
+        cap = 20_000
+        self.assertGreater(clip.stat().st_size, cap)
+        work = self.work()
+        with FolderPeak(work) as w, self.assertRaises(AdapterError) as cm:
+            video.normalize_for_upload(clip, video.read_frames(str(clip)), work, max_bytes=cap)
+        self.assertEqual(cm.exception.code, E_BAD_REQUEST)
+        self.assertIn("larger than the", cm.exception.message)
+        self.assertLessEqual(w.peak, cap + 1)
+
+    def test_the_file_size_limit_reaches_the_child_and_a_write_past_it_fails_without_a_core(self):
+        code = ("import resource,sys\n"
+                "assert resource.getrlimit(resource.RLIMIT_FSIZE)[0] == 4096, resource.getrlimit(resource.RLIMIT_FSIZE)\n"
+                "f = open(sys.argv[1], 'wb')\n"
+                "try:\n    f.write(b'x' * 8192); f.flush()\nexcept OSError as e:\n    sys.exit(7 if e.errno == 27 else 8)\n")
+        out = self.tmp / "big.bin"
+        argv = fl.limited_argv([sys.executable, "-I", "-S", "-c", code, str(out)], fsize_bytes=4096)
+        done = subprocess.run(argv, capture_output=True, timeout=60)
+        self.assertEqual(done.returncode, 7, done.stderr)
+        self.assertLessEqual(out.stat().st_size, 4096)
+        # Without the keyword the limit is the host's, as before.
+        plain = fl.limited_argv(["true"])
+        self.assertNotIn("4096", plain)
+
+    def _children(self, produce, count_code="import sys\nfor l in sys.stdin.buffer: sys.stdout.buffer.write(b'0, 1\\n')\n"):
+        return ([sys.executable, "-I", "-S", "-c", produce], [sys.executable, "-I", "-S", "-c", count_code])
+
+    def test_a_stream_over_its_byte_cap_is_refused_not_counted(self):
+        produce = "import sys\nfor _ in range(64): sys.stdout.buffer.write(b'x' * 65535 + b'\\n')\n"
+        a, b = self._children(produce)
+        with self.assertRaises(AdapterError) as cm:
+            video._count_access_units(a, b, timeout=60, max_bytes=1_000_000, what="H.264 MP4")
+        self.assertEqual(cm.exception.code, E_BAD_REQUEST)
+        self.assertIn("export it again", cm.exception.message)
+
+    def test_a_producer_that_fails_half_way_is_refused_not_a_short_count(self):
+        produce = "import sys\nsys.stdout.buffer.write(b'a\\n' * 10); sys.stdout.flush(); sys.exit(3)\n"
+        a, b = self._children(produce)
+        with self.assertRaises(AdapterError):
+            video._count_access_units(a, b, timeout=60, max_bytes=1_000_000, what="H.264 MP4")
+
+    def test_a_counter_that_fails_is_refused_and_header_lines_are_not_packets(self):
+        produce = "import sys\nsys.stdout.buffer.write(b'a\\n' * 10)\n"
+        a, b = self._children(produce, "import sys\nsys.stdin.buffer.read(); sys.exit(1)\n")
+        with self.assertRaises(AdapterError):
+            video._count_access_units(a, b, timeout=60, max_bytes=1_000_000, what="H.264 MP4")
+        counted = "import sys\nsys.stdin.buffer.read()\nsys.stdout.write('#tb 0: 1/25\\n#media_type 0: video\\n' + '0, 1, 2\\n' * 5)\n"
+        a, b = self._children(produce, counted)
+        self.assertEqual(video._count_access_units(a, b, timeout=60, max_bytes=1_000_000, what="H.264 MP4"), 5)
+
+    def test_a_count_that_runs_out_of_time_is_refused(self):
+        a, b = self._children("import time\ntime.sleep(60)\n")
+        started = time.monotonic()
+        with self.assertRaises(AdapterError) as cm:
+            video._count_access_units(a, b, timeout=1, max_bytes=1_000_000, what="H.264 MP4")
+        self.assertIn("too long to prepare", cm.exception.message)
+        self.assertLess(time.monotonic() - started, 20)
+
+
+@unittest.skipUnless(HAVE_TOOLS and "libx264" in ENCODERS, "needs ffmpeg (libx264) and ffprobe")
+class CodecAllowListPins(_Tmp):
+    """#966 round 1, Breach F2: 8 pictures packed into each sample of an
+    MPEG-2, MPEG-4 Part 2, Motion JPEG or ProRes file read 150 frames at 30
+    fps and were submitted; their raw parsers find 1200. Only the codecs
+    whose packing the upscale handles are taken (h264 and hevc through the
+    parser count, vp9 and av1 by decoding). Each failed on 9ee3835d6."""
+
+    def _packed(self, encoder, suffix, extra=()):
+        clean, packed = self.tmp / f"{encoder}{suffix}", self.tmp / f"{encoder}p8{suffix}"
+        _ffmpeg("-f", "lavfi", "-i", "testsrc=size=64x64:rate=60:duration=2", "-c:v", encoder, *extra, "-an",
+                str(clean))
+        # 120 pictures, 8 to a sample, each sample 1/30 s: 15 samples at 30 fps.
+        b = clean.read_bytes()
+        i = b.index(b"stts")
+        delta = struct.unpack(">I", b[i + 16:i + 20])[0]
+        pack2(clean, packed, 8, 2 * delta)
+        return packed
+
+    def test_br_l_211_packed_pictures_of_codecs_without_a_parser_count_are_refused_before_upload(self):
+        cases = [("mpeg2video", ".mp4", ()), ("mpeg4", ".mp4", ()), ("mjpeg", ".mp4", ()),
+                 ("prores_ks", ".mov", ("-profile:v", "0"))]
+        for encoder, suffix, extra in cases:
+            if encoder not in ENCODERS:
+                continue
+            with self.subTest(encoder=encoder):
+                packed = self._packed(encoder, suffix, extra)
+                a = _adapter()
+                err = _submit(a, packed)
+                self.assertIsNotNone(err, f"{encoder}: 8 pictures a sample were submitted")
+                self.assertEqual(err.code, E_BAD_REQUEST)
+                self.assertIn("export it again as H.264 or HEVC MP4", err.message)
+                self.assertEqual(a.session.calls, [])
+
+    def test_prores_is_refused_without_ffprobe_too(self):
+        if "prores_ks" not in ENCODERS:
+            self.skipTest("needs prores_ks")
+        packed = self._packed("prores_ks", ".mov", ("-profile:v", "0"))
+        with hide_ffprobe():
+            a = _adapter()
+            err = _submit(a, packed)
+        self.assertIsNotNone(err)
+        self.assertIn("export it again as H.264 or HEVC MP4", err.message)
+        self.assertEqual(a.session.calls, [])
+
+
+@unittest.skipUnless(HAVE_TOOLS and "libx264" in ENCODERS, "needs ffmpeg (libx264) and ffprobe")
+class RemedyPins(_Tmp):
+    def test_a_sound_track_that_cannot_be_copied_names_the_sound(self):
+        # A MOV with IMA ADPCM sound, named .mp4: the picture copies, the MP4
+        # muxer has no tag for the sound. "Export it as H.264 MP4" would not fix it.
+        src = self.tmp / "adpcm.mp4"
+        _ffmpeg("-f", "lavfi", "-i", "testsrc=size=64x64:rate=30:duration=1", "-f", "lavfi", "-i",
+                "sine=duration=1", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "adpcm_ima_qt", "-f", "mov",
+                str(src))
+        a = _adapter()
+        err = _submit(a, src)
+        self.assertIsNotNone(err)
+        self.assertIn("sound", err.message)
+        self.assertNotIn("H.264 MP4", err.message)
+        self.assertEqual(a.session.calls, [])
+
+
+class StaleWorkSweepPins(_Tmp):
+    """A worker killed mid-upscale (OOM, a deploy) leaves its work folder, a
+    copy of a member's video, in the temp folder: the next upscale removes
+    those older than an hour, and only those."""
+
+    def test_only_old_upscale_folders_of_this_user_are_removed(self):
+        old, fresh, other = (self.tmp / n for n in ("nightshift-upscale-old", "nightshift-upscale-new", "keep-me"))
+        for d in (old, fresh, other):
+            d.mkdir()
+            (d / "source.mp4").write_bytes(b"x" * 10)
+        target = self.tmp / "target"
+        target.mkdir()
+        link = self.tmp / "nightshift-upscale-link"
+        link.symlink_to(target)
+        hour_ago = time.time() - 2 * 3600
+        for d in (old, other, link):
+            os.utime(d, (hour_ago, hour_ago), follow_symlinks=False)
+        video.sweep_stale_work(self.tmp)
+        self.assertFalse(old.exists())
+        self.assertTrue(fresh.exists())
+        self.assertTrue(other.exists())
+        self.assertTrue(target.exists(), "a link is never followed")
+
+    def test_the_upscale_sweeps_before_it_makes_its_own_folder(self):
+        old = self.tmp / "nightshift-upscale-stale"
+        old.mkdir()
+        hour_ago = time.time() - 2 * 3600
+        os.utime(old, (hour_ago, hour_ago))
+        src = self.tmp / "x.mp4"
+        src.write_bytes(b"\x00" * 1024)
+        a = _adapter()
+        a.fps_of = lambda _p: video.FrameReading(refusal="stop here")
+        with mock.patch.object(video.tempfile, "gettempdir", return_value=str(self.tmp)):
+            err = _submit(a, src)
+        self.assertEqual(err.message, "stop here")
+        self.assertFalse(old.exists())
 
 
 class BoundedProbePins(unittest.TestCase):

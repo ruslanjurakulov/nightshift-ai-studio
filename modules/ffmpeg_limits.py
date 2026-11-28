@@ -114,7 +114,7 @@ REFUSAL_MARKERS = (b"exceeds specified max pixel count", b"get_buffer() failed",
 TAIL_BYTES = 4096
 
 _SET_LIMIT_AND_EXEC = (
-    "import os,resource,sys\n"
+    "import os,resource,signal,sys\n"
     "n=int(sys.argv[1])\n"
     "s,h=resource.getrlimit(resource.RLIMIT_AS)\n"
     "n=n if h==resource.RLIM_INFINITY else min(n,h)\n"
@@ -123,19 +123,40 @@ _SET_LIMIT_AND_EXEC = (
     "s,h=resource.getrlimit(resource.RLIMIT_STACK)\n"
     "k=k if h==resource.RLIM_INFINITY else min(k,h)\n"
     "resource.setrlimit(resource.RLIMIT_STACK,(k,h))\n"
-    "os.execvp(sys.argv[3],sys.argv[3:])\n"
+    "if sys.argv[3]!='-':\n"
+    " f=int(sys.argv[3])\n"
+    " s,h=resource.getrlimit(resource.RLIMIT_FSIZE)\n"
+    " f=f if h==resource.RLIM_INFINITY else min(f,h)\n"
+    " resource.setrlimit(resource.RLIMIT_FSIZE,(f,f))\n"
+    " signal.signal(signal.SIGXFSZ,signal.SIG_IGN)\n"
+    "os.execvp(sys.argv[4],sys.argv[4:])\n"
 )
 
 
-def limited_argv(argv: Sequence[str], mem_bytes: Optional[int] = None) -> List[str]:
+def limited_argv(argv: Sequence[str], mem_bytes: Optional[int] = None, *,
+                 fsize_bytes: Optional[int] = None) -> List[str]:
     """``argv`` run under an address-space limit: a Python child sets
     RLIMIT_AS on itself and ``exec``s the command, which keeps the limit (and
     the pid, so killing the child kills ffmpeg). A limit that cannot be set
-    fails the run; it never runs unlimited."""
+    fails the run; it never runs unlimited.
+
+    ``fsize_bytes`` also caps every regular file the command writes
+    (RLIMIT_FSIZE; pipes are not files): a remux of a member's file can be
+    made to write far more than it reads (#966: an avcC copied before every
+    IDR filled 2.34 GB from 2 MB). SIGXFSZ is ignored, so a write past the cap
+    fails with EFBIG and ffmpeg exits non-zero (measured, ffmpeg 6.1.1 and
+    7.0.2: exit 229 for MP4 and Matroska) instead of being killed with a core
+    dump the size of its memory. Opt-in: the media library's proxy and an
+    editor export keep the host's limit, because nobody has measured how
+    large a legitimate export of theirs gets, and a cap they hit would fail
+    a member's render that works today."""
     n = CHILD_MEM_BYTES if mem_bytes is None else mem_bytes
     if int(n) <= 0:  # -1 would be RLIM_INFINITY: never run unlimited
         raise ValueError("the address-space limit must be positive")
-    return [sys.executable, "-I", "-S", "-c", _SET_LIMIT_AND_EXEC, str(int(n)), str(int(CHILD_STACK_BYTES)), *argv]
+    if fsize_bytes is not None and int(fsize_bytes) < 0:
+        raise ValueError("the file size limit must not be negative")
+    f = "-" if fsize_bytes is None else str(int(fsize_bytes))
+    return [sys.executable, "-I", "-S", "-c", _SET_LIMIT_AND_EXEC, str(int(n)), str(int(CHILD_STACK_BYTES)), f, *argv]
 
 
 def child_env() -> Dict[str, str]:
@@ -280,17 +301,18 @@ class _Child:
 
 
 def run(argv: Sequence[str], *, timeout_s: float, heartbeat: Optional[Callable[[], None]] = None,
-        beat_s: float = 30.0, mem_bytes: Optional[int] = None) -> Outcome:
+        beat_s: float = 30.0, mem_bytes: Optional[int] = None, fsize_bytes: Optional[int] = None) -> Outcome:
     """Run one ffmpeg command under the limits above and wait for it, calling
     ``heartbeat`` every ``beat_s`` while it works. Past ``timeout_s`` it is
     killed and reaped (``timed_out``); at the first refused frame it is
     killed (``refused``). Normal cancellation reaps the decoder; an unexpected
-    supervisor crash stops the group and leaves orphan reaping to host init."""
+    supervisor crash stops the group and leaves orphan reaping to host init.
+    ``fsize_bytes``: see ``limited_argv``; a write past it is a failed run."""
     if not sys.platform.startswith("linux") or not hasattr(os, "WNOWAIT"):
         raise RuntimeError("decoder accounting requires Linux waitid/WNOWAIT")
     command = [sys.executable, "-I", "-S",
                str(Path(__file__).with_name("ffmpeg_supervisor.py")),
-               *limited_argv(argv, mem_bytes)]
+               *limited_argv(argv, mem_bytes, fsize_bytes=fsize_bytes)]
     proc = subprocess.Popen(command, stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             env=child_env(), start_new_session=True)

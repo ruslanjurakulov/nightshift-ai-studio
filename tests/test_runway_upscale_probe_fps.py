@@ -177,5 +177,58 @@ class TheProbeClip(Base):
         self.assertAlmostEqual(mp4_fps(self.clip), video_fps(self.clip), 3)
 
 
+class TheProbeRecordsRunwaysEstimate(unittest.TestCase):
+    """#966 M3: ungating the upscale needs a live confirmation that Runway's
+    create answers ``estimatedCost.credits``: the seam cancels every task
+    without one. Probe row 78's vendor_credits (34) is ``cost.credits`` of the
+    FINISHED task (RunwayAdapter._remember_cost); no estimate was kept. There
+    is no column for it (0152 has vendor_credits only), so it goes in the
+    probe's log line, a bare number or "none"."""
+
+    def _run(self, created):
+        import io
+        from modules import model_registry as reg
+        from tests.test_video_tools import ENV, OUT, TASK, TICKET, UPLOAD, fake_reader
+        from tests.test_capabilities import FakeResp
+        from tests.test_voice_tools import RecordingSession
+        from tools import probe_models
+        from modules.capabilities import build_adapter
+
+        mp4 = b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2" + b"\x00" * 1024
+        routes = [("POST", "/v1/uploads", FakeResp(200, TICKET)), ("POST", UPLOAD, FakeResp(204)),
+                  ("POST", "/v1/video_upscale", FakeResp(200, {"id": TASK, **created})),
+                  ("GET", f"/v1/tasks/{TASK}", FakeResp(200, {"status": "SUCCEEDED", "output": [OUT],
+                                                               "cost": {"credits": 34}}))]
+        session = RecordingSession(routes, {OUT: FakeResp(200, content=mp4)})
+        built = fake_reader(build_adapter("video.runway_upscale", env=ENV, session=session), 24.0)
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(probe_models, "build_adapter", return_value=built), \
+                mock.patch.object(probe_models, "probe_video", side_effect=lambda dest: Path(dest).write_bytes(mp4)
+                                  and Path(dest)):
+            res = probe_models.run_probe(reg.get("runway-video-upscale"), env=ENV, voice_id=None, workdir=Path(d),
+                                         session=session, sleep=lambda s: None)
+        self.assertTrue(res.ok, res.message)
+        out = io.StringIO()
+        db = mock.Mock()
+        with mock.patch.object(probe_models, "run_probe", return_value=res):
+            code = probe_models.main(["--model", "runway-video-upscale", "--brief"], env=ENV, db=db, stream=out)
+        self.assertEqual(code, 0)
+        return res, out.getvalue(), db
+
+    def test_the_create_responses_estimate_is_in_the_probe_result_and_its_log_line(self):
+        res, log, db = self._run({"estimatedCost": {"credits": 84}})
+        self.assertEqual((res.credits, res.estimate), (34.0, 84.0))
+        self.assertIn("ok runway-video-upscale credits=34 estimate=84", log)
+        # Billed figure in its column, as before; the estimate has none and is never put there.
+        self.assertEqual(db.record.call_args.kwargs["vendor_credits"], 34.0)
+
+    def test_no_estimate_reads_none_never_a_number(self):
+        for created in ({}, {"estimatedCost": {"credits": "84"}}, {"estimatedCost": {"credits": 10 ** 400}}):
+            with self.subTest(created=created):
+                res, log, _ = self._run(created)
+                self.assertIsNone(res.estimate)
+                self.assertIn("ok runway-video-upscale credits=34 estimate=none", log)
+
+
 if __name__ == "__main__":
     unittest.main()

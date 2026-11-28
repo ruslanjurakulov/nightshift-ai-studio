@@ -116,13 +116,48 @@ class CreativeAdapterError(Exception):
 
 
 #: The vendor's own estimate of a created task was above what the job's price
-#: covers, or it gave none we could read. Both cancel the task and fail the job
-#: (its hold released, nothing captured); both raise an operator alert
-#: (modules/operator_bot/alerts.py), because the fix is the owner's: a price
-#: below the vendor's, a rate in the adapter that went stale, or a docs change.
+#: covers, or it gave none we could read (or reading it failed). Each cancels
+#: the task and fails the job (its hold released, nothing captured), and each
+#: raises an operator alert (modules/operator_bot/alerts.py), because the fix
+#: is the owner's: a price below the vendor's, a rate in the adapter that went
+#: stale, or a docs change. ``_UNCANCELLED``: the DELETE failed or was not
+#: confirmed, so the task may still run and bill; the owner looks in the
+#: vendor's dashboard (Lens M2, #966: the alert said "Cancel sent" anyway).
 E_ESTIMATE_OVER_QUOTE = "estimate_over_quote"
 E_ESTIMATE_UNREADABLE = "estimate_unreadable"
-ESTIMATE_CODES = (E_ESTIMATE_OVER_QUOTE, E_ESTIMATE_UNREADABLE)
+E_ESTIMATE_OVER_QUOTE_UNCANCELLED = "estimate_over_quote_uncancelled"
+E_ESTIMATE_UNREADABLE_UNCANCELLED = "estimate_unreadable_uncancelled"
+ESTIMATE_CODES = (E_ESTIMATE_OVER_QUOTE, E_ESTIMATE_UNREADABLE, E_ESTIMATE_OVER_QUOTE_UNCANCELLED,
+                  E_ESTIMATE_UNREADABLE_UNCANCELLED)
+#: What the member reads (creative_jobs.error is member-readable): a fixed
+#: sentence, never the vendor's figures or ours (Lens M1, #966), and nothing
+#: about WHEN the task stopped, which nobody here can see. The figures go to
+#: the log and to creative_job_costs.
+_ESTIMATE_TEXT = {
+    (E_ESTIMATE_OVER_QUOTE, True): "the provider's cost estimate was above this job's price, so it was cancelled; "
+                                   "nothing was charged",
+    (E_ESTIMATE_UNREADABLE, True): "the provider gave no cost estimate that could be checked against this job's "
+                                   "price, so it was cancelled; nothing was charged",
+    (E_ESTIMATE_OVER_QUOTE, False): "the provider's cost estimate was above this job's price, so the job was "
+                                    "stopped; nothing was charged",
+    (E_ESTIMATE_UNREADABLE, False): "the provider gave no cost estimate that could be checked against this job's "
+                                    "price, so the job was stopped; nothing was charged",
+}
+#: DELETE answers that confirm the task is cancelled or gone (Runway: 204;
+#: 404 already deleted, which its docs call safe to ignore).
+_CANCEL_CONFIRMED = (200, 202, 204, 404)
+
+
+def _estimate_number(v) -> Optional[float]:
+    """An adapter's estimate as a finite positive float, else None: the seam
+    does not trust each vendor adapter to have checked (CLAUDE.md #5)."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    try:
+        f = float(v)
+    except (OverflowError, ValueError):
+        return None
+    return f if 0 < f < float("inf") else None
 
 
 def _int(v) -> Optional[int]:
@@ -259,7 +294,15 @@ class RegistryAdapter:
                 e.not_accepted = False
             raise
         if estimates and task.task_id:
-            self._hold_to_estimate(task, request, covered)
+            try:
+                self._hold_to_estimate(task, request, covered)
+            except CreativeAdapterError:
+                raise
+            except Exception as e:
+                # The task exists and may be billing: ANY failure from here on
+                # (Breach F3, #966: an OverflowError left a task running with
+                # no DELETE and no cost row) cancels it and records the usage.
+                self._give_up(task, request, covered, None, failed=type(e).__name__)
         if task.task_id:
             return str(task.task_id)
         if not task.outputs:
@@ -274,30 +317,45 @@ class RegistryAdapter:
     def _hold_to_estimate(self, task: ProviderTask, request: GenerationRequest, covered: int) -> None:
         """Cancel the task and fail the job when the vendor's estimate is over
         what the price covers, or is not a number (CLAUDE.md #5: an unknown
-        estimate is refused, never read as within). The job then ends through
-        the worker's failure path, which releases the whole hold: the customer
-        is never charged more than the quote, and nothing is captured. What
-        the vendor still bills for a cancelled task is not ours to assume (see
-        the adapter's ``cancel``), so the estimate is recorded as a cost with
-        no USD: unknown, never 0."""
-        estimate = self.adapter.estimated_credits(task.task_id)
+        estimate is refused, never read as within; 0 is not a reading of a
+        task). The job then ends through the worker's failure path, which
+        releases the whole hold: the customer is never charged more than the
+        quote, and nothing is captured."""
+        estimate = _estimate_number(self.adapter.estimated_credits(task.task_id))
         if estimate is not None and estimate <= covered:
             return
-        status = self.adapter.cancel(task.task_id)
-        frames = self.adapter.counted_frames(task.task_id) if callable(
-            getattr(self.adapter, "counted_frames", None)) else None
-        code = E_ESTIMATE_UNREADABLE if estimate is None else E_ESTIMATE_OVER_QUOTE
-        said = "gave no estimate we could read" if estimate is None else f"estimated {estimate:g} credits"
-        cancelled = "the task was cancelled" if status in (200, 202, 204, 404) else \
-            "cancelling the task was not confirmed"
-        counted = f"{frames} frames counted" if frames is not None else "frames not counted"
+        self._give_up(task, request, covered, estimate)
+
+    def _give_up(self, task: ProviderTask, request: GenerationRequest, covered: int, estimate: Optional[float],
+                 *, failed: Optional[str] = None) -> None:
+        """DELETE the task, log the figures, raise the job's refusal with the
+        usage. Never raises anything else: it runs because something already
+        went wrong. What the vendor still bills for a cancelled task is not
+        ours to assume (see the adapter's ``cancel``), so the estimate is
+        recorded as a cost with no USD: unknown, never 0."""
+        try:
+            status = self.adapter.cancel(task.task_id)
+        except Exception as e:
+            logger.warning("job %s: cancelling the task raised %s", str(request.job_id)[:36], type(e).__name__)
+            status = None
+        try:
+            frames = self.adapter.counted_frames(task.task_id) if callable(
+                getattr(self.adapter, "counted_frames", None)) else None
+        except Exception:
+            frames = None
+        confirmed = status in _CANCEL_CONFIRMED
+        kind = E_ESTIMATE_UNREADABLE if estimate is None else E_ESTIMATE_OVER_QUOTE
+        code = kind if confirmed else f"{kind}_uncancelled"
+        said = (f"estimated {estimate:g} credits" if estimate is not None
+                else f"gave no estimate we could read ({failed} while reading it)" if failed
+                else "gave no estimate we could read")
+        counted = f"{frames} frames counted" if isinstance(frames, int) else "frames not counted"
+        cancelled = "the task was cancelled" if confirmed else "cancelling the task was not confirmed"
         # Ids, figures and closed words only: no key, no vendor body.
         logger.warning("job %s: %s %s; the price covers %s (%s); %s", str(request.job_id)[:36],
                        self.entry.provider, said, covered, counted, cancelled)
         raise CreativeAdapterError(
-            code,
-            f"the task was stopped before it ran: the provider {said}, and this job's price covers {covered} "
-            f"({counted}); {cancelled}, and nothing was charged",
+            code, _ESTIMATE_TEXT[(kind, confirmed)],
             usage=ProviderUsage(provider=self.entry.provider, vendor_model=task.vendor_model,
                                 unit="vendor_credits_estimated", quantity=estimate, route="exact"))
 
