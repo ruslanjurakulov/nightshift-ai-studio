@@ -9,7 +9,11 @@ export default defineConfig({
   // tsconfig says `jsx: preserve` (Next compiles it); the test transform must not.
   esbuild: { jsx: "automatic" },
   resolve: {
-    alias: { "@": path.resolve(process.cwd()) },
+    alias: {
+      "@": path.resolve(process.cwd()),
+      // `server-only` throws on import outside a React Server Component build; tests run server modules in plain node.
+      "server-only": path.resolve(process.cwd(), "node_modules/server-only/empty.js"),
+    },
   },
   test: {
     environment: "node",

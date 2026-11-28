@@ -50,6 +50,11 @@ export interface PlanRun {
   slots: BrainSlots;
   limits: PlanLimits;
   now?: () => number;
+  /** When the request's plan began, when calls were made before this one (the film editor's outline call): the budget counts
+   *  from there, so a window is never started that could not finish inside the route's 300 s. */
+  startedAt?: number;
+  /** The catalogue's model names and providers (lib/server/brain/clip catalogueClaimNames): never claimed to have made the film. */
+  claimNames?: readonly string[];
 }
 
 export type PlanResult = { ok: true; scenario: Scenario; quota: Quota | null } | { ok: false; res: Response; reason: string };
@@ -72,7 +77,7 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
   const windows = planWindows(run.outline, run.limits);
   if (!windows) return { ok: false, res: brainJson({ error: "plan_failed", reason: "not_plannable", step: null }, 409), reason: "not_plannable" };
   const now = run.now ?? Date.now;
-  const started = now();
+  const started = run.startedAt ?? now();
   const refs = refsOf(run.outline);
   const echo = outlineText(run.outline);
   // Each scene's whole prompt, as filmFromBrief will send it (the outline's characters, locations and the film's style appended).
@@ -129,7 +134,7 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
                      llm.error === "not_configured" ? null : llm.tokensIn, llm.error === "not_configured" ? null : llm.tokensOut);
         return { ok: false, kind: "failed", reason: llm.error };
       }
-      const read = readWindow(llm.text, w, refs, run.limits, echo, promptOf);
+      const read = readWindow(llm.text, w, refs, run.limits, echo, promptOf, run.claimNames ?? []);
       if (!read.ok && read.why === "refused") {
         await finish("refused", llm.tokensIn, llm.tokensOut);
         return { ok: false, kind: "content_refused" };
