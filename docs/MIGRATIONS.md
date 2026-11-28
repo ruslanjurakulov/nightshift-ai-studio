@@ -3167,3 +3167,47 @@ found no non-member staff activity on any of these paths in production.
 - **Requires** 0215 (`is_org_spender`) and the files above.
 - **Undo.** `docs/sql/rollback_0226_org_spender_everywhere.sql` (owner-applied): the twenty-eight earlier bodies back, verbatim, with
   their grants. It adds nothing else, so nothing else is undone.
+
+## Stopping something is recorded, and a workflow run is stopped only by its own rule (0231, provisional)
+
+0231 (`0231_cancel_audit.sql`) closes Breach 0226-R3-1 (BR-0226-31, medium, pre-existing since 0073/0198), 0226-R3-2
+(BR-0226-32, low), both found attacking 0226's "the database records who stopped a run", and 0231-R4-1 (BR-0226-33, medium,
+pre-existing since 0073) and 0231-R4-2 (BR-0226-34, low), found attacking 0231 itself (`docs/security/LEDGER.md`). Four bodies
+are replaced, each with marked 0231 hunks, and one policy is added.
+
+- **`cancel_creative_job`** (0198's body). A job that is a workflow run's step asks an editor of the organization,
+  the rule `cancel_workflow_run` uses: before 0231 any seat (a viewer's) cancelled it, and the run ended at its next advance. Platform
+  staff pass it, as they pass `cancel_workflow_run`'s (they may restrict a customer's run, never widen it). Any other job keeps
+  0036's rule: a viewer still cancels an ordinary job. The refusal (`forbidden`, 42501) comes before the account lock, the job's row
+  lock or anything written.
+- **The record.** Every cancel that happened writes a `creative.cancel` row in `app_audit_log`: the signed-in person (the stamp
+  trigger writes the confirmed e-mail), the job and its organization. A job that had already ended answers as before and writes
+  nothing. `cancel_workflow_run` calls it for the run's running step, so stopping a run writes both rows, by the same person. The
+  creative job route no longer writes its own row (it had no channel, so 0087's policy refused it for every customer).
+- **`cancel_workflow_run`** (0226's body). Its `workflow.cancel` row is written only when the run was running: a call on a run that
+  had already ended answers as before and writes nothing (before, each repeat added a row for a stop that never happened).
+- **A workflow step's key is the run's.** Step N's job is made under `wf:<run>:<N>`, and a key is unique per organization, so a viewer
+  could take a later step's key first and fail the step (`idempotency_conflict`), ending the run. `create_creative_job` (0226's body)
+  now refuses any key beginning `wf:` with NS400 `invalid_idempotency_key` (the detail says to choose another key), unless it is the
+  exact key `workflow_advance_locked` (0192's body) names in the transaction-local setting `nightshift.workflow_step_key` right
+  before its call and clears right after. A browser cannot set that setting: `set_config` is pg_catalog's, which PostgREST does not
+  expose, and every function a browser may call that uses it names a fixed setting. The API and connected apps derive their own
+  keys (`api-...`, `oa-...`), so their callers' keys never reach the refusal. A key such as `wf-...` or `WF:...` is unaffected.
+- **No browser-written cancel row.** A restrictive insert policy, `app_audit_log_no_cancel_rows`, refuses `workflow.cancel` and
+  `creative.cancel` to a browser's own insert. The two functions write as the table's owner, which row security does not ask (the
+  table does not force it), so their rows land; every other action keeps 0087's rule. The actions stay on 0087's list, because
+  `app_audit_log_stamp` checks it for the definer's insert too, and the file refuses to apply when either is missing from it (a
+  later drop would make every cancel fail, swallowed inside `cancel_workflow_run`). No other app code writes either action.
+- **Requires** 0226 (its `create_creative_job` and `cancel_workflow_run`; the guard asks for their md5s), 0192
+  (`workflow_advance_locked`), 0198 (`cancel_creative_job`), 0087.
+- **Bodies** (md5, whitespace runs read as one space; earlier -> 0231): `cancel_creative_job` 2720d62c17ae26bce439a28280964575 (0198)
+  -> c210f8e4684e154d40f7029b5c94b893; `create_creative_job` ab939bb64ef626e30c1438c6030d8801 (0226) ->
+  88c83aa87050731c96ce8a0a5bb28b0a; `workflow_advance_locked` 553dd9f65b62541fd3653ed55288ae46 (0192) ->
+  37fda6dc6caf182483f10314d166579c; `cancel_workflow_run` 427ead0896b4881c0739b944997c6b50 (0226) -> c09c0dbdd8207bab0fc6d3175276fbf2.
+- **Replay** (measured). The file replays onto itself. Re-running 0036, 0060, 0070, 0073, 0074, 0075 or 0083 after it silently puts
+  an older body back (apply 0231 again after); re-running 0174, 0192, 0198 or 0226 fails loudly and changes nothing. Their rollbacks
+  refuse while 0231 is on (`sec_db.take_off_0226` takes 0231 off first).
+- **Undo.** `docs/sql/rollback_0231_cancel_audit.sql` (owner-applied): the four earlier bodies back, verbatim, and the policy
+  dropped. The rows written stay: they are the record of who cancelled.
+- **Lab.** `tests/security/test_sec_cancel_audit_0231.py` (Breach's round-3 and round-4 pins, the four callers, the reserved key
+  namespace, the migration's guard, replay and rollback, sec_db's chain).
