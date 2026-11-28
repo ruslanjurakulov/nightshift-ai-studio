@@ -18,7 +18,13 @@
 }
 
 {$DOMAIN} {
-	encode zstd gzip
+	# Every path is compressed except Nightshift AI's turn (POST /api/brain/turn), which is to stream its answer as NDJSON lines
+	# (docs/studio/LIVE_CREATION_PLAN.md §3.4). Measured in the lab on Caddy 2.10.2, 2.11.4 and 2.11.9, `encode` compressed such a
+	# stream and still held no line back (docs/studio/STREAM_PROXY_MEASUREMENT.md); but whether it encodes at all rests on the
+	# Content-Type, the first write's size against minimum_length and a no-transform rule that changed in 2.11.8. Left out by path,
+	# the stream rests on none of them. The exact path, as the proxy block for it below.
+	@compressible not path /api/brain/turn
+	encode @compressible zstd gzip
 
 	header {
 		# One year of HTTPS-only. includeSubDomains is deliberately absent: it
@@ -103,6 +109,8 @@
 	# this ONE path, above the lease, so the plan is never cut short and a stuck answer is still closed. Every other path keeps the
 	# proxy above, unchanged. A single path with no `*` sorts before the proxy with no matcher, so this one wins for this path only.
 	# Same retry window as above while `web` is recreated: a failed dial is retried, a request the app received is never resent.
+	# No flush_interval: Caddy's docs say a response whose Content-Length is unknown (a stream) is flushed after every write
+	# whatever it is set to, and the lab measured exactly that; -1 would also stop a visitor's disconnect from reaching the app.
 	reverse_proxy /api/brain/turn web:3000 {
 		lb_try_duration 30s
 		lb_try_interval 250ms

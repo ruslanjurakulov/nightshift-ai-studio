@@ -14,6 +14,22 @@ export function brainJson(body: unknown, status = 200) {
 
 export const notFound = () => brainJson({ error: "not_found" }, 404);
 
+/**
+ * Every answer of POST /api/brain/turn, which is to stream NDJSON on the same path (docs/studio/LIVE_CREATION_PLAN.md §3.4):
+ * `no-transform` tells every hop not to re-encode the body (Caddy's `encode` skips such a response on its own, measured in
+ * docs/studio/STREAM_PROXY_MEASUREMENT.md), and `X-Accel-Buffering: no` is the same request in nginx's words. Set here, merged into
+ * the route's own Cache-Control, and not in next.config.ts or the Caddyfile: measured on Next 15.5, a next.config header REPLACES
+ * the route's header of the same name, so `no-store` would have been lost from every answer, and a Caddy header can only replace
+ * the app's Cache-Control or add a second one.
+ */
+export function withStreamHeaders(res: Response): Response {
+  const directives = (res.headers.get("cache-control") ?? "").split(",").map((d) => d.trim()).filter(Boolean);
+  if (!directives.some((d) => d.toLowerCase() === "no-transform")) directives.push("no-transform");
+  res.headers.set("cache-control", directives.join(", "));
+  res.headers.set("x-accel-buffering", "no");
+  return res;
+}
+
 /** A refusal raised by 0199's functions (creative_refuse: the code is the message, the SQLSTATE NSxxx), named for the panel. */
 export function dbRefusal(error: { code?: string; message?: string; details?: string } | null) {
   if (!error) return null;

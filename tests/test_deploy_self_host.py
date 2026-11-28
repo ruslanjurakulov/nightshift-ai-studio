@@ -350,6 +350,41 @@ class CaddyUpstreamRetryTests(unittest.TestCase):
         self.assertNotIn("lb_retry_match", self.block)
 
 
+class CaddyTurnStreamTests(unittest.TestCase):
+    """Nightshift AI's turn is to stream NDJSON lines (live-creation plan §3.4); nothing in Caddy may hold one back.
+
+    `encode` compresses only some Content-Types, decides on the first write against minimum_length, and changed
+    its no-transform rule in Caddy 2.11.8 (docs/studio/STREAM_PROXY_MEASUREMENT.md): left out by path, the stream
+    depends on none of that. Every other path is still compressed exactly as before.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        text = (DEPLOY / "Caddyfile").read_text(encoding="utf-8")
+        cls.code = "\n".join(l for l in text.splitlines() if not l.strip().startswith("#"))
+
+    def test_the_turn_alone_is_left_out_of_compression(self):
+        self.assertEqual(re.findall(r"^[ \t]*encode\b.*$", self.code, re.M), ["\tencode @compressible zstd gzip"])
+        self.assertEqual(re.findall(r"^[ \t]*@compressible\b.*$", self.code, re.M),
+                         ["\t@compressible not path /api/brain/turn"])
+
+    def test_the_excluded_path_is_the_one_the_long_proxy_serves(self):
+        # The same exact path in both places: a stream that got the long timeouts but was still compressed (or the
+        # other way round) is the half-done state this pins against.
+        left_out = re.search(r"^\t@compressible not path (\S+)$", self.code, re.M)
+        long_proxy = re.search(r"^\treverse_proxy (/\S+) web:3000 \{$", self.code, re.M)
+        self.assertIsNotNone(left_out)
+        self.assertIsNotNone(long_proxy)
+        self.assertEqual(left_out.group(1), long_proxy.group(1))
+        self.assertNotIn("*", left_out.group(1), "a prefix would leave other paths uncompressed too")
+
+    def test_no_flush_interval_because_a_stream_is_flushed_after_every_write_anyway(self):
+        # A stream (no Content-Length) is flushed after every write whatever flush_interval says (Caddy docs, and
+        # measured); -1 would add only its other effect, not cancelling the upstream request when the client goes,
+        # which is a decision of its own (live-creation plan §3.2), not a side effect of a proxy setting.
+        self.assertNotIn("flush_interval", self.code)
+
+
 class CaddyMicrophoneTests(unittest.TestCase):
     """The microphone is allowed on the timeline editor's project page only (owner decision, 2026-11-11).
 
