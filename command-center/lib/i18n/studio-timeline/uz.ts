@@ -206,6 +206,9 @@ export const studioTimelineUz: StudioTimelineDictionary = {
       voice_language_unsupported: "Ovoz modeli bu loyiha tilida gapirmaydi. Loyihada shu tilda gapiradigan ovoz modelini tanlang.",
       voice_language_unknown: "Ovoz modeli bu loyiha tilida gapirishini tasdiqlay olmadik. Loyihada tillari koʻrsatilgan ovoz modelini tanlang.",
       clip_sound_not_kept: "Klip ovozi hozircha tayyor filmda saqlanmaydi. Loyihada sahna ovozini oʻchiring va narxni qayta soʻrang.",
+      dialogue_needs_sound: "Sahna replikalari faqat ovoz chiqaradigan klip modelida eshitiladi, model ovozni alohida sotsa, sahnaning ovoz parametri yoqilgan boʻlishi kerak. Loyihada shunday modelni tanlang yoki sahna ovozi parametrini yoqing va narxni qayta soʻrang.",
+      ambience_not_kept: "Sahnaning fon ovozi faqat klip ovozi sotib olinganda saqlanadi. Loyihada ovozni alohida sotadigan klip modelini tanlab, sahna ovozi parametrini yoqing yoki sahnani ovozsiz qiling, soʻng narxni qayta soʻrang.",
+      sound_option_unused: "Ovozsiz sahna klip ovozi uchun haq toʻlaydi, lekin u eshitilmaydi. Loyihada sahna ovozi parametrini oʻchiring va narxni qayta soʻrang.",
       other: "Bu loyiha qatorini baholab boʻlmadi.",
     },
     errors: {

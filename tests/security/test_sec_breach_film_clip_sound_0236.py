@@ -152,9 +152,13 @@ def test_no_function_an_api_role_may_call_names_clip_sound_kept_or_reads_the_who
         assert "clip_sound_kept" not in src, sig
         assert not any(pat in src.replace(" ", "") for pat in ("select*frompublic.film_studio_settings",
                                                                 "to_jsonb(s)", "row_to_json")), sig
-    # Only film_price names the column, and no API role executes it.
+    # Only film_price names the column (and 0241's film_sound_problem, which film_price calls for a scene's chosen sound role), and no
+    # API role executes either.
     named = {r[0] for r in db.su("select p.oid::regprocedure::text from pg_proc p where p.prosrc ~ 'clip_sound_kept'")}
-    assert named == {"film_price(films)"}, named
+    assert named <= {"film_price(films)", "film_sound_problem(text,jsonb,jsonb,text,text)"} and "film_price(films)" in named, named
+    for sig in named:
+        for role in API_ROLES:
+            assert not db.su("select has_function_privilege(%s, %s::regprocedure, 'execute')", [role, sig])[0][0], (sig, role)
 
 
 def test_the_platform_switch_function_never_writes_clip_sound_kept(db):

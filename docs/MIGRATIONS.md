@@ -3239,3 +3239,37 @@ rate: the person paid for sound the film never played.
 - **Lab**: `tests/security/test_sec_film_clip_sound_0236.py`; `sec_db.take_off_0236` / `put_back_0236` ride on
   `take_off_0218` / `put_back_0218` / `rollback_0218_if_on`.
 - Rollback: `docs/sql/rollback_0236_film_clip_sound_gate.sql` (0218's and 0215's bodies back byte for byte, the column dropped).
+
+## A film scene's own sound and its spoken lines (0241)
+
+0241 (`0241_film_scene_dialogue.sql`) gives in-clip dialogue a saved home. **Depends on 0236 (PR #973, unmerged when written):** it
+refuses to apply without 0236's `film_price` and its `clip_sound_kept` switch.
+
+- **Columns** on `film_scenes`, both nullable (every existing scene keeps the default role): `sound_role` text, `dialogue` |
+  `ambience` | `muted`; `dialogue` jsonb, 1 to 6 lines `{speaker, line, lang}` with `lang` `uz` | `ru` | `en`, present exactly when
+  `sound_role = 'dialogue'` (`film_scenes_sound_check`). `lang` is explicit per line: the film's language is its narration's, and a
+  character may speak another. No API role reads or writes either column (members read 0166's column list only).
+- **`film_save_scenes`** replaced on 0166's body (`c836631256f669318c9ef499d7c4c54b` -> `5d6e6eebe280645e6c5ef186dc48629a`) with
+  three hunks marked `-- 0241`: the keys are known, `film_dialogue` parses the lines (known keys only, never echoed; speaker ≤ 80
+  and line ≤ 300 characters, S1's caps; no line break, control or invisible character, unusual or repeated space, or ASCII double
+  quote: refused, not cleaned; ≤ 1000 characters as the clip prompt writes them, half of 2000, the smallest prompt limit of an i2v
+  model that makes sound), and the merged scene must agree (lines only on a dialogue scene, a dialogue scene has lines and is one
+  shot). `save_film` is inherited.
+- **`film_price`** replaced on 0236's body (`b873f893f3f185b3eab3698d349f3379` -> `81e7a2dd0701068508e2663b495683cb`) with two
+  hunks: `film_sound_problem` refuses a dialogue or ambience scene while `clip_sound_kept` is off (`clip_sound_not_kept`), a
+  dialogue scene on a model that makes no sound or that sells its sound apart without the scene's sound option
+  (`dialogue_needs_sound`), ambience whose sound is not bought (`ambience_not_kept`), and a muted scene that buys sound
+  (`sound_option_unused`). A dialogue scene on a model that speaks inside one price is priced as today. A dialogue scene's clip
+  line asks `creative_price` about the prompt the worker sends (`film_clip_prompt`), so `prompt_too_long` is said at the quote.
+- **The worker**: `FilmRest.scenes` selects both columns; `film_orchestrator.with_dialogue` puts the lines into the CLIP prompt
+  only (`<speaker> says in <language>: "<line>"`, the same text as `film_dialogue_prompt`), never a key frame's; a single-price
+  model with a sound switch is asked for sound in a dialogue scene and for none elsewhere. `film_timeline` treats a scene as
+  speech only when its saved row says dialogue and carries lines.
+- **Owner step**: none beyond 0236's, but `clip_sound_kept` goes on only once a worker with this pull request's
+  `film_orchestrator.py` is deployed (0236's worker does not read the lines).
+- **Overlap**: 0235 (PR #970) also replaces `film_price` on 0218's body. If it merges before 0236, 0236 rebases on it and this file
+  rebases its two hunks on that body (guard, end state, rollback, lab).
+- **Lab**: `tests/security/test_sec_film_dialogue_0241.py`; `sec_db.take_off_0241` / `put_back_0241` ride on `take_off_0236` /
+  `put_back_0236` / `rollback_0236_if_on`, and 0241 follows 0236 in the `ON_*` lists.
+- Rollback: `docs/sql/rollback_0241_film_scene_dialogue.sql` (0166's and 0236's bodies back byte for byte; refuses while a scene
+  holds a role or lines unless `nightshift.rollback_0241_discard_sound = 'on'`).

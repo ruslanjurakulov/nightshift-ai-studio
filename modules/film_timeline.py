@@ -57,10 +57,10 @@ What it decides
   ``dialogue``, ``ambience`` or ``muted`` (``SOUND_ROLES``): the scene's ``sound_role`` when the plan or a
   person set one, otherwise ``ambience`` when a shown take was bought with the priced sound option
   (``params.audio`` true: kling-v3, seedance-1.5-pro; 0171 copies ``clip_params.audio`` into the take), and
-  ``muted`` for everything else. **Today every role is a default**: ``film_scenes`` has no ``sound_role``
-  column, ``save_film`` refuses the key and ``FilmRest.scenes`` does not select it, so the explicit role is
-  read only from a row that carries one (none does yet). Storing a scene's in-clip dialogue is the next pull
-  request; until then no scene is ``dialogue``, and the music ducks under the narration only. So a film made
+  ``muted`` for everything else. The chosen role is stored by migration 0241 (``film_scenes.sound_role``, with a
+  ``dialogue`` scene's spoken lines in ``film_scenes.dialogue``, written only through ``save_film``), and a row
+  must agree with itself: a ``dialogue`` scene without lines, or lines on another role, is ``invalid_scene``.
+  Only a saved ``dialogue`` scene is speech for the duck; a default never is. So a film made
   before this, whose takes bought no sound, keeps its
   document and its hash, and a single-price model's sound (Veo, H3, LTX ...) is not played by default: a
   model that speaks may speak unasked words in a scene that has no lines (Atlas, 28 Nov; the orchestrator
@@ -393,9 +393,29 @@ def _lip_synced(asset: Mapping) -> bool:
     return isinstance(p, Mapping) and bool(p.get("lipsync_of_asset_id"))
 
 
+def dialogue_lines(scene: Mapping) -> int:
+    """How many spoken lines the scene's saved row carries (0241 ``film_scenes.dialogue``; 0 for none or for a value that is not a
+    list, which 0241's check never stores)."""
+    d = scene.get("dialogue")
+    if isinstance(d, str):
+        try:
+            d = json.loads(d)
+        except ValueError:
+            d = None
+    return len(d) if isinstance(d, list) else 0
+
+
 def _scene_role(scene: Mapping, takes: Sequence[Mapping], n: int) -> Tuple[str, str]:
     """The scene's sound role and where it came from (``chosen`` or ``default``)."""
     role = scene.get("sound_role")
+    lines = dialogue_lines(scene)
+    # 0241 stores lines exactly on a dialogue scene (film_scenes_sound_check); a row that disagrees was not written by it, and the
+    # music would duck under speech that is not there, or not under speech that is.
+    if (role == "dialogue") != (lines > 0):
+        raise FilmTimelineRefused("invalid_scene", f"{_scene_label(n)}: " + (
+            "its sound is dialogue but it has no spoken lines: save its lines, or set its sound to ambience or muted"
+            if role == "dialogue" else "it has spoken lines but its sound is not dialogue: set its sound to dialogue, or remove the "
+            "lines"), n)
     if role is not None:
         if role not in SOUND_ROLES:
             raise FilmTimelineRefused("invalid_scene", f"{_scene_label(n)}: its sound must be one of "
@@ -600,13 +620,15 @@ def build_cut(film: Mapping, scenes: Sequence[Mapping], takes: Sequence[Mapping]
                                "file_sound": asset.get("has_audio") if isinstance(asset.get("has_audio"), bool) else None})
             start += length
         if speaks:
-            # The lines fall inside the scene, clear of its lead and tail, as a narration segment does; S6's
-            # lines[].start_s/end_s will narrow this once a scene carries them.
+            # Only a scene saved as dialogue (0241's sound_role and its lines) speaks: never a default. Its lines fall inside the
+            # scene, clear of its lead and tail, as a narration segment does; the saved lines carry no times of their own (0241 stores
+            # what is said, not when), so the region is the scene's span less NARRATION_LEAD_S / NARRATION_TAIL_S until S6's
+            # lines[].start_s/end_s narrow it.
             dialogue_ms.append((cursor + _ms(NARRATION_LEAD_S), cursor + slot - _ms(NARRATION_TAIL_S)))
         shown = {id(u[0]) for u in used}
         scene_plans.append({"scene_id": _id(sc.get("id")), "number": n, "start_s": _s(cursor),
                             "end_s": _s(cursor + slot), "transition_in": tr, "shots": shot_plans,
-                            "sound_role": role, "sound_role_source": role_source,
+                            "sound_role": role, "sound_role_source": role_source, "dialogue_lines": dialogue_lines(sc),
                             "trimmed_head_s": _s(x), "trimmed_tail_s": _s(total - x - need),
                             "unused_take_ids": [_id(p[0].get("id")) for p in pieces if id(p[0]) not in shown]})
         starts.append(cursor)
@@ -815,5 +837,5 @@ def build_cut(film: Mapping, scenes: Sequence[Mapping], takes: Sequence[Mapping]
 __all__ = ["CAPTION_MODES", "CHAIN_SKIP_S", "CLIP_SOUND_IN_CUT", "CLIP_SOUND_STATUSES", "CROSSFADE_S", "Cut", "DIP_S", "FORMAT_VERSION",
            "FRAMES", "FilmTimelineRefused", "MASTER_LRA", "MASTER_LUFS", "MASTER_TRUE_PEAK_DB", "MAX_FILM_S",
            "MAX_SCENES", "MAX_SOUND_CLIPS", "REASONS", "SAFE_AREAS", "SOUND_ROLES", "STEM_DUCK_DB", "STEM_GAIN_DB",
-           "build_cut", "canonical_json", "caption_layout", "cut_hash", "frame_for", "made_with_sound", "srt_text",
+           "build_cut", "canonical_json", "caption_layout", "cut_hash", "dialogue_lines", "frame_for", "made_with_sound", "srt_text",
            "wrap_caption"]

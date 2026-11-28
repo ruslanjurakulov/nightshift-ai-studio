@@ -40,6 +40,7 @@ the scrubber the CLI provides.
 from __future__ import annotations
 
 import importlib
+import json
 import logging
 import os
 import re
@@ -340,32 +341,88 @@ class Media:
         return parse_ebur128(res.tail)
 
 
+def _bool_switch(adapter: Any, capability: str) -> bool:
+    """A single-price model that makes sound and whose adapter has a sound switch for this capability (LTX, Grok Imagine, Vidu,
+    Seedance 2.x send ``generate_audio``/``audio``; Gemini Omni and MiniMax H3 have none). A silent model may refuse the field
+    outright, and a model priced by its sound (kling-v3, seedance-1.5-pro) carries the sound the quote priced in ``params.audio``."""
+    entry, inner = getattr(adapter, "entry", None), getattr(adapter, "adapter", None)
+    if entry is None or getattr(entry, "priced_by_audio", True) is not False or getattr(entry, "audio_out", False) is not True:
+        return False
+    return capability in tuple(getattr(inner, "audio_capabilities", ()) or ())
+
+
 def without_unused_sound(request: cw.GenerationRequest, adapter: Any,
                          scene: Optional[Mapping[str, Any]]) -> cw.GenerationRequest:
-    """A clip on a single-price model asks the vendor for no sound unless its scene has lines (Atlas, 28 Nov).
+    """A clip on a single-price model asks the vendor for its sound exactly when its scene has lines (Atlas, 28 Nov).
 
-    The film plays such a clip's sound only in a ``dialogue`` scene (modules/film_timeline.py, "A shot's own sound"),
-    and a model that speaks may put unasked words into a scene that has none, so the sound is not asked for at all
-    where the adapter has a switch for it (LTX, Grok Imagine, Vidu, Seedance 2.x send ``generate_audio``/``audio``;
-    Gemini Omni and MiniMax H3 have none, and get nothing). It is never a price: these models' one price does not
-    depend on it (schemas/model_registry.json), and a model priced by its sound (kling-v3, seedance-1.5-pro) already
-    carries the sound the quote priced in ``params.audio``, which is never touched here.
+    The film plays such a clip's sound only in a ``dialogue`` scene (modules/film_timeline.py, "A shot's own sound"), and a model
+    that speaks may put unasked words into a scene that has none, so outside a dialogue scene the sound is not asked for at all where
+    the adapter has a switch for it (``_bool_switch``), and in a dialogue scene it is asked for explicitly, never left to the vendor's
+    default. It is never a price: these models' one price does not depend on it (schemas/model_registry.json), and ``params.audio``
+    already set (a model priced by its sound: the option the quote priced) is never touched here.
 
-    Today no scene is ``dialogue``: ``film_scenes`` has no ``sound_role`` column and ``FilmRest.scenes`` does not select one, so every
-    such clip is asked for no sound. The column, when it comes (in-clip dialogue, the next pull request), must be selected there
-    too, or a dialogue scene's clip would be made without its lines (tests/test_film_clip_sound.py RolesAreDefaultsToday and the
-    lab's test_a_scene_sound_role_column_never_lands_without_the_worker_reading_it fail first)."""
+    The role is the scene's saved ``sound_role`` (migration 0241), which ``FilmRest.scenes`` must select, or a dialogue scene's clip
+    would be made silent and without its lines (tests/test_film_clip_sound.py RolesAreDefaultsToday and the lab's
+    test_a_scene_sound_role_column_never_lands_without_the_worker_reading_it pin the read)."""
     if request.capability not in ("t2v", "i2v") or "audio" in request.params:
         return request
-    if (scene or {}).get("sound_role") == "dialogue":
+    if not _bool_switch(adapter, request.capability):
         return request
-    entry, inner = getattr(adapter, "entry", None), getattr(adapter, "adapter", None)
-    # Only a model that makes sound at all (audio_out): a silent model may refuse the field outright.
-    if entry is None or getattr(entry, "priced_by_audio", True) is not False or getattr(entry, "audio_out", False) is not True:
+    speaks = (scene or {}).get("sound_role") == "dialogue"
+    return replace(request, params={**request.params, "audio": speaks})
+
+
+#: How a clip prompt names a line's language (0241's film_dialogue_prompt says the same words).
+DIALOGUE_LANGS = {"uz": "Uzbek", "ru": "Russian", "en": "English"}
+
+
+def _lines(scene: Optional[Mapping[str, Any]]) -> List[Mapping[str, Any]]:
+    raw = (scene or {}).get("dialogue")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            raw = None
+    return [x for x in raw if isinstance(x, Mapping)] if isinstance(raw, list) else []
+
+
+def dialogue_prompt(lines: Sequence[Mapping[str, Any]]) -> str:
+    """The lines as a clip prompt says them, one quoted line with its speaker and language each, joined by a space: the same text as
+    0241's ``film_dialogue_prompt``, which the quote counts against the model's prompt limit (the lab pins the two equal). One form for
+    every model family: each i2v adapter sends the prompt as written (stripped), and a quoted line with the speaker is how the vendors'
+    own prompt guides show speech; nothing vendor-specific is guessed here."""
+    return " ".join(f'{x["speaker"]} says in {DIALOGUE_LANGS[x["lang"]]}: "{x["line"]}"' for x in lines)
+
+
+def clip_prompt(visual: str, lines: Sequence[Mapping[str, Any]]) -> str:
+    """A spoken scene's clip prompt: the visual prompt, a line break, the lines (0241's ``film_clip_prompt``)."""
+    if not lines:
+        return visual
+    if not (visual or "").strip(" "):
+        return dialogue_prompt(lines)
+    return f"{visual}\n{dialogue_prompt(lines)}"
+
+
+def with_dialogue(request: cw.GenerationRequest, kind: str, scene: Optional[Mapping[str, Any]]) -> cw.GenerationRequest:
+    """A dialogue scene's lines in its CLIP's prompt, and nowhere else.
+
+    film_take_job (0198) sends the scene's one visual prompt to the key frame and the clip alike; the lines live in their own column
+    (0241) so that an image model is never told 'says: "..."' (it draws the words). A key frame, a narration and a scene without lines
+    are returned as they are. A dialogue scene is one shot (0241's film_save_scenes): an extend there, or a dialogue scene whose lines
+    did not arrive, fails the take before the paid call rather than making the clip without its lines (rule 4)."""
+    if (scene or {}).get("sound_role") != "dialogue" or request.capability not in ("t2v", "i2v"):
         return request
-    if request.capability not in tuple(getattr(inner, "audio_capabilities", ()) or ()):
-        return request
-    return replace(request, params={**request.params, "audio": False})
+    lines = _lines(scene)
+    if kind != "clip":
+        raise _TakeFailed("bad_request", "a spoken scene is one shot, and this one has more: set the scene to one shot and start again")
+    try:
+        prompt = clip_prompt(str(request.params.get("prompt") or ""), lines)
+    except (KeyError, TypeError):
+        lines = []
+    if not lines:
+        raise _TakeFailed("bad_request", "the scene is spoken, but its lines could not be read: save the scene's lines again and "
+                                         "start again")
+    return replace(request, params={**request.params, "prompt": prompt})
 
 
 def parse_ebur128(text: str) -> Tuple[Optional[float], Optional[float]]:
@@ -727,6 +784,7 @@ class FilmOrchestrator:
         if kind == "narration":
             return self._narration(seg, take, tj, job, request, adapter, work, lease)
         request = without_unused_sound(request, adapter, scene)
+        request = with_dialogue(request, kind, scene)
         request = self._inputs(request, tj, adapter, work)
         self._still_on_sale(request)
         if not self.db.advance_job(job, self.worker_id, "submitting"):
@@ -1056,7 +1114,8 @@ class FilmRest:
 
     def scenes(self, film: str) -> list:
         return self._select("film_scenes", {"film_id": f"eq.{film}",
-                                            "select": "id,position,first_frame,last_frame,shot_count,planned_seconds"})
+                                            "select": "id,position,first_frame,last_frame,shot_count,planned_seconds,"
+                                                      "sound_role,dialogue"})
 
     # the take's creative job (0036, 0046, 0037)
     def heartbeat_job(self, job: str, worker_id: str):

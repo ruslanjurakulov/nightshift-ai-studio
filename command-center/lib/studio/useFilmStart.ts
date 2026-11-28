@@ -93,6 +93,11 @@ export const START_REMEDIES: Readonly<Record<string, StartRemedy>> = {
   // 0236 (BR-SG-01): film_price refuses a scene that asks for its clip's own sound while the cut does not keep it yet. The person turns
   // the scene's sound option off; nothing is bought that the film would drop.
   clip_sound_not_kept: "fix_and_requote",
+  // 0241: a dialogue scene on a model that makes no sound (or without the priced sound option), ambience whose sound was not bought, a
+  // muted scene that buys sound. Only the person changes the scene or the model; nothing is bought that the film would not play.
+  dialogue_needs_sound: "fix_and_requote",
+  ambience_not_kept: "fix_and_requote",
+  sound_option_unused: "fix_and_requote",
   limit_reached: "wait",
   rate_limited: "wait",
   rate_limit_unavailable: "wait",

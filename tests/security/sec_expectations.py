@@ -891,3 +891,13 @@ sec_geo_allowlist_0230.extend(TABLES, FUNCTIONS)
 import sec_cancel_audit_0231  # noqa: E402
 
 sec_cancel_audit_0231.extend(TABLES, FUNCTIONS)
+
+# Migration 0241 (a film scene's own sound role and its spoken lines): four internal helpers, called only inside film_save_scenes and
+# film_price; no API role may call them (tests/security/test_sec_film_dialogue_0241.py). The two columns are on 0166's film_scenes,
+# whose table contract (members read 0166's column list, nobody writes) is unchanged.
+FUNCTIONS.update({
+    "film_dialogue": SERVICE,
+    "film_dialogue_prompt": SERVICE,
+    "film_clip_prompt": SERVICE,
+    "film_sound_problem": SERVICE,
+})

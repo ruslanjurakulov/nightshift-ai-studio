@@ -218,6 +218,11 @@ class CreativePromptLimitsMigration(unittest.TestCase):
                     # (tests/test_film_clip_sound_migration.py undoes the hunk back to this file's body).
                     self.assertIn("'3c22f87be736c073d17d93e040e914e1', 'b873f893f3f185b3eab3698d349f3379'", text)
                     continue
+                if f == "0241_film_scene_dialogue.sql" and name == "film_price":
+                    # 0241 replaces 0236's body (this file's plus 0236's hunk) with two more marked hunks, and refuses any other
+                    # base (tests/test_film_scene_dialogue_migration.py undoes them back to 0236's body).
+                    self.assertIn("'b873f893f3f185b3eab3698d349f3379', '81e7a2dd0701068508e2663b495683cb'", text)
+                    continue
                 self.assertNotIn(f"function public.{name}(", text, (f, name))
 
     def test_on_0224s_base_the_body_is_this_files_plus_0224s_one_line_and_nothing_else(self):
@@ -360,7 +365,8 @@ class CreativePromptLimitsMigration(unittest.TestCase):
         self.assertRegex(on_0124, r'"0218_creative_prompt_limits\.sql"(,\s*(#[^\n]*\s*)*"0219_oauth_creative_operator_models\.sql")?'
                                   r'(,\s*(#[^\n]*\s*)*"0224_dated_credit_price\.sql")?'
                                   r'(,\s*(#[^\n]*\s*)*"0230_geo_gate_allow_list\.sql")?'
-                                  r'(,\s*(#[^\n]*\s*)*"0236_film_clip_sound_gate\.sql")?$')
+                                  r'(,\s*(#[^\n]*\s*)*"0236_film_clip_sound_gate\.sql")?'
+                                  r'(,\s*(#[^\n]*\s*)*"0241_film_scene_dialogue\.sql")?$')
         # 0218 before 0224 in every list both are in (0224 sits on 0218's creative_price; put back in this order).
         self.assertLess(on_0124.index('"0218_creative_prompt_limits.sql"'), on_0124.index('"0224_dated_credit_price.sql"'))
         self.assertLess(LAB.index("ON_0156 = (*ON_0156, MIGRATION_0218.name)"),

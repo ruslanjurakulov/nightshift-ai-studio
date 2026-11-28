@@ -157,13 +157,21 @@ def _md5(db):
 
 def test_a_replay_changes_nothing_and_keeps_the_switch(db):
     kept(db, True)
-    db.su(MIGRATION.read_text(encoding="utf-8"))
-    assert _md5(db) == sec_db.FILM_PRICE_0236
+    # 0241 sits on this file's film_price, and this file's guard refuses any other body: off for the replay, on again after.
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0241(c)
+        c.execute(MIGRATION.read_text(encoding="utf-8"))
+        assert c.execute("select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc "
+                         "where oid = 'public.film_price(public.films)'::regprocedure").fetchone()[0] == sec_db.FILM_PRICE_0236
+        sec_db.put_back_0241(c)
+        c.commit()
+    assert _md5(db) == sec_db.FILM_PRICE_0241
     assert db.su("select clip_sound_kept from public.film_studio_settings where id")[0][0] is True
 
 
 def test_the_drift_guard_refuses_a_body_that_is_neither_0218s_nor_its_own(db):
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0241(c)  # 0241 sits on this file's film_price (see the replay test)
         c.execute("comment on function public.film_price(public.films) is 'drift'")  # a comment is not the body: still accepted
         c.execute(MIGRATION.read_text(encoding="utf-8"))
         src = c.execute("select prosrc from pg_proc where oid = 'public.film_price(public.films)'::regprocedure").fetchone()[0]
@@ -175,7 +183,7 @@ def test_the_drift_guard_refuses_a_body_that_is_neither_0218s_nor_its_own(db):
             c.execute(MIGRATION.read_text(encoding="utf-8"))
         assert "neither 0218" in str(e.value)
         c.rollback()
-    assert _md5(db) == sec_db.FILM_PRICE_0236
+    assert _md5(db) == sec_db.FILM_PRICE_0241
 
 
 def test_the_s2_assemblys_transient_words_may_be_rerun_and_clip_without_sound_may_not(db):
