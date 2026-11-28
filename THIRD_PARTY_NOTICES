@@ -340,3 +340,153 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 (The upstream LICENCE.md ends with a stray line, "app/page.tsx", that is not part of the licence; it is left out here.)
+
+-------------------------------------------------------------------------------
+qiuqiangkong/audioset_tagging_cnn (PANNs model code)
+https://github.com/qiuqiangkong/audioset_tagging_cnn (commit d2f4b8c18eab44737fcc0de1248ae21eb43f6aa4, licence file LICENSE.MIT,
+fetched 2026-11-28)
+
+What was taken: the ConvBlock and Cnn14 classes of pytorch/models.py, inference only (training paths and weight initialisation
+removed). The label file metadata/class_labels_indices.csv is NOT copied: it is downloaded at that commit by a pinned sha256.
+
+Where: tools/vendor_panns/cnn14.py (measurement only; nothing in the product imports it).
+
+License:
+
+The MIT License
+  
+Copyright (c) 2018-2020 Qiuqiang Kong
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+-------------------------------------------------------------------------------
+qiuqiangkong/torchlibrosa
+https://github.com/qiuqiangkong/torchlibrosa (commit d4e8add6c9ee49ae531c78a4901e4fdcc88c746a, licence file LICENSE.md,
+fetched 2026-11-28)
+
+What was taken: the STFT, Spectrogram and LogmelFilterBank classes of torchlibrosa/stft.py, reduced to what Cnn14 runs (the DFT
+kernels and the mel matrix are loaded from the PANNs checkpoint instead of computed with librosa).
+
+Where: tools/vendor_panns/cnn14.py.
+
+License:
+
+The MIT License
+
+Copyright (c) 2018-2021 Qiuqiang Kong
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+-------------------------------------------------------------------------------
+PANNs pretrained model weights (Cnn14_mAP=0.431.pth): ATTRIBUTION, CC BY 4.0
+https://zenodo.org/records/3987831 (licence on the record: Creative Commons Attribution 4.0 International,
+https://creativecommons.org/licenses/by/4.0/)
+
+Work: "PANNs: Large-Scale Pretrained Audio Neural Networks for Audio Pattern Recognition (Pretrained Models)", by Qiuqiang Kong,
+Yin Cao, Turab Iqbal, Yuxuan Wang, Wenwu Wang and Mark D. Plumbley, Zenodo, doi:10.5281/zenodo.3987831. Paper: Q. Kong et al.,
+"PANNs: Large-Scale Pretrained Audio Neural Networks for Audio Pattern Recognition", IEEE/ACM Transactions on Audio, Speech, and
+Language Processing 28 (2020), 2880-2894.
+
+What is used: the file Cnn14_mAP=0.431.pth, unmodified, downloaded at run time by tools/vocal_activity.py (pinned sha256
+0dc499e40e9761ef5ea061ffc77697697f277f6a960894903df3ada000e34b31). The weights are not stored in this repository and no
+modified version is distributed. The AudioSet class labels it predicts come from Google's AudioSet ontology (CC BY 4.0,
+https://research.google.com/audioset/).
+
+-------------------------------------------------------------------------------
+sigsep/open-unmix-pytorch (Open-Unmix) and its UMX-HQ vocals weights
+https://github.com/sigsep/open-unmix-pytorch (pip package openunmix==1.3.0, licence file LICENSE, fetched 2026-11-28);
+weights https://zenodo.org/records/3370489 (vocals-b62c91ce.pth, licence on the record: MIT License)
+
+What was taken: nothing copied. openunmix is a pip dependency of requirements-measure.txt only, and the vocals weights are
+downloaded at run time by a pinned sha256.
+
+Where: tools/vocal_activity.py (measurement only).
+
+License:
+
+MIT License
+
+Copyright (c) 2019 Inria (Fabian-Robert Stöter, Antoine Liutkus)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-------------------------------------------------------------------------------
+snakers4/silero-vad
+https://github.com/snakers4/silero-vad (pip package silero-vad==6.2.1, licence file LICENSE read 2026-11-28: MIT)
+
+What was taken: nothing copied. silero-vad is a pip dependency of requirements-measure.txt only; its packaged model file is
+hash-pinned at load.
+
+Where: tools/vocal_activity.py (measurement only).
+
+License:
+
+MIT License
+
+Copyright (c) 2020-present Silero Team
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
