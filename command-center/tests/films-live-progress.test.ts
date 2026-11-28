@@ -42,11 +42,17 @@ let takeCols: string[];
 function setup({ refuse = [] as string[], typical = { data: [] as unknown, error: null as unknown } } = {}) {
   segCols = [];
   takeCols = [];
-  const segRows = [{ id: "s1", status: "running", assembly_status: "running", assembly_progress: 42.5, assembly_progress_at: "2026-11-28T10:00:00Z" }];
+  const segRows = [
+    { id: "s1", status: "running", assembly_status: "running", assembly_progress: 42.5, assembly_progress_at: "2026-11-28T10:00:00Z" },
+    // A failed assembly keeps its last figure in the row: never shown as how far it got.
+    { id: "s2", status: "settled", assembly_status: "failed", assembly_progress: 100, assembly_progress_at: "2026-11-28T09:00:00Z" },
+  ];
   const takeRows = [
-    { id: "t1", error_code: null, progress: 37.25, vendor_state: "running", progress_at: "2026-11-28T10:00:00Z" },
-    { id: "t2", error_code: null, progress: null, vendor_state: null, progress_at: null },
-    { id: "t3", error_code: null, progress: 140, vendor_state: "Task failed: key sk-123", progress_at: null },
+    { id: "t1", status: "running", error_code: null, progress: 37.25, vendor_state: "running", progress_at: "2026-11-28T10:00:00Z" },
+    { id: "t2", status: "running", error_code: null, progress: null, vendor_state: null, progress_at: null },
+    { id: "t3", status: "running", error_code: null, progress: 140, vendor_state: "Task failed: key sk-123", progress_at: null },
+    // A completed take keeps "45" in the row: the answer says not known.
+    { id: "t4", status: "completed", error_code: null, progress: 45, vendor_state: "running", progress_at: "2026-11-28T09:30:00Z" },
   ];
   h.rpc.mockReset().mockImplementation(async (name: string) => (name === "film_take_typical_seconds" ? typical : { data: filmJson(), error: null }));
   h.from.mockReset().mockImplementation((t: string) =>
@@ -64,13 +70,27 @@ beforeEach(() => {
 
 describe("the live answer carries 0246 and 0248, read through the person's own session", () => {
   it("returns the progress columns and the medians, and asks 0248 for this film only", async () => {
-    setup({ typical: { data: [{ model: "vid-clip", capability: "i2v", median_s: 92.5, n: 4 }], error: null } });
+    setup({
+      typical: {
+        data: [
+          { model: "vid-clip", capability: "i2v", basis: "yours", median_s: 93, n: 4 },
+          { model: "img-key", capability: "t2i", basis: "platform", median_s: 12, n: 999, orgs: 7 },
+          { model: "tts-a", capability: "tts", basis: null },
+        ],
+        error: null,
+      },
+    });
     const r = await live.GET(req(), params);
     expect(r.status).toBe(200);
     const body = await r.json();
     expect(segCols[0]).toContain("assembly_progress,assembly_progress_at");
     expect(takeCols[0]).toContain("progress,vendor_state,progress_at");
-    expect(body.typical).toEqual([{ model: "vid-clip", capability: "i2v", median_s: 92.5, n: 4 }]);
+    // A platform row never carries n or a workspace count past the route, even if the database sent one.
+    expect(body.typical).toEqual([
+      { model: "vid-clip", capability: "i2v", basis: "yours", median_s: 93, n: 4 },
+      { model: "img-key", capability: "t2i", basis: "platform", median_s: 12 },
+      { model: "tts-a", capability: "tts", basis: null },
+    ]);
     expect(h.rpc).toHaveBeenCalledWith("film_take_typical_seconds", { p_film: FILM });
     // The session client is the only client: there is no service client in this route at all.
     expect(h.client).toHaveBeenCalled();
@@ -81,7 +101,16 @@ describe("the live answer carries 0246 and 0248, read through the person's own s
     expect(view.progress!.get("t2")).toEqual({ progress: null, vendorState: null, at: null });
     // Out of range is dropped, never clamped; a "word" that is free text is dropped.
     expect(view.progress!.get("t3")).toEqual({ progress: null, vendorState: null, at: null });
-    expect(view.typical).toEqual([{ model: "vid-clip", capability: "i2v", medianS: 92.5, n: 4 }]);
+    // Rule 5: a finished take or assembly has no "how far" in the answer itself, not only in the view.
+    expect(body.takes.find((t: { id: string }) => t.id === "t4")).toMatchObject({ progress: null, vendor_state: null, progress_at: null });
+    expect(body.segments.find((x: { id: string }) => x.id === "s2")).toMatchObject({ assembly_progress: null, assembly_progress_at: null });
+    expect(view.progress!.get("t4")).toEqual({ progress: null, vendorState: null, at: null });
+    expect(view.segments!.find((x) => x.id === "s2")!.assemblyProgress).toBeNull();
+    expect(view.typical).toEqual([
+      { model: "vid-clip", capability: "i2v", basis: "yours", medianS: 93, n: 4 },
+      { model: "img-key", capability: "t2i", basis: "platform", medianS: 12 },
+      { model: "tts-a", capability: "tts", basis: null },
+    ]);
   });
 
   it("a database without 0246 answers the shapes before it: progress then reads not known, never an error", async () => {
@@ -99,18 +128,41 @@ describe("the live answer carries 0246 and 0248, read through the person's own s
     expect(view.segments![0].assemblyProgress).toBeNull();
   });
 
-  it("a median row with no n, no model or a duration that is not positive is left out", () => {
+  it("a figure is kept only with its basis: yours needs n >= 3 and whole seconds, anything else reads as no figure", () => {
     const base = { film: filmJson(), segments: [], takes: [] };
     const view = coerceFilmLive({
       ...base,
       typical: [
-        { model: "a", capability: "i2v", median_s: 10, n: 3 },
-        { model: "b", capability: "i2v", median_s: 10 },
-        { capability: "i2v", median_s: 10, n: 5 },
-        { model: "c", capability: "t2i", median_s: 0, n: 5 },
-        { model: "d", capability: "t2i", median_s: 8, n: 2.5 },
+        { model: "a", capability: "i2v", basis: "yours", median_s: 10, n: 3 },
+        { model: "b", capability: "i2v", basis: "yours", median_s: 10, n: 2 },
+        { model: "c", capability: "t2i", basis: "platform", median_s: 0 },
+        { model: "d", capability: "t2i", basis: "platform", median_s: 8.5 },
+        { model: "e", capability: "t2i", basis: "platform", median_s: 8 },
+        { capability: "i2v", basis: "yours", median_s: 10, n: 5 },
+        { model: "f", capability: "tts", basis: "guess", median_s: 4, n: 9 },
       ],
     })!;
-    expect(view.typical).toEqual([{ model: "a", capability: "i2v", medianS: 10, n: 3 }]);
+    expect(view.typical).toEqual([
+      { model: "a", capability: "i2v", basis: "yours", medianS: 10, n: 3 },
+      { model: "b", capability: "i2v", basis: null },
+      { model: "c", capability: "t2i", basis: null },
+      { model: "d", capability: "t2i", basis: null },
+      { model: "e", capability: "t2i", basis: "platform", medianS: 8 },
+      { model: "f", capability: "tts", basis: null },
+    ]);
+  });
+
+  it("the copy for the figure is in all three languages, with the Uzbek apostrophe", async () => {
+    const { studioLiveEn } = await import("../lib/i18n/studio-live/en");
+    const { studioLiveRu } = await import("../lib/i18n/studio-live/ru");
+    const { studioLiveUz } = await import("../lib/i18n/studio-live/uz");
+    expect([studioLiveEn.typicalYours, studioLiveEn.typicalPlatform]).toEqual(["usually ~{n} s", "usually ~{n} s on Nightshift"]);
+    for (const d of [studioLiveRu, studioLiveUz]) {
+      expect(d.typicalYours).toContain("{n}");
+      expect(d.typicalPlatform).toContain("{n}");
+      expect(d.typicalPlatform).toContain("Nightshift");
+      expect(d.typicalYours).not.toBe(studioLiveEn.typicalYours);
+    }
+    expect(studioLiveUz.typicalPlatform).toContain("Nightshift\u02bcda");
   });
 });

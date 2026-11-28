@@ -3,17 +3,22 @@
 --
 -- EVIDENCE. A running take shows its elapsed time only; nothing says whether 90 s is normal for that model. film_takes keeps
 --   started_at (0171, film_begin_take) and finished_at (0166) for every take.
--- CHANGE. One new function, film_take_typical_seconds(film): for the film's organization only, per model and capability
---   (keyframe = t2i, clip and extend = i2v, narration = tts), the median of the last 20 completed takes' started_at ..
---   finished_at, in seconds (rounded to 0.1), and n, how many takes it rests on. The caller decides what to show: the plan
---   shows a figure only with n of 3 or more, so n is always returned. A take that never started, has no end, ended before
---   it began or ran 6 hours or more is left out (not a duration this asks about). Failed takes are left out: their time is
---   not how long a take takes.
---   SECURITY DEFINER (started_at is not a column members read): it answers only a member (viewer or above) of the film's
---   organization, and a film the caller may not read is not_found whether or not it exists. It returns model ids, the
---   capability word, the median and n: no take, film, organization or person id, no prompt, error or money.
---   Scope: the caller's own organization, not every organization's. The plan says "from our own film_takes timings" and does
---   not settle whether one workspace's timings may inform another's; until Atlas does, nothing crosses an organization.
+-- CHANGE. One new function, film_take_typical_seconds(film), Atlas's rule (#985). For each model and capability of the film's
+--   own takes (keyframe = t2i, clip and extend = i2v, narration = tts), from completed takes of the last 90 days whose
+--   started_at .. finished_at is a real duration (it started, it ended after it began, under 6 hours; failed takes are not
+--   how long a take takes):
+--   1. 'yours': the film organization's own last 20 hold 3 or more takes. Their median, in whole seconds, and n.
+--   2. 'platform': otherwise, the platform's figure, when it rests on at least 5 organizations and 20 takes. It is the median
+--      of the organizations' own medians, each organization counted once over its own last 20: one workspace, one vote, so
+--      a busy workspace cannot set the figure and no workspace's timing can be read back out of it (a k-anonymity floor).
+--      In whole seconds, and nothing else: no n, no count of organizations, no id.
+--   3. null: neither. No duration: the live view shows elapsed time only.
+--   Why this window: 20 per organization is its own window (rule 1) and caps its weight; 90 days because a vendor's speed
+--   changes and an old figure misleads, and it bounds the scan. Only the film's own model and capability pairs are answered,
+--   so the answer says nothing about which models other workspaces use.
+--   SECURITY DEFINER (started_at is not a member column, and the platform figure reads every organization's takes): it
+--   answers only a member (viewer or above) of the film's organization, and a film the caller may not read is not_found
+--   whether or not it exists, with no figure of any kind.
 -- NUMBER. 0248, assigned by Atlas (live creation plan, section 4). Needs 0166 (films, film_takes), 0171 (started_at) and
 --   0043 (accessible_org_ids).
 -- Rollback: docs/sql/rollback_0248_film_take_typical_seconds.sql (owner-applied).
@@ -33,7 +38,7 @@ begin
     raise exception '0248 needs 0166, 0171 (film_takes.started_at) and 0043 (accessible_org_ids): apply them first';
   end if;
   select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.film_take_typical_seconds(uuid)');
-  if h is not null and h <> '1cbe7f01e8425f45355df594816935a4' then
+  if h is not null and h <> '8e988e75f11d8fa798d2504b71483727' then
     raise exception '0248 found a film_take_typical_seconds that is not this file''s (md5 %): read the live body first', h;
   end if;
 end $$;
@@ -45,33 +50,55 @@ declare
   res jsonb;
 begin
   select f.org_id into o from public.films f where f.id = p_film;
-  -- A film the caller may not read is not found, whether or not it exists.
+  -- A film the caller may not read is not found, whether or not it exists: no figure of any kind, ours or the platform's.
   if o is null or o not in (select public.accessible_org_ids('viewer')) then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
-  with t as (
-    select x.model,
+  with timed as (
+    -- Every completed take with a duration this asks about, in the last 90 days (a vendor's speed changes; older timings mislead).
+    select x.org_id, x.model,
            case x.kind when 'keyframe' then 't2i' when 'narration' then 'tts' else 'i2v' end as capability,
-           extract(epoch from (x.finished_at - x.started_at))::numeric as secs,
-           row_number() over (partition by x.model, case x.kind when 'keyframe' then 't2i' when 'narration' then 'tts' else 'i2v' end
-                              order by x.finished_at desc, x.id) as rn
+           extract(epoch from (x.finished_at - x.started_at))::numeric as secs, x.finished_at, x.id
       from public.film_takes x
-     where x.org_id = o and x.status = 'completed' and x.model is not null
+     where x.status = 'completed' and x.model is not null
        and x.kind in ('keyframe', 'clip', 'extend', 'narration')
        and x.started_at is not null and x.finished_at is not null
        and x.finished_at > x.started_at and x.finished_at - x.started_at < interval '6 hours'
-  ), m as (
-    select model, capability, count(*) as n,
-           percentile_cont(0.5) within group (order by secs) as med
-      from t
-     where rn <= 20
-     group by model, capability
+       and x.finished_at > now() - interval '90 days'
+  ), ranked as (
+    -- Each organization's last 20 per model and capability: its own window, and its whole contribution to the platform's.
+    select t.*, row_number() over (partition by t.org_id, t.model, t.capability order by t.finished_at desc, t.id) as rn
+      from timed t
+  ), per_org as (
+    select r.org_id, r.model, r.capability, count(*) as n,
+           percentile_cont(0.5) within group (order by r.secs) as med
+      from ranked r
+     where r.rn <= 20
+     group by r.org_id, r.model, r.capability
+  ), platform as (
+    -- One organization, one vote: the median of the organizations' own medians, and only with at least 5 organizations and
+    -- 20 takes behind it (a k-anonymity floor: no one workspace's timing or activity can be read back out of it).
+    select p.model, p.capability, percentile_cont(0.5) within group (order by p.med) as med
+      from per_org p
+     group by p.model, p.capability
+    having count(*) >= 5 and sum(p.n) >= 20
+  ), wanted as (
+    -- Only the model and capability pairs of this film's own takes: nothing says which models other workspaces use.
+    select distinct y.model, case y.kind when 'keyframe' then 't2i' when 'narration' then 'tts' else 'i2v' end as capability
+      from public.film_takes y
+     where y.film_id = p_film and y.model is not null and y.kind in ('keyframe', 'clip', 'extend', 'narration')
   )
-  select coalesce(jsonb_agg(jsonb_build_object('model', model, 'capability', capability,
-                                               'median_s', round(med::numeric, 1), 'n', n)
-                            order by model, capability), '[]'::jsonb)
+  select coalesce(jsonb_agg(
+           case when mine.n >= 3 then jsonb_build_object('model', w.model, 'capability', w.capability, 'basis', 'yours',
+                                                         'median_s', round(mine.med::numeric), 'n', mine.n)
+                when plat.med is not null then jsonb_build_object('model', w.model, 'capability', w.capability,
+                                                                  'basis', 'platform', 'median_s', round(plat.med::numeric))
+                else jsonb_build_object('model', w.model, 'capability', w.capability, 'basis', null) end
+           order by w.model, w.capability), '[]'::jsonb)
     into res
-    from m;
+    from wanted w
+    left join per_org mine on mine.org_id = o and mine.model = w.model and mine.capability = w.capability
+    left join platform plat on plat.model = w.model and plat.capability = w.capability;
   return res;
 end
 $$;
@@ -80,7 +107,7 @@ revoke all on function public.film_take_typical_seconds(uuid) from public, anon,
 grant execute on function public.film_take_typical_seconds(uuid) to authenticated;
 
 comment on function public.film_take_typical_seconds(uuid) is
-  '0248: per model and capability, the median seconds of the film organization''s last 20 completed takes, and n. Members only; no ids.';
+  '0248: per model and capability of the film''s takes: the organization''s median and n (basis yours, n >= 3), else the platform''s median of organization medians (basis platform, 5 organizations and 20 takes at least, seconds only), else basis null. Members only; no ids.';
 
 -- The end state, asserted inside the transaction.
 do $$
@@ -88,7 +115,7 @@ declare
   h text;
 begin
   select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = 'public.film_take_typical_seconds(uuid)'::regprocedure;
-  if h is distinct from '1cbe7f01e8425f45355df594816935a4' then
+  if h is distinct from '8e988e75f11d8fa798d2504b71483727' then
     raise exception '0248 end state: film_take_typical_seconds is not this file''s body (md5 %)', h;
   end if;
   if not has_function_privilege('authenticated', 'public.film_take_typical_seconds(uuid)', 'execute')

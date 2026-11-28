@@ -13,7 +13,10 @@
 --   * film_take_progress(take, worker, progress, word) and film_segment_assembly_progress(segment, worker, progress): the
 --     only writers, SECURITY DEFINER, executable by service_role only, and they write only for the worker that holds the
 --     segment (film_segments.worker_id, the rule of 0171's film_heartbeat_segment) while the take (or the assembly) runs;
---     anything else answers false and writes nothing. A figure outside 0..100 (or NaN) is written as NULL, never clamped;
+--     anything else answers false and writes nothing. The take writer locks the film, then the segment (and asks for the
+--     worker again), then the take, film_lock_take's order, and never waits on the take while holding the other two: a lease
+--     taken over while a write waited is seen (Breach B-0246-1). The assembly writer is one UPDATE of the segment itself, whose
+--     worker_id Postgres re-checks on the row's newest version after a wait, as film_heartbeat_segment's. A figure outside 0..100 (or NaN) is written as NULL, never clamped;
 --     a word that is not one short lowercase word is NULL (no free text: no prompt, error, task id or money can pass).
 --   * Members read the five columns through RLS, as they read the rest of the take and the segment (0166, 0171).
 --   Not changed: every body of 0166, 0171, 0198 and 0215 (no function is replaced, so nothing is md5-guarded but this
@@ -35,7 +38,7 @@ begin
     raise exception '0246 needs 0171 (film_segments, film_takes.segment_id): apply it first';
   end if;
   select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.film_take_progress(uuid, text, numeric, text)');
-  if h is not null and h <> 'e3c572fc3cc3b95d7dd113b223e837d3' then
+  if h is not null and h <> '28911b1d6dbdd1bb6176c9617c1aba8c' then
     raise exception '0246 found a film_take_progress that is not this file''s (md5 %): read the live body first', h;
   end if;
   select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = to_regprocedure('public.film_segment_assembly_progress(uuid, text, numeric)');
@@ -69,23 +72,53 @@ create or replace function public.film_take_progress(p_take uuid, p_worker text,
   returns boolean
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
-  w    text := left(btrim(coalesce(p_worker, '')), 120);
+  w     text := left(btrim(coalesce(p_worker, '')), 120);
   -- A figure outside 0..100 (or NaN) is dropped, never clamped; a word that is not one short lowercase word is dropped.
-  pct  numeric := case when p_progress >= 0 and p_progress <= 100 then round(p_progress, 2) end;
-  word text := case when p_vendor_state ~ '^[a-z][a-z0-9_]{0,31}$' then p_vendor_state end;
-  hit  integer;
+  pct   numeric := case when p_progress >= 0 and p_progress <= 100 then round(p_progress, 2) end;
+  word  text := case when p_vendor_state ~ '^[a-z][a-z0-9_]{0,31}$' then p_vendor_state end;
+  fid   uuid;
+  seg   uuid;
+  tries integer := 0;
+  hit   integer;
 begin
   if w = '' then
     return false;
   end if;
-  -- Only the worker that holds the take's segment, while the take runs: the same rule as film_heartbeat_segment.
-  update public.film_takes t
-     set progress = pct, vendor_state = word, progress_at = now()
-    from public.film_segments s
-   where t.id = p_take and s.id = t.segment_id and t.status = 'running'
-     and s.worker_id = w and s.status in ('running', 'draining');
-  get diagnostics hit = row_count;
-  return hit > 0;
+  select x.film_id, x.segment_id into fid, seg from public.film_takes x where x.id = p_take;
+  if seg is null then
+    return false;
+  end if;
+  loop
+    tries := tries + 1;
+    begin
+      -- The film, then the segment, then the take: film_lock_take's order. The segment is locked and asked again here, so a
+      -- worker whose lease was taken over while this waited answers false (B-0246-1: a joined segment row is not re-checked).
+      perform 1 from public.films where id = fid for no key update;
+      perform 1 from public.film_segments s
+        where s.id = seg and s.worker_id = w and s.status in ('running', 'draining') for share;
+      if not found then
+        return false;
+      end if;
+      -- Never wait on the take while holding the film and the segment: a take locked by someone else is waited for below,
+      -- with nothing held, and everything is asked again.
+      perform 1 from public.film_takes where id = p_take for no key update nowait;
+      update public.film_takes
+         set progress = pct, vendor_state = word, progress_at = now()
+       where id = p_take and segment_id = seg and status = 'running';
+      get diagnostics hit = row_count;
+      return hit > 0;
+    exception when lock_not_available then
+      if tries >= 3 then
+        return false;
+      end if;
+      begin
+        perform 1 from public.film_takes where id = p_take for no key update;
+        raise exception using errcode = 'P0001', message = 'film_take_progress: the take is free, ask again';
+      exception when raise_exception then
+        null;
+      end;
+    end;
+  end loop;
 end
 $$;
 
@@ -122,7 +155,7 @@ declare
   h text;
 begin
   select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = 'public.film_take_progress(uuid, text, numeric, text)'::regprocedure;
-  if h is distinct from 'e3c572fc3cc3b95d7dd113b223e837d3' then
+  if h is distinct from '28911b1d6dbdd1bb6176c9617c1aba8c' then
     raise exception '0246 end state: film_take_progress is not this file''s body (md5 %)', h;
   end if;
   select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p where p.oid = 'public.film_segment_assembly_progress(uuid, text, numeric)'::regprocedure;

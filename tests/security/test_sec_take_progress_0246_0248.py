@@ -53,9 +53,9 @@ def write(db, take, worker, pct, word):
 # ── the bodies and the grants ───────────────────────────────────────────────
 
 def test_the_live_bodies_and_grants_are_the_files(db):
-    assert db.su(FOLD, [TAKE_PROGRESS])[0][0] == "e3c572fc3cc3b95d7dd113b223e837d3"
+    assert db.su(FOLD, [TAKE_PROGRESS])[0][0] == "28911b1d6dbdd1bb6176c9617c1aba8c"
     assert db.su(FOLD, [ASSEMBLY_PROGRESS])[0][0] == "bac224571284b836694d51f2aed8bccb"
-    assert db.su(FOLD, [TYPICAL])[0][0] == "1cbe7f01e8425f45355df594816935a4"
+    assert db.su(FOLD, [TYPICAL])[0][0] == "8e988e75f11d8fa798d2504b71483727"
     for sig in (TAKE_PROGRESS, ASSEMBLY_PROGRESS):
         row = db.su("select has_function_privilege('service_role', %s, 'execute'), has_function_privilege('authenticated', %s, "
                     "'execute'), has_function_privilege('anon', %s, 'execute'), p.prosecdef from pg_proc p "
@@ -149,80 +149,105 @@ def test_members_read_their_own_takes_progress_and_no_one_elses(db, a, b):
 
 # ── the medians (0248) ──────────────────────────────────────────────────────
 
-def _timed(db, take, seconds, ago_min):
-    end = datetime.now(timezone.utc) - timedelta(minutes=ago_min)
-    db.su("update public.film_takes set started_at = %s, finished_at = %s where id = %s",
-          [end - timedelta(seconds=seconds), end, take])
+_MODEL_N = [0]
+
+
+def _model():
+    """A model id of this test's own: the platform window spans every organization of the lab, so no other test may feed it."""
+    _MODEL_N[0] += 1
+    return f"lab-median-{_MODEL_N[0]}"
+
+
+def _takes(db, o, model, seconds, status="completed", film=None):
+    """Completed key-frame takes of ``model`` in a film of ``o`` (one per figure in ``seconds``), finished a minute apart, written
+    straight into film_takes as the worker's functions leave them (the timings are what 0248 reads). Returns the film."""
+    film = film or db.film(o)
+    scene = db.su("select id from public.film_scenes where film_id = %s order by position limit 1", [film])[0][0]
+    now = datetime.now(timezone.utc)
+    for i, secs in enumerate(seconds):
+        end = now - timedelta(minutes=1 + i)
+        db.su("insert into public.film_takes (film_id, org_id, scene_id, version, shot_index, kind, attempt, status, model, params, "
+              "started_at, finished_at) values (%s, %s, %s, %s, 0, 'keyframe', 1, %s, %s, '{}'::jsonb, %s, %s)",
+              [film, o.org, scene, 100 + db.su("select count(*) from public.film_takes where film_id = %s", [film])[0][0],
+               status, model, end - timedelta(seconds=secs), end])
+    return film
 
 
 def typical(db, who, film):
     return db.one("authenticated", who, "select public.film_take_typical_seconds(%s)", [film])
 
 
-def test_medians_are_the_films_organizations_own_with_n_and_no_ids(db, a, b):
-    film_a = db.film(a)
-    s = db.quoted_start(a, film_a)
-    assert db.claim()["id"] == s["id"]
-    made = db.finish_all(a, s["id"])
-    takes = {t[0]: t[1] for t in db.takes(s["id"])}
-    clips = [t for t, k in takes.items() if k == "clip"]
-    kf = next(t for t, k in takes.items() if k == "keyframe")
-    assert len(clips) >= 2 and made
-    for i, c in enumerate(clips):
-        _timed(db, c, 60 + 30 * i, 10 + i)        # 60 s, 90 s, ...
-    _timed(db, kf, 12, 5)
-    db.cancel(s["id"])
-
-    # Another organization's slow clips on the same model never move a's figure.
-    film_b = db.film(b)
-    sb = db.quoted_start(b, film_b)
-    assert db.claim()["id"] == sb["id"]
-    db.finish_all(b, sb["id"])
-    for t, k in ((t[0], t[1]) for t in db.takes(sb["id"])):
-        _timed(db, t, 3000, 3)
-    db.cancel(sb["id"])
-
-    got = {(r["model"], r["capability"]): r for r in typical(db, a.viewer, film_a)}
-    clip_model = db.su("select model from public.film_takes where id = %s", [clips[0]])[0][0]
-    kf_model = db.su("select model from public.film_takes where id = %s", [kf])[0][0]
-    want = sorted(60 + 30 * i for i in range(len(clips)))
-    med = (want[len(want) // 2] if len(want) % 2 else (want[len(want) // 2 - 1] + want[len(want) // 2]) / 2)
-    r = got[(clip_model, "i2v")]
-    assert (Decimal(str(r["median_s"])), r["n"]) == (Decimal(str(round(med, 1))), len(clips))
-    assert r["n"] < 3, "this lab film has fewer than three clips: the caller must see n and show no figure"
-    assert (got[(kf_model, "t2i")]["median_s"], got[(kf_model, "t2i")]["n"]) == (12, 1)
-    for row in got.values():
-        assert set(row) == {"model", "capability", "median_s", "n"}
-    # b sees only b's.
-    gb = {(r["model"], r["capability"]): r for r in typical(db, b.viewer, film_b)}
-    assert gb[(clip_model, "i2v")]["median_s"] == 3000
+def row_for(db, who, film, model):
+    rows = [r for r in typical(db, who, film) if r["model"] == model]
+    assert len(rows) == 1, rows
+    return rows[0]
 
 
-def test_a_failed_or_never_started_take_is_not_a_duration_and_three_takes_are_n_3(db, a):
-    film = db.film(a)
-    s = db.quoted_start(a, film)
-    assert db.claim()["id"] == s["id"]
-    rows = db.takes(s["id"])
-    kf, clip1 = rows[0][0], rows[1][0]
-    db.make(a, kf, "keyframe")
-    db.begin(clip1)
-    db.fail(clip1, "provider_error")
-    _timed(db, clip1, 999, 2)
-    db.cancel(s["id"])
-    got = {(r["model"], r["capability"]) for r in typical(db, a.viewer, film)}
-    assert not any(cap == "i2v" for _m, cap in got)
-    # Three completed key frames of three films: n = 3, the first figure the plan may show.
-    for i in range(2):
-        f = db.film(a)
-        s2 = db.quoted_start(a, f)
-        assert db.claim()["id"] == s2["id"]
-        k = db.takes(s2["id"])[0][0]
-        db.make(a, k, "keyframe")
-        db.cancel(s2["id"])
-    db.su("update public.film_takes set started_at = finished_at - interval '20 seconds' where org_id = %s and kind = 'keyframe' "
-          "and status = 'completed'", [a.org])
-    row = next(r for r in typical(db, a.viewer, film) if r["capability"] == "t2i")
-    assert (row["n"], row["median_s"]) == (3, 20)
+def test_yours_with_three_takes_gives_its_median_and_n_in_whole_seconds(db, a):
+    m = _model()
+    film = _takes(db, a, m, [10.4, 10.6, 11.5])
+    assert row_for(db, a.viewer, film, m) == {"model": m, "capability": "t2i", "basis": "yours", "median_s": 11, "n": 3}
+
+
+def test_fewer_than_three_of_yours_and_five_workspaces_of_four_give_the_platform_figure_with_no_n_and_no_count(db, a):
+    m = _model()
+    film = _takes(db, a, m, [500, 600])                  # yours: n = 2, not enough
+    for secs in ([10, 12, 14, 16], [20, 22, 24, 26], [30, 31, 32, 33], [40, 41, 42, 43], [50, 50, 50, 50]):
+        _takes(db, db.new_org(), m, secs)
+    r = row_for(db, a.viewer, film, m)
+    # The median of the six workspaces' own medians (550, 13, 23, 31.5, 41.5, 50): (31.5 + 41.5) / 2 = 36.5, whole seconds 37.
+    assert r == {"model": m, "capability": "t2i", "basis": "platform", "median_s": 37}
+    assert set(r) == {"model", "capability", "basis", "median_s"}
+
+
+def test_four_workspaces_however_busy_give_nothing(db, a):
+    m = _model()
+    film = _takes(db, a, m, [60], status="failed")       # the film has a take of the model; a failed one is not a duration
+    for _ in range(4):
+        _takes(db, db.new_org(), m, [30] * 30)
+    assert row_for(db, a.viewer, film, m) == {"model": m, "capability": "t2i", "basis": None}
+
+
+def test_one_busy_workspace_does_not_set_the_platform_figure(db, a):
+    # One workspace of 100 slow takes and four of one fast take each: 20 (its cap) + 4 = 24 takes from 5 workspaces passes the
+    # floor, and the figure is the median of the five workspaces' medians (1000, 10, 20, 30, 40) = 30, never near the busy one's.
+    m = _model()
+    film = _takes(db, a, m, [5], status="failed")
+    _takes(db, db.new_org(), m, [1000] * 100)
+    for secs in (10, 20, 30, 40):
+        _takes(db, db.new_org(), m, [secs])
+    assert row_for(db, a.viewer, film, m) == {"model": m, "capability": "t2i", "basis": "platform", "median_s": 30}
+
+
+def test_both_floors_hold_five_workspaces_and_twenty_takes(db, a):
+    # One workspace of 100 and three of one: 4 workspaces, nothing, however many takes.
+    m = _model()
+    film = _takes(db, a, m, [5], status="failed")
+    _takes(db, db.new_org(), m, [100] * 100)
+    for secs in (10, 20, 30):
+        _takes(db, db.new_org(), m, [secs])
+    assert row_for(db, a.viewer, film, m)["basis"] is None
+    # Five workspaces with 15 + 4 = 19 takes: below 20, nothing.
+    m2 = _model()
+    film2 = _takes(db, a, m2, [5], status="failed")
+    _takes(db, db.new_org(), m2, [100] * 15)
+    for secs in (10, 20, 30, 40):
+        _takes(db, db.new_org(), m2, [secs])
+    assert row_for(db, a.viewer, film2, m2)["basis"] is None
+
+
+def test_a_workspace_counts_over_its_own_last_twenty_only(db, a):
+    # The 20 newest at 10 s, 10 older at 1000 s: the window is the 20 newest (n = 20), so the median is 10, not pulled up.
+    m = _model()
+    film = _takes(db, a, m, [10] * 20 + [1000] * 10)
+    assert row_for(db, a.viewer, film, m) == {"model": m, "capability": "t2i", "basis": "yours", "median_s": 10, "n": 20}
+
+
+def test_only_the_films_own_models_are_answered(db, a, b):
+    m = _model()
+    film = _takes(db, a, m, [10, 11, 12])
+    _takes(db, b, _model(), [10, 11, 12])                 # another workspace's model: never named in a's answer
+    assert {r["model"] for r in typical(db, a.viewer, film)} == {m}
 
 
 def test_someone_who_may_not_read_the_film_gets_not_found_whether_or_not_it_exists(db, a, b):
@@ -252,7 +277,7 @@ def test_both_files_replay_onto_themselves_roll_back_and_apply_again_and_refuse_
         assert gone == (None, None, 0)
         sec_db.put_back_0246(c)
         sec_db.put_back_0248(c)
-        assert c.execute(FOLD, [TAKE_PROGRESS]).fetchone()[0] == "e3c572fc3cc3b95d7dd113b223e837d3"
+        assert c.execute(FOLD, [TAKE_PROGRESS]).fetchone()[0] == "28911b1d6dbdd1bb6176c9617c1aba8c"
         c.execute("create or replace function public.film_take_typical_seconds(p_film uuid) returns jsonb "
                   "language sql stable security definer set search_path = public, pg_temp as $$ select '[]'::jsonb $$")
         with pytest.raises(psycopg.Error) as e:

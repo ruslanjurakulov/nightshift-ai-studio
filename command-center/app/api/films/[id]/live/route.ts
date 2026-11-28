@@ -16,6 +16,23 @@ const MAX_SEGMENTS = 20;
  * ("not known"), never an empty list: an assembly that cannot be read must not look like one that has not started (CLAUDE.md rule 5).
  * Nothing here starts, prices or retries anything.
  */
+/**
+ * 0246's figures say how far a RUNNING take or assembly is. The columns keep their last value after it ends (clearing them would
+ * mean replacing 0171's bodies), so a completed take could read 45 and a failed assembly 100: outside "running" they are null,
+ * "not known" (CLAUDE.md rule 5). A row whose status was not read keeps nothing either.
+ */
+function onlyWhileRunning(rows: unknown[] | null, statusKey: string, keys: string[]): unknown[] | null {
+  if (!rows) return rows;
+  return rows.map((row) => {
+    if (!row || typeof row !== "object") return row;
+    const r = row as Record<string, unknown>;
+    if (!keys.some((k) => k in r) || r[statusKey] === "running") return r;
+    const out = { ...r };
+    for (const k of keys) if (k in out) out[k] = null;
+    return out;
+  });
+}
+
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const gate = await filmGateFor(id);
@@ -45,7 +62,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   // charge_basis (0171) tells a retry's superseded first attempt from any other superseding (lib/studio/liveGraph pickSlot).
   // progress, vendor_state, progress_at (0246): the vendor's own percent and status word of a running take, null when not known.
   for (const columns of [
-    "id,error_code,confirmed_credits,charged_credits,charge_basis,progress,vendor_state,progress_at",
+    "id,status,error_code,confirmed_credits,charged_credits,charge_basis,progress,vendor_state,progress_at",
     "id,error_code,confirmed_credits,charged_credits,charge_basis",
     "id,error_code,confirmed_credits,charged_credits",
     "id,error_code",
@@ -61,14 +78,23 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     }
   }
 
-  // 0248: this workspace's typical take durations per model and capability (median and n; no ids). Null when not readable.
+  // 0248: how long a take of each of this film's models usually takes (basis yours | platform | null; no ids). Only the named fields
+  // pass, and n only for "yours": the platform figure never says how many takes or workspaces it rests on. Null when not readable.
   let typical: unknown[] | null = null;
   try {
     const m = await gate.supabase.rpc("film_take_typical_seconds", { p_film: filmId });
-    if (!m.error && Array.isArray(m.data)) typical = m.data;
+    if (!m.error && Array.isArray(m.data)) {
+      typical = m.data.map((row: unknown) => {
+        const r = (row && typeof row === "object" ? row : {}) as Record<string, unknown>;
+        const base = { model: r.model, capability: r.capability };
+        if (r.basis === "yours") return { ...base, basis: "yours", median_s: r.median_s, n: r.n };
+        if (r.basis === "platform") return { ...base, basis: "platform", median_s: r.median_s };
+        return { ...base, basis: null };
+      });
+    }
   } catch {
     typical = null;
   }
 
-  return NextResponse.json({ film: read.raw, segments, takes, typical }, { headers: NO_STORE });
+  return NextResponse.json({ film: read.raw, segments: onlyWhileRunning(segments, "assembly_status", ["assembly_progress", "assembly_progress_at"]), takes: onlyWhileRunning(takes, "status", ["progress", "vendor_state", "progress_at"]), typical }, { headers: NO_STORE });
 }

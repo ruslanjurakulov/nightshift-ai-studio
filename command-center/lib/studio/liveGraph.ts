@@ -123,16 +123,16 @@ export interface TakeProgress {
 }
 
 /**
- * 0248: how long a completed take of a model usually took in this workspace: the median of its last (up to 20) takes, and n,
- * how many. The plan shows "usually ~N s here (last n takes)" only when n >= 3; the caller decides.
+ * 0248: how long a completed take of a model usually takes (Atlas's rule, #985). `basis`:
+ * - "yours": this workspace's own median over its last (up to 20) takes, with n >= 3;
+ * - "platform": the median of at least 5 workspaces' own medians (20 takes at least); no n is given, by design;
+ * - null: neither, and no duration: show elapsed time only.
+ * Seconds are whole.
  */
-export interface TypicalSeconds {
-  model: string;
-  /** t2i (key frames), i2v (clips and extensions), tts (narration). */
-  capability: string;
-  medianS: number;
-  n: number;
-}
+export type TypicalSeconds =
+  | { model: string; capability: string; basis: "yours"; medianS: number; n: number }
+  | { model: string; capability: string; basis: "platform"; medianS: number }
+  | { model: string; capability: string; basis: null };
 
 /** Per take id, the money columns 0171 added to film_takes. */
 export type TakeMoney = ReadonlyMap<string, LiveCredits>;
@@ -175,10 +175,19 @@ function coerceTypical(raw: unknown): TypicalSeconds[] | null {
     const o = rec(x);
     const model = o && str(o.model);
     const capability = o && str(o.capability);
-    const medianS = o ? num(o.median_s) : null;
-    const n = o ? num(o.n) : null;
-    if (!model || !capability || medianS === null || !(medianS > 0) || n === null || !Number.isInteger(n) || n < 1) continue;
-    out.push({ model, capability, medianS, n });
+    if (!o || !model || !capability) continue;
+    const medianS = num(o.median_s);
+    const seconds = medianS !== null && medianS > 0 && Number.isInteger(medianS) ? medianS : null;
+    if (o.basis === "yours") {
+      const n = num(o.n);
+      // "yours" needs its own n of 3 or more behind it; anything else is not shown as a figure.
+      if (seconds !== null && n !== null && Number.isInteger(n) && n >= 3) out.push({ model, capability, basis: "yours", medianS: seconds, n });
+      else out.push({ model, capability, basis: null });
+    } else if (o.basis === "platform" && seconds !== null) {
+      out.push({ model, capability, basis: "platform", medianS: seconds });
+    } else {
+      out.push({ model, capability, basis: null });
+    }
   }
   return out;
 }
@@ -281,8 +290,9 @@ export function coerceFilmLive(raw: unknown): FilmReading | null {
           assemblyConfirmedCredits: num(s.assembly_confirmed_credits),
           assemblyChargedCredits: num(s.assembly_charged_credits),
           createdAt: str(s.created_at),
-          assemblyProgress: percent(s.assembly_progress),
-          assemblyProgressAt: str(s.assembly_progress_at),
+          // Only a running assembly has a percent: a failed one keeps its last figure in the row (0246), which is not "how far".
+          assemblyProgress: s.assembly_status === "running" ? percent(s.assembly_progress) : null,
+          assemblyProgressAt: s.assembly_status === "running" ? str(s.assembly_progress_at) : null,
         }))
     : null;
   const money = new Map<string, LiveCredits>();
@@ -306,7 +316,11 @@ export function coerceFilmLive(raw: unknown): FilmReading | null {
     if ("progress" in o || "vendor_state" in o) {
       progressRead = true;
       const word = str(o.vendor_state);
-      progress.set(id, { progress: percent(o.progress), vendorState: word && VENDOR_WORD.test(word) ? word : null, at: str(o.progress_at) });
+      // Only a running take has a vendor figure: a finished one keeps its last in the row (0246), which is not "how far".
+      const running = o.status === "running";
+      progress.set(id, running
+        ? { progress: percent(o.progress), vendorState: word && VENDOR_WORD.test(word) ? word : null, at: str(o.progress_at) }
+        : { progress: null, vendorState: null, at: null });
     }
   }
   const filmRow = rec(rec(r.film)?.film);

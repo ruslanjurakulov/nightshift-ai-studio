@@ -246,10 +246,17 @@ class FfmpegProgress(unittest.TestCase):
         m.segment_done(1, 6.0)
         m.final_at(5.0)
         self.assertEqual(got, [20.0, 50.0, 75.0])
+        m.final_at(10.0)        # the timeline's end, while ffmpeg may still be flushing: 100 is not said yet
         m.final_at(10.4)        # past the timeline (padding): not reported, not clamped
         self.assertEqual(got[-1], 75.0)
-        m.reset_segments()      # the compact redo starts the segments again
-        self.assertEqual(m.percent(), 52.0)
+        m.finished()            # the final ffmpeg exited 0: now, and only now, 100
+        self.assertEqual(got[-1], 100.0)
+        fresh = render_backend.RenderProgress(got.append, total_s=10.0)
+        fresh.segment_done(0, 4.0)
+        fresh.segment_done(1, 6.0)
+        fresh.final_at(0.4)
+        fresh.reset_segments()  # the compact redo starts the segments again
+        self.assertEqual(fresh.percent(), 2.0)
 
     def test_a_report_that_raises_never_fails_the_render(self):
         def boom(pct):
@@ -273,7 +280,8 @@ class FfmpegProgress(unittest.TestCase):
         self.assertEqual(got, sorted(got))
         self.assertTrue(all(0 <= p <= 100 for p in got))
         self.assertEqual(got[:2], [25.0, 50.0])        # each 1 s segment of a 2 s timeline is a quarter of the work
-        self.assertGreaterEqual(got[-1], 95.0)
+        self.assertEqual(got[-1], 100.0)                    # said once ffmpeg exited 0
+        self.assertEqual(got.count(100.0), 1)
 
 
 class AssemblyThrottle(unittest.TestCase):

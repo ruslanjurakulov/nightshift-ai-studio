@@ -103,7 +103,9 @@ def resolve_ffmpeg() -> str:
         return "ffmpeg"
 
 
-_OUT_TIME = re.compile(r"^out_time_(?:us|ms)=(-?[0-9]+)$")
+#: ffmpeg writes out_time as an int64: 19 digits at most. A longer run is not ffmpeg's, and int() of one past Python's
+#: 4300-digit limit raises (Breach B-RP-2), so it is not read at all.
+_OUT_TIME = re.compile(r"^out_time_(?:us|ms)=(-?[0-9]{1,19})$")
 
 
 def parse_progress_out_time(text: str) -> Optional[float]:
@@ -122,13 +124,16 @@ class RenderProgress:
     """A render's percent, measured: every segment is encoded once (its seconds count when its ffmpeg finished), then the
     final pass encodes the whole timeline once more (its seconds come from ffmpeg's -progress). So the work is twice the
     timeline's seconds, and the percent is the share of it done. A figure above 100 (a final pass that ran past the
-    timeline, padding) is not reported; nothing is clamped. ``report`` errors are swallowed: progress never fails a render."""
+    timeline, padding) is not reported; nothing is clamped. 100 itself is reported only by ``finished()``, once the final
+    ffmpeg has exited 0: its out_time reaches the timeline's end before it has flushed and closed the file, and a 100 then
+    would say "done" of a render that can still fail. ``report`` errors are swallowed: progress never fails a render."""
 
     def __init__(self, report: Callable[[float], None], total_s: float):
         self._report = report
         self._total = 2.0 * float(total_s)
         self._done: Dict[int, float] = {}
         self._final = 0.0
+        self._finished = False
         self._lock = threading.Lock()
 
     def segment_done(self, index: int, seconds: float) -> None:
@@ -146,12 +151,20 @@ class RenderProgress:
             self._final = max(0.0, float(seconds))
         self._emit()
 
+    def finished(self) -> None:
+        """The final pass exited 0: the render is done, and only now is 100 said."""
+        with self._lock:
+            self._finished = True
+        self._emit()
+
     def percent(self) -> Optional[float]:
         with self._lock:
+            if self._finished:
+                return 100.0
             if not self._total > 0:
                 return None
-            pct = 100.0 * (sum(self._done.values()) + self._final) / self._total
-        return round(pct, 2) if 0.0 <= pct <= 100.0 else None
+            pct = round(100.0 * (sum(self._done.values()) + self._final) / self._total, 2)
+        return pct if 0.0 <= pct < 100.0 else None
 
     def _emit(self) -> None:
         pct = self.percent()
@@ -177,7 +190,7 @@ class ProgressFileWatch:
     def _read(self) -> None:
         try:
             seconds = parse_progress_out_time(self._path.read_text(encoding="utf-8", errors="replace"))
-        except OSError:
+        except (OSError, ValueError):
             return
         if seconds is not None:
             self._on(seconds)
@@ -187,9 +200,12 @@ class ProgressFileWatch:
             self._read()
 
     def stop(self) -> None:
+        """Stops the thread (at most 5 s), then reads the file once more, but only if the thread is gone: a reporter still
+        blocked on the thread (a slow database write) is not called again on the render's own thread (Breach B-RP-1)."""
         self._stop.set()
         self._thread.join(timeout=5)
-        self._read()
+        if not self._thread.is_alive():
+            self._read()
 
 
 #: One pipeline ffmpeg command's wall-clock limit. Under the queue worker's
@@ -1564,6 +1580,8 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
         finally:
             if watch is not None:
                 watch.stop()
+        if meter is not None:
+            meter.finished()
         timings.final_s = round(time.monotonic() - t0, 3)
     timings.total_s = round(time.monotonic() - t_start, 3)
 

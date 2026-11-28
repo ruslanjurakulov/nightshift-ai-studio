@@ -3395,27 +3395,36 @@ database doors it used.
   progress)`: SECURITY DEFINER, service_role only, and they write only for the worker that holds the segment (0171's
   `film_heartbeat_segment` rule) while the take, or the assembly, runs; anything else answers false. A figure outside 0..100
   (or NaN) is stored as NULL, never clamped; a word that is not `^[a-z][a-z0-9_]{0,31}$` is NULL (no prompt, error, task id or
-  money can pass). The worker writes a take at most once per 15 s (a new status word at once), the assembly once per 10 s
+  money can pass). The take writer locks the film, the segment (asking for the worker again) and then the take, film_lock_take's
+  order, and never waits on the take while holding the other two, so a lease taken over while a write waited is seen (Breach
+  B-0246-1); the assembly writer is a single-table UPDATE whose worker_id Postgres re-checks after a wait. The worker writes a take at most once per 15 s (a new status word at once), the assembly once per 10 s
   and a whole point (`TAKE_PROGRESS_SECONDS`, `ASSEMBLY_PROGRESS_SECONDS`, with the reasons beside them).
 - **The assembly's percent** is measured: each segment's seconds count when its ffmpeg finished, then the final pass's
   `out_time_us` from ffmpeg's own `-progress` report, over twice the timeline's seconds (`render_backend.RenderProgress`).
-  A figure above 100 is not reported.
+  A figure of 100 or more is not reported until the final ffmpeg has exited 0; then 100 is (B-RP-1 and B-RP-2: a bounded digit
+  run, and no report on the render's thread from a watcher still blocked).
 - **Readers.** Members read the five columns through RLS (column grants to `authenticated`); `/api/films/[id]/live` returns
-  them with the person's own session, and the shape before 0246 when it is not applied.
+  them with the person's own session, and the shape before 0246 when it is not applied. Only a running take's or
+  assembly's figures are returned: the columns keep their last value after it ends (a completed take's 45, a failed
+  assembly's 100), and the route answers null for those (rule 5).
 - **Lab.** `tests/security/test_sec_take_progress_0246_0248.py`. Unit: `tests/test_take_progress.py`.
 - **Requires** 0171. Replaces no body. **Undo.** `docs/sql/rollback_0246_film_take_progress.sql`.
 
 ## How long a take of a model usually takes here (0248)
 
-- **What.** `film_take_typical_seconds(film)`: per model and capability (keyframe t2i, clip and extend i2v, narration tts),
-  the median seconds (`started_at` .. `finished_at`) of the film organization's last 20 completed takes, and n. The plan shows
-  "usually ~N s here (last n takes)" only with n of 3 or more; n is always returned so the caller decides. Failed takes, takes
-  that never started or ran 6 hours or more are left out.
-- **Who.** SECURITY DEFINER (`started_at` is not a member column), executable by `authenticated` only, and it answers only a
-  member of the film's organization; anyone else gets not_found whether or not the film exists. No id of a take, film,
-  organization or person is returned.
-- **Scope.** The caller's own organization only. The live creation plan says "from our own film_takes timings" and does not
-  settle whether one workspace's timings may inform another's: until Atlas does, nothing crosses an organization.
-- **Lab.** `tests/security/test_sec_take_progress_0246_0248.py` (n < 3 returned with n, another organization's takes never
-  counted, not_found for a non-member, no ids).
+- **What.** `film_take_typical_seconds(film)`, Atlas's rule (#985), per model and capability of the film's own takes (keyframe
+  t2i, clip and extend i2v, narration tts), from completed takes of the last 90 days with a real duration (`started_at` ..
+  `finished_at`, under 6 hours; failed takes left out):
+  1. `basis: 'yours'`: the film organization's last 20 hold 3 or more. Its median in whole seconds, and n.
+  2. `basis: 'platform'`: otherwise, the median of the organizations' own medians (each over its last 20: one workspace, one
+     vote, so no busy workspace sets it), only with at least 5 organizations and 20 takes behind it (a k-anonymity floor).
+     Whole seconds only: no n, no organization count, no id.
+  3. `basis: null`: neither, and no duration: the live view shows elapsed time only.
+- **Who.** SECURITY DEFINER, executable by `authenticated` only; it answers only a member of the film's organization, and
+  anyone else gets not_found, with no figure of any kind. Only the film's own model and capability pairs are answered.
+- **Copy** for S5: `studioLive.typicalYours` "usually ~{n} s" and `studioLive.typicalPlatform` "usually ~{n} s on Nightshift"
+  (en / ru / uz).
+- **Lab.** `tests/security/test_sec_take_progress_0246_0248.py` (yours with n of 3; platform with 5 organizations of 4 takes,
+  no n and no count; 4 organizations of 30 takes give nothing; one organization of 100 and four of 1 give the median of the five
+  medians; whole seconds; not_found for a non-member).
 - **Requires** 0166, 0171 and 0043. **Undo.** `docs/sql/rollback_0248_film_take_typical_seconds.sql`.
