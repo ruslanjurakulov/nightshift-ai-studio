@@ -332,6 +332,11 @@ def test_an_injected_capability_is_400_or_its_own_list_and_writes_nothing(db, ca
     res = models(db, "a_full", cap)
     if cap.strip(" ").lower() == "tts":
         assert ids(res) == ["bimg-tts"], res
+    elif cap == "music":
+        # 0250: music is a capability the database knows (0228), so it is no longer refused as unknown; it is web_only (Lyria's
+        # entry, and the API's own list leaves it out: the Next route refuses it with 400 before this function is reached), so the
+        # API's list for it is empty. Nothing sellable through a key, nothing echoed, nothing written.
+        assert res["ok"] is True and ids(res) == [], res
     else:
         assert res["status"] == 400 and code(res) == "invalid_params", (cap[:40], res)
         # The refusal never echoes the caller's string back (it would be reflected into an assistant's context).

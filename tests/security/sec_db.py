@@ -444,6 +444,10 @@ ON_0139 = (*(f for f in ON_0139 if f != "0230_geo_gate_allow_list.sql"), "0230_g
 ON_0139 = (*ON_0139, "0231_cancel_audit.sql")
 #: 0238 asks for 0230's gate: after 0230, last (ON_0156's copy moved here).
 ON_0139 = (*(f for f in ON_0139 if f != "0238_country_list_sale_needs_allow_list.sql"), "0238_country_list_sale_needs_allow_list.sql")
+#: 0250 (music in sellable_models' list) sits on 0192's sellable_models and refuses any other body: out and back with 0192, after
+#: everything put back after it. It needs nothing of 0230's or 0238's, so it goes right before 0238, which stays the last file.
+ON_0139 = (*(f for f in ON_0139 if f not in ("0250_music_in_job_path_lists.sql", "0238_country_list_sale_needs_allow_list.sql")),
+           "0250_music_in_job_path_lists.sql", "0238_country_list_sale_needs_allow_list.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
@@ -464,6 +468,8 @@ ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164
            "0231_cancel_audit.sql",
            # 0232 sits on 0226's ai_chat_reserve_turn and ai_chat_plan_end: out and back right after it.
            "0232_ai_chat_film_plan_leases.sql",
+           # 0250 sits on 0192's sellable_models (and refuses any other body), and on nothing after it: out and back after 0192.
+           "0250_music_in_job_path_lists.sql",
            # 0218 sits on 0208's creative_price and creative_params_problem: out and back with it, after it.
            "0218_creative_prompt_limits.sql",
            # 0219 replaces 0192's and 0191's oauth_creative_* bodies and refuses to apply without 0218: last.
@@ -1219,6 +1225,7 @@ def take_off_0192(conn_or_session) -> None:
     takes 0192 off first as well. Its rollback puts the fifteen earlier bodies back and drops its functions and triggers;
     adult_attestations (the record, with its append-only triggers) stays, and put_back_0192 picks it up again."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0250(conn)  # 0250 sits on 0192's sellable_models, and 0192's rollback refuses any other body
     take_off_0219(conn)  # 0219 sits on 0192's oauth_creative_quote and oauth_creative_models, and 0192's rollback refuses them
     take_off_0198(conn)  # 0198 sits on 0192's quote_film and start_film, and 0192's rollback refuses any other body
     take_off_0196(conn)  # 0196 sits on 0192's route_model, api_create_video and oauth_create_video; 0192's rollback refuses them
@@ -1239,6 +1246,7 @@ def put_back_0192(conn_or_session) -> None:
     put_back_0196(conn)
     put_back_0198(conn)
     put_back_0219(conn)
+    put_back_0250(conn)
 
 
 MIGRATION_0196 = MIGRATIONS / "0196_adult_attestation_google_runs.sql"
@@ -1567,6 +1575,40 @@ def put_back_0233(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if not has_0233(conn):
         conn.execute(MIGRATION_0233.read_text(encoding="utf-8"))
+
+
+MIGRATION_0250 = MIGRATIONS / "0250_music_in_job_path_lists.sql"
+ROLLBACK_0250 = REPO / "docs" / "sql" / "rollback_0250_music_in_job_path_lists.sql"
+#: sellable_models(text, text) by 0230's fingerprint (`--` comments cut, then white space folded): 0192's body, and 0250's (music known).
+SELLABLE_MODELS_0192 = "85aaba9a2ec82dc7f276dd2135b4c7cf"
+SELLABLE_MODELS_0250 = "c7697dbcd9312d1e4756fbe3997c15a0"
+
+
+def cut_md5(conn_or_session, sig: str) -> Optional[str]:
+    """0230's fingerprint of a function body: every `--` comment cut to the end of its line, then white space folded."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return conn.execute("select md5(regexp_replace(regexp_replace(prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), "
+                        "'[[:space:]]+', ' ', 'g')) from pg_proc where oid = to_regprocedure(%s)", [sig]).fetchone()[0]
+
+
+def has_0250(conn_or_session) -> bool:
+    return cut_md5(conn_or_session, "public.sellable_models(text, text)") == SELLABLE_MODELS_0250
+
+
+def take_off_0250(conn_or_session) -> None:
+    """0250 out (0192's sellable_models back), before anything replays or rolls back 0192: 0192's guard and rollback refuse 0250's
+    body. Harmless where 0250 is not on."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0250(conn):
+        text = ROLLBACK_0250.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0250(conn_or_session) -> None:
+    """0250 again, only where 0192's sellable_models is the live body (its guard refuses any other) and it is not on already."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if cut_md5(conn, "public.sellable_models(text, text)") == SELLABLE_MODELS_0192:
+        conn.execute(MIGRATION_0250.read_text(encoding="utf-8"))
 
 
 def migration_files() -> list[Path]:

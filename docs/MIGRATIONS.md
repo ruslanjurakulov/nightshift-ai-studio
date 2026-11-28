@@ -3383,3 +3383,49 @@ database doors it used.
   The two rows now have no terms gate, so `--all` in the Probe models workflow includes them: one paid call each.
 - **Tests.** `tests/test_country_sale_allow_list_migration.py`, `tests/test_geoip_build.py` (`RegistryField`),
   `tests/test_google_requires_adult.py`, `tests/security/test_sec_country_sale_0238.py`, `tests/security/test_sec_country_block.py`.
+
+## sellable_models knows `music`: the last closed capability list on the job path (0250)
+
+0250 (`0250_music_in_job_path_lists.sql`, stream S6) is **live on apply**. It replaces one function, writes no row, changes no
+grant and puts nothing on sale.
+
+- **Evidence** (measured in a PG16 lab with every migration through 0238). After 0228, `sellable_models` (0192's body) still raised
+  22023 "unknown capability music". With a music model lit and priced:
+  - `route_model` (0196) catches that 22023 as "no candidates", so every routed music quote and job (auto, cheap, fast, quality)
+    answered `no_model_available` with a model on sale;
+  - `reroute_creative_job` (0208, the worker's failover) does not catch it, so a routed music job's failover raised in the worker;
+  - `api_creative_model_ok` and `api_creative_models` answered music as an unknown capability (`invalid_params`).
+  - The exact Studio path never asks `sellable_models` (it prices through `creative_price`), so an exact music job was already
+    quoted, held and claimed. "Every music job would fail" was true of routed jobs and the failover only.
+- **Sweep.** The migration header lists every closed capability list on the job path, read from the live body (the last migration
+  that replaces each function), with its md5, in four groups:
+  - must add music: `sellable_models` only;
+  - already know it: `creative_capability_supported`, `creative_params_problem`, `creative_price`, `creative_quantity` and 0228's
+    two CHECKs;
+  - no closed list: quote, create, cancel, claim, advance, finish, attach, expire, hold, capture and refund, the router, the
+    operator preview, the country gate. `creative_jobs.capability`'s CHECK is a shape, not a list, and no credit or price table
+    names a capability;
+  - correctly exclude it: the API's list (`api_creative_models`, `API_CREATIVE_CAPABILITIES`) and the connected assistants'
+    (`oauth_creative_capabilities` and the functions gated by it), because music is web_only. Film's takes are t2i, edit, i2v
+    and tts only. The style and source checks and the workflow picture lists are about pictures and input files.
+  - `video_music` and `video_character_swap` stay unknown everywhere.
+- **Change.** `sellable_models`: 0192's body with `'music'` appended to its list of known capabilities (one marked hunk). On the
+  API and MCP surfaces a web_only music model is then "not sold here" (an empty list, `api_creative_model_ok` false), not 22023.
+  So `api_creative_models` called with `music` straight in the database answers 200 with no models instead of 400 invalid_params
+  (`test_sec_breach_mcp_studio_0162.py` pins the new answer). The public route still answers 400 first: `music` is not in
+  `API_CREATIVE_CAPABILITIES`.
+- **Guard.** 0230's comment-cut fingerprint (`--` comments cut, then white space folded). It accepts 0192's
+  `85aaba9a2ec82dc7f276dd2135b4c7cf` or 0250's `c7697dbcd9312d1e4756fbe3997c15a0` (a replay is a no-op), and otherwise refuses,
+  naming the drift. Folded only: `40f61462ddae2fc0e83a0956f4d8b75b` -> `cc33fd2dc2947f5c7680236a53446aa2`. No backslash.
+- **Order.** Apply by hand after 0228, 0230 and 0238. It needs only 0192's body; without 0228 it sells nothing (a NOTICE says so).
+  A replay of 0192 refuses while 0250 is on (0192's guard), and so do 0124's, 0125's and 0188's. A replay of an older file that
+  replaces `sellable_models` without a guard (0035 to 0100) puts an older body back: apply the chain after it again, ending with
+  0192 and then 0250.
+- **Undo.** `docs/sql/rollback_0250_music_in_job_path_lists.sql` (owner-applied): refuses a body that is neither 0250's nor 0192's,
+  names any music model on sale in a NOTICE (it stays on sale, and routing and failover stop finding it), and puts 0192's body
+  back verbatim.
+- **Owner step.** Apply 0250 in the SQL editor (one transaction), then run the Verify query at the end of the file: every column
+  reads true.
+- **Tests.** `tests/test_music_job_path_lists_migration.py` (static) and `tests/security/test_sec_music_job_path_0250.py` (a real
+  PostgreSQL, with the red half: on 0192's body the same failover raises 22023). Contract `tests/security/sec_music_job_path_0250.py`.
+  `sec_db.take_off_0192` takes 0250 off first, and `put_back_0192` puts it back last.
