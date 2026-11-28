@@ -136,7 +136,7 @@ describe("S1 story grammar through /api/brain/turn", () => {
     const changed = await (await post({ action: "change", session: SESSION, slot: "aspect", choice: 1 })).json();
     expect(changed.slots.aspect).toBe("16:9");
     expect(changed.slots.inferred).toEqual(["language", "audience"]);
-    expect(called("ai_chat_reserve_turn")[1][1]).toMatchObject({ p_text: "Shape: 16:9" });
+    expect(called("ai_chat_reserve_turn")[1][1]).toMatchObject({ p_text: "Shape: Landscape 16:9" });
     // A slot that is not an inference (any more), or a value the server cannot make, is refused before any turn.
     state.session = { ...state.session!, slots: changed.slots };
     expect((await post({ action: "change", session: SESSION, slot: "aspect", choice: 2 })).status).toBe(409);
@@ -222,12 +222,12 @@ describe("S1 story grammar through /api/brain/turn", () => {
     expect(fin[fin.length - 1]).toMatchObject({ p_outcome: "ok", p_text: "", p_slots: expect.objectContaining({ aspect: "16:9" }) });
   });
 
-  it("a language chip is shown and stored by its own name, never the English value", async () => {
+  it("a language chip is stored by its name in the app's language (en here), the value merged being the server's", async () => {
     const slots = { kind: "short", target_seconds: 60, style: "x", aspect: "9:16", language: "English", audience: "y", inferred: ["language"] };
     state.session = { ...state.session!, slots, step: "proposing" };
     state.llm = ANSWER({ scenarios: [storyOutline([15, 15, 15, 15]), storyOutline([15, 15, 15, 15])] });
     await post({ action: "change", session: SESSION, slot: "language", choice: 2 });
-    expect(called("ai_chat_reserve_turn")[0][1]).toMatchObject({ p_text: "Language: Русский" });
+    expect(called("ai_chat_reserve_turn")[0][1]).toMatchObject({ p_text: "Language: Russian" });
   });
 
   it("M3: look sheets too long for any shot are refused before the lease and any turn", async () => {

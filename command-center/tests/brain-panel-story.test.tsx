@@ -27,9 +27,13 @@ const outline = (title: string) => ({ title, idea: `idea ${title}`, target_secon
 const slots = { kind: "short", target_seconds: 30, style: "multfilm", aspect: "9:16", language: "Uzbek", audience: "oilalar", inferred: ["aspect", "language", "audience"] };
 let voice: Record<string, unknown> = { mode: "narration", blocked: ["voice_unavailable"] };
 let sent: Record<string, unknown>[] = [];
+let changeFails = false;
+let chooseError: Record<string, unknown> | null = null;
 
 beforeEach(() => {
   sent = [];
+  changeFails = false;
+  chooseError = null;
   created.n = 0;
   voice = { mode: "narration", blocked: ["voice_unavailable"] };
   window.sessionStorage.clear();
@@ -46,6 +50,9 @@ beforeEach(() => {
     if (url.startsWith("/api/brain/turn")) {
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       sent.push(body);
+      if (body.action === "choose" && chooseError) return json(502, chooseError);
+      if (body.action === "change" && changeFails) return json(409, { error: "card_changed" });
+      if (body.action === "turn") return json(200, { reply: "OK", step: "proposing", card: null, slots, scenarios: [outline("Alpha"), outline("Beta")], brief: { version: 1, kind: "short" } });
       if (body.action === "change") {
         return json(200, { reply: "OK", step: "proposing", card: null, slots: { ...slots, aspect: "16:9", inferred: ["language", "audience"] },
                            scenarios: [outline("Alpha"), outline("Beta")], brief: { version: 1, kind: "short" } });
@@ -70,38 +77,118 @@ const open = async () => {
   return screen.findByRole("button", { name: en.chooseThisNamed.replace("{title}", "Alpha") });
 };
 
+const chipName = (slot: string, value: string) => en.inferredChipLabel.replace("{slot}", slot).replace("{value}", value);
+
 describe("Nightshift AI panel: story grammar", () => {
-  it("inferred slots are chips; pressing one shows the server's own options and sends the person's choice as a change", async () => {
+  it("inferred slots are short chips; pressing one shows the server's own options, described, and sends the value as a change", async () => {
     await open();
-    const chip = await screen.findByRole("button", { name: en.inferredChipLabel.replace("{slot}", "Shape").replace("{value}", "9:16") });
+    const chip = await screen.findByRole("button", { name: chipName("Shape", "9:16") });
+    expect(chip.textContent).toBe("Shape: 9:16");
     await act(async () => fireEvent.click(chip));
     const card = await screen.findByTestId("change-card");
-    expect(card.textContent).toContain("16:9");
-    expect(card.textContent).toContain("1:1");
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: /16:9/ })));
+    expect(card.textContent).toContain(en.aspectNames["16:9"]);
+    expect(card.textContent).toContain(en.aspectNames["1:1"]);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: new RegExp(en.aspectNames["16:9"]) })));
     await waitFor(() => expect(sent.some((b) => b.action === "change")).toBe(true));
     expect(sent.find((b) => b.action === "change")).toMatchObject({ action: "change", session: S1, slot: "aspect", choice: 1 });
     // The answer is the person's now: no chip for it any more.
-    await waitFor(() => expect(screen.queryByRole("button", { name: en.inferredChipLabel.replace("{slot}", "Shape").replace("{value}", "16:9") })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("button", { name: chipName("Shape", "16:9") })).toBeNull());
   });
 
-  it("a voice-over film says so, names why Create is not offered, and never mounts Create", async () => {
+  it("M1: the card opens right after its chip with focus inside; Escape and Keep it close it and give focus back to the chip", async () => {
+    await open();
+    const chip = await screen.findByRole("button", { name: chipName("Shape", "9:16") });
+    expect(chip.getAttribute("aria-expanded")).toBe("false");
+    expect(chip.hasAttribute("aria-pressed")).toBe(false);
+    await act(async () => fireEvent.click(chip));
+    const card = await screen.findByTestId("change-card");
+    expect(chip.getAttribute("aria-expanded")).toBe("true");
+    expect(chip.getAttribute("aria-controls")).toBe(card.id);
+    // In the DOM right after the chip that opened it, so Tab from the chip reaches the card, not the next chip.
+    expect(chip.nextElementSibling).toBe(card);
+    await waitFor(() => expect(card.contains(document.activeElement)).toBe(true));
+    await act(async () => fireEvent.keyDown(document.activeElement!, { key: "Escape" }));
+    await waitFor(() => expect(screen.queryByTestId("change-card")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: chipName("Shape", "9:16") })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: chipName("Shape", "9:16") })));
+    await act(async () => fireEvent.click(await screen.findByRole("button", { name: en.changeCancel })));
+    await waitFor(() => expect(screen.queryByTestId("change-card")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: chipName("Shape", "9:16") })));
+  });
+
+  it("M2: with a shape's card open, a typed message is an ordinary turn and closes the card; only the audience takes the box", async () => {
+    await open();
+    await act(async () => fireEvent.click(await screen.findByRole("button", { name: chipName("Shape", "9:16") })));
+    await screen.findByTestId("change-card");
+    const box = screen.getByRole("textbox");
+    expect(box.getAttribute("placeholder")).not.toBe(en.shell.ownAnswer);
+    await act(async () => { fireEvent.change(box, { target: { value: "make it funnier" } }); });
+    await act(async () => { fireEvent.keyDown(box, { key: "Enter" }); });
+    await waitFor(() => expect(sent.length).toBeGreaterThan(0));
+    expect(sent[0]).toMatchObject({ action: "turn", text: "make it funnier" });
+    expect(sent.some((b) => b.action === "change")).toBe(false);
+    expect(screen.queryByTestId("change-card")).toBeNull();
+  });
+
+  it("M2: the audience's card makes the box its answer, with the own-answer placeholder", async () => {
+    await open();
+    await act(async () => fireEvent.click(await screen.findByRole("button", { name: chipName("Audience", "oilalar") })));
+    await screen.findByTestId("change-card");
+    const box = screen.getByRole("textbox");
+    expect(box.getAttribute("placeholder")).toBe(en.shell.ownAnswer);
+    await act(async () => { fireEvent.change(box, { target: { value: "grandparents" } }); });
+    await act(async () => { fireEvent.keyDown(box, { key: "Enter" }); });
+    await waitFor(() => expect(sent.some((b) => b.action === "change")).toBe(true));
+    expect(sent.find((b) => b.action === "change")).toMatchObject({ slot: "audience", own: "grandparents" });
+  });
+
+  it("m1: a language chip and its options are in the app's own language; the value sent is the server's", async () => {
+    await open();
+    const chip = await screen.findByRole("button", { name: chipName("Language", en.languageNames.Uzbek) });
+    await act(async () => fireEvent.click(chip));
+    const card = await screen.findByTestId("change-card");
+    expect(card.textContent).toContain(en.languageNames.Russian);
+    expect(card.textContent).not.toContain("O'zbek");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: new RegExp(en.languageNames.Russian) })));
+    await waitFor(() => expect(sent.find((b) => b.action === "change")).toMatchObject({ slot: "language", choice: 2 }));
+  });
+
+  it("m7: a change that fails closes its card, and the refusal is said", async () => {
+    changeFails = true;
+    await open();
+    await act(async () => fireEvent.click(await screen.findByRole("button", { name: chipName("Shape", "9:16") })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: new RegExp(en.aspectNames["16:9"]) })));
+    await waitFor(() => expect(screen.queryByTestId("change-card")).toBeNull());
+    expect(await screen.findByRole("alert")).toBeTruthy();
+  });
+
+  it("M3: a blocked film (a storyboard saved before the fix round) says why, that nothing was priced once, and offers the way to make it today", async () => {
+    voice = { mode: "narration", blocked: ["voice_unavailable", "clip_sound_not_kept"] };
     const btn = await open();
     await act(async () => fireEvent.click(btn));
     await screen.findByText(en.speechBlocked.voice_unavailable);
-    expect(screen.getByText(en.voiceOverNote)).toBeTruthy();
-    expect(screen.getByRole("button", { name: en.createBlocked })).toHaveProperty("disabled", true);
+    expect(screen.getByText(en.speechBlocked.clip_sound_not_kept)).toBeTruthy();
+    expect(screen.getAllByText(en.blockedSaved)).toHaveLength(1);
     expect(screen.queryByTestId("film-create")).toBeNull();
     expect(created.n).toBe(0);
-    expect(document.body.textContent).not.toContain("spoken by the video model");
+    // No dead Create button: the press that can change it, and the storyboard.
+    expect(screen.queryByRole("button", { name: "Create" })).toBeNull();
+    expect(screen.getByRole("link", { name: en.seeStoryboard })).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: en.wordlessAsk })));
+    await waitFor(() => expect(sent.some((b) => b.action === "turn" && b.text === en.wordlessAskText)).toBe(true));
+    expect(document.body.textContent).not.toMatch(/Nothing was charged|spoken by the video model/);
   });
 
-  it("a film spoken in its clips is refused by its own reason while the cut drops clip sound", async () => {
-    voice = { mode: "clip_audio", blocked: ["clip_sound_not_kept"] };
-    const btn = await open();
+  it("M4: a narration refusal keeps its own words on the plan_failed path, with or without its chapter", async () => {
+    chooseError = { error: "plan_failed", reason: "narration_too_long", step: null };
+    let btn = await open();
     await act(async () => fireEvent.click(btn));
-    await screen.findByText(en.speechBlocked.clip_sound_not_kept);
-    expect(screen.queryByTestId("film-create")).toBeNull();
+    expect(await screen.findByText(en.errors.narration_too_long_plain)).toBeTruthy();
+    cleanup();
+    chooseError = { error: "plan_failed", reason: "narration_too_long", step: { chapter: 2, chapters: 4, window: 1, windows: 1 } };
+    btn = await open();
+    await act(async () => fireEvent.click(btn));
+    expect(await screen.findByText(en.errors.narration_too_long.replace("{chapter}", "2"))).toBeTruthy();
   });
 
   it("a story planned wordless where its format meant words says so plainly, and Create is S2's", async () => {
@@ -111,15 +198,6 @@ describe("Nightshift AI panel: story grammar", () => {
     await screen.findByTestId("film-create");
     expect(screen.getByText(en.plannedWordless)).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/Nothing was charged/);
-  });
-
-  it("chips show a language by its own name, and its change options too", async () => {
-    await open();
-    const chip = await screen.findByRole("button", { name: en.inferredChipLabel.replace("{slot}", "Language").replace("{value}", "O'zbek") });
-    await act(async () => fireEvent.click(chip));
-    const card = await screen.findByTestId("change-card");
-    expect(card.textContent).toContain("Русский");
-    expect(card.textContent).not.toContain("Russian");
   });
 
   it("with nothing blocking, Create is S2's as before", async () => {

@@ -39,7 +39,6 @@ import {
   type Scenario,
 } from "@/lib/brain/logic";
 import { SYSTEM_PROMPT, dataBlock } from "@/lib/brain/prompt";
-import { HOME_LANGUAGES } from "@/lib/home";
 import { getDictionaryFor } from "@/lib/i18n";
 import { isLocale } from "@/lib/i18n/core";
 import { callChatModel, type ChatModelId } from "@/lib/server/brain/llm";
@@ -744,9 +743,12 @@ export async function POST(request: Request) {
     // Read on its own (from the kind alone): merged into prev, an unusable value would leave the old inference standing.
     const forced = mergeSlots({ kind: prev.kind }, { [slot]: value }).slots[slot];
     if (forced === undefined) return brainJson({ error: "bad_request" }, 400);
-    const label = (await kindChoices(s)).words.slotNames[slot];
-    // The person's message reads as the chip showed it: a language by its own name, never the stored English value.
-    const said = slot === "language" ? HOME_LANGUAGES.find((l) => l.value === forced)?.label ?? value : value;
+    const words = (await kindChoices(s)).words;
+    const label = words.slotNames[slot];
+    // The person's message reads as the chip showed it, in the app's language (a language by its own name, a shape described); the
+    // value merged is the server's own either way.
+    const names = slot === "language" ? (words.languageNames as Record<string, string>) : slot === "aspect" ? (words.aspectNames as Record<string, string>) : {};
+    const said = names[String(forced)] ?? value;
     return runTurn(supabase, s, `${label}: ${said}`, false, requestId, { [slot]: forced } as Partial<Pick<BrainSlots, InferableSlot>>);
   }
   if (b.action === "choose") return choose(supabase, s, b.index);

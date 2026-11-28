@@ -449,7 +449,7 @@ describe("F: about 3 s a shot, and every plan within 0232's turn bound", () => {
 });
 
 describe("i18n: every new string in en, ru and uz, Uzbek with its own apostrophes", () => {
-  const keys = ["voiceOverNote", "inClipNote", "wordlessNote", "createBlocked", "inferredChip", "inferredChipLabel", "inferredHeading", "changeQuestion", "changeOwn", "changeCancel"] as const;
+  const keys = ["voiceOverNote", "inClipNote", "wordlessNote", "blockedSaved", "wordlessAsk", "wordlessAskText", "seeStoryboard", "inferredChip", "inferredChipLabel", "inferredHeading", "changeQuestion", "changeOwn", "changeCancel"] as const;
   it("has each key, the speech refusals and the new errors in all three", () => {
     for (const d of [aiChatEn, aiChatRu, aiChatUz]) {
       for (const k of keys) expect(typeof d[k]).toBe("string");
@@ -488,6 +488,18 @@ describe("Lens M3: look sheets that could never fit a shot's prompt are refused 
       expect(d.errors.story_arc_invalid).toContain("{messages}");
       for (const t of Object.values(d.speechBlocked)) expect(t).not.toMatch(/charged|списано|yechilmadi/);
     }
+    // Pixel m1/m4: languages and shapes named in each UI language; Uzbek with its own ʻ, never the ASCII apostrophe.
+    for (const d of [aiChatEn, aiChatRu, aiChatUz]) {
+      expect(Object.keys(d.languageNames).sort()).toEqual(["English", "Russian", "Uzbek"]);
+      expect(Object.keys(d.aspectNames).sort()).toEqual(["16:9", "1:1", "9:16"]);
+    }
+    expect(aiChatUz.languageNames.Uzbek).toBe("Oʻzbekcha");
+    expect(aiChatRu.languageNames.Russian).toBe("Русский");
+    expect(JSON.stringify([aiChatUz.languageNames, aiChatUz.aspectNames, aiChatUz.wordlessAsk, aiChatUz.blockedSaved, aiChatUz.seeStoryboard])).not.toMatch(/'/);
+    expect(aiChatRu.blockedSaved).toContain("Цена не рассчитана");
+    expect(JSON.stringify(aiChatRu.errors)).not.toContain("Ничего не оценено");
+    expect(aiChatRu.errors.plan_shot_rules.match(/кадр/g) ?? []).toHaveLength(1);
+    expect(aiChatEn.errors.story_arc_invalid).not.toMatch(/setup|longing|payoff|hook/);
     expect(aiChatEn.plannedWordless).toBe("This story is planned without spoken lines: voices and in-clip sound aren't available for films yet.");
   });
 });
