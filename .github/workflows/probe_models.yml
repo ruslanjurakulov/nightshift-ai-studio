@@ -14,6 +14,11 @@ name: Probe models
 # is skipped and costs nothing. Probe one model by giving its id; leave it
 # empty for every model in schemas/model_registry.json.
 #
+# SYNC ONLY costs nothing: with the sync_only input set, the job runs exactly
+# `python tools/probe_models.py --sync`, which copies the registry file into the
+# database and makes no vendor call (no --all, no --model, so nothing is probed).
+# Use it after a migration or a registry change that only needs the rows synced.
+#
 # Manual only (Actions -> Probe models -> Run workflow), never on a push or a
 # pull request. This log is public: the tool runs with --brief, which prints
 # only "ok <id>", "failed <id> <error code>" or "skipped <id>". Keys travel in
@@ -27,6 +32,11 @@ on:
         description: "One model id from schemas/model_registry.json (empty = every model; each probe is a paid call)"
         required: false
         default: ""
+      sync_only:
+        description: "Only copy the registry into the database: no probe, no vendor call, costs nothing"
+        type: boolean
+        required: false
+        default: false
       voice_id:
         description: "ElevenLabs voice for the speech probes: a voice id picked from the account's voice list (20 letters and digits). Empty = the ELEVENLABS_VOICE_ID variable"
         required: false
@@ -67,6 +77,8 @@ jobs:
       - name: Probe
         env:
           MODEL_ID: ${{ github.event.inputs.model }}
+          # "true" or "false" (a workflow_dispatch boolean arrives as text here).
+          SYNC_ONLY: ${{ github.event.inputs.sync_only }}
           # Its own input, so a probe never needs ELEVENLABS_VOICE_ID set: daily_video.yml and deploy_web.yml read
           # that variable too, and setting it just to probe would change the bot's voice.
           VOICE_INPUT: ${{ github.event.inputs.voice_id }}
@@ -106,6 +118,37 @@ jobs:
           ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
         run: |
           set -eu
+          # Sync only: exactly `python tools/probe_models.py --sync`. A model or a voice alongside it is a
+          # contradiction (a probe is a paid call), so it is refused rather than half-honoured.
+          if [[ "${SYNC_ONLY:-false}" == "true" ]]; then
+            if [[ -n "$MODEL_ID" || -n "$VOICE_INPUT" ]]; then
+              echo "::error::sync_only makes no vendor call: leave the model and voice_id inputs empty"
+              exit 1
+            fi
+            args=(--sync)
+            # The guard the run rests on: whatever changes above, a sync-only run never carries a probe flag.
+            for a in "${args[@]}"; do
+              if [[ "$a" == "--all" || "$a" == "--model" ]]; then
+                echo "::error::sync_only would have probed: refusing"
+                exit 1
+              fi
+            done
+            out="$RUNNER_TEMP/probe.txt"
+            set +e
+            python tools/probe_models.py "${args[@]}" 2>&1 | tee "$out"
+            rc=${PIPESTATUS[0]}
+            set -e
+            {
+              echo "### Probe models: sync only"
+              echo
+              echo "No vendor call was made, nothing was probed and nothing cost money: the registry file was copied into the database."
+              echo
+              echo '```'
+              grep -E '^synced [0-9]+ models' "$out" || echo "no sync line: see the job log"
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+            exit "$rc"
+          fi
           args=(--sync --brief --timeout 600 --by probe_models@github-actions)
           if [[ -n "$MODEL_ID" ]]; then
             if [[ ! "$MODEL_ID" =~ ^[a-z0-9][a-z0-9._-]{0,63}$ ]]; then
