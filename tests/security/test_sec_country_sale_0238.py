@@ -263,7 +263,9 @@ def test_the_gates_rollbacks_refuse_while_a_listed_row_is_on_sale(conn, sc):
 def test_the_lab_chain_puts_0238_back_after_0230(conn, sc):
     for name in ("ON_0156", "ON_0139", "ON_0125", "ON_0124"):
         seq = list(getattr(sec_db, name))
-        assert seq[-1] == MIGRATION.name, name
+        # Last, or followed only by 0236 (film_price and film_assembly_retryable: nothing of 0230's or 0238's), which closes the lists.
+        assert [f for f in seq if f != "0236_film_clip_sound_gate.sql"][-1] == MIGRATION.name, name
+        assert seq[-1] in (MIGRATION.name, "0236_film_clip_sound_gate.sql"), name
         assert seq.index(M0230.name) < seq.index(MIGRATION.name), name
     with as_superuser(conn, commit=False) as s:
         sec_db.take_off_0208(s)                                        # 0238's rollback first, then the gate goes
