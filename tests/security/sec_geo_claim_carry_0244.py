@@ -15,3 +15,17 @@ def extend(tables: dict, functions: dict) -> None:
 
     tables.update({"creative_geo_carry": Service()})
     functions.update({"creative_geo_refusal": SERVICE, "creative_geo_carried": SERVICE})
+
+
+def seed(conn, sc) -> None:
+    """One recorded country per tenant, on its seeded (finished) workflow run, written as the database owner: the starts are the only
+    writers in the app, and the closed-table attacks need a real row to aim at."""
+    import sec_workflows_0073
+    from sec_db import as_superuser
+
+    with as_superuser(conn) as s:
+        if not s.value("select to_regclass('public.creative_geo_carry') is not null"):
+            return
+        for t in sc.tenants():
+            s.rows("insert into public.creative_geo_carry (workflow_run_id, country, recorded_by) values (%s, 'UZ', %s) "
+                   "on conflict (workflow_run_id) do nothing returning 1", [sec_workflows_0073.RUN[t.key], t.actor.uid])

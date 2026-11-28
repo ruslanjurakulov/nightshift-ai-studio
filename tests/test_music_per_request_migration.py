@@ -138,7 +138,9 @@ class TheGuards(unittest.TestCase):
         # 0208's rollback starts with 0228's: directly, or (once 0224 is merged) through 0224's rollback, which starts with it.
         r0208 = LAB[LAB.index("def rollback_0208_body("):LAB.index("def take_off_0208(")]
         if "rollback_0228_body() +" not in r0208:
-            self.assertIn("return rollback_0224_body() + ", r0208)
+            # 0244's conditional rollback (on 0230's gate, which 0208's rollback drops) may come first.
+            self.assertTrue("return rollback_0224_body() + " in r0208 or
+                            'return rollback_0244_if_on() + "\\n" + rollback_0224_body() + ' in r0208)
             r0224 = LAB[LAB.index("def rollback_0224_body("):]
             self.assertIn("return rollback_0228_body() + ", r0224[:r0224.index("\ndef ")])
 

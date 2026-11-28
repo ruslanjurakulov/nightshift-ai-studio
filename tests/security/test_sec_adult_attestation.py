@@ -479,10 +479,13 @@ def test_replay_and_rollback_keep_the_record(db):
     # Both layers are back on top of 0192: 0198's quote and start ask the organization's switch too, and every other gated body is
     # 0192's or 0196's own (0196 replaces route_model and api_create_video).
     film = ("public.quote_film(uuid,integer)", "public.start_film(uuid,text,text)")
-    # put_back_0198 puts 0215 back on it too: its quote_film and start_film (only a member spends) are the live ones.
+    # put_back_0198 puts 0215 back on it too: its quote_film and start_film (only a member spends) are the live ones; and 0244 (a
+    # start's country carried) on 0215's start_film.
     on_0215 = sec_db.MIGRATION_0215.exists()
+    start_now = (sec_db.FOLDED_0244["public.start_film(uuid, text, text)"] if sec_db.MIGRATION_0244.exists()
+                 else "37d467f86ed6350598144c4252568e1f")
     assert [_md5(db, s) for s in film] == [("58c59ee1637b6d973415e3df640c305b" if on_0215 else "99d01240ed2df7fb002f674df8891608"),
-                                           ("37d467f86ed6350598144c4252568e1f" if on_0215 else "7971355d754165affaf3e08904b4b078")]
+                                           (start_now if on_0215 else "7971355d754165affaf3e08904b4b078")]
     assert sec_db.has_0196(psycopg.connect(db.dsn, autocommit=True)) and sec_db.has_0198(psycopg.connect(db.dsn, autocommit=True))
     assert gate_triggers(db) == [("credit_reservations", "adult_attestation_hold_gate"),
                                  ("download_requests", "adult_attestation_download_gate"),

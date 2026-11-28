@@ -548,6 +548,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     with as_superuser(conn) as s:
         s.rows("insert into public.credit_price_schedule (unit, credits_per_unit, effective_at, reason) "
                "values (%s, 5, '2099-01-01T00:00:00Z', 'security lab seed') returning 1", [f"model_{MODEL_HIDDEN.replace('-', '_')}_image"])
+    # A start's recorded country (0244): tests/security/sec_geo_claim_carry_0244.py — one row per tenant, on its seeded workflow run.
+    import sec_geo_claim_carry_0244
+    sec_geo_claim_carry_0244.seed(conn, sc)
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.

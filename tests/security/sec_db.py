@@ -718,7 +718,8 @@ def rollback_0208_body() -> str:
     harmless where it is not on, 0218's runs only where 0218 is on. (0238 is taken off by take_off_0208, which can ask the database
     whether it is on: a scratch database that dropped 0142's CHECK to put a country-listed model on sale has nothing to take off.)"""
     text = ROLLBACK_0208.read_text(encoding="utf-8")
-    return rollback_0224_body() + "\n" + rollback_0218_if_on() + "\n" + "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+    # 0244 sits on 0230's gate (which this rollback drops) and calls 0208's claim reader: its rollback first, where it is on.
+    return rollback_0244_if_on() + "\n" + rollback_0224_body() + "\n" + rollback_0218_if_on() + "\n" + "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
 
 
 def take_off_0208(conn_or_session) -> None:
@@ -788,7 +789,15 @@ def put_back_0238(conn_or_session) -> None:
     """0238 again, only where 0230's gate is live (its guard refuses any other body) and it is not on already. A replay of 0142
     (drop, then add) puts 0142's CHECK back over 0238's, so a test that replays 0142 calls this after."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
-    if not has_0238(conn) and _md5_of(conn, "public.creative_jobs_geo_gate()") == GEO_GATE_0230:
+    if has_0238(conn):
+        return
+    # 0244's gate sits on 0230's, and 0238's guard asks for 0230's body: 0244 off, 0238 on, 0244 back.
+    if _md5_of(conn, "public.creative_jobs_geo_gate()") == FOLDED_0244["public.creative_jobs_geo_gate()"]:
+        take_off_0244(conn)
+        conn.execute(MIGRATION_0238.read_text(encoding="utf-8"))
+        put_back_0244(conn)
+        return
+    if _md5_of(conn, "public.creative_jobs_geo_gate()") == GEO_GATE_0230:
         conn.execute(MIGRATION_0238.read_text(encoding="utf-8"))
 
 
@@ -1533,6 +1542,17 @@ def has_0244(conn_or_session) -> bool:
 def rollback_0244_body() -> str:
     text = ROLLBACK_0244.read_text(encoding="utf-8")
     return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+
+
+def rollback_0244_if_on() -> str:
+    """0244's rollback as one statement that runs only where 0244's gate is live (rollback_0208_body, and so rollback_0159_body,
+    start with it: their SQL is run as text by tests, which cannot ask has_0244 first)."""
+    body = rollback_0244_body()
+    assert "$rb0244$" not in body
+    gate_now = dict((s, n) for s, _w, n in BODIES_0244)["public.creative_jobs_geo_gate()"]
+    return ("do $if0244$ begin if (select md5(regexp_replace(regexp_replace(prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', "
+            "'g'), '[[:space:]]+', ' ', 'g')) from pg_proc where oid = to_regprocedure('public.creative_jobs_geo_gate()')) = "
+            f"'{gate_now}' then execute $rb0244${body}$rb0244$; end if; end $if0244$;")
 
 
 def take_off_0244(conn_or_session) -> None:

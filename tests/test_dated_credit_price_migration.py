@@ -178,7 +178,9 @@ class DatedCreditPriceMigration(unittest.TestCase):
         self.assertIn("credits_per_unit_now(", ROLLBACK.split("drop function")[0])   # refuses when a later file calls the reader
 
     def test_the_lab_knows_0224_and_applies_it_after_0218(self):
-        self.assertIn("return rollback_0224_body() + ", LAB)
+        # 0244's conditional rollback (it sits on 0230's gate, which 0208's rollback drops) may come first; 0224's is next.
+        self.assertTrue("return rollback_0224_body() + " in LAB or
+                        'return rollback_0244_if_on() + "\\n" + rollback_0224_body() + ' in LAB)
         self.assertIn("    put_back_0224(conn)\n", LAB)
         off = LAB[LAB.index("def take_off_0218("):LAB.index("def put_back_0218(")]
         self.assertLess(off.index("take_off_0224(conn)"), off.index("rollback_0218_body()"))
