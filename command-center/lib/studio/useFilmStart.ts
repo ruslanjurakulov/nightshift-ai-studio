@@ -101,6 +101,8 @@ export const START_REMEDIES: Readonly<Record<string, StartRemedy>> = {
   dialogue_needs_sound: "fix_and_requote",
   ambience_not_kept: "fix_and_requote",
   sound_option_unused: "fix_and_requote",
+  // 0241 (rule 6): a sound option on a model whose sound is inside its one price; the person removes the option.
+  sound_option_not_offered: "fix_and_requote",
   limit_reached: "wait",
   rate_limited: "wait",
   rate_limit_unavailable: "wait",

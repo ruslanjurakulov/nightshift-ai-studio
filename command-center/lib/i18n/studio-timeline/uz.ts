@@ -210,6 +210,7 @@ export const studioTimelineUz: StudioTimelineDictionary = {
       dialogue_needs_sound: "Sahna replikalari faqat ovoz chiqaradigan klip modelida eshitiladi, model ovozni alohida sotsa, sahnaning ovoz parametri yoqilgan boʻlishi kerak. Loyihada shunday modelni tanlang yoki sahna ovozi parametrini yoqing va narxni qayta soʻrang.",
       ambience_not_kept: "Sahnaning fon ovozi faqat klip ovozi sotib olinganda saqlanadi. Loyihada ovozni alohida sotadigan klip modelini tanlab, sahna ovozi parametrini yoqing yoki sahnani ovozsiz qiling, soʻng narxni qayta soʻrang.",
       sound_option_unused: "Ovozsiz sahna klip ovozi uchun haq toʻlaydi, lekin u eshitilmaydi. Loyihada sahna ovozi parametrini oʻchiring va narxni qayta soʻrang.",
+      sound_option_not_offered: "Bu klip modelining ovozi narxiga kiritilgan. Loyihada sahna ovozi parametrini olib tashlang va narxni qayta soʻrang.",
       other: "Bu loyiha qatorini baholab boʻlmadi.",
     },
     errors: {

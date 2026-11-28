@@ -55,6 +55,7 @@ import re
 import shutil
 import threading
 import time
+import unicodedata
 import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -395,6 +396,49 @@ def _lines(scene: Optional[Mapping[str, Any]]) -> List[Mapping[str, Any]]:
     return [x for x in raw if isinstance(x, Mapping)] if isinstance(raw, list) else []
 
 
+#: What 0166's film_clean_text strips beyond the control and format categories (fillers and selectors that render as nothing).
+_HIDDEN = frozenset("\u034f\u115f\u1160\u17b4\u17b5\u2800\u3164\uffa0") | frozenset(chr(c) for c in range(0x180b, 0x1810)) \
+    | frozenset(chr(c) for c in range(0xfe00, 0xfe10)) | frozenset(chr(c) for c in range(0xfff0, 0xfffc))
+#: A speaker is a name (0241, BR-0241-02): letters, combining marks U+0300-U+036F, digits, spaces, hyphens, periods and these apostrophes.
+_NAME_EXTRA = frozenset(" .-\u02bb\u02bc\u2019")
+_SAYS_IN = re.compile(r"says\s+in", re.I)
+
+
+def _hidden(text: str) -> bool:
+    if text != text.strip(" ") or "  " in text:
+        return True
+    for c in text:
+        cat = unicodedata.category(c)
+        if c in _HIDDEN or cat in ("Cc", "Cf", "Co", "Cs", "Cn", "Zl", "Zp") or (cat == "Zs" and c != " "):
+            return True
+    return False
+
+
+def line_problem(line: Mapping[str, Any]) -> Optional[str]:
+    """Why a saved line cannot go into a clip prompt, or None: 0241's film_dialogue rule, applied again before the paid call so the
+    worker never sends what the database would refuse. Every check reads the text as written AND its NFKC form (BR-0241-01: U+FF02
+    is a double quote after NFKC); the speaker must be a name (BR-0241-02)."""
+    for field in ("speaker", "line"):
+        raw = line.get(field)
+        if not isinstance(raw, str):
+            return f"{field} is not text"
+        nf = unicodedata.normalize("NFKC", raw)
+        if _hidden(raw) or _hidden(nf):
+            return f"{field} holds a hidden character, a line break or a repeated space"
+        if not raw.strip(" "):
+            return f"{field} is empty"
+        if '"' in nf:
+            return f"{field} holds a double quote"
+        if field == "speaker":
+            if ":" in nf or _SAYS_IN.search(nf):
+                return "speaker reads like part of the clip prompt"
+            if any(not (c.isalpha() or c in "0123456789" or c in _NAME_EXTRA or 0x300 <= ord(c) <= 0x36f) for c in nf):
+                return "speaker holds a character a name does not"
+    if line.get("lang") not in DIALOGUE_LANGS:
+        return "lang is not uz, ru or en"
+    return None
+
+
 def dialogue_prompt(lines: Sequence[Mapping[str, Any]]) -> str:
     """The lines as a clip prompt says them, one quoted line with its speaker and language each, joined by a space: the same text as
     0241's ``film_dialogue_prompt``, which the quote counts against the model's prompt limit (the lab pins the two equal). One form for
@@ -424,6 +468,8 @@ def with_dialogue(request: cw.GenerationRequest, kind: str, scene: Optional[Mapp
     lines = _lines(scene)
     if kind != "clip":
         raise _TakeFailed("bad_request", "a spoken scene is one shot, and this one has more: set the scene to one shot and start again")
+    if any(line_problem(x) for x in lines):
+        lines = []
     try:
         prompt = clip_prompt(str(request.params.get("prompt") or ""), lines)
     except (KeyError, TypeError):

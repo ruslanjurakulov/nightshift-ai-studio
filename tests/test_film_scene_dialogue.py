@@ -176,6 +176,22 @@ class NeverInAKeyFrame(unittest.TestCase):
         self.assertEqual(out.params["prompt"], fo.clip_prompt(VISUAL, LINES))
 
 
+class LineRuleInTheWorker(unittest.TestCase):
+    """BR-0241-01 / -02: the worker refuses a line the database would refuse (the lab pins the two sides equal on a matrix)."""
+
+    def test_a_fullwidth_quote_a_prompt_shaped_speaker_or_a_hidden_character_fails_the_take_before_the_call(self):
+        req = cw.GenerationRequest(job_id="j", org_id="o", capability="i2v", model="m", params={"prompt": VISUAL})
+        for one in ({**UZ, "line": "Salom\uff02 x"}, {**UZ, "speaker": "Aziz\uff02"}, {**UZ, "speaker": "Aziz says in German"},
+                    {**UZ, "speaker": "Aziz: hi"}, {**UZ, "speaker": "O'Brien"}, {**UZ, "line": "Sal\u200bom"}):
+            with self.subTest(one=one), self.assertRaises(fo._TakeFailed):
+                fo.with_dialogue(req, "clip", {"sound_role": "dialogue", "dialogue": [one]})
+            self.assertIsNotNone(fo.line_problem(one), one)
+
+    def test_names_with_uzbek_apostrophes_marks_and_periods_pass(self):
+        for name in ("Gʻayrat", "Maʼruf", "Narrator\u2019s friend", "Dr. Ali-Bek", "Jose\u0301", "Отец", "R2D2"):
+            self.assertIsNone(fo.line_problem({"speaker": name, "line": "Salom", "lang": "uz"}), name)
+
+
 class DuckFromTheSavedRow(unittest.TestCase):
     """The music ducks under a dialogue scene's speech because its saved row says dialogue, never because of a default."""
 

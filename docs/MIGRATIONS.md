@@ -3525,13 +3525,15 @@ refuses to apply without them. 0240 (#978) touches no film function.
   three hunks marked `-- 0241`: the keys are known, `film_dialogue` parses the lines (known keys only, never echoed; speaker ≤ 80
   and line ≤ 300 characters, S1's caps; no line break, control or invisible character, unusual or repeated space, or ASCII double
   quote: refused, not cleaned; ≤ 1000 characters as the clip prompt writes them, half of 2000, the smallest prompt limit of an i2v
-  model that makes sound), and the merged scene must agree (lines only on a dialogue scene, a dialogue scene has lines and is one
+  model that makes sound; every check also reads the NFKC form, BR-0241-01; the speaker is a name: letters, marks, digits, spaces,
+  hyphens, periods and ʻ ʼ ’, no colon, not "says in", BR-0241-02), and the merged scene must agree (lines only on a dialogue scene, a dialogue scene has lines and is one
   shot). `save_film` is inherited.
 - **`film_price`** replaced on 0239's body (`02016cc4a695a54c5693a5066247269b` -> `3607297484f191d45ff9a1f63a11c5b5`) with two
   hunks: `film_sound_problem` refuses a dialogue or ambience scene while `clip_sound_kept` is off (`clip_sound_not_kept`), a
   dialogue scene on a model that makes no sound or that sells its sound apart without the scene's sound option
   (`dialogue_needs_sound`), ambience whose sound is not bought (`ambience_not_kept`), and a muted scene that buys sound
-  (`sound_option_unused`). A dialogue scene on a model that speaks inside one price is priced as today. A dialogue scene's clip
+  (`sound_option_unused`), and a sound option on a model whose sound is inside its price (`sound_option_not_offered`: "remove the
+  sound option"; a scene with no sound role still gets creative_price's "does not offer a choice of sound"). A dialogue scene on a model that speaks inside one price is priced as today. A dialogue scene's clip
   line asks `creative_price` about the prompt the worker sends (`film_clip_prompt`), so `prompt_too_long` is said at the quote.
 - **The worker**: `FilmRest.scenes` selects both columns; `film_orchestrator.with_dialogue` puts the lines into the CLIP prompt
   only (`<speaker> says in <language>: "<line>"`, the same text as `film_dialogue_prompt`), never a key frame's; a single-price
@@ -3544,4 +3546,5 @@ refuses to apply without them. 0240 (#978) touches no film function.
 - **Lab**: `tests/security/test_sec_film_dialogue_0241.py`; `sec_db.take_off_0241` / `put_back_0241` ride on `take_off_0239` /
   `put_back_0239` / `rollback_0239_if_on`, and 0241 follows 0239 in the `ON_*` lists.
 - Rollback: `docs/sql/rollback_0241_film_scene_dialogue.sql` (0239's two bodies back byte for byte; refuses while a scene
-  holds a role or lines unless `nightshift.rollback_0241_discard_sound = 'on'`).
+  holds a role or lines unless `nightshift.rollback_0241_discard_sound = 'on'`; check that no film segment is open (queued, running
+  or paused) before using the discard flag).

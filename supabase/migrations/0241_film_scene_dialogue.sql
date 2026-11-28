@@ -33,9 +33,15 @@
 --                                         echoed, 0218 F2); speaker and line are text, cleaned with 0166's film_clean_text (single
 --                                         line) and REFUSED, not silently changed, when cleaning would change more than the outer
 --                                         spaces (a line break, a control or invisible character, an unusual or repeated space); never
---                                         empty; no ASCII double quote (it would end the quoted line in the clip prompt: use « » or
+--                                         empty; no double quote (it would end the quoted line in the clip prompt: use « » or
 --                                         single quotes); speaker at most 80 characters, line at most 300, at most 6 lines, and the
 --                                         lines at most 1000 characters as the clip prompt writes them (film_dialogue_prompt).
+--                                         Every check also reads the NFKC form (BR-0241-01: U+FF02 is a double quote after NFKC,
+--                                         which tokenizers and vendor front ends apply); the text is stored as written. The speaker
+--                                         is a name (BR-0241-02): letters, combining marks, digits, spaces, hyphens, the apostrophes
+--                                         U+02BB U+02BC U+2019 and periods only, no colon and not the words "says in", so it can never
+--                                         write the prompt's own '<speaker> says in <language>:' for a language no lang value says.
+--                                         modules/film_orchestrator.line_problem applies the same rule before a take is sent.
 --   film_dialogue_prompt(jsonb)           NEW, the lines as the clip prompt says them:  <speaker> says in <Uzbek|Russian|English>: "<line>"
 --                                         joined by one space. modules/film_orchestrator.dialogue_prompt writes the same text (the lab
 --                                         pins the two equal).
@@ -60,6 +66,10 @@
 --                                                    model has none, so the cut would refuse it as clip_without_sound after the spend
 --                              sound_option_unused   a muted scene that buys the priced sound option (S2 section 9.1 point 2: never
 --                                                    buy sound the film will not play)
+--                              sound_option_not_offered  a scene with a sound role whose clip_params names audio (true or false) on a
+--                                                    model whose sound is inside its one price: "remove the sound option; this
+--                                                    model's sound is included in its price" (rule 6). A scene with no sound role
+--                                                    gets creative_price's own "does not offer a choice of sound" (0224, not this file).
 --                            A dialogue scene on a model that speaks inside one price (Veo, H3, LTX, Seedance 2.x ...) is priced
 --                            exactly as today: nothing is added to its line, and the worker asks the vendor for the sound itself.
 --                            (2) a dialogue scene's clip line asks creative_price about the prompt the worker will send (film_clip_prompt),
@@ -105,7 +115,11 @@
 -- APPLY AS ONE TRANSACTION (SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1): `set local lock_timeout`
 -- assumes it, and the last block asserts the end state. Idempotent: a replay finds this file's bodies and columns, and writes the same.
 -- Rollback: docs/sql/rollback_0241_film_scene_dialogue.sql (owner-applied; refuses while any scene holds a sound role or lines unless
--- told to discard them; puts 0239's two bodies back byte for byte, drops the helpers, the constraint and the columns).
+-- told to discard them; puts 0239's two bodies back byte for byte, drops the helpers, the constraint and the columns). Check that no
+-- film segment is open (queued, running or paused) before using the discard flag: a running worker reads the lines it would delete.
+--   select (select count(*) from public.film_segments where status in ('queued', 'running', 'draining'))
+--        + (select count(*) from public.films where status in ('queued', 'running', 'draining', 'paused', 'assembling'));  -- expected 0
+--   (a segment is queued, running or draining; a paused film keeps its lines for its resume).
 -- Docs: docs/MIGRATIONS.md, "A film scene's own sound and its spoken lines (0241)".
 
 set local lock_timeout = '5s';
@@ -194,6 +208,7 @@ declare
   lines jsonb := '[]'::jsonb;
   label text;
   n     integer;
+  nf    text;
 begin
   if p_v is null or jsonb_typeof(p_v) = 'null' then
     return null;
@@ -223,13 +238,17 @@ begin
         perform public.creative_refuse('invalid_params', format('%s: %s is required and must be text', label, f));
       end if;
       raw := r.v ->> f;
+      -- BR-0241-01: every check below also reads the NFKC form, which tokenizers and vendor front ends apply: U+FF02 is a double
+      -- quote there. The text is stored as written; modules/film_orchestrator.line_problem applies the same rule.
+      nf := normalize(raw, NFKC);
       -- Refused, not cleaned: a line is spoken as written, and a hidden character is an instruction channel to the clip model.
-      if public.film_clean_text(raw, false) <> btrim(raw, ' ') then
+      if public.film_clean_text(raw, false) <> btrim(raw, ' ') or public.film_clean_text(nf, false) <> btrim(nf, ' ') then
         perform public.creative_refuse('invalid_params',
           format('%s: %s holds a line break, a control or invisible character, or an unusual or repeated space; write it as one plain line',
                  label, f));
       end if;
       raw := btrim(raw, ' ');
+      nf := btrim(nf, ' ');
       if raw = '' then
         perform public.creative_refuse('invalid_params', format('%s: %s must not be empty; write it, or remove the line', label, f));
       end if;
@@ -238,9 +257,20 @@ begin
         perform public.creative_refuse('invalid_params',
           format('%s: %s is %s characters and at most %s fit; shorten it, or split the line in two', label, f, char_length(raw), n));
       end if;
-      if position('"' in raw) > 0 then
+      if position('"' in nf) > 0 then
         perform public.creative_refuse('invalid_params',
-          format('%s: %s holds a double quote, which would end the quoted line in the clip prompt; use « » or single quotes', label, f));
+          format('%s: %s holds a double quote (or a character that reads as one, such as a full-width quote), which would end the quoted line in the clip prompt; %s',
+                 label, f, case f when 'speaker' then 'use the character''s name only' else 'use « » or single quotes' end));
+      end if;
+      -- BR-0241-02: the speaker is a name, never a piece of the prompt's own '<speaker> says in <language>: "<line>"'.
+      if f = 'speaker' and (position(':' in nf) > 0 or nf ~* 'says[[:space:]]+in') then
+        perform public.creative_refuse('invalid_params',
+          format('%s: speaker reads like part of the clip prompt (a colon, or the words says in); use the character''s name only', label));
+      end if;
+      if f = 'speaker' and nf !~ ('^[[:alpha:][:digit:] .' || chr(699) || chr(700) || chr(8217) || chr(768) || '-' || chr(879) || '-]+$') then
+        perform public.creative_refuse('invalid_params',
+          format('%s: speaker holds a character a name does not (letters, digits, spaces, hyphens, the apostrophes %s %s %s and periods only); use the character''s name only',
+                 label, chr(699), chr(700), chr(8217)));
       end if;
       one := one || jsonb_build_object(f, raw);
     end loop;
@@ -269,6 +299,10 @@ create or replace function public.film_sound_problem(p_role text, p_clip_params 
       jsonb_build_object('priced', false, 'reason', 'clip_sound_not_kept',
         'detail', format('%s: clip sound is not yet kept in the final film; set the scene''s sound to muted%s', p_label,
                          case when p_role = 'dialogue' then ' and remove its spoken lines' else '' end))
+    -- Rule 6: creative_price would refuse the option as "does not offer a choice of sound"; this names the fix.
+    when p_clip_params ? 'audio' and coalesce(p_spec #>> '{pricing,variants,by}', '') not in ('audio', 'resolution_audio') then
+      jsonb_build_object('priced', false, 'reason', 'sound_option_not_offered',
+        'detail', format('%s: remove the sound option; this model''s sound is included in its price (%s)', p_label, p_model))
     when p_role = 'dialogue' and coalesce(p_spec -> 'audio_out', 'false'::jsonb) <> 'true'::jsonb then
       jsonb_build_object('priced', false, 'reason', 'dialogue_needs_sound',
         'detail', format('%s: %s makes no sound, so the scene''s lines would never be heard; choose a clip model that makes sound',

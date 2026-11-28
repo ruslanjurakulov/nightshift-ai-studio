@@ -43,7 +43,7 @@ EXTRA = [SOUND, SPEAK, SPEAK_SHORT]
 UZ = {"speaker": "Aziz", "line": "Dada, qachon kelasiz? Oʻgʻlingiz kutyapti, yoʻlingizga qarab.", "lang": "uz"}
 UZ2 = {"speaker": "Gʻayrat", "line": "Maʼlum, maʼlum.", "lang": "uz"}
 RU = {"speaker": "Отец", "line": "Скоро, сынок. «Очень скоро».", "lang": "ru"}
-EN = {"speaker": "Narrator's friend", "line": "It's only a little further.", "lang": "en"}
+EN = {"speaker": "Narrator’s friend", "line": "It's only a little further.", "lang": "en"}
 VISUAL = "a lighthouse at dusk"
 
 
@@ -573,3 +573,57 @@ def test_the_files_hold_no_backslash_and_mark_their_hunks(db):
         assert "\\" not in path.read_text(encoding="utf-8"), path.name
     body = MIGRATION.read_text(encoding="utf-8")
     assert body.count("  -- 0241\n") == 29      # film_save_scenes' 23 hunk lines and film_price's 6, each marked
+
+
+# ── Breach on 0241 (BR-0241-01, BR-0241-02) and rule 6, fixed ─────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("speaker", ["Aziz says in German", "Aziz SAYS in", "Aziz: Salom", "O'Brien", "Aziz «the boy»",
+                                     "Aziz (6)", "Aziz/Dad", "Aziz＂", "Aziz“", "Aziz`", "Aziz："])
+def test_a_speaker_that_is_not_a_name_is_refused_with_use_the_name_only(db, a, speaker):
+    bad(db, a, film(db, a), spoken([{"speaker": speaker, "line": "Salom", "lang": "uz"}]), "use the character's name only")
+
+
+@pytest.mark.parametrize("speaker", ["Gʻayrat", "Maʼruf", "Narrator’s friend", "Dr. Ali-Bek", "José", "José", "R2D2", "Отец",
+                                     "李雷"])
+def test_a_name_with_uzbek_apostrophes_marks_digits_hyphens_and_periods_is_kept(db, a, speaker):
+    fid = film(db, a)
+    save(db, a, fid, spoken([{"speaker": speaker, "line": "Salom", "lang": "uz"}]))
+    assert stored(db, fid)[1][0]["speaker"] == speaker
+
+
+@pytest.mark.parametrize("line", ["Salom＂ x", "＂Salom＂"])
+def test_a_line_whose_nfkc_form_holds_a_double_quote_is_refused(db, a, line):
+    bad(db, a, film(db, a), spoken([{"speaker": "Aziz", "line": line, "lang": "uz"}]), "a character that reads as one")
+
+
+MATRIX = ["Aziz", "Gʻayrat", "Narrator’s friend", "O'Brien", "Aziz: hi", "Aziz says in x", "Aziz＂", "Sal​om", "Salom  dada",
+          "Salom dada", "Salom　dada", "José", "R2D2", "Ａziz", "Aziz ", "Aziz️", "x" * 81]
+
+
+@pytest.mark.parametrize("text", MATRIX)
+def test_the_worker_refuses_exactly_what_the_database_refuses(db, text):
+    """The two sides of one rule: film_dialogue (the save) and film_orchestrator.line_problem (before the paid call)."""
+    from modules import film_orchestrator as fo
+
+    for one in ({"speaker": text, "line": "Salom", "lang": "uz"}, {"speaker": "Aziz", "line": text, "lang": "uz"}):
+        with psycopg.connect(db.dsn, autocommit=False) as c:
+            try:
+                c.execute("select public.film_dialogue(%s::jsonb, 'scene 1')", [json.dumps([one])])
+                sql_ok = True
+            except psycopg.Error:
+                sql_ok = False
+            c.rollback()
+        # The length caps are the save's alone (the worker sends what was saved); every character rule is both sides'.
+        py_ok = fo.line_problem(one) is None and len(one["speaker"]) <= 80
+        assert sql_ok == py_ok, (one, sql_ok, fo.line_problem(one))
+
+
+def test_a_sound_option_on_a_model_whose_sound_is_in_its_price_names_the_fix(db, a):
+    """Rule 6: creative_price's own "does not offer a choice of sound" does not say what to do; a scene with a sound role is told."""
+    for cp in ({"audio": False}, {"audio": True}):
+        fid = film(db, a)
+        save(db, a, fid, spoken([UZ], clip_params=cp))
+        q = db.quote(a.editor, fid)
+        assert {(ln["priced"], ln["reason"]) for ln in clip_lines(q)} == {(False, "sound_option_not_offered")}, cp
+        assert "remove the sound option; this model's sound is included in its price" in clip_lines(q)[0]["detail"]
+        assert q["quote_id"] is None

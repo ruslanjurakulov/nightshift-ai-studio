@@ -11,6 +11,10 @@
 --   in the same transaction, by someone who means to throw them away:
 --     set local nightshift.rollback_0241_discard_sound = 'on';
 --   1. Puts 0239's two bodies back. 2. Drops the helpers, the constraint and the columns. 3. Asserts the end state.
+-- BEFORE USING THE DISCARD FLAG, check that no film segment is open (queued, running or paused): a running worker reads the lines this
+--   deletes, and a paused film keeps them for its resume. Expected 0:
+--     select (select count(*) from public.film_segments where status in ('queued', 'running', 'draining'))
+--          + (select count(*) from public.films where status in ('queued', 'running', 'draining', 'paused', 'assembling'));
 -- A worker running modules/film_orchestrator.py from 0241's pull request reads both columns (FilmRest.scenes): roll that worker back
 --   too, or its scene read is refused by PostgREST (an unknown column) and no film take begins.
 -- No backslash anywhere in this file (0219's header): 0239's film_price's one backslash is written @@0241_BACKSLASH@@ and put back with chr(92).
