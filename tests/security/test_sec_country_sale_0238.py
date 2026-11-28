@@ -13,7 +13,7 @@ neither list through (BR-S6-04). What would break, and which test says so:
   a replay drifts                                                                 test_a_replay_changes_nothing
   the rollback leaves another CHECK than 0142's, or takes a row's gate away        test_the_rollback_*
   0230's or 0208's rollback takes the gate away under a model on sale             test_the_gates_rollbacks_refuse_while_a_listed_row_is_on_sale
-  the docs claim the cleared rows' operator preview runs, or is something else    test_the_cleared_rows_operator_preview_is_quoted_unpriced_*
+  a size-priced operator preview runs (why the cleared rows are not marked one)  test_a_size_priced_operator_preview_is_quoted_unpriced
 
 Everything runs inside transactions that are rolled back. Nothing calls a provider.
 """
@@ -274,11 +274,11 @@ def test_the_lab_chain_puts_0238_back_after_0230(conn, sc):
         assert re.search(r"available_countries", the_check(s)[0][0])
 
 
-def test_the_cleared_rows_operator_preview_is_quoted_unpriced_until_a_size_has_a_price(conn, sc):
-    # What docs/MIGRATIONS.md (0238) says the operator preview does today, measured: both rows are priced by image_size, and
+def test_a_size_priced_operator_preview_is_quoted_unpriced(conn, sc):
+    # Why the two cleared Google rows are NOT marked operator_preview (docs/MIGRATIONS.md, 0238): both are priced by image_size, and
     # creative_price quotes a size-priced preview with no per-size credit_prices row as unpriced (0139's vendor-cost fallback reads
-    # no size). Not model_not_sellable: the preview path itself accepts them. When the owner prices a size, this test is the one to
-    # change, together with the docs.
+    # no size). Measured on the shipped specs with the mark added: the preview path accepts them (not model_not_sellable) and then
+    # refuses the quote. When a migration teaches the fallback sizes, or the owner prices one, this is the test that changes.
     from modules import model_registry as reg
     from sec_scenario import DEFAULT_ORG
     from test_sec_operator_preview import _quote
@@ -288,16 +288,17 @@ def test_the_cleared_rows_operator_preview_is_quoted_unpriced_until_a_size_has_a
         c = s.conn
         for mid in ("gemini-3-pro-image", "gemini-nano-banana-2.1"):
             r = rows[mid]
-            assert r["spec"]["operator_preview"] is True and r["spec"]["terms_gate"] is None
+            assert r["spec"]["terms_gate"] is None and "operator_preview" not in r["spec"], mid
+            assert r["spec"]["pricing"]["variants"]["by"] == "image_size", mid
+            spec = {**r["spec"], "operator_preview": True}
             c.execute("insert into public.model_registry (id, display_name, provider, adapter, capabilities, spec, credit_unit, "
                       "entitlement) values (%s, %s, %s, %s, %s, %s::jsonb, %s, %s) on conflict (id) do update set spec = excluded.spec",
-                      [r["id"], r["display_name"], r["provider"], r["adapter"], r["capabilities"], json.dumps(r["spec"]),
+                      [r["id"], r["display_name"], r["provider"], r["adapter"], r["capabilities"], json.dumps(spec),
                        r["credit_unit"], r["entitlement"]])
             c.execute("select public.record_model_probe(%s, %s, %s, 't2i', true, null, null, 900, 1234, 'security-lab')",
                       [mid, r["adapter"], r["spec"]["vendor_model"]])
             assert c.execute("select availability from public.model_registry where id = %s", [mid]).fetchone()[0] == "hidden"
             got = _quote(c, sc.operator, DEFAULT_ORG, mid, {"prompt": "a red apple", "image_size": "1K", "aspect_ratio": "1:1"})
             assert got == ("NS400", "unpriced"), (mid, got)
-            # A customer is refused earlier, as for any hidden model.
             got = _quote(c, sc.alice.actor, sc.alice.org, mid, {"prompt": "a red apple", "image_size": "1K", "aspect_ratio": "1:1"})
             assert got[0] != "ok", (mid, got)

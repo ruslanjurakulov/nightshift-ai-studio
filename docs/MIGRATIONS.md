@@ -3222,10 +3222,9 @@ are replaced, each with marked 0231 hunks, and one policy is added.
   and Google Cloud Service Terms §20.d ("not for services likely used by under-18s"). The owner's reasoning: the 18+ attestation
   (0192) is asked of every user, Europe included, so the responsibility does not fall on us. The decision covers only those
   clauses. Still OPEN: Cloud Service Terms §17.a (competing products) and Google APIs Terms of Service §4(a) (sublicensing), which
-  is why `api_exposure` stays `web_only`. In `schemas/model_registry.json` both rows lose `terms_gate` (now null), gain a dated
-  `terms_notes` record of the decision, and get `"operator_preview": true` (0139: the platform operator may use them in the
-  credits-exempt organization while they stay hidden). `requires_adult`, both country lists, `api_exposure`, pricing and
-  availability (`hidden`, the database's) are unchanged. No credit price is added.
+  is why `api_exposure` stays `web_only`. In `schemas/model_registry.json` both rows lose `terms_gate` (now null) and gain a dated
+  `terms_notes` record of the decision. `requires_adult`, both country lists, `api_exposure`, pricing and availability (`hidden`,
+  the database's) are unchanged. No credit price is added. They are NOT marked `operator_preview` (below).
 - **Evidence.** 0142 kept every row with `blocked_countries` off sale because the database did not know the country. 0208's
   `creative_jobs_geo_gate` (one trigger on the table every create writes, with the signed geo claim) and 0230's allow-list read
   answer that for a row with `available_countries`. They do not for a deny-list-only row (a code on neither list passes it,
@@ -3250,12 +3249,13 @@ are replaced, each with marked 0231 hunks, and one policy is added.
 - **Replay.** Drop and add: a replay changes nothing. A replay of 0142 puts 0142's definition back over 0238's; apply 0238 again.
 - **Undo.** `docs/sql/rollback_0238_country_list_sale_needs_allow_list.sql` (owner-applied): refuses while any row with
   `blocked_countries` is `beta`/`ga`, then puts 0142's CHECK back verbatim and asserts it.
-- **What it does not do (measured in the lab, 2026-11-28).** `operator_preview` is set, but the preview does not run yet: both
-  rows are priced by `image_size`, and creative_price (0208's rule, 0224's body) quotes a size-priced preview with no per-size
-  `credit_prices` row (`model_<id>_image_1k` ...) as `unpriced`; 0139's vendor-cost fallback reads no size variant. A quote by the
-  platform operator in the exempt organization, `image_size` 1K, answered `NS400 unpriced` for both. A per-size price is the
-  owner's act (no price is written here), or a later migration extends the preview fallback to sizes as 0149 and 0153 did for
-  resolution and quality. Separately, a Film Studio take, a workflow step carried on by another member's page, the API and MCP
+- **Why not an operator preview (measured in the lab, 2026-11-28).** Both rows are priced by `image_size`, and creative_price
+  (0208's rule, 0224's body) quotes a size-priced preview with no per-size `credit_prices` row (`model_<id>_image_1k` ...) as
+  `unpriced`: 0139's vendor-cost fallback reads no size variant. With the mark added in the lab, a quote by the platform operator
+  in the exempt organization, `image_size` 1K, answered `NS400 unpriced` for both. Marking them would list two dead ends in the
+  operator's Studio, which `tests/test_preview_price_by_quality_migration.py` (NoPreviewIsADeadEnd) and
+  `tests/test_preview_price_by_resolution_migration.py` refuse. The way forward is a later migration that extends the preview
+  fallback to sizes, as 0149 and 0153 did for resolution and quality, or a per-size price set by the owner; then the mark. Separately, a Film Studio take, a workflow step carried on by another member's page, the API and MCP
   carry no visitor, so the gate refuses them for these rows (`country_unverified`, 0208): a film's key frames on these models are
   refused even once priced, until a take carries a claim, and Film's own model check needs S2's 0235 (not on main). Opening for
   sale (`beta`/`ga` plus a `credit_prices` row) stays the owner's act.

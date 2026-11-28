@@ -136,14 +136,17 @@ class TheRegistry(unittest.TestCase):
             m = REGISTRY[mid]
             with self.subTest(mid=mid):
                 self.assertIsNone(m["terms_gate"])
-                self.assertIs(m["operator_preview"], True)
+                # Not an operator preview: priced by image_size, which creative_price's preview fallback cannot price (a dead end,
+                # tests/test_preview_price_by_quality_migration.py NoPreviewIsADeadEnd; the lab measures it).
+                self.assertNotIn("operator_preview", m)
+                self.assertEqual(m["pricing"]["variants"]["by"], "image_size")
                 self.assertIs(m["requires_adult"], True)
                 self.assertEqual(m["api_exposure"], "web_only")
                 self.assertTrue(m["blocked_countries"] and m["available_countries"])
                 self.assertNotIn("availability", m)                   # the database's, never the file's
                 self.assertNotIn("mcp_oauth_exposure", m)
                 notes = " ".join(m["terms_notes"])
-                for needle in ("Owner decision 2026-11-28", "Age Requirements and Use Restrictions", "§20.d",
+                for needle in ("Owner decision 2026-11-28", "age clause (18+) and Use Restrictions", "§20.d",
                                "Europe included", "Still OPEN after 2026-11-28", "§17.a", "§4(a)", "web_only"):
                     self.assertIn(needle, notes)
 

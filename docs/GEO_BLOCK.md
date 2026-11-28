@@ -72,9 +72,9 @@ array. 0238 refuses to apply unless `creative_jobs_geo_gate` is 0230's body and 
 reads the row, not the gate, so the order of undoing is fixed: take such a model off sale, roll back 0238, then 0230 or 0208
 (both rollbacks refuse while a country-listed row is on sale). No row changes availability in 0238. The registry validator
 holds the same line: `blocked_countries` with no `terms_gate` needs `available_countries`. The two Google image models the owner
-cleared on 2026-11-28 (`gemini-3-pro-image`, `gemini-nano-banana-2.1`) stay `hidden` and unpriced; they are marked operator
-previews (0139), which creative_price still quotes `unpriced` (priced by size, no per-size row). A Film Studio take carries no
-visitor, so the gate refuses it (`country_unverified`) for these rows.
+cleared on 2026-11-28 (`gemini-3-pro-image`, `gemini-nano-banana-2.1`) stay `hidden` and unpriced, and are not operator previews
+(priced by size, which the preview fallback cannot price yet; docs/MIGRATIONS.md, 0238). A Film Studio take carries no visitor,
+so the gate refuses it (`country_unverified`) for these rows.
 
 ## How a request's country is known
 
