@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
-import { nextFocusIndex } from "@/lib/feedback";
 import { typedMatches } from "@/lib/confirm-tier";
 import { useToast } from "@/components/feedback/ToastProvider";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/Sheet";
 
 export interface ConfirmDetail {
   label: string;
@@ -51,9 +50,6 @@ export interface ConfirmOptions {
   successMessage?: string;
 }
 
-const FOCUSABLE =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
 /**
  * A modal "are you sure" for destructive actions, in place of window.confirm —
  * which cannot be styled or translated beyond its message, reads as a browser
@@ -62,7 +58,10 @@ const FOCUSABLE =
  *
  * Focus moves to Cancel on open, so a stray Enter backs out rather than
  * destroying something; Tab is kept inside; Escape and the scrim cancel; and
- * focus returns to whatever opened it.
+ * focus returns to whatever opened it. The shell is the shared Sheet
+ * (components/ui, Radix) with the alertdialog role: at the bottom of a phone,
+ * in thumb reach, and centred from 640px. While the work runs, neither Escape
+ * nor a press outside can close it.
  */
 export function ConfirmDialog({
   open,
@@ -74,12 +73,9 @@ export function ConfirmDialog({
   onResolve: (ok: boolean) => void;
 }) {
   const { t } = useI18n();
-  const titleId = useId();
-  const bodyId = useId();
   const ackHintId = useId();
   const panel = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
-  const opener = useRef<HTMLElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [typed, setTyped] = useState("");
@@ -95,38 +91,30 @@ export function ConfirmDialog({
     };
   }, []);
 
-  // Each new question starts clean.
+  // The question on screen now. A run that finishes after its question was replaced (a second ask settles the first as
+  // "no") must not answer the new one: its yes was given to a different question.
+  const asking = useRef<ConfirmOptions | null>(options);
+  asking.current = options;
+
+  // Each new question starts clean, with the safe key focused and the sheet at its top again.
   useEffect(() => {
     lock.current = false;
     setBusy(false);
     setFailure(null);
     setTyped("");
     setAcknowledged(false);
+    if (open && options) {
+      cancelRef.current?.focus({ preventScroll: true });
+      if (panel.current) panel.current.scrollTop = 0;
+    }
+    // Only a new question resets; `open` follows it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options]);
 
   // A failed attempt disabled the keys for a moment: put focus back on the safe one.
   useEffect(() => {
     if (failure) cancelRef.current?.focus();
   }, [failure]);
-
-  useEffect(() => {
-    if (!open) return;
-    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    // Focus the safe key WITHOUT scrolling to it: on a long sheet (a post's three texts) the key is at the bottom, and
-    // focusing it the usual way opened the sheet scrolled down past the words and "this goes public". Start at the top.
-    cancelRef.current?.focus({ preventScroll: true });
-    if (panel.current) panel.current.scrollTop = 0;
-    // The page behind must not scroll under a modal on a phone.
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      // The opener may have re-rendered away (a row removed); only return focus
-      // to it while it is still on the page.
-      const el = opener.current;
-      if (el && el.isConnected) el.focus();
-    };
-  }, [open]);
 
   const matches = (word: string) => options?.exactConfirmation ? typed === word : typedMatches(typed, word);
 
@@ -138,6 +126,7 @@ export function ConfirmDialog({
       onResolve(true);
       return;
     }
+    const question = options;
     lock.current = true;
     setBusy(true);
     setFailure(null);
@@ -149,7 +138,7 @@ export function ConfirmDialog({
     } catch {
       problem = t.ownerSafety.actionFailed;
     }
-    if (!alive.current) return;
+    if (!alive.current || asking.current !== question) return;
     if (problem === null) {
       onResolve(true);
       return;
@@ -165,54 +154,49 @@ export function ConfirmDialog({
     onResolve(false);
   }
 
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      // preventDefault also tells SectionShell's page-level Escape handler that
-      // this press was spent closing the dialog, not leaving the section.
-      e.preventDefault();
-      e.stopPropagation();
-      cancel();
-      return;
-    }
-    if (e.key !== "Tab" || !panel.current) return;
-    const items = Array.from(panel.current.querySelectorAll<HTMLElement>(FOCUSABLE));
-    const current = items.indexOf(document.activeElement as HTMLElement);
-    const next = nextFocusIndex(current, items.length, e.shiftKey);
-    if (next < 0) return;
-    e.preventDefault();
-    items[next].focus();
-  }
-
-  if (!open || !options || typeof document === "undefined") return null;
+  if (!options) return null;
 
   const danger = (options.tone ?? "danger") === "danger";
   const needsWord = Boolean(options.typeToConfirm);
   const wordOk = (!needsWord || matches(options.typeToConfirm ?? "")) && (!options.acknowledge || acknowledged);
 
-  return createPortal(
-    <div className="fixed inset-0 z-[130] flex items-end justify-center p-4 sm:items-center" onKeyDown={onKeyDown}>
-      <div
-        aria-hidden
-        className="scrim-enter absolute inset-0 bg-black/60 backdrop-blur-[2px]"
-        onClick={cancel}
-      />
-      <div
+  return (
+    <Sheet open={open} onOpenChange={(o) => !o && cancel()}>
+      <SheetContent
         ref={panel}
         role="alertdialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={bodyId}
-        className="sheet-enter relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-5 shadow-[var(--shadow-elevated)]"
+        side="auto"
+        closeLabel={null}
+        className="block max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+        style={{ "--ui-sheet-w": "28rem" } as CSSProperties}
+        onOpenAutoFocus={(e) => {
+          // Focus the safe key WITHOUT scrolling to it: on a long sheet (a post's three texts) the key is at the bottom, and
+          // focusing it the usual way opened the sheet scrolled down past the words and "this goes public". Start at the top.
+          e.preventDefault();
+          cancelRef.current?.focus({ preventScroll: true });
+          if (panel.current) panel.current.scrollTop = 0;
+        }}
+        // While the work runs nothing closes it: the answer has somewhere to land, and the lock stays honest. Radix marks a
+        // dismissing Escape as handled (preventDefault), so SectionShell's page-level Escape still knows it was spent here.
+        onEscapeKeyDown={(e) => {
+          if (lock.current) e.preventDefault();
+        }}
+        onInteractOutside={(e) => {
+          if (lock.current) e.preventDefault();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") e.stopPropagation();
+        }}
       >
         <div className="flex items-start gap-3">
           <AlertTriangle aria-hidden className="mt-0.5 size-5 shrink-0" style={{ color: danger ? "var(--color-fail)" : "var(--color-warn)" }} />
           <div className="min-w-0 flex-1">
-            <h2 id={titleId} className="break-words text-base font-semibold leading-snug text-[var(--color-fg)]">
+            <SheetTitle className="break-words text-base font-semibold leading-snug text-[var(--color-fg)]">
               {options.title ?? t.ux.confirmTitle}
-            </h2>
-            <p id={bodyId} className="mt-1.5 break-words text-sm leading-relaxed text-[var(--color-muted)]">
+            </SheetTitle>
+            <SheetDescription className="mt-1.5 break-words text-sm leading-relaxed text-[var(--color-muted)]">
               {options.message}
-            </p>
+            </SheetDescription>
           </div>
         </div>
         {options.details && options.details.length > 0 && (
@@ -301,9 +285,8 @@ export function ConfirmDialog({
             {busy ? t.ownerSafety.confirmWorking : options.confirmLabel}
           </button>
         </div>
-      </div>
-    </div>,
-    document.body,
+      </SheetContent>
+    </Sheet>
   );
 }
 

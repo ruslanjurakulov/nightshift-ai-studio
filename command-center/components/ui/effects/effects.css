@@ -1,0 +1,70 @@
+/*
+ * The three studio effects (BorderBeam, TextShimmer, AnimatedGradient), on --ds-* tokens. Ideas and geometry from Magic UI
+ * (MIT, Copyright (c) Magic UI) and motion-primitives (MIT, Copyright (c) 2024 ibelick); see THIRD_PARTY_NOTICES. Rewritten as
+ * CSS animations rather than motion/react ones: the browser runs them off the main thread, and app/tokens.css already zeroes
+ * the --ds-dur-* clocks for a reduced-motion reader.
+ *
+ * Under prefers-reduced-motion nothing travels: the beam becomes a still accent edge, the shimmer plain text, the gradient a
+ * still wash. The state each one stands for is also said in words by its caller (SYSTEM.md §5: motion never carries meaning
+ * alone).
+ */
+@layer components {
+  /* BorderBeam: a short light running round the edge of a box whose job is running. */
+  .fx-beam {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    border: var(--fx-beam-width, 1.5px) solid transparent;
+    /* Paint only the border ring: the content box is masked out. */
+    mask: linear-gradient(transparent, transparent) padding-box, linear-gradient(black, black) border-box;
+    mask-composite: intersect;
+  }
+  .fx-beam::after {
+    content: "";
+    position: absolute;
+    width: var(--fx-beam-size, 80px);
+    aspect-ratio: 1;
+    background: linear-gradient(to left, var(--ds-accent), var(--ds-type-image), transparent);
+    offset-path: rect(0 auto auto 0 round var(--fx-beam-size, 80px));
+    animation: fx-beam var(--fx-beam-duration, 6s) linear infinite;
+  }
+
+  /* TextShimmer: a band of light passing over a "working" label. */
+  .fx-shimmer {
+    --fx-spread: calc(var(--fx-chars, 12) * 2px);
+    color: transparent;
+    background-image:
+      linear-gradient(90deg, transparent calc(50% - var(--fx-spread)), var(--ds-text), transparent calc(50% + var(--fx-spread))),
+      linear-gradient(var(--ds-muted), var(--ds-muted));
+    background-size: 250% 100%, auto;
+    background-repeat: no-repeat, no-repeat;
+    background-clip: text;
+    -webkit-background-clip: text;
+    animation: fx-shimmer var(--fx-shimmer-duration, 2s) linear infinite;
+  }
+
+  /* AnimatedGradient: a slow wash of the machine's blue through the media hues, for a surface that just finished. */
+  .fx-gradient {
+    background-image: linear-gradient(
+      120deg,
+      color-mix(in srgb, var(--ds-accent) 22%, transparent),
+      color-mix(in srgb, var(--ds-type-image) 16%, transparent),
+      color-mix(in srgb, var(--ds-type-video) 16%, transparent),
+      color-mix(in srgb, var(--ds-accent) 22%, transparent)
+    );
+    background-size: 300% 100%;
+    animation: fx-gradient var(--fx-gradient-duration, 8s) ease-in-out infinite alternate;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fx-beam { border-color: color-mix(in srgb, var(--ds-accent) 70%, transparent); mask: none; }
+    .fx-beam::after { content: none; }
+    .fx-shimmer { animation: none; color: var(--ds-text-2); background: none; }
+    .fx-gradient { animation: none; background-position: 50% 0; }
+  }
+}
+
+@keyframes fx-beam { from { offset-distance: 0%; } to { offset-distance: 100%; } }
+@keyframes fx-shimmer { from { background-position: 100% center, 0 0; } to { background-position: 0% center, 0 0; } }
+@keyframes fx-gradient { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }

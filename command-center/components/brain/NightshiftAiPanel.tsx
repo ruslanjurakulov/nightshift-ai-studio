@@ -15,6 +15,7 @@ import { ChatHistoryFrame, type ChatHistorySource, type HistoryResult } from "@/
 import { StateBlock } from "@/components/states/StateBlock";
 // S2's Create (#905): the quote, the person's confirmation and the start route, with every refusal's remedy. Not redone here.
 import { FilmCreateButton } from "@/components/studio-timeline/FilmCreateButton";
+import { RefSheetsPanel } from "@/components/brain/RefSheetsPanel";
 import { coerceQuote, type FilmQuote } from "@/lib/studio/timeline";
 import { pluralForm } from "@/lib/plural";
 // The gate's client-safe vocabulary (#898): the codes and their remedies are the gate's own, never retyped here.
@@ -52,7 +53,8 @@ type State =
   | { state: "session_ended" }
   | { state: "ready"; plan: Plan; model: string; canEdit: boolean; canRun: boolean; gate: ChatGateVerdict | null };
 /** The draft the plan priced: its id, quote_film's answer as S2 reads it (coerceQuote), and which outline it came from. */
-type FilmReady = { id: string; quote: FilmQuote | null; index: number };
+/** `version`: the film's version after the character sheets were attached (its quote is then that version's), else absent. */
+type FilmReady = { id: string; quote: FilmQuote | null; index: number; version?: number };
 /** The age refusals (0192) are #900's state: its words, no Retry, and the way to Create's 18+ box or support (actionFor). They
  *  never reach the gate block too, before a press or after one, so the age state is said once. */
 const AGE_CODES: ReadonlySet<string> = new Set(["adult_only_service", "adult_attestation_required"]);
@@ -153,6 +155,17 @@ type PairedTurn = { key: string; q: string; a: string; msg: Msg | null };
  * the person's press, not a question waiting for an answer, so it is never drawn as "no saved answer" (Lens M5). While the plan runs
  * the panel draws it once (`asking`); afterwards the plan card carries the title.
  */
+/**
+ * A short digest of the BRIEF's characters (their looks and stages): the sheets panel is keyed on it, so a plan chosen again with
+ * other characters or looks starts the panel fresh (no confirm box, no quote of the old cast left on screen; Lens M4).
+ */
+export function charactersKey(brief: Pick<Brief, "characters">): string {
+  const text = JSON.stringify((brief.characters ?? []).map((c) => [c.id, c.name, c.look ?? null, c.age_stages ?? null]));
+  let h = 5381;
+  for (let i = 0; i < text.length; i += 1) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
 export function withoutChoices(messages: Msg[]): Msg[] {
   return messages.filter((m, i) => {
     if (m.role !== "user") return true;
@@ -1086,10 +1099,16 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       {step === "ready" && brief && (
         <ReadyBlock brief={brief} film={film} models={models} channelSlug={channelSlug} lengthLabel={lengthLabel} canRun={ready && load.canRun}
           fixHref={film ? editorHref(film.id) : undefined} onWordless={busy ? undefined : () => void send(c.wordlessAskText)}
+          sheets={brief.kind === "short" && film && session && (brief.characters?.length ?? 0) > 0 ? (
+            // Character sheets (lib/brain/ref-sheets): their own route and their own confirm; attaching them re-prices the film,
+            // and the Create below is remounted with that quote.
+            <RefSheetsPanel key={`${session}:${film.id}:${charactersKey(brief)}`} brief={brief} sessionId={session} filmId={film.id} channelSlug={channelSlug}
+              onFilmQuote={(q, version) => setFilm((f) => (f && f.id === film.id ? { ...f, quote: coerceQuote(q), version } : f))} />
+          ) : null}
           create={brief.kind === "short" && film ? (
             // No `requote`: S2's own requoteFilm prices the film's CURRENT version and writes nothing (Lens H1). No
             // `onChooseAnother`: choosing again here would draft the same models again (Lens M1); S2 offers support instead.
-            <FilmCreateButton key={film.id} filmId={film.id} quote={film.quote} onStarted={() => void filmStarted(film.id)}
+            <FilmCreateButton key={`${film.id}:${film.version ?? 0}`} filmId={film.id} quote={film.quote} onStarted={() => void filmStarted(film.id)}
               progressHref={liveHref(film.id)} fixHref={editorHref(film.id)} />
           ) : null} />
       )}
@@ -1231,7 +1250,7 @@ function StatusWithAction({ text, label, onPress }: { text: string; label: strin
   );
 }
 
-function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, create, fixHref, onWordless }: {
+function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, create, sheets, fixHref, onWordless }: {
   brief: Brief; film: FilmReady | null; models: FilmModels | null; channelSlug: string; lengthLabel: (s: number) => string; canRun: boolean;
   /** The film's editor, where its saved storyboard is, when Create is not offered. */
   fixHref?: string;
@@ -1239,6 +1258,8 @@ function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, cre
   onWordless?: () => void;
   /** S2's Create for a short film's draft; its own states say a short film's credits, blocks and refusals. */
   create: ReactNode;
+  /** The character sheets of a short film's draft (RefSheetsPanel), shown above its Create. */
+  sheets?: ReactNode;
 }) {
   const { t, fmt, locale } = useI18n();
   const c = t.aiChat;
@@ -1302,6 +1323,7 @@ function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, cre
         </>
       )}
       {brief.kind === "short" && !film && <p className="text-sm">{c.chooseAgain}</p>}
+      {sheets}
       {/* A defence since the fix round: a speaking plan is no longer made (speechAllowed), so this shows only for a storyboard saved
           before it. No dead Create: the reasons, said once that nothing was priced, and the one press that can make it today. */}
       {blocked.length > 0 ? (

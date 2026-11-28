@@ -10,7 +10,7 @@ applied first). These pin what must not change by accident:
   alone; the end state, the rollback and the lab carry the hashes recomputed from the files;
 * `music` is the only value added to 0100's two capability checks;
 * no row is written (no price is seeded) and nothing is granted; the files carry no backslash;
-* the code keeps `music` registry-only until 0228 is confirmed live;
+* the code took `music` out of the registry-only set only after 0228 was confirmed live, and `video_music` stays in it;
 * the docs describe it.
 """
 
@@ -179,8 +179,11 @@ class NothingElse(unittest.TestCase):
         self.assertNotIn(BS, TEXT)
         self.assertNotIn(BS, ROLLBACK)
 
-    def test_the_code_keeps_music_registry_only_until_0228_is_confirmed_live(self):
-        self.assertIn(MUSIC, REGISTRY_ONLY_CAPABILITIES)
+    def test_music_syncs_now_that_0228_is_live_and_video_music_still_does_not(self):
+        # 0228 adds exactly `music` to the two checks; a sync row naming video_music would still fail the sync of every model.
+        self.assertNotIn(MUSIC, REGISTRY_ONLY_CAPABILITIES)
+        self.assertIn("video_music", REGISTRY_ONLY_CAPABILITIES)
+        self.assertNotIn("video_music", TEXT)
 
     def test_the_number_is_unique(self):
         self.assertEqual(sorted(p.name[:4] for p in MIG.glob("*.sql")).count("0228"), 1)
