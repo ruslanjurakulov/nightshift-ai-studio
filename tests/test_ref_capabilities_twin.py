@@ -5,18 +5,26 @@ opening for a key-frame model whose adapter sends no references on t2i (the work
 the take after the film's credits were held), or staying shut for one that takes them.
 """
 import json
+import subprocess
+import sys
 import unittest
 from pathlib import Path
-
-from tools import ref_capabilities_twin as twin
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 class RefCapabilitiesTwin(unittest.TestCase):
     def test_the_web_copy_matches_the_adapters(self):
-        current = (ROOT / "command-center" / "lib" / "brain" / "ref-capabilities.json").read_text(encoding="utf-8")
-        self.assertEqual(current, twin.render(twin.build()), "run python tools/ref_capabilities_twin.py")
+        # A fresh interpreter, so the check reads the adapters as shipped, never as a test earlier in the
+        # same run may have patched modules.capabilities.ADAPTERS. A registry row added on main without
+        # regenerating the copy fails here (it did once, on the merge that brought google-lyria-3.5).
+        r = subprocess.run([sys.executable, str(ROOT / "tools" / "ref_capabilities_twin.py"), "--check"],
+                           capture_output=True, text=True, cwd=str(ROOT))
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_the_file_is_not_hidden_by_the_json_ignore_rule(self):
+        r = subprocess.run(["git", "check-ignore", "-q", "command-center/lib/brain/ref-capabilities.json"], cwd=str(ROOT))
+        self.assertNotEqual(r.returncode, 0, "the blanket *.json rule hides the twin: the build would ship no gate facts")
 
     def test_the_facts_the_gate_rests_on_today(self):
         models = json.loads((ROOT / "command-center" / "lib" / "brain" / "ref-capabilities.json").read_text())["models"]
