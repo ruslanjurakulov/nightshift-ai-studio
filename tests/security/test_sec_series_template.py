@@ -578,8 +578,9 @@ def test_the_rollback_restores_0120_byte_for_byte_and_0122_applies_again(conn, s
     base_dsn = sec_db.create_database(admin, base)
     sigs = [*FOUR[:3], OLD]
     try:
-        # 0226 (only a member spends) replaces a body of a file left out here and refuses to apply without it: out too.
-        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0122_", "0127_", "0145_", "0226_", "0227_", "0232_"))])
+        # 0226 (only a member spends) replaces a body of a file left out here and refuses to apply without it: out too, and
+        # 0231 (cancel audit) and 0232 (film plan leases), which refuse to apply without 0226.
+        sec_db.apply_files(base_dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0122_", "0127_", "0145_", "0226_", "0231_", "0227_", "0232_"))])
         with psycopg.connect(base_dsn, autocommit=True) as b:
             want = {x: (b.execute("select pg_get_functiondef(%s::regprocedure)", [x]).fetchone()[0],
                         b.execute("select proacl::text from pg_proc where oid = %s::regprocedure", [x]).fetchone()[0]) for x in sigs}
@@ -690,8 +691,9 @@ def test_a_plan_made_before_the_migration_still_replays_and_its_job_is_still_val
     name = f"ns_series_tpl_legacy_{uuid.uuid4().hex[:8]}"
     dsn = sec_db.create_database(admin, name)
     try:
-        # 0226 (only a member spends) replaces a body of a file left out here and refuses to apply without it: out too.
-        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0122_", "0127_", "0145_", "0226_", "0227_", "0232_"))])
+        # 0226 (only a member spends) replaces a body of a file left out here and refuses to apply without it: out too, and
+        # 0231 (cancel audit) and 0232 (film plan leases), which refuse to apply without 0226.
+        sec_db.apply_files(dsn, [f for f in sec_db.build_sequence() if not f.name.startswith(("0122_", "0127_", "0145_", "0226_", "0231_", "0227_", "0232_"))])
         with psycopg.connect(dsn, autocommit=True) as c:
             who = sec_db.user("legacy-editor", "legacy@a.test")
             with as_superuser(c, commit=True) as su:
