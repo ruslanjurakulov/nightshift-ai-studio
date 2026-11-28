@@ -98,9 +98,25 @@ class AiChatSaveSheetsMigration(unittest.TestCase):
         sql = code(ROLLBACK_TEXT)
         self.assertEqual(sorted(re.findall(r"drop (?:function|trigger) if exists ([^;( ]+)", sql)),
                          ["ai_chat_sessions_keep_sheets", "public.ai_chat_save_sheets", "public.ai_chat_sessions_keep_sheets",
-                          "public.ai_chat_sheet_problem"])
-        for word in ("create ", "grant ", "update ", "delete ", "alter "):
+                          "public.ai_chat_sheet_problem", "public.ai_chat_sheet_repair"])
+        for word in ("create ", "grant ", "update ", "delete "):
             self.assertNotIn(word, sql, word)
+        # The only ALTERs put 0199's CHECK back exactly in place of 0249's.
+        self.assertEqual(re.findall(r"alter table public\.ai_chat_sessions ([^;]*);", sql), [
+            "drop constraint if exists ai_chat_sessions_brief_0249",
+            "drop constraint if exists ai_chat_sessions_brief_check",
+            "add constraint ai_chat_sessions_brief_check\n  check (jsonb_typeof(brief) = 'object' and octet_length(brief::text) <= 262144)"])
+
+    def test_the_sheets_have_their_own_budget_and_the_turn_keeps_0199s(self):
+        sql = code(TEXT)
+        self.assertIn("octet_length((brief - 'ref_sheets' - 'film_link')::text) <= 262144", sql)
+        self.assertIn("octet_length(coalesce(brief -> 'ref_sheets', '[]'::jsonb)::text) <= 196608", sql)
+        self.assertIn("octet_length(coalesce(brief -> 'film_link', 'null'::jsonb)::text) <= 8192", sql)
+        w = body("ai_chat_save_sheets")
+        self.assertIn("octet_length(v_out::text) > 196608", w)
+        # Refused past 40, never cut.
+        self.assertNotRegex(w, r"where n <= 40")
+        self.assertIn("'too_many_sheets', 'the sheets stored and sent together are more than 40'", w)
 
     def test_the_command_center_calls_the_writer_with_the_files_arguments(self):
         cc = REPO / "command-center"

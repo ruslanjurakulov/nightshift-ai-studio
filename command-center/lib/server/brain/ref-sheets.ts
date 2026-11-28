@@ -16,7 +16,7 @@ import { logAudit } from "@/lib/server/audit";
 import { FILM_MODEL_PREFERENCE, MODEL_ID } from "@/lib/brain/film-models";
 import { FILM_PLAN_KEY } from "@/lib/brain/film-plan";
 import {
-  REF_LINE, makeable, mergeConcurrent, mergeSheets, planSheets, readSheetBrief, readSheets, refGate, selectRefs, withRefLine,
+  REF_LINE, SHEETS_MAX, makeable, mergeConcurrent, mergeSheets, planSheets, readSheetBrief, readSheets, refGate, selectRefs, withRefLine,
   type AssetFacts, type FilmLink, type GateModel, type RefGate, type RefSheet, type RefView, type SheetBrief, type SheetView,
 } from "@/lib/brain/ref-sheets";
 
@@ -288,6 +288,8 @@ export async function saveSheets(c: SheetCtx, sheets: RefSheet[], base: readonly
   const refused = stepRefusal(fresh.step);
   if (refused) return { ok: false, res: refused };
   const merged = mergeConcurrent(readSheets(fresh.raw.ref_sheets), sheets, base);
+  // The same refusal 0249 makes: more than 40 sheets is said, never cut (a sheet past the 40th may hold a paid job's id).
+  if (merged.length > SHEETS_MAX) return { ok: false, res: brainJson({ error: "too_many_sheets" }, 422) };
   const saved = (await c.supabase.rpc("ai_chat_save_brief", { p_session: c.session.id, p_brief: { ...fresh.raw, ref_sheets: merged }, p_step: "ready" })) as Rpc;
   if (saved.error) return { ok: false, res: dbRefusal(saved.error) ?? brainJson({ error: "unavailable" }, 503) };
   return { ok: true, sheets: merged };

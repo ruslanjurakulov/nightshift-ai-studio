@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SESSION, USER, makeFake } from "./helpers/fakeSheetsDb";
+import { FILM, SESSION, USER, makeFake, sellable } from "./helpers/fakeSheetsDb";
 
 /**
  * The sheets route's writes with and without migration 0249 (ai_chat_save_sheets), through fakes (no database, no spend; the merge
@@ -125,7 +125,76 @@ describe("with 0249 applied", () => {
   });
 });
 
+describe("choose's two writes: the storyboard saved, its film link refused, then attach (Lens on 0249)", () => {
+  beforeEach(() => { fake.state.with0249 = true; });
+  const gemini = () => sellable("fake-gemini", { requires_adult: true, inputs: { image_refs_max: 14, ref_capabilities: ["t2i", "edit"] }, image_sizes: ["1K"] });
+  async function readyToAttach() {
+    fake.state.t2i = [gemini(), sellable("openai-gpt-image-2.6-sunburst")];
+    fake.state.edit = [gemini()];
+    fake.state.film = fake.filmRow({ keyframe_model: "fake-gemini" });
+    const make1 = async () => {
+      const g = await get(true);
+      return post({ action: "make", film: FILM, max_credits: g.body.quote.total, quote_token: g.body.quote.token });
+    };
+    expect((await make1()).status).toBe(200);
+    for (const id of [...fake.state.jobs.keys()]) fake.finish(id);
+    expect((await make1()).status).toBe(200);
+    for (const [id, j] of fake.state.jobs) if (j.status !== "completed") fake.finish(id);
+    for (const s of (await get(true)).body.sheets as RefSheet[]) for (const v of s.views) {
+      await post({ action: "approve", film: FILM, character_id: s.character_id, stage: s.stage, view: v.view });
+    }
+  }
+  const get = async (film = false) => {
+    const res = await GET(new Request(`http://x/api/brain/sheets?session=${SESSION}${film ? `&film=${FILM}` : ""}`));
+    return { status: res.status, body: await res.json() };
+  };
+  /** choose saved a new storyboard through ai_chat_save_brief (the trigger kept the stored link), then 0249 refused the new link. */
+  const chooseWithLinkRefused = async (newScenes: Record<string, unknown>[]) => {
+    const json = fake.state.film!.json as { scenes: Record<string, unknown>[] };
+    json.scenes = newScenes;
+    const b = fake.state.session!.brief as Record<string, unknown>;
+    await fake.client.rpc("ai_chat_save_brief", { p_session: SESSION, p_brief: { ...b, title: "Chosen again", film_link: { film_id: FILM, scenes: [] } }, p_step: "ready" });
+    fake.state.sheetsError = { code: "NS400", message: "invalid_film_link" };
+    const r = await fake.client.rpc("ai_chat_save_sheets", { p_session: SESSION, p_sheets: null, p_base: null, p_film_link: { film_id: FILM, scenes: [] } });
+    expect((r as { error: unknown }).error).not.toBeNull();
+    fake.state.sheetsError = null;
+  };
+  const saves = () => fake.state.calls.filter((c) => c.fn === "save_film");
+
+  it("the old link's scenes are gone from the film: attach says storyboard_changed and writes nothing", async () => {
+    await readyToAttach();
+    // save_film replaced the scenes (a scene left out of a patch is deleted, 0166): new ids, none the old link names.
+    await chooseWithLinkRefused([{ id: "dddddddd-0000-4000-8000-000000000903", visual_prompt: "n1", refs: [], keyframe_model: null },
+                                 { id: "dddddddd-0000-4000-8000-000000000904", visual_prompt: "n2", refs: [], keyframe_model: null }]);
+    const r = await post({ action: "attach", film: FILM });
+    expect(r.body.error).toBe("storyboard_changed");
+    expect(saves()).toHaveLength(0);
+  });
+
+  it("no link was ever stored: attach says not_this_film and writes nothing", async () => {
+    await readyToAttach();
+    const b = { ...(fake.state.session!.brief as Record<string, unknown>) };
+    delete b.film_link;
+    fake.state.session = { ...fake.state.session!, brief: b };
+    await chooseWithLinkRefused([]);
+    expect((fake.state.session!.brief as Record<string, unknown>).film_link).toBeUndefined();
+    const r = await post({ action: "attach", film: FILM });
+    expect(r.body.error).toBe("not_this_film");
+    expect(saves()).toHaveLength(0);
+  });
+});
+
 describe("without 0249 (the function missing)", () => {
+  it("more than 40 sheets after the merge is refused by name, never cut", async () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({ character_id: `x${i}`, stage: null, views: [] }));
+    fake.state.session = { ...fake.state.session!, brief: { ...(fake.state.session!.brief as object), ref_sheets: many } };
+    const r = await make();
+    expect(r.status).toBe(422);
+    expect(r.body.error).toBe("too_many_sheets");
+    expect(calls("create_creative_job")).toHaveLength(0);
+    expect(storedSheets()).toHaveLength(40);
+  });
+
   it("falls back to #980's path: the conversation read again, merged here, the whole BRIEF through 0199", async () => {
     const r = await make();
     expect(r.status).toBe(200);

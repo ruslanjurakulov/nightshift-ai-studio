@@ -3405,9 +3405,23 @@ the older list. A lost approval cannot be recovered.
   conversation (`film_plan`) is `film_conversation` (all NS409).
 - **Merge, not compare-and-swap.** The database merges view by view with the app's rule (`mergeConcurrent`): a view the caller
   changed (differs from `base`) is the caller's; otherwise the later attempt, then the further state (planned < failed < making <
-  ready < approved). A stored sheet the caller did not send is kept, a new one added, at most 40. A compare-and-swap would refuse
-  the loser, and the loser is often the write that must not fail (the job ids saved right after paid creates); retrying it is this
-  merge again in the app. A malformed stored sheet (written through 0199 before) is dropped from the merge, as `readSheets` drops it.
+  ready < approved). A stored sheet the caller did not send is kept, a new one added. More than 40 after the merge is refused
+  `too_many_sheets`, never cut (a sheet may hold a paid job's id), in the database and in the app's fallback alike
+  (`mergeConcurrent` no longer slices). A compare-and-swap would refuse the loser, and the loser is often the write that must not
+  fail (the job ids saved right after paid creates); retrying it is this merge again in the app. A stored sheet written through 0199
+  before is read the way `readSheets` reads it (`ai_chat_sheet_repair`, internal): a sheet without a valid character, stage or
+  views list is dropped, otherwise only its unreadable views are, and a bad field reads as its default. Pre-apply count of stored
+  lists this would touch (expect 0) is in the file's header.
+- **The sheets have their own size budget** (Breach BR-SW-08). 0199's CHECK counted the whole BRIEF against 262144 bytes; with the
+  trigger putting the stored sheets back, a 75 KB turn plus 191 KB of accepted sheets broke it inside `ai_chat_finish_turn` (raw
+  23514, the turn rolled back, the vendor-paid call left `pending`, every later turn failing). 0249 replaces
+  `ai_chat_sessions_brief_check` with `ai_chat_sessions_brief_0249`: the BRIEF without `ref_sheets` and `film_link` at most 262144
+  (exactly what 0199 promised every writer), `ref_sheets` at most 196608, `film_link` at most 8192. A turn is measured as before
+  0249 whatever sheets the row holds; the writer checks the merged sheets' budget by name (`sheets_too_large`); a BRIEF too large on
+  its own is refused by the trigger as `brief_too_large` (NS400, with the remedy) instead of a raw 23514, which is the turn's own
+  size and was refused before 0249 too. A row can hold up to about 467 KB. Not a table of its own: every read of
+  `brief.ref_sheets` would have had to move at once, for the same guarantee. The guard refuses a hand-changed CHECK, and a
+  conversation already over the new budget (by count, with the remedy) before the ALTER.
 - **A trigger for every other writer.** `ai_chat_sessions_keep_sheets` (BEFORE UPDATE OF brief): any write of the BRIEF keeps the
   stored `ref_sheets` and `film_link`, whatever its BRIEF says (missing, older, other), unless the update is
   `ai_chat_save_sheets`' own (it names the row in the transaction-local `nightshift.ai_chat_sheets` and clears it right after).
@@ -3418,7 +3432,7 @@ the older list. A lost approval cannot be recovered.
   `sheets_too_large`); a sheet is exactly `character_id`, `stage`, `views`; at most 3 views (`too_many_views`), each once; a prompt of
   at most 4000 characters (`sheet_prompt_too_long`); status, ids, attempt (0..999), error and key in the app's own shapes, no other
   field (`invalid_sheet`, detail: which); `base` by the same rules; the film link a film and scenes of the conversation's own
-  workspace, at most 60 (`invalid_film_link`); the BRIEF over 0199's 262144 bytes (`brief_too_large`).
+  workspace, at most 60 (`invalid_film_link`; the ids compared as uuids, so the primary keys answer under the row lock).
 - **Guard**: refuses to apply unless `ai_chat_save_brief` is 0199's body (md5 `16f6ce5d2815675860bbce0a1a1810ac`, whitespace runs
   folded with `[[:space:]]+`; 0226 did not change it). No body is replaced.
 - **The app** degrades honestly: before 0249 the function is missing (PGRST202 / 42883) and `saveSheets` falls back to #980's
@@ -3430,9 +3444,16 @@ the older list. A lost approval cannot be recovered.
 - **Replay.** Replays onto itself (create or replace; the trigger dropped and created). Re-running 0199 leaves it on. 0199's rollback
   drops the table and the trigger with it.
 - **Requires** 0018 (`is_org_member`), 0036 (`creative_refuse`), 0166 (`films`, `film_scenes`), 0199.
-- **Undo.** `docs/sql/rollback_0249_ai_chat_save_sheets.sql` (owner-applied): the trigger and the three functions dropped; the
-  stored sheets stay in each BRIEF; the app goes back to #980's path at once (the race reopens).
-- **Tests.** `tests/test_ai_chat_save_sheets_migration.py`; `tests/security/test_sec_sheets_writer_0249.py` (a real PostgreSQL: two
+- **Undo.** `docs/sql/rollback_0249_ai_chat_save_sheets.sql` (owner-applied): the trigger and the four functions dropped and 0199's
+  CHECK put back exactly; it refuses by name, changing nothing, while a conversation holds more than 262144 bytes with its sheets
+  (trim its `ref_sheets` by hand first). The stored sheets stay in each BRIEF; the app goes back to #980's path at once (the race
+  reopens).
+- **The trigger does not re-validate the writer's own update** (optional defence considered): the flag is reachable only from
+  `ai_chat_save_sheets`, which validates every sheet and the film link's workspace before setting it (BR-SW-01 pins that no
+  API-callable function can set it), so a second check would only repeat the first.
+- **Tests.** `tests/test_ai_chat_save_sheets_migration.py`; Breach's `tests/security/test_sec_br_sw_0249.py` (BR-SW-01..08: the
+  flag unreachable from the API, lock order, a step change read after the wait, the turn measured apart from the sheets);
+  `tests/security/test_sec_sheets_writer_0249.py` (a real PostgreSQL: two
   connections racing on the row in both orders and two tabs, the merge, the trigger under 0199's two writers and the owner, who
   may, the closed and unready plans, every cap, the guard, replay, rollback; contract `tests/security/sec_sheets_writer_0249.py`);
   `command-center/tests/brain-sheets-writer-0249.test.ts` and `brain-story-route.test.ts` (the app with and without 0249).

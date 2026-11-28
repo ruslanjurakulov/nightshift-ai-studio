@@ -189,7 +189,8 @@ def _full_sheets():
 
 
 def test_br_sw_08_a_turn_that_fits_0199s_cap_is_not_broken_by_the_sheets_the_trigger_puts_back(w):
-    """BR-SW-08 (open). The writer lets the sheets take up to 196608 bytes and checks the whole BRIEF only on its own writes. The
+    """BR-SW-08 (closed by 0249's fix round: ai_chat_sessions_brief_0249 counts the sheets apart, so the turn is measured alone
+    against 0199's 262144; the trigger names a BRIEF too large on its own brief_too_large). Before: the writer lets the sheets take up to 196608 bytes and checks the whole BRIEF only on its own writes. The
     trigger then adds those stored sheets to EVERY other BRIEF writer's BRIEF after that writer's own checks, so a turn whose BRIEF
     is only ~75 KB now exceeds the table's CHECK (octet_length(brief) <= 262144): ai_chat_save_brief and ai_chat_finish_turn fail
     with a raw 23514, and finish_turn's whole transaction rolls back, so the turn's call (the vendor already paid) stays 'pending'

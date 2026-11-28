@@ -411,7 +411,9 @@ export function mergeConcurrent(fresh: readonly RefSheet[], ours: readonly RefSh
       return rb[0] > ra[0] || (rb[0] === ra[0] && rb[1] >= ra[1]) ? b : a;
     }).filter(Boolean) });
   }
-  return [...out.values()].slice(0, SHEETS_MAX);
+  // Never cut to SHEETS_MAX here: a sheet past the 40th may hold a paid job's id. The writer refuses a longer list by name
+  // (too_many_sheets), as 0249 does.
+  return [...out.values()];
 }
 
 /** The reference line attach adds to a key-frame prompt; an older one is replaced, never added twice. */

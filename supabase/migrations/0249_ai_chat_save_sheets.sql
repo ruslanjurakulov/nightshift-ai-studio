@@ -21,7 +21,9 @@
 --     made by ai_chat_save_sheets itself, which names the row in a transaction-local setting (nightshift.ai_chat_sheets = the
 --     session id, cleared right after its update, the pattern of 0034's nightshift.refund_of and 0107's nightshift.owner_rpc), may
 --     change them.
---   * ai_chat_sheet_problem(jsonb) -> text: internal (no API role), the shape rule of one stored sheet; null = well formed.
+--   * ai_chat_sheet_problem(jsonb) -> text: internal (no API role), the shape rule of one sheet a caller sends; null = well formed.
+--   * ai_chat_sheet_repair(jsonb) -> jsonb: internal, one STORED sheet read the way the app's readSheets reads it (null = dropped).
+--   * 0199's CHECK on brief replaced by one that gives the sheets their own budget (SIZE below).
 --
 -- WHO MAY (mirrors 0199's ai_chat_save_brief, read from its body, not guessed): signed in (42501 otherwise); the conversation's
 --   author (created_by = auth.uid()) and still an editor or above of its workspace (is_org_member(org, 'editor')), else
@@ -62,8 +64,29 @@
 --   (null or a uuid), attempt (an integer 0..999), error (null or a machine word), key (null or sheet: + 48 hex), nothing else ->
 --   invalid_sheet (detail: what). p_base, the list the caller started from, by the same rules. p_film_link an object of exactly
 --   film_id (a film of the conversation's workspace) and scenes (at most 60 of {brief: [A-Za-z][A-Za-z0-9_-]{0,15}, film: a scene of
---   that film}) -> invalid_film_link. The resulting BRIEF over 0199's 262144 bytes -> brief_too_large. A stored sheet that is not
---   well formed (written through 0199 before this file) is dropped from the merge, as the app's readSheets drops it.
+--   that film}) -> invalid_film_link. The MERGED list over 40 sheets -> too_many_sheets, never cut (a sheet may hold a paid job's
+--   id); over 196608 bytes -> sheets_too_large. A stored sheet written through 0199 before this file is read the way the app's
+--   readSheets reads it (ai_chat_sheet_repair): a sheet without a valid character_id, stage or views list is dropped; within a sheet
+--   only a view without a valid view name or prompt is dropped, and a bad field of a kept view reads as its default (status planned,
+--   ids, error and key null, attempt 0). Pre-apply count of stored lists this would touch (expect 0):
+--     select count(*) from public.ai_chat_sessions where brief ? 'ref_sheets' and (jsonb_typeof(brief -> 'ref_sheets') <> 'array'
+--       or jsonb_array_length(brief -> 'ref_sheets') > 40 or exists (select 1 from jsonb_array_elements(brief -> 'ref_sheets') e
+--       where jsonb_typeof(e) <> 'object' or jsonb_typeof(e -> 'views') is distinct from 'array'
+--          or exists (select 1 from jsonb_array_elements(e -> 'views') v where jsonb_typeof(v) <> 'object'
+--             or coalesce(v ->> 'view', '') not in ('front', 'side', 'back') or jsonb_typeof(v -> 'prompt') is distinct from 'string'
+--             or coalesce(v ->> 'status', '') not in ('planned', 'making', 'ready', 'approved', 'failed'))));
+--
+-- SIZE (Breach BR-SW-08). 0199's CHECK counted the whole BRIEF against 262144 bytes. With the sheets kept by the trigger, a turn's
+--   BRIEF that fits on its own (75 KB) plus sheets the writer accepted (191 KB) broke that CHECK inside ai_chat_finish_turn: a raw
+--   23514, the turn rolled back, its vendor-paid call left pending, and every later turn of the conversation failing the same way.
+--   The fix gives the sheets their own budget instead of a share of the turn's: 0199's CHECK (ai_chat_sessions_brief_check) is
+--   replaced by ai_chat_sessions_brief_0249, which counts the BRIEF WITHOUT ref_sheets and film_link against the same 262144 that
+--   0199 promised every writer, ref_sheets against 196608 and film_link against 8192 (60 scenes of {brief, film} need under 5 KB).
+--   A turn is then measured exactly as before 0249, whatever sheets the row holds, so a turn can no longer fail on sheets it did
+--   not write, and the only writer that can grow the sheets checks their budget by name first. A BRIEF too large on its own is
+--   refused by the trigger as brief_too_large (the remedy said) rather than a raw 23514; that refusal is the turn's own size, which
+--   0199 refused before 0249 too. Why not a table of its own for the sheets: it would leave every read of brief.ref_sheets (the
+--   app, the lab's pins) to change at once, for the same guarantee. A row can now hold up to about 467 KB (262144 + 196608 + 8192).
 --
 -- WHAT THE APP DOES (command-center/lib/server/brain/ref-sheets.ts saveSheets; app/api/brain/turn/route.ts): the sheets route
 --   writes its sheets with ai_chat_save_sheets (the list and the base it started from) and shows what it answers; the turn route
@@ -90,8 +113,9 @@
 --   first with its rollback to remove its functions too.
 --
 -- REQUIRES 0199 (ai_chat_sessions, ai_chat_save_brief), 0018 (is_org_member), 0036 (creative_refuse), 0166 (films, film_scenes).
---   Undo: docs/sql/rollback_0249_ai_chat_save_sheets.sql (owner-applied): the trigger and the two functions dropped. The sheets
---   already stored stay in the BRIEF (they are the person's), and both routes go back to #980's behaviour at once.
+--   Undo: docs/sql/rollback_0249_ai_chat_save_sheets.sql (owner-applied): the trigger and the three functions dropped, and 0199's
+--   CHECK put back (it refuses, by name and with the remedy, while a conversation holds more than 262144 bytes with its sheets).
+--   The sheets already stored stay in the BRIEF (they are the person's), and both routes go back to #980's behaviour at once.
 --
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
 
@@ -118,7 +142,37 @@ begin
   if h <> '16f6ce5d2815675860bbce0a1a1810ac' then
     raise exception '0249 found public.ai_chat_save_brief with an unknown body (md5 %): changed by hand? compare with 0199 before applying', h;
   end if;
+  -- The BRIEF's CHECK this file replaces: 0199's, or this file's own on a replay. Anything else was changed by hand.
+  select pg_get_constraintdef(c.oid) into h from pg_constraint c
+   where c.conrelid = 'public.ai_chat_sessions'::regclass and c.conname = 'ai_chat_sessions_brief_check';
+  if h is not null and h <> 'CHECK (((jsonb_typeof(brief) = ''object''::text) AND (octet_length((brief)::text) <= 262144)))' then
+    raise exception '0249 found ai_chat_sessions_brief_check with an unknown definition (%): changed by hand? compare with 0199 before applying', h;
+  end if;
+  if h is null and not exists (select 1 from pg_constraint c where c.conrelid = 'public.ai_chat_sessions'::regclass
+                                  and c.conname = 'ai_chat_sessions_brief_0249') then
+    raise exception '0249 found no CHECK on ai_chat_sessions.brief (neither 0199''s nor its own): compare with 0199 before applying';
+  end if;
+  -- A conversation the new CHECK would refuse (sheets over their own budget, written through 0199 before this file): said with the
+  -- count and the remedy, before the ALTER would fail on a raw 23514.
+  select count(*)::text into h from public.ai_chat_sessions
+   where octet_length(coalesce(brief -> 'ref_sheets', '[]'::jsonb)::text) > 196608
+      or octet_length(coalesce(brief -> 'film_link', 'null'::jsonb)::text) > 8192;
+  if h <> '0' then
+    raise exception '0249: % conversation(s) hold more than 196608 bytes of ref_sheets or 8192 of film_link; trim those keys by hand, then apply this file', h;
+  end if;
 end $$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- The sheets get their own budget (SIZE in the header)
+-- ───────────────────────────────────────────────────────────────────────────
+
+alter table public.ai_chat_sessions drop constraint if exists ai_chat_sessions_brief_0249;
+alter table public.ai_chat_sessions drop constraint if exists ai_chat_sessions_brief_check;
+alter table public.ai_chat_sessions add constraint ai_chat_sessions_brief_0249 check (
+  jsonb_typeof(brief) = 'object'
+  and octet_length((brief - 'ref_sheets' - 'film_link')::text) <= 262144
+  and octet_length(coalesce(brief -> 'ref_sheets', '[]'::jsonb)::text) <= 196608
+  and octet_length(coalesce(brief -> 'film_link', 'null'::jsonb)::text) <= 8192);
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- The shape of one sheet (internal)
@@ -205,6 +259,47 @@ begin
     end if;
   end loop;
   return null;
+end
+$$;
+
+-- One STORED sheet as the app's readSheets reads it (lib/brain/ref-sheets.ts): null when the sheet itself is unreadable (no valid
+-- character_id, stage or views list); otherwise the sheet rebuilt with its readable views only (a valid view name and a string
+-- prompt, the first of each name, at most 3), each field that is not in its shape read as its default. A list written through 0199
+-- before this file keeps every view the app shows today: one bad view never takes its sheet's paid pictures with it.
+create or replace function public.ai_chat_sheet_repair(p jsonb) returns jsonb
+  language plpgsql immutable set search_path = public, pg_temp as $$
+declare
+  v jsonb;
+  out_views jsonb := '[]'::jsonb;
+  seen text[] := '{}';
+  n numeric;
+  uuid_re constant text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+  id_re constant text := '^[A-Za-z0-9_-]{1,40}$';
+begin
+  if p is null or jsonb_typeof(p) <> 'object'
+     or jsonb_typeof(p -> 'character_id') is distinct from 'string' or (p ->> 'character_id') !~ id_re
+     or not (p ? 'stage') or not (jsonb_typeof(p -> 'stage') = 'null' or (jsonb_typeof(p -> 'stage') = 'string' and (p ->> 'stage') ~ id_re))
+     or jsonb_typeof(p -> 'views') is distinct from 'array' then
+    return null;
+  end if;
+  for v in select e from jsonb_array_elements(p -> 'views') e loop
+    continue when jsonb_typeof(v) <> 'object' or jsonb_typeof(v -> 'view') is distinct from 'string'
+                  or (v ->> 'view') not in ('front', 'side', 'back') or jsonb_typeof(v -> 'prompt') is distinct from 'string';
+    continue when (v ->> 'view') = any (seen) or array_length(seen, 1) >= 3;
+    seen := seen || (v ->> 'view');
+    n := case when jsonb_typeof(v -> 'attempt') = 'number' then (v ->> 'attempt')::numeric end;
+    out_views := out_views || jsonb_build_array(jsonb_build_object(
+      'view', v ->> 'view',
+      'prompt', v ->> 'prompt',
+      'asset_id', case when jsonb_typeof(v -> 'asset_id') = 'string' and (v ->> 'asset_id') ~ uuid_re then v -> 'asset_id' else 'null'::jsonb end,
+      'status', case when (v ->> 'status') in ('planned', 'making', 'ready', 'approved', 'failed') and jsonb_typeof(v -> 'status') = 'string'
+                     then v ->> 'status' else 'planned' end,
+      'job_id', case when jsonb_typeof(v -> 'job_id') = 'string' and (v ->> 'job_id') ~ uuid_re then v -> 'job_id' else 'null'::jsonb end,
+      'attempt', case when n is not null and n = trunc(n) and n >= 0 and n < 1000 then n::integer else 0 end,
+      'error', case when jsonb_typeof(v -> 'error') = 'string' and (v ->> 'error') ~ '^[a-z][a-z0-9_]{0,39}$' then v -> 'error' else 'null'::jsonb end,
+      'key', case when jsonb_typeof(v -> 'key') = 'string' and (v ->> 'key') ~ '^sheet:[0-9a-f]{48}$' then v -> 'key' else 'null'::jsonb end));
+  end loop;
+  return jsonb_build_object('character_id', p -> 'character_id', 'stage', p -> 'stage', 'views', out_views);
 end
 $$;
 
@@ -302,10 +397,11 @@ begin
       perform public.creative_refuse('invalid_film_link', 'each scene is {brief, film}');
     end if;
     -- The film is the conversation's own workspace's, and every linked scene is that film's: never another tenant's ids.
-    if not exists (select 1 from public.films f where f.id::text = lower(p_film_link ->> 'film_id') and f.org_id = s.org_id)
+    -- uuids compared as uuids (the shape is checked above), so the primary keys answer under the row lock.
+    if not exists (select 1 from public.films f where f.id = (p_film_link ->> 'film_id')::uuid and f.org_id = s.org_id)
        or exists (select 1 from jsonb_array_elements(p_film_link -> 'scenes') e
                    where not exists (select 1 from public.film_scenes fs
-                                      where fs.id::text = lower(e ->> 'film') and fs.film_id::text = lower(p_film_link ->> 'film_id')
+                                      where fs.id = (e ->> 'film')::uuid and fs.film_id = (p_film_link ->> 'film_id')::uuid
                                         and fs.org_id = s.org_id)) then
       perform public.creative_refuse('invalid_film_link', 'that film or scene is not in this workspace');
     end if;
@@ -313,11 +409,11 @@ begin
 
   v_brief := s.brief;
   if p_sheets is not null then
-    -- What is stored now, well-formed sheets only, one per key (the first): the app's readSheets reads it the same way.
+    -- What is stored now, read as the app's readSheets reads it (ai_chat_sheet_repair), one per key (the first).
     v_keys := '{}';
     if jsonb_typeof(s.brief -> 'ref_sheets') = 'array' then
-      for v_e in select e from jsonb_array_elements(s.brief -> 'ref_sheets') e loop
-        continue when public.ai_chat_sheet_problem(v_e) is not null;
+      for v_e in select public.ai_chat_sheet_repair(e) from jsonb_array_elements(s.brief -> 'ref_sheets') e loop
+        continue when v_e is null;
         v_k := (v_e ->> 'character_id') || ':' || coalesce(v_e ->> 'stage', '');
         continue when v_k = any (v_keys);
         v_keys := v_keys || v_k;
@@ -360,16 +456,18 @@ begin
       v_out := jsonb_set(v_out, array[v_idx::text], jsonb_set(v_e, '{views}', v_views));
       v_b0 := null;
     end loop;
+    -- Refused, never cut: a sheet past the 40th may hold a paid job's id (both reviewers on 0249).
     if jsonb_array_length(v_out) > 40 then
-      v_out := (select jsonb_agg(x order by n) from jsonb_array_elements(v_out) with ordinality o(x, n) where n <= 40);
+      perform public.creative_refuse('too_many_sheets', 'the sheets stored and sent together are more than 40');
+    end if;
+    -- The sheets' own budget (ai_chat_sessions_brief_0249): checked here by name, never left to the CHECK's raw 23514.
+    if octet_length(v_out::text) > 196608 then
+      perform public.creative_refuse('sheets_too_large', 'the sheets stored and sent together are over 196608 bytes');
     end if;
     v_brief := jsonb_set(v_brief, '{ref_sheets}', v_out, true);
   end if;
   if p_film_link is not null then
     v_brief := jsonb_set(v_brief, '{film_link}', p_film_link, true);
-  end if;
-  if octet_length(v_brief::text) > 262144 then
-    perform public.creative_refuse('brief_too_large', 'the plan with its sheets is over 262144 bytes');
   end if;
 
   -- Only this update may change the two keys (ai_chat_sessions_keep_sheets): the row is named, then the name cleared at once.
@@ -395,6 +493,12 @@ begin
   -- Whatever the incoming BRIEF says about them (nothing, an older copy, anything else), the stored ones stay: 0199's
   -- ai_chat_save_brief and ai_chat_finish_turn write a whole BRIEF, and the copy a route carried may be older than the row.
   v := new.brief - 'ref_sheets' - 'film_link';
+  -- The writer's own BRIEF is measured alone, against 0199's 262144 (the sheets have their own budget): what is refused here is
+  -- the writer's own size, said by name with the remedy instead of the CHECK's raw 23514.
+  if jsonb_typeof(v) = 'object' and octet_length(v::text) > 262144 then
+    raise exception 'brief_too_large' using errcode = 'NS400',
+      detail = 'the plan itself is over 262144 bytes (character sheets not counted): shorten the plan or start a new conversation';
+  end if;
   if old.brief ? 'ref_sheets' then
     v := v || jsonb_build_object('ref_sheets', old.brief -> 'ref_sheets');
   end if;
@@ -413,6 +517,7 @@ create trigger ai_chat_sessions_keep_sheets
   execute function public.ai_chat_sessions_keep_sheets();
 
 revoke all on function public.ai_chat_sheet_problem(jsonb) from public, anon, authenticated, service_role;
+revoke all on function public.ai_chat_sheet_repair(jsonb) from public, anon, authenticated, service_role;
 revoke all on function public.ai_chat_sessions_keep_sheets() from public, anon, authenticated, service_role;
 revoke all on function public.ai_chat_save_sheets(uuid, jsonb, jsonb, jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.ai_chat_save_sheets(uuid, jsonb, jsonb, jsonb) to authenticated;
@@ -447,9 +552,20 @@ begin
                     and t.tgfoid = 'public.ai_chat_sessions_keep_sheets()'::regprocedure) then
     raise exception '0249 end state: the keep-sheets trigger is not on ai_chat_sessions';
   end if;
-  if has_table_privilege('authenticated', 'public.ai_chat_sessions', 'UPDATE')
-     or has_table_privilege('anon', 'public.ai_chat_sessions', 'UPDATE') then
+  if has_function_privilege('authenticated', 'public.ai_chat_sheet_repair(jsonb)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.ai_chat_sheet_repair(jsonb)', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.ai_chat_sheet_repair(jsonb)', 'EXECUTE') then
+    raise exception '0249 end state: ai_chat_sheet_repair is callable by an API role';
+  end if;
+  -- Column grants too: a column-level UPDATE on brief would pass has_table_privilege and still write it.
+  if has_any_column_privilege('authenticated', 'public.ai_chat_sessions', 'UPDATE')
+     or has_any_column_privilege('anon', 'public.ai_chat_sessions', 'UPDATE') then
     raise exception '0249 end state: an API role can update a conversation directly';
+  end if;
+  if exists (select 1 from pg_constraint where conrelid = 'public.ai_chat_sessions'::regclass and conname = 'ai_chat_sessions_brief_check')
+     or not exists (select 1 from pg_constraint where conrelid = 'public.ai_chat_sessions'::regclass
+                       and conname = 'ai_chat_sessions_brief_0249' and convalidated) then
+    raise exception '0249 end state: the BRIEF''s CHECK is not 0249''s (the sheets counted apart)';
   end if;
   if (select md5(regexp_replace(p2.prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc p2
        where p2.oid = to_regprocedure('public.ai_chat_save_brief(uuid, jsonb, text)')) <> '16f6ce5d2815675860bbce0a1a1810ac' then
@@ -464,4 +580,5 @@ notify pgrst, 'reload schema';
 --        exists (select 1 from pg_trigger where tgname = 'ai_chat_sessions_keep_sheets' and tgenabled = 'O') as trigger_on,
 --        has_function_privilege('authenticated', 'public.ai_chat_save_sheets(uuid, jsonb, jsonb, jsonb)', 'EXECUTE') as members_call,
 --        not has_function_privilege('anon', 'public.ai_chat_save_sheets(uuid, jsonb, jsonb, jsonb)', 'EXECUTE') as anon_closed,
---        not has_function_privilege('authenticated', 'public.ai_chat_sheet_problem(jsonb)', 'EXECUTE') as helper_closed;
+--        not has_function_privilege('authenticated', 'public.ai_chat_sheet_problem(jsonb)', 'EXECUTE') as helper_closed,
+--        exists (select 1 from pg_constraint where conname = 'ai_chat_sessions_brief_0249') as sheets_counted_apart;

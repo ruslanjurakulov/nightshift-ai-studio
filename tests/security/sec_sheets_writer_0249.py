@@ -23,4 +23,6 @@ def extend(tables: dict, functions: dict) -> None:
         "ai_chat_save_sheets": USER,
         # The shape rule of one stored sheet: internal, read by ai_chat_save_sheets only.
         "ai_chat_sheet_problem": SERVICE,
+        # A stored sheet read the way the app's readSheets reads it: internal, read by ai_chat_save_sheets only.
+        "ai_chat_sheet_repair": SERVICE,
     })

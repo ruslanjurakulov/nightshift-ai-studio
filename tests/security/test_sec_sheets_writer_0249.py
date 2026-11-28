@@ -350,6 +350,68 @@ def test_a_malformed_stored_sheet_is_dropped_from_the_merge_not_kept(w):
     assert [s["character_id"] for s in stored(w.su, w.sid)["ref_sheets"]] == ["c1", "c2"]
 
 
+def test_one_bad_stored_view_drops_only_that_view_and_bad_fields_read_as_their_defaults(w):
+    """As the app's readSheets: a sheet with one unreadable view keeps its other views (a paid picture's job id among them)."""
+    job = str(uuid.uuid4())
+    legacy = {"character_id": "c1", "stage": None, "extra": 1, "views": [
+        view("front", "approved", job_id=job, asset_id=str(uuid.uuid4())),
+        {"view": "side", "prompt": 7, "status": "ready"},                      # no string prompt: this view only is dropped
+        {"view": "back", "prompt": "b", "status": "paid", "attempt": "x", "job_id": "nope", "key": "k", "error": "Bad"},
+    ]}
+    put_sheets(w.su, w.sid, [legacy])
+    assert as_(w.su, w.alice, SAVE, [w.sid, j([sheet("c2")]), j([]), None]).ok
+    s = stored(w.su, w.sid)["ref_sheets"][0]
+    assert s["character_id"] == "c1" and "extra" not in s
+    v = {x["view"]: x for x in s["views"]}
+    assert set(v) == {"front", "back"}
+    assert v["front"]["job_id"] == job and v["front"]["status"] == "approved"
+    assert v["back"] == {"view": "back", "prompt": "b", "status": "planned", "attempt": 0, "job_id": None, "asset_id": None,
+                         "key": None, "error": None}
+
+
+def test_a_merge_past_forty_sheets_is_refused_never_cut(w):
+    """Both reviewers on 0249: 40 stored plus one new is refused by name; the 40 stay, none is dropped."""
+    forty = [sheet(f"c{i}") for i in range(40)]
+    put_sheets(w.su, w.sid, forty)
+    assert refused(w.su, w.alice, SAVE, [w.sid, j([sheet("c99")]), j([]), None]) == "too_many_sheets"
+    assert len(stored(w.su, w.sid)["ref_sheets"]) == 40
+
+
+def test_a_merge_over_the_sheets_budget_is_refused_by_name(w):
+    """Each list under 196608 bytes, the two together over it: sheets_too_large, never the CHECK's raw 23514."""
+    big = lambda pre: [sheet(f"{pre}{i}", views=[view(n, prompt="p" * 1450) for n in ("front", "side", "back")]) for i in range(20)]  # noqa: E731
+    put_sheets(w.su, w.sid, [])
+    assert as_(w.su, w.alice, SAVE, [w.sid, j(big("a")), j([]), None]).ok
+    assert as_(w.su, w.alice, SAVE, [w.sid, j(big("b")), j([]), None]).ok        # 40 sheets, ~191 KB: fits
+    third = [sheet("a0", views=[view(n, prompt="q" * 4000) for n in ("front", "side", "back")])]
+    assert refused(w.su, w.alice, SAVE, [w.sid, j(third), j(big("a")), None]) == "sheets_too_large"
+
+
+def test_the_sheets_have_their_own_budget_a_turn_is_measured_alone(w):
+    """BR-SW-08's fix, both sides: a turn near 0199's own 262144 still saves with 191 KB of sheets on the row; a turn over it on
+    its own is refused by name (brief_too_large, the remedy said), not by the CHECK's raw 23514."""
+    full = [sheet(f"c{i}", views=[view(n, prompt="p" * 1450) for n in ("front", "side", "back")]) for i in range(40)]
+    assert as_(w.su, w.alice, SAVE, [w.sid, j(full), j([]), None]).ok
+    near = {**BASE_BRIEF, "notes": "n" * 250000}
+    out = as_(w.su, w.alice, BRIEF, [w.sid, json.dumps(near)])
+    assert out.ok, out
+    b = stored(w.su, w.sid)
+    assert b["notes"] == near["notes"] and len(b["ref_sheets"]) == 40
+    over = {**BASE_BRIEF, "notes": "n" * 262144}
+    out = as_(w.su, w.alice, BRIEF, [w.sid, json.dumps(over)])
+    assert not out.ok and out.sqlstate == "NS400" and "brief_too_large" in out.error, out
+
+
+def test_the_brief_check_counts_the_sheets_apart_and_still_holds_the_turn_to_262144(w):
+    become(w.su, None)
+    defs = dict(w.su.rows("select conname, pg_get_constraintdef(oid) from pg_constraint "
+                          "where conrelid = 'public.ai_chat_sessions'::regclass and contype = 'c'"))
+    assert "ai_chat_sessions_brief_check" not in defs
+    d = defs["ai_chat_sessions_brief_0249"]
+    for part in ("262144", "196608", "8192", "'ref_sheets'", "'film_link'"):
+        assert part in d, d
+
+
 # ── two connections at once ──────────────────────────────────────────────────────
 
 class Committed:
@@ -524,6 +586,10 @@ def test_the_rollback_removes_it_keeps_the_stored_sheets_and_0199_writes_as_befo
         assert not sec_db.has_0249(c)
         assert c.execute("select count(*) from pg_trigger where tgname = 'ai_chat_sessions_keep_sheets'").fetchone()[0] == 0
         assert c.execute("select to_regprocedure('public.ai_chat_sheet_problem(jsonb)') is null").fetchone()[0]
+        assert c.execute("select to_regprocedure('public.ai_chat_sheet_repair(jsonb)') is null").fetchone()[0]
+        assert c.execute("select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'public.ai_chat_sessions'::regclass "
+                         "and conname = 'ai_chat_sessions_brief_check'").fetchone()[0] == \
+            "CHECK (((jsonb_typeof(brief) = 'object'::text) AND (octet_length((brief)::text) <= 262144)))"
         assert c.execute("select brief -> 'ref_sheets' from public.ai_chat_sessions where id = %s", [sid]).fetchone()[0] == [sheet()]
         # 0199's whole-BRIEF write is the only writer again: a BRIEF without sheets drops them (the race 0249 closed reopens).
         _as_alice(c, sc.alice.actor)
@@ -533,6 +599,35 @@ def test_the_rollback_removes_it_keeps_the_stored_sheets_and_0199_writes_as_befo
         # And it applies again on top.
         c.execute(MIGRATION.read_text(encoding="utf-8"))
         assert sec_db.has_0249(c)
+        c.rollback()
+
+
+def test_the_rollback_refuses_by_name_while_a_conversation_holds_more_than_0199s_check_and_changes_nothing(conn, sc):
+    with psycopg.connect(st._dsn(conn), autocommit=False) as c:
+        sid = sc.alice.ai_chat_session
+        full = [sheet(f"c{i}", views=[view(n, prompt="p" * 1450) for n in ("front", "side", "back")]) for i in range(40)]
+        c.execute("select set_config('nightshift.ai_chat_sheets', %s, true)", [sid])
+        c.execute("update public.ai_chat_sessions set brief = %s::jsonb where id = %s",
+                  [json.dumps({**BASE_BRIEF, "notes": "n" * 100000, "ref_sheets": full}), sid])
+        c.execute("select set_config('nightshift.ai_chat_sheets', '', true)")
+        c.execute("savepoint rb")
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(_rollback_body())
+        assert "rollback 0249: 1 conversation(s) hold more than 262144 bytes" in str(e.value)
+        c.execute("rollback to savepoint rb")
+        assert sec_db.has_0249(c)
+        c.rollback()
+
+
+def test_the_guard_refuses_a_hand_changed_brief_check(conn):
+    with psycopg.connect(st._dsn(conn), autocommit=False) as c:
+        c.execute(_rollback_body())
+        c.execute("alter table public.ai_chat_sessions drop constraint ai_chat_sessions_brief_check")
+        c.execute("alter table public.ai_chat_sessions add constraint ai_chat_sessions_brief_check "
+                  "check (jsonb_typeof(brief) = 'object' and octet_length(brief::text) <= 999999)")
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(MIGRATION.read_text(encoding="utf-8"))
+        assert "ai_chat_sessions_brief_check with an unknown definition" in str(e.value)
         c.rollback()
 
 
