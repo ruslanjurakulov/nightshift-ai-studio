@@ -23,6 +23,7 @@ import requests
 from modules import model_registry as reg
 from modules.capabilities import ADAPTERS, build_adapter
 from modules.capabilities import base
+from modules.capabilities.video import FrameReading
 from modules.capabilities.base import (
     refused_outright,
     E_AUTH,
@@ -237,7 +238,7 @@ class NoKeyAnywhereTests(unittest.TestCase):
                                         duration_s=req.duration_s, input_images=("https://x.test/a.png",))
                 req = url if any("https URL" in p for p in a.problems(first, entry)) else first
             if hasattr(a, "fps_of"):
-                a.fps_of = lambda _path: 24.0
+                a.fps_of = lambda _path: FrameReading(rate=24.0, avg=24.0)
             with self.assertRaises(AdapterError) as cm:
                 a.submit(req, entry.vendor_model)
             logging.getLogger("test").error("adapter failed: %s", cm.exception)
