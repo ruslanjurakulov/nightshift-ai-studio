@@ -262,7 +262,7 @@ class HappyHorseVideoAdapter(_DashScope):
         err = self._body_error(data) if not out else None
         if err:
             raise err
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=status)
 
 
 class DashScopeImageAdapter(_DashScope):

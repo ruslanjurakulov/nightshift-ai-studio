@@ -379,7 +379,10 @@ class PollResult:
     state: str                                # PENDING | SUCCEEDED | FAILED
     outputs: List[Output] = field(default_factory=list)
     error: Optional[AdapterError] = None
-    progress: Optional[float] = None          # only when the vendor reports one
+    progress: Optional[float] = None          # a PERCENT (0-100), only when the vendor reports one; None = not known
+    #: The vendor's own status word for a task still in flight ("queued", "running", ...), as it sent it: the worker keeps
+    #: it only when it is one short lowercase word (modules/creative_worker.vendor_word), so no free text travels.
+    vendor_state: Optional[str] = None
 
 
 _EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp",

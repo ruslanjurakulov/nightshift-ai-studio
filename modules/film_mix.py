@@ -296,13 +296,19 @@ def _targets() -> dict:
 # ── one film ─────────────────────────────────────────────────────────────────
 
 def master(norm: Mapping, cut: ft.Cut, resolver: tl.AssetResolver, *, ffmpeg: str, workdir: str,
-           timeout_s: float, run: Runner = _run_limited) -> Mixed:
+           timeout_s: float, run: Runner = _run_limited, progress=None) -> Mixed:
     """The film's mastered sound as one track for the final pass, and the loudness report. Raises
-    :class:`MixFailed` (by name, with the fix) instead of ever handing back a mix that is not what the cut says."""
+    :class:`MixFailed` (by name, with the fix) instead of ever handing back a mix that is not what the cut says.
+
+    ``progress`` (optional, film_assembly.AssemblyMeter): told how many passes run (``plan``), how far each is from ffmpeg's
+    own ``-progress`` report against the film's length (``at``), and when each finished (``step_done``). Every pass writes
+    the film's whole length, so each is the same share. Without it every command is the one it always was."""
     deadline = time.monotonic() + float(timeout_s)
     work = Path(workdir)
     length = float(cut.length_s)
     timings: Dict[str, float] = {}
+
+    step = [0]
 
     def go(name: str, argv: Sequence[str]) -> ffmpeg_limits.Outcome:
         left = deadline - time.monotonic()
@@ -310,7 +316,23 @@ def master(norm: Mapping, cut: ft.Cut, resolver: tl.AssetResolver, *, ffmpeg: st
             raise MixFailed("render_timed_out", "the film's sound ran past the assembly's time limit: retry when "
                             "the server is less busy")
         t0 = time.monotonic()
-        o = run(list(argv), left)
+        k = step[0]
+        step[0] += 1
+        watch = None
+        argv = list(argv)
+        if progress is not None:
+            from modules import render_backend  # noqa: PLC0415 — the same -progress reader as the render's
+
+            report = work / f"mix_{k}.progress"
+            argv[1:1] = ["-progress", str(report)]
+            watch = render_backend.ProgressFileWatch(report, lambda secs, k=k: progress.at(k, secs))
+            watch.start()
+        try:
+            o = run(argv, left)
+        finally:
+            if watch is not None:
+                watch.stop()
+                (work / f"mix_{k}.progress").unlink(missing_ok=True)
         timings[f"{name}_s"] = round(time.monotonic() - t0, 3)
         timings[f"{name}_peak_mb"] = round(o.peak_rss_bytes / 1048576, 1)
         if o.timed_out:
@@ -319,6 +341,8 @@ def master(norm: Mapping, cut: ft.Cut, resolver: tl.AssetResolver, *, ffmpeg: st
         if not o.ok:
             raise MixFailed("sound_mix_failed", f"the film's sound could not be mixed ({name} stopped): retry the "
                             "assembly")
+        if progress is not None:
+            progress.step_done(k)
         return o
 
     # The editor's own placement of the narration and the music (gains, fades, the duck it would compute).
@@ -336,6 +360,9 @@ def master(norm: Mapping, cut: ft.Cut, resolver: tl.AssetResolver, *, ffmpeg: st
         stem_n = len(shots)
         stem = work / "clip_stem.wav"
         chunks = stem_chunks(shots)
+        if progress is not None:
+            # The chunks (and their join, when there are several), the premaster, the loudness measure and the pass.
+            progress.plan(len(chunks) + (1 if len(chunks) > 1 else 0) + 3)
         if len(chunks) == 1:
             go("stem", stem_command(ffmpeg, chunks[0], length, str(stem)))
         else:
@@ -348,6 +375,8 @@ def master(norm: Mapping, cut: ft.Cut, resolver: tl.AssetResolver, *, ffmpeg: st
         beds.append(AudioTrack(path=str(stem), duration_s=length))
     if not beds:
         return Mixed(tracks=(), loudness=None, timings=timings)
+    if progress is not None and sound is None:
+        progress.plan(3)   # the premaster, the loudness measure and the pass
 
     pre = work / "premaster.wav"
     go("premaster", premaster_command(ffmpeg, beds, length, str(pre)))

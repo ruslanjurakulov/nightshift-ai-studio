@@ -223,7 +223,7 @@ class GrokVideoAdapter(_GrokBase):
             if code == E_BAD_REQUEST and any(w in text.lower() for w in _POLICY_WORDS):
                 return PollResult(FAILED, error=_refused(text))   # invalid_argument also carries "blocked by moderation"
             return PollResult(FAILED, error=AdapterError(code, text))
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=status)
 
 
 class GrokImageAdapter(_GrokBase):

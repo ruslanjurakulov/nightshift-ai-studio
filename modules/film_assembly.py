@@ -57,6 +57,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field, replace
@@ -456,6 +457,11 @@ class AssemblyStore:
         return self._call("film_record_assembly", {"p_segment": segment_id, "p_worker": worker, "p_ok": bool(ok),
                                                    "p_result_asset": asset_id}) or {}
 
+    def assembly_progress(self, segment_id: str, worker: str, pct: Optional[float]) -> bool:
+        """0246: the running assembly's measured percent. False when it is not this worker's running assembly."""
+        return self._call("film_segment_assembly_progress", {"p_segment": segment_id, "p_worker": worker,
+                                                             "p_progress": pct}, missing_ok=True) is True
+
     def discard_unrecorded(self, segment_id: str, asset_id: str) -> int:
         return int(self._call("film_discard_unrecorded_assembly", {"p_segment": segment_id, "p_asset": asset_id}) or 0)
 
@@ -514,14 +520,117 @@ def probe_output(ffprobe: str, path: Path) -> Probed:
 
 
 def render_strict(norm, resolver, out: str, *, ffmpeg: str, workdir: str, jobs: int, timeout_s: float,
-                  timings: render_backend.RenderTimings, audio: Optional[Sequence] = None) -> str:
+                  timings: render_backend.RenderTimings, audio: Optional[Sequence] = None,
+                  progress: Optional[Callable[[float], None]] = None) -> str:
     """The editor's render (timeline_render.render) with its timings kept, so the caller can see which segment
     encode was used: render_backend falls back to the compact one without raising (Lens L2). ``audio``: the
-    film's mastered sound (film_mix), muxed in place of the editor's own mix of the document's tracks."""
+    film's mastered sound (film_mix), muxed in place of the editor's own mix of the document's tracks. ``progress``: the
+    render's measured percent (render_backend.RenderProgress)."""
     spec = timeline_render.to_render_spec(norm, resolver, out)
     if audio is not None:
         spec = replace(spec, audio_tracks=list(audio))
-    return render_backend.render(spec, ffmpeg=ffmpeg, workdir=workdir, jobs=jobs, timeout_s=timeout_s, timings=timings)
+    return render_backend.render(spec, ffmpeg=ffmpeg, workdir=workdir, jobs=jobs, timeout_s=timeout_s, timings=timings,
+                                 progress=progress)
+
+
+#: The assembly's percent (0246's film_segment_assembly_progress) is written at most once per this many seconds, and only
+#: when it moved by a whole point. Why 10: a render of a few minutes reports a figure every second (ffmpeg -progress), the
+#: live view wants a moving bar, and one row update every 10 s is nothing next to the render itself.
+ASSEMBLY_PROGRESS_SECONDS = 10.0
+
+
+class AssemblyProgress:
+    """Throttles the render's percent into film_segment_assembly_progress. Reporting only: a failed write is logged by its
+    type and the render goes on; a database without 0246 (the function missing: None from a missing_ok call) is fine."""
+
+    def __init__(self, store: "AssemblyStore", segment_id: str, worker: str, *, clock: Callable[[], float] = time.monotonic,
+                 every: float = ASSEMBLY_PROGRESS_SECONDS):
+        self._store, self._seg, self._worker, self._clock, self._every = store, segment_id, worker, clock, float(every)
+        self._last: Optional[float] = None
+        self._at: Optional[float] = None
+        self._lock = threading.Lock()
+
+    def __call__(self, pct: float) -> None:
+        with self._lock:
+            now = self._clock()
+            if self._last is not None and (abs(pct - self._last) < 1.0 and pct < 100.0):
+                return
+            if self._at is not None and now - self._at < self._every and pct < 100.0:
+                return
+            self._at, self._last = now, pct
+        try:
+            self._store.assembly_progress(self._seg, self._worker, pct)
+        except Exception as e:  # noqa: BLE001 — reporting only
+            logger.warning("segment %s: assembly progress not recorded (%s)", self._seg, type(e).__name__)
+
+
+class AssemblyMeter:
+    """The assembly's percent, measured in media seconds, never estimated from wall time. Every ffmpeg pass of the sound
+    (film_mix: each stem chunk, the join, the premaster, the loudness measure and the loudness pass) runs over the film's L
+    seconds once, and the render over them twice (render_backend.RenderProgress), so the work is (S + 2) x L seconds for the
+    S sound passes film_mix plans, and the percent is the share done. A pass that reports no out_time adds nothing until it
+    has finished (no share is guessed); before film_mix has said how many passes it runs, there is no percent at all; and
+    100 is said only when the render has said it, which it does only after its last ffmpeg exited 0."""
+
+    def __init__(self, report: Callable[[float], None], length_s: float):
+        self._report, self._len = report, float(length_s)
+        self._steps: Optional[int] = None
+        self._mix: dict = {}
+        self._render = 0.0
+        self._lock = threading.Lock()
+
+    # film_mix's side
+    def plan(self, steps: int) -> None:
+        with self._lock:
+            self._steps = max(0, int(steps))
+        self._emit()
+
+    def at(self, step: int, seconds: float) -> None:
+        with self._lock:
+            if 0 <= seconds <= self._len:
+                self._mix[step] = max(self._mix.get(step, 0.0), float(seconds))
+        self._emit()
+
+    def step_done(self, step: int) -> None:
+        with self._lock:
+            self._mix[step] = self._len
+        self._emit()
+
+    def mix_finished(self) -> None:
+        """The sound is ready: every planned pass is behind it (a silent mix skips the loudness pass, which is then no work)."""
+        with self._lock:
+            if self._steps is None:
+                self._steps = 0
+            for k in range(self._steps):
+                self._mix[k] = self._len
+        self._emit()
+
+    # the render's side (render_backend.RenderProgress's percent)
+    def render(self, pct: float) -> None:
+        with self._lock:
+            self._render = float(pct)
+        self._emit()
+
+    def percent(self) -> Optional[float]:
+        with self._lock:
+            if self._steps is None or not self._len > 0:
+                return None
+            total = (self._steps + 2) * self._len
+            done = sum(self._mix.values()) + self._render / 100.0 * 2 * self._len
+            render_said_100 = self._render >= 100.0
+        pct = round(100.0 * done / total, 2)
+        if pct >= 100.0:
+            return 100.0 if render_said_100 else None
+        return pct if pct >= 0 else None
+
+    def _emit(self) -> None:
+        pct = self.percent()
+        if pct is None:
+            return
+        try:
+            self._report(pct)
+        except Exception as e:  # noqa: BLE001 — reporting only
+            logger.warning("assembly progress not reported (%s)", type(e).__name__)
 
 
 def _latest_completed(takes: Sequence[Mapping], kind: str) -> Optional[Mapping]:
@@ -882,16 +991,18 @@ def _assemble(segment: Mapping, seg_id: str, org: str, worker: str, work: Path, 
     started = time.monotonic()
     # The sound first, audio only, on the same budget: a premix or loudness failure costs seconds, not a render.
     try:
-        mixed = deps.mix(norm, cut, resolver, ffmpeg=tools.ffmpeg, workdir=str(work), timeout_s=budget)
+        meter = AssemblyMeter(AssemblyProgress(store, seg_id, worker), cut.length_s)
+        mixed = deps.mix(norm, cut, resolver, ffmpeg=tools.ffmpeg, workdir=str(work), timeout_s=budget, progress=meter)
     except film_mix.MixFailed as e:
         raise AssemblyFailed(e.reason, e.detail) from None
+    meter.mix_finished()
     if mixed.loudness:
         logger.info("film assembly %s: sound mastered (%s, %d stem shot(s), %s)", seg_id, mixed.loudness["status"],
                     mixed.stem_shots, mixed.timings)
     try:
         deps.render(norm, resolver, str(out), ffmpeg=tools.ffmpeg, workdir=str(work), jobs=1,
                     timeout_s=max(1.0, budget - (time.monotonic() - started)), timings=timings,
-                    audio=mixed.tracks)
+                    audio=mixed.tracks, progress=meter.render)
     except render_backend.RenderTimeout:
         raise AssemblyFailed("render_timed_out", f"the render ran past its {budget:.0f} s limit: retry when the "
                              "server is less busy") from None

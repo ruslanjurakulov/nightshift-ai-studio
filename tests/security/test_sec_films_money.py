@@ -1417,6 +1417,9 @@ def test_reapplying_the_migration_changes_nothing(db, a):
         # transaction.
         sec_db.take_off_0218(c)
         sec_db.take_off_0187(c)
+        # 0246 adds column grants to 0171's tables, which a replay of 0171 revokes (its grant list is its own columns): off too.
+        sec_db.take_off_0248(c)
+        sec_db.take_off_0246(c)
         before = c.execute(SNAPSHOT).fetchone()[0]
         c.execute(MIGRATION.read_text(encoding="utf-8"))
         c.execute(MIGRATION.read_text(encoding="utf-8"))
@@ -1471,6 +1474,8 @@ def test_the_rollback_refuses_while_a_segment_lives_then_takes_everything_out_an
     with psycopg.connect(db.dsn, autocommit=False) as c:
         sec_db.take_off_0218(c)  # 0218 sits on 0171's film_price; 0171's rollback refuses any other body
         sec_db.take_off_0187(c)  # 0187 sits on 0171's start_film; 0171's rollback refuses any other body
+        sec_db.take_off_0248(c)  # 0248 reads 0171's film_takes.started_at
+        sec_db.take_off_0246(c)  # 0246 reads 0171's film_segments; 0171's rollback refuses while it is there
         with pytest.raises(psycopg.Error) as e:
             c.execute(sec_db.rollback_0171_body(override=True))
         assert "film segments are live" in str(e.value)
@@ -1479,12 +1484,16 @@ def test_the_rollback_refuses_while_a_segment_lives_then_takes_everything_out_an
     with psycopg.connect(db.dsn, autocommit=False) as c:
         sec_db.take_off_0218(c)
         sec_db.take_off_0187(c)
+        sec_db.take_off_0248(c)
+        sec_db.take_off_0246(c)
         with pytest.raises(psycopg.Error) as e:
             c.execute(sec_db.rollback_0171_body(override=False))
         assert "film segments exist and their record would be deleted" in str(e.value)
         c.rollback()
         sec_db.take_off_0218(c)
         sec_db.take_off_0187(c)
+        sec_db.take_off_0248(c)
+        sec_db.take_off_0246(c)
         c.execute(sec_db.rollback_0171_body(override=True))
         assert c.execute("select to_regclass('public.film_segments'), to_regclass('public.film_quotes'), "
                          "to_regclass('public.film_studio_settings'), to_regprocedure('public.start_film(uuid, text, text)')").fetchone() \

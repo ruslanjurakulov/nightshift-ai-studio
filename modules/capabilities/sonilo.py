@@ -320,7 +320,7 @@ class SoniloMusicAdapter(SafeResultMixin, HttpAdapter):
         raw_status = data.get("status")
         status = raw_status.lower() if isinstance(raw_status, str) else None
         if status == "processing":
-            return PollResult(PENDING)
+            return PollResult(PENDING, vendor_state=status)
         if status in _DONE:
             audio = data.get("audio")
             streams = [a for a in (audio if isinstance(audio, list) else [audio])

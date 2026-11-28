@@ -207,7 +207,7 @@ class LtxVideoAdapter(SafeResultMixin, HttpAdapter):
             return PollResult(FAILED, error=AdapterError(
                 _ERROR_TYPES.get(etype or "", E_UNAVAILABLE),
                 f"{self.message(message or etype or 'the job failed')}. {SPEND_UNKNOWN}"))
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=status)
 
 
 ADAPTERS = (LtxVideoAdapter,)

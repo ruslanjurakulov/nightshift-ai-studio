@@ -1083,12 +1083,53 @@ def rollback_0171_body(override: bool = False) -> str:
     return "\n".join(out)
 
 
+MIGRATION_0246 = MIGRATIONS / "0246_film_take_progress.sql"
+ROLLBACK_0246 = REPO / "docs" / "sql" / "rollback_0246_film_take_progress.sql"
+MIGRATION_0248 = MIGRATIONS / "0248_film_take_typical_seconds.sql"
+ROLLBACK_0248 = REPO / "docs" / "sql" / "rollback_0248_film_take_typical_seconds.sql"
+
+
+def _owner_rollback(conn, path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def take_off_0246(conn_or_session) -> None:
+    """0246 adds columns, column grants and two writers on 0171's film_takes and film_segments. 0171's rollback refuses while a later
+    function reads film_segments, and a replay of 0171 revokes every column grant of the two tables (its own grant list then puts
+    back only its columns), so a test that replays or rolls back 0171 takes 0246 off first and puts it back after."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if conn.execute("select to_regprocedure('public.film_take_progress(uuid, text, numeric, text)') is not null").fetchone()[0]:
+        _owner_rollback(conn, ROLLBACK_0246)
+
+
+def put_back_0246(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not conn.execute("select to_regprocedure('public.film_take_progress(uuid, text, numeric, text)') is not null").fetchone()[0]:
+        conn.execute(MIGRATION_0246.read_text(encoding="utf-8"))
+
+
+def take_off_0248(conn_or_session) -> None:
+    """0248 reads 0171's film_takes.started_at, which 0171's rollback drops: off before it, back after."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if conn.execute("select to_regprocedure('public.film_take_typical_seconds(uuid)') is not null").fetchone()[0]:
+        _owner_rollback(conn, ROLLBACK_0248)
+
+
+def put_back_0248(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not conn.execute("select to_regprocedure('public.film_take_typical_seconds(uuid)') is not null").fetchone()[0]:
+        conn.execute(MIGRATION_0248.read_text(encoding="utf-8"))
+
+
 def take_off_0171(conn_or_session) -> None:
     """0171 replaces 0166's films_status_check (adds 'queued'), and 0166's rollback refuses while film_segments exists, so a test that
     replays or rolls back 0166 takes 0171 off first with its own rollback (override on: the lab's segments are not kept) and puts it
     back with put_back_0171 where the chain goes on. 0187 (and 0192 on it) sit on 0171's start_film, and 0171's rollback refuses any
     other body, so they come off first (take_off_0187 takes 0192 off too) and go back with put_back_0171."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0248(conn)  # reads 0171's film_takes.started_at
+    take_off_0246(conn)  # reads 0171's film_segments; 0171's rollback refuses while it is there
     take_off_0218(conn)  # 0218 replaces 0171's film_price, and 0171's rollback refuses any other body
     take_off_0187(conn)
     if has_0171(conn):
@@ -1101,6 +1142,8 @@ def put_back_0171(conn_or_session) -> None:
         conn.execute(MIGRATION_0171.read_text(encoding="utf-8"))
     put_back_0187(conn)
     put_back_0218(conn)
+    put_back_0246(conn)
+    put_back_0248(conn)
 
 
 MIGRATION_0174 = MIGRATIONS / "0174_rights_acknowledgement.sql"

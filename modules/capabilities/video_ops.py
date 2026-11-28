@@ -231,7 +231,7 @@ class GenericVideoOpsAdapter(HttpAdapter):
             text = self.message(first(flat, ("error", "message", "reason")) or status)
             code = E_POLICY if any(w in text.lower() for w in ("safety", "policy", "moderat", "sensitive")) else E_UNAVAILABLE
             return PollResult(FAILED, error=AdapterError(code, text or "the provider reported the task failed"))
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=status)
 
 
 ADAPTERS = (GenericVideoOpsAdapter,)

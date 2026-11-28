@@ -339,7 +339,7 @@ class ViduVideoAdapter(SafeResultMixin, HttpAdapter):
             word = self.message(state)[:40] or "(none)"
             self.unknown_states[word] = self.unknown_states.get(word, 0) + 1
             logger.warning("vidu: task state %r is not one the docs list; treated as pending", word)
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=state)
 
 
 ADAPTERS = (ViduVideoAdapter,)

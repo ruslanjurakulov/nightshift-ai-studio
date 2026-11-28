@@ -3470,3 +3470,48 @@ rate: the person paid for sound the film never played.
 - **Lab**: `tests/security/test_sec_film_clip_sound_0236.py`; `sec_db.take_off_0236` / `put_back_0236` ride on
   `take_off_0218` / `put_back_0218` / `rollback_0218_if_on`.
 - Rollback: `docs/sql/rollback_0236_film_clip_sound_gate.sql` (0235's and 0215's bodies back byte for byte, the column dropped).
+## A running take's vendor percent and status word, and the assembly's measured percent (0246)
+
+- **Why.** The live view showed a running take as "running" from its first poll to its last. Runway answers a progress
+  fraction (0..1, `docs.dev.runwayml.com/api`, read 2026-11-28) and every adapter parses its vendor's status word; both were
+  dropped in `modules/creative_adapters.py`. The assembly's ffmpeg was never asked how far it was.
+- **Columns.** `film_takes.progress` (a percent 0..100), `vendor_state` (one short lowercase word), `progress_at`;
+  `film_segments.assembly_progress` (0..100), `assembly_progress_at`. NULL is "not known", never 0. CHECKs hold the rule.
+- **Writers.** `film_take_progress(take, worker, progress, word)` and `film_segment_assembly_progress(segment, worker,
+  progress)`: SECURITY DEFINER, service_role only, and they write only for the worker that holds the segment (0171's
+  `film_heartbeat_segment` rule) while the take, or the assembly, runs; anything else answers false. A figure outside 0..100
+  (or NaN) is stored as NULL, never clamped; a word that is not `^[a-z][a-z0-9_]{0,31}$` is NULL (no prompt, error, task id or
+  money can pass). The take writer locks the film, the segment (asking for the worker again) and then the take, film_lock_take's
+  order, and never waits on the take while holding the other two, so a lease taken over while a write waited is seen (Breach
+  B-0246-1); the assembly writer is a single-table UPDATE whose worker_id Postgres re-checks after a wait. The worker writes a take at most once per 15 s (a new status word at once), the assembly once per 10 s
+  and a whole point (`TAKE_PROGRESS_SECONDS`, `ASSEMBLY_PROGRESS_SECONDS`, with the reasons beside them).
+- **The assembly's percent** is measured: each segment's seconds count when its ffmpeg finished, then the final pass's
+  `out_time_us` from ffmpeg's own `-progress` report, over twice the timeline's seconds (`render_backend.RenderProgress`).
+  A figure of 100 or more is not reported until the final ffmpeg has exited 0; then 100 is (B-RP-1 and B-RP-2: a bounded digit
+  run, and no report on the render's thread from a watcher still blocked).
+- **Readers.** Members read the five columns through RLS (column grants to `authenticated`); `/api/films/[id]/live` returns
+  them with the person's own session, and the shape before 0246 when it is not applied. Only a running take's or
+  assembly's figures are returned: the columns keep their last value after it ends (a completed take's 45, a failed
+  assembly's 100), and the route answers null for those (rule 5).
+- **Lab.** `tests/security/test_sec_take_progress_0246_0248.py`. Unit: `tests/test_take_progress.py`.
+- **Requires** 0171. Replaces no body. **Undo.** `docs/sql/rollback_0246_film_take_progress.sql`.
+
+## How long a take of a model usually takes here (0248)
+
+- **What.** `film_take_typical_seconds(film)`, Atlas's rule (#985), per model and capability of the film's own takes (keyframe
+  t2i, clip and extend i2v, narration tts), from completed takes of the last 90 days with a real duration (`started_at` ..
+  `finished_at`, under 6 hours; failed takes left out):
+  1. `basis: 'yours'`: the film organization's last 20 hold 3 or more. Its median in whole seconds, and n.
+  2. `basis: 'nightshift'`: otherwise, the operator organization's own median (the organization the credits exempt,
+     `credits_exempt`, as 0171's `start_film`), when it holds 3 or more. Whole seconds only: no n, no id. No customer's takes
+     are ever in another customer's answer: a median over customers' organizations, even one vote each behind a floor of
+     five, can be steered by whoever makes enough organizations (Breach B-0248-1, -2, -3).
+  3. `basis: null`: neither, and no duration: the live view shows elapsed time only.
+- **Who.** SECURITY DEFINER, executable by `authenticated` only; it answers only a member of the film's organization, and
+  anyone else gets not_found, with no figure of any kind. Only the film's own model and capability pairs are answered.
+- **Copy** for S5: `studioLive.typicalYours` "usually ~{n} s" and `studioLive.typicalNightshift` "usually ~{n} s on Nightshift"
+  (en / ru / uz).
+- **Lab.** `tests/security/test_sec_take_progress_0246_0248.py` (yours with n of 3; the operator's 3 takes give nightshift, 2
+  give nothing, 100 customer organizations give nothing and never move the operator's figure; whole seconds; not_found for a
+  non-member) and `tests/security/test_sec_take_typical_0248_breach.py` (Breach's three holes, now pins).
+- **Requires** 0166, 0171, 0043 and 0020. **Undo.** `docs/sql/rollback_0248_film_take_typical_seconds.sql`.

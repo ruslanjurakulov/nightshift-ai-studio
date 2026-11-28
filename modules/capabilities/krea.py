@@ -205,7 +205,7 @@ class KreaImageAdapter(SafeResultMixin, HttpAdapter):
             if status == "cancelled":
                 text = f"the job was cancelled at Krea ({text})" if text != "the job failed" else "the job was cancelled at Krea"
             return PollResult(FAILED, error=AdapterError(code, f"{text}. {SPEND_UNKNOWN}"))
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=status)
 
 
 ADAPTERS = (KreaImageAdapter,)

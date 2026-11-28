@@ -15,6 +15,8 @@ export const studioLiveUz: StudioLiveDictionary = {
   backToStudio: "Studiyaga qaytish",
   unavailable: "Bu serverda jonli koʻrinish hozircha mavjud emas. Hech narsa oʻqilmadi.",
   closed: "Bu ish maydoni uchun loyihalar hali ochilmagan.",
+  typicalYours: "odatda ~{n} soniya",
+  typicalNightshift: "Nightshiftʼda odatda ~{n} soniya",
   runWindow: "Bosqichlar ushbu kanal ishga tushirish davomida yozgan voqealardan olingan.",
   runWindowSince: "Bosqichlar ushbu kanal ishga tushirilgandan beri yozgan voqealardan olingan. Voqea kelmasa, ishga tushirish hali boshlanmagan boʻlishi mumkin.",
   stagesLag: "Bosqichlar konveyer voqealari sinxronlangach paydo boʻladi, shuning uchun ishga tushirishdan orqada qolishi mumkin.",

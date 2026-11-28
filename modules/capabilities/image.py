@@ -325,7 +325,7 @@ class FluxAdapter(HttpAdapter):
             code = E_POLICY if "Moderated" in status else (
                 E_NOT_FOUND if status == "Task not found" else E_UNAVAILABLE)
             return PollResult(FAILED, error=AdapterError(code, f"job ended with status {status!r}"))
-        return PollResult(PENDING)
+        return PollResult(PENDING, vendor_state=status)
 
 
 class IdeogramAdapter(HttpAdapter):

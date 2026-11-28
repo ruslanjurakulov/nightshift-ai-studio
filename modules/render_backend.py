@@ -33,13 +33,14 @@ import hashlib
 import logging
 import math
 import os
+import re
 import subprocess
 import tempfile
 import threading
 import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence
 
 from modules import ass_captions, ffmpeg_limits, shape_art, speed_ramp
 from modules.render_spec import (
@@ -100,6 +101,111 @@ def resolve_ffmpeg() -> str:
         return imageio_ffmpeg.get_ffmpeg_exe()
     except Exception:  # pragma: no cover - only when imageio-ffmpeg is absent
         return "ffmpeg"
+
+
+#: ffmpeg writes out_time as an int64: 19 digits at most. A longer run is not ffmpeg's, and int() of one past Python's
+#: 4300-digit limit raises (Breach B-RP-2), so it is not read at all.
+_OUT_TIME = re.compile(r"^out_time_(?:us|ms)=(-?[0-9]{1,19})$")
+
+
+def parse_progress_out_time(text: str) -> Optional[float]:
+    """The last ``out_time_us`` (or ``out_time_ms``, which ffmpeg also writes in MICROseconds) of an ffmpeg ``-progress``
+    report, in seconds; None when there is none yet, or it is N/A or negative (ffmpeg writes both before the first frame)."""
+    last = None
+    for line in (text or "").splitlines():
+        m = _OUT_TIME.match(line.strip())
+        if m:
+            v = int(m.group(1))
+            last = v / 1_000_000.0 if v >= 0 else None
+    return last
+
+
+class RenderProgress:
+    """A render's percent, measured: every segment is encoded once (its seconds count when its ffmpeg finished), then the
+    final pass encodes the whole timeline once more (its seconds come from ffmpeg's -progress). So the work is twice the
+    timeline's seconds, and the percent is the share of it done. A figure above 100 (a final pass that ran past the
+    timeline, padding) is not reported; nothing is clamped. 100 itself is reported only by ``finished()``, once the final
+    ffmpeg has exited 0: its out_time reaches the timeline's end before it has flushed and closed the file, and a 100 then
+    would say "done" of a render that can still fail. ``report`` errors are swallowed: progress never fails a render."""
+
+    def __init__(self, report: Callable[[float], None], total_s: float):
+        self._report = report
+        self._total = 2.0 * float(total_s)
+        self._done: Dict[int, float] = {}
+        self._final = 0.0
+        self._finished = False
+        self._lock = threading.Lock()
+
+    def segment_done(self, index: int, seconds: float) -> None:
+        with self._lock:
+            self._done[index] = max(0.0, float(seconds))
+        self._emit()
+
+    def reset_segments(self) -> None:
+        with self._lock:
+            self._done.clear()
+        self._emit()
+
+    def final_at(self, seconds: float) -> None:
+        with self._lock:
+            self._final = max(0.0, float(seconds))
+        self._emit()
+
+    def finished(self) -> None:
+        """The final pass exited 0: the render is done, and only now is 100 said."""
+        with self._lock:
+            self._finished = True
+        self._emit()
+
+    def percent(self) -> Optional[float]:
+        with self._lock:
+            if self._finished:
+                return 100.0
+            if not self._total > 0:
+                return None
+            pct = round(100.0 * (sum(self._done.values()) + self._final) / self._total, 2)
+        return pct if 0.0 <= pct < 100.0 else None
+
+    def _emit(self) -> None:
+        pct = self.percent()
+        if pct is None:
+            return
+        try:
+            self._report(pct)
+        except Exception as e:  # noqa: BLE001 — reporting only
+            logger.warning("render progress not reported (%s)", type(e).__name__)
+
+
+class ProgressFileWatch:
+    """Reads an ffmpeg -progress file every ``every`` seconds on a thread and hands its out_time to ``on_seconds``."""
+
+    def __init__(self, path: Path, on_seconds: Callable[[float], None], every: float = 1.0):
+        self._path, self._on, self._every = Path(path), on_seconds, float(every)
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True, name="render-progress")
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def _read(self) -> None:
+        try:
+            seconds = parse_progress_out_time(self._path.read_text(encoding="utf-8", errors="replace"))
+        except (OSError, ValueError):
+            return
+        if seconds is not None:
+            self._on(seconds)
+
+    def _loop(self) -> None:
+        while not self._stop.wait(self._every):
+            self._read()
+
+    def stop(self) -> None:
+        """Stops the thread (at most 5 s), then reads the file once more, but only if the thread is gone: a reporter still
+        blocked on the thread (a slow database write) is not called again on the render's own thread (Breach B-RP-1)."""
+        self._stop.set()
+        self._thread.join(timeout=5)
+        if not self._thread.is_alive():
+            self._read()
 
 
 #: One pipeline ffmpeg command's wall-clock limit. Under the queue worker's
@@ -1245,7 +1351,7 @@ def _free_mb(path: Path) -> Optional[float]:
 
 def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
                    timings: RenderTimings, deadline: Optional[float] = None,
-                   allow_compact: bool = True) -> List[Segment]:
+                   allow_compact: bool = True, progress: "Optional[RenderProgress]" = None) -> List[Segment]:
     """Every segment → ``seg_NNNN.mp4``, in parallel when ``jobs`` > 1.
 
     Any failure of the parallel path — a segment, the pool itself — is logged
@@ -1263,9 +1369,13 @@ def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
             extra["deadline"] = deadline
         # A piece of a cross-faded clip carries its clip's seed, so every
         # piece of one still makes the same move.
-        return lambda: _normalize_segment(ffmpeg, seg, outs[i], spec.width, spec.height,
-                                          spec.fps, seed=seg.seed or f"{i}:{seg.path}",
-                                          x264=x264, **extra)
+        def run_one() -> None:
+            _normalize_segment(ffmpeg, seg, outs[i], spec.width, spec.height,
+                               spec.fps, seed=seg.seed or f"{i}:{seg.path}",
+                               x264=x264, **extra)
+            if progress is not None:
+                progress.segment_done(i, float(seg.duration))
+        return run_one
 
     t0 = time.monotonic()
     try:
@@ -1298,6 +1408,8 @@ def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
             except OSError:
                 pass
         timings.intermediate = "compact"
+        if progress is not None:
+            progress.reset_segments()
         timings.segment_s = _run_sequential([task(i, LEGACY_X264) for i in range(len(outs))])
         timings.mode, timings.jobs = "fallback", 1
     timings.normalize_s = round(time.monotonic() - t0, 3)
@@ -1372,7 +1484,7 @@ def check_layers_fit(spec: RenderSpec) -> None:
 def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[str] = None,
            jobs: Optional[int] = None, timings: Optional[RenderTimings] = None,
            timeout_s: Optional[float] = None, faststart: bool = False,
-           allow_compact: bool = True) -> str:
+           allow_compact: bool = True, progress: Optional[Callable[[float], None]] = None) -> str:
     """Render `spec` to `spec.output_path` via ffmpeg and return that path.
 
     Normalises every segment (``jobs`` at once; default ``render_jobs``),
@@ -1393,6 +1505,10 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
     ``allow_compact`` (default True, the pipeline's behaviour): when False, a low-disk
     switch to the compact segment encode, or the sequential redo with it after a failed
     parallel pass, raises CompactEncodeRefused instead of producing a lower-quality file.
+
+    ``progress`` (optional) is called with the render's percent (RenderProgress): the share
+    of the timeline's media seconds encoded, measured, never estimated from wall time.
+    Without it every command is the one it always was.
     """
     problems = validate(spec)
     if problems:
@@ -1422,6 +1538,9 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
             spec = replace(spec, picture_overlays=draw_shapes(spec, tmpdir))
             check_layers_fit(spec)
         strict = {} if allow_compact else {"allow_compact": False}
+        meter = RenderProgress(progress, spec.total_duration) if progress is not None else None
+        if meter is not None:
+            strict["progress"] = meter
         normalized = (_normalize_all(ffmpeg, spec, tmpdir, jobs, timings, **strict) if deadline is None
                       else _normalize_all(ffmpeg, spec, tmpdir, jobs, timings, deadline, **strict))
 
@@ -1444,11 +1563,25 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
             if cmd[-1] != spec.output_path:
                 raise RenderBackendError("cannot place -movflags +faststart: the command does not end with the output")
             cmd[-1:-1] = list(FASTSTART_MOVFLAGS)
+        watch = None
+        if meter is not None:
+            # ffmpeg's own -progress report (a global option, so it goes right after the binary): key=value blocks written to
+            # a file as it encodes; out_time_us is how far into the output it is, against the timeline's known length.
+            report_path = tmpdir / "final.progress"
+            cmd[1:1] = ["-progress", str(report_path), "-nostats"]
+            watch = ProgressFileWatch(report_path, meter.final_at)
+            watch.start()
         t0 = time.monotonic()
-        if deadline is None:
-            _run(cmd)
-        else:
-            _run(cmd, deadline=deadline)
+        try:
+            if deadline is None:
+                _run(cmd)
+            else:
+                _run(cmd, deadline=deadline)
+        finally:
+            if watch is not None:
+                watch.stop()
+        if meter is not None:
+            meter.finished()
         timings.final_s = round(time.monotonic() - t0, 3)
     timings.total_s = round(time.monotonic() - t_start, 3)
 

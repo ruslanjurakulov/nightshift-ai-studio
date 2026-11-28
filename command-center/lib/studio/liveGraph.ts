@@ -110,7 +110,32 @@ export interface LiveSegment {
   assemblyConfirmedCredits: number | null;
   assemblyChargedCredits: number | null;
   createdAt: string | null;
+  /** 0246: the running assembly's measured percent (0..100); null = not known (not reported, or 0246 not applied). */
+  assemblyProgress?: number | null;
+  assemblyProgressAt?: string | null;
 }
+
+/** 0246: what a running take's vendor last said, as film_takes stores it. Every field null = not known, never 0. */
+export interface TakeProgress {
+  /** The vendor's own percent (0..100), or null. */
+  progress: number | null;
+  /** The vendor's own status word (queued, running, ...), or null. */
+  vendorState: string | null;
+  /** When either was written. */
+  at: string | null;
+}
+
+/**
+ * 0248: how long a completed take of a model usually takes (Atlas's rule, #985). `basis`:
+ * - "yours": this workspace's own median over its last (up to 20) takes, with n >= 3;
+ * - "nightshift": the operator workspace's own median (3 takes at least), never another customer's; no n is given, by design;
+ * - null: neither, and no duration: show elapsed time only.
+ * Seconds are whole.
+ */
+export type TypicalSeconds =
+  | { model: string; capability: string; basis: "yours"; medianS: number; n: number }
+  | { model: string; capability: string; basis: "nightshift"; medianS: number }
+  | { model: string; capability: string; basis: null };
 
 /** Per take id, the money columns 0171 added to film_takes. */
 export type TakeMoney = ReadonlyMap<string, LiveCredits>;
@@ -135,6 +160,41 @@ export interface FilmReading {
   master?: { assetId: string; sound: MasterSound } | null;
   /** film_json's events (0166 film_events, the newest 50) as raw rows: filmGraph numbers their scenes. */
   rawEvents?: { rows: Record<string, unknown>[]; total: number | null } | null;
+  /** 0246 per take id; null when the columns could not be read (not known, never "no progress"). */
+  progress?: ReadonlyMap<string, TakeProgress> | null;
+  /** 0248's medians; null when they could not be read. */
+  typical?: TypicalSeconds[] | null;
+}
+
+const VENDOR_WORD = /^[a-z][a-z0-9_]{0,31}$/;
+/** A percent the view may show: a number in [0, 100]; anything else is not known (null), never clamped. */
+function percent(v: unknown): number | null {
+  const n = num(v);
+  return n !== null && n >= 0 && n <= 100 ? n : null;
+}
+
+function coerceTypical(raw: unknown): TypicalSeconds[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: TypicalSeconds[] = [];
+  for (const x of raw) {
+    const o = rec(x);
+    const model = o && str(o.model);
+    const capability = o && str(o.capability);
+    if (!o || !model || !capability) continue;
+    const medianS = num(o.median_s);
+    const seconds = medianS !== null && medianS > 0 && Number.isInteger(medianS) ? medianS : null;
+    if (o.basis === "yours") {
+      const n = num(o.n);
+      // "yours" needs its own n of 3 or more behind it; anything else is not shown as a figure.
+      if (seconds !== null && n !== null && Number.isInteger(n) && n >= 3) out.push({ model, capability, basis: "yours", medianS: seconds, n });
+      else out.push({ model, capability, basis: null });
+    } else if (o.basis === "nightshift" && seconds !== null) {
+      out.push({ model, capability, basis: "nightshift", medianS: seconds });
+    } else {
+      out.push({ model, capability, basis: null });
+    }
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ activity --------------------------------------------------- */
@@ -235,12 +295,17 @@ export function coerceFilmLive(raw: unknown): FilmReading | null {
           assemblyConfirmedCredits: num(s.assembly_confirmed_credits),
           assemblyChargedCredits: num(s.assembly_charged_credits),
           createdAt: str(s.created_at),
+          // Only a running assembly has a percent: a failed one keeps its last figure in the row (0246), which is not "how far".
+          assemblyProgress: s.assembly_status === "running" ? percent(s.assembly_progress) : null,
+          assemblyProgressAt: s.assembly_status === "running" ? str(s.assembly_progress_at) : null,
         }))
     : null;
   const money = new Map<string, LiveCredits>();
   const errors = new Map<string, string>();
   const bases = new Map<string, string>();
   let basesRead = false;
+  const progress = new Map<string, TakeProgress>();
+  let progressRead = false;
   for (const t of Array.isArray(r.takes) ? r.takes : []) {
     const o = rec(t);
     const id = o && str(o.id);
@@ -252,6 +317,15 @@ export function coerceFilmLive(raw: unknown): FilmReading | null {
       basesRead = true;
       const b = str(o.charge_basis);
       if (b) bases.set(id, b);
+    }
+    if ("progress" in o || "vendor_state" in o) {
+      progressRead = true;
+      const word = str(o.vendor_state);
+      // Only a running take has a vendor figure: a finished one keeps its last in the row (0246), which is not "how far".
+      const running = o.status === "running";
+      progress.set(id, running
+        ? { progress: percent(o.progress), vendorState: word && VENDOR_WORD.test(word) ? word : null, at: str(o.progress_at) }
+        : { progress: null, vendorState: null, at: null });
     }
   }
   const filmRow = rec(rec(r.film)?.film);
@@ -271,6 +345,8 @@ export function coerceFilmLive(raw: unknown): FilmReading | null {
       return m && assetId ? { assetId, sound: coerceMasterSound(m.mix_format, m.sound) } : null;
     })(),
     rawEvents: rows ? { rows, total } : null,
+    progress: progressRead ? progress : null,
+    typical: coerceTypical(r.typical),
   };
 }
 

@@ -813,7 +813,9 @@ AUTH_COLUMNS = {
                    "error_code", "error", "created_at", "updated_at", "finished_at",
                    # 0171 grants the take's money on purpose: the line the person confirmed and what it was charged.
                    "segment_id", "credit_unit", "unit_credits", "quantity", "minimum_credits", "confirmed_credits", "charged_credits",
-                   "charge_basis", "output_seconds"},
+                   "charge_basis", "output_seconds",
+                   # 0246 grants a running take's vendor percent and status word: no prompt, error, task id or money can be in them.
+                   "progress", "vendor_state", "progress_at"},
     "film_events": {"id", "film_id", "org_id", "scene_id", "actor", "actor_role", "event", "detail", "created_at"},
 }
 

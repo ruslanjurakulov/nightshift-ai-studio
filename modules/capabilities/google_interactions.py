@@ -369,7 +369,7 @@ class GeminiOmniAdapter(_InteractionsBase):
         if status in _TERMINAL_FAILED:
             return self._failure(data)
         if status in _RUNNING:
-            return PollResult(PENDING)
+            return PollResult(PENDING, vendor_state=status)
         if status == "requires_action":
             # Nothing here can answer a request for input; the job would be left running and billing.
             return PollResult(FAILED, error=AdapterError(

@@ -13,6 +13,10 @@ export const studioLiveEn = {
   backToStudio: "Back to the Studio",
   unavailable: "Live view is not available on this server yet. Nothing was read.",
   closed: "Projects are not open yet for this workspace.",
+  // 0248: how long a take of this model usually takes (S5 shows it beside the elapsed time). Yours: this workspace's own
+  // median (3 takes or more); nightshift: the Nightshift workspace's own median. {n} is whole seconds.
+  typicalYours: "usually ~{n} s",
+  typicalNightshift: "usually ~{n} s on Nightshift",
   runWindow: "Stages come from the events this channel recorded while the run was running.",
   runWindowSince: "Stages come from the events this channel recorded since this run was started. If none arrive, the run may not have begun yet.",
   stagesLag: "Stages appear once the pipeline's events are synced, so they can lag behind the run.",
