@@ -7327,6 +7327,7 @@
         "confirmed": false,
         "note": "elevenlabs.io/pricing/api read 2026-11-11: v4 '$0.08 Price per 1K characters', the same on every plan row."
       },
+      "operator_preview": true,
       "credit_unit": "model_elevenlabs_v4_character",
       "entitlement": "models_audio:premium",
       "terms_gate": "plan_required:scale",
@@ -7385,6 +7386,7 @@
         "confirmed": false,
         "note": "elevenlabs.io/pricing/api read 2026-11-11: v3 '$0.08 Price per 1K characters', the same on every plan row; '5,000 character limit'."
       },
+      "operator_preview": true,
       "credit_unit": "model_elevenlabs_v3_character",
       "entitlement": "models_audio:premium",
       "terms_gate": "plan_required:scale",

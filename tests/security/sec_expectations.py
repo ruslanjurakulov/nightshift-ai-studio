@@ -880,3 +880,9 @@ sec_org_spender_0226.extend(TABLES, FUNCTIONS)
 import sec_geo_allowlist_0230  # noqa: E402
 
 sec_geo_allowlist_0230.extend(TABLES, FUNCTIONS)
+
+# Migration 0235 (Film Studio: the operator's preview models, in the operator's own organization only): two internal four-argument
+# overloads of 0166's film_check_model and 0171's film_model_problem, revoked from every API role. tests/security/sec_film_operator_preview_0235.py
+import sec_film_operator_preview_0235  # noqa: E402
+
+sec_film_operator_preview_0235.extend(TABLES, FUNCTIONS)

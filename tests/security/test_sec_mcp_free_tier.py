@@ -43,7 +43,9 @@ ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0147_mcp_free_tier.sql"
 # 0218 (creative_price on 0208's body) comes off before 0208 and goes back after it.
 # 0215 (archive and resume) sits on 0198's start_film and film_claim_segment: off before 0198.
 # 0226 (only a member spends) sits on 0147's oauth_ctx and 0192's bodies and calls 0215's is_org_spender: off first of all.
-LATER = [(sec_db.MIGRATION_0226, sec_db.ROLLBACK_0226),
+# 0235 (Film Studio's operator preview) sits on 0218's film_price and 0215's film_resume_precheck, and both refuse it: off first.
+LATER = [(sec_db.MIGRATION_0235, sec_db.ROLLBACK_0235),
+         (sec_db.MIGRATION_0226, sec_db.ROLLBACK_0226),
          (sec_db.MIGRATION_0224, sec_db.ROLLBACK_0224),  # 0224 sits on 0218's creative_price, which 0218's rollback keeps the line of
          (sec_db.MIGRATION_0219, sec_db.ROLLBACK_0219),
          (sec_db.MIGRATION_0218, sec_db.ROLLBACK_0218),

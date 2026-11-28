@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import unittest.mock
 from datetime import date
 from pathlib import Path
 
@@ -204,6 +205,78 @@ class FilmTakeStillOnSale(unittest.TestCase):
         self.assertEqual(db.settles, [])
         for j in db.jobs.values():
             self.assertNotIn("submitting", j["steps"])
+
+
+TTS_PREVIEW = {"id": "tts-a", "availability": "hidden", "verified_at": "2026-11-01T00:00:00Z", "capabilities": ["tts"],
+               "spec": {"operator_preview": True}}
+
+
+class FilmTakeOperatorPreview(unittest.TestCase):
+    """0235: the operator's film may be narrated by an operator-preview voice model; nobody else's may, and the preview must still be
+    runnable (the Studio worker's operator_preview_runnable) right before the paid call."""
+
+    def run_film(self, org, row, *, switched_off=False):
+        db = FakeDb()
+        db.seg["org_id"] = org
+        db.off_sale.add("tts-a")  # sellable_models never lists a hidden model
+        if row is not None:
+            db.registry["tts-a"] = row
+        if switched_off:
+            db.switched_off.add("tts-a")
+        h = Harness(db)
+        h.run()
+        return db, h
+
+    def test_the_operators_film_in_the_exempt_organization_is_narrated_by_the_preview_voice(self):
+        db, h = self.run_film(EXEMPT, TTS_PREVIEW)
+        on_sale = Harness(FakeDb())
+        on_sale.run()
+        # voiced exactly as a voice on sale would be: the same calls, nothing failed
+        self.assertGreater(h.adapters["tts-a"].submits, 0)
+        self.assertEqual(h.adapters["tts-a"].submits, on_sale.adapters["tts-a"].submits)
+        self.assertEqual(db.failed, [])
+        self.assertEqual(db.settles, ["completed"])
+
+    def test_a_customer_organizations_film_is_never_narrated_by_it_and_never_reads_the_row(self):
+        db, h = self.run_film("22222222-3333-4444-5555-666666666666", TTS_PREVIEW)
+        self.assertEqual(h.adapters["tts-a"].submits, 0)
+        self.assertEqual(db.count("registry_row"), 0)
+        fails = [f for f in db.failed if f[0] == "narration"]
+        self.assertTrue(fails)
+        self.assertTrue(all(f[2] == "bad_request" and "no longer on sale" in f[3] for f in fails), fails)
+
+    def test_a_preview_disabled_unmarked_unprobed_off_its_capability_past_its_date_or_switched_off_is_not_voiced(self):
+        for name, row, off in [
+            ("disabled", {**TTS_PREVIEW, "availability": "disabled"}, False),
+            ("not marked", {**TTS_PREVIEW, "spec": {}}, False),
+            ("marked with a string", {**TTS_PREVIEW, "spec": {"operator_preview": "true"}}, False),
+            ("not probed", {**TTS_PREVIEW, "verified_at": None}, False),
+            ("another capability", {**TTS_PREVIEW, "capabilities": ["sfx"]}, False),
+            ("past its date", {**TTS_PREVIEW, "spec": {"operator_preview": True, "shutdown": {"on": "2000-01-01"}}}, False),
+            ("switched off", TTS_PREVIEW, True),
+            ("no row", None, False),
+        ]:
+            with self.subTest(name):
+                db, h = self.run_film(EXEMPT, row, switched_off=off)
+                self.assertEqual(h.adapters["tts-a"].submits, 0)
+                self.assertTrue([f for f in db.failed if f[0] == "narration" and f[2] == "bad_request"], db.failed)
+
+    def test_the_recheck_asks_for_previews_exactly_when_the_organization_is_exempt(self):
+        for org, want in ((EXEMPT, True), ("22222222-3333-4444-5555-666666666666", False)):
+            with self.subTest(org=org):
+                db = FakeDb()
+                db.seg["org_id"] = org
+                seen = []
+                real = cw.not_on_sale
+
+                def spy(queue, model, capability, org_id, *, previews):
+                    seen.append((org_id, previews))
+                    return real(queue, model, capability, org_id, previews=previews)
+
+                with unittest.mock.patch.object(cw, "not_on_sale", spy):
+                    Harness(db).run()
+                self.assertTrue(seen)
+                self.assertEqual({s for s in seen}, {(org, want)})
 
 
 if __name__ == "__main__":
