@@ -185,16 +185,19 @@ class Numbering(unittest.TestCase):
         # 0232 (one storyboard plan per film, its turns reserved) was reviewed the same way: one closed table, one function and two
         # helpers of Nightshift AI's, and four ai_chat_* bodies (0199's, 0226's); it reads, replaces and alters nothing of 0127's.
         # 0230 replaces only 0208's creative_jobs_geo_gate (the allow-list read), outside these pins.
+        # 0234 adds an operator check to 0130's two Agent Builder draft functions, outside these pins.
         # 0224 (dated credit prices: a new closed table credit_price_schedule, an internal reader credits_per_unit_now, a list-price
         # guard trigger on credit_prices and one line in 0218's creative_price) was reviewed the same way: it names nothing these pin.
         # 0231 (cancel audit: cancel_creative_job on 0198's body, one restrictive insert policy on app_audit_log) names nothing
         # these pin.
         # 0230 replaces only 0208's creative_jobs_geo_gate (the allow-list read), outside these pins.
+        # 0238 (0142's CHECK on model_registry narrowed: a country-listed row may go on sale with an allow-list, once 0230's
+        # gate is live; no function, policy, grant or row) was reviewed the same way: it names nothing these pin.
         # 0233 (nobody changes the platform roster from a browser: EXECUTE on 0107's three roster functions and INSERT, UPDATE, DELETE
         # on app_members revoked from the API roles; no body, table or policy) was reviewed the same way: it names nothing these pin.
         # 0249 (one writer of a Nightshift AI conversation's ref_sheets and film_link, and a trigger on ai_chat_sessions that keeps them
         # from every other BRIEF writer; no body replaced, no table) was reviewed the same way: it names nothing these pin.
-        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194", "0195", "0196", "0197", "0198", "0199", "0200", "0201", "0202", "0203", "0204", "0205", "0208", "0209", "0222", "0212", "0215", "0218", "0219", "0225", "0214", "0211", "0227", "0230", "0224", "0232", "0231", "0233", "0228", "0249")
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194", "0195", "0196", "0197", "0198", "0199", "0200", "0201", "0202", "0203", "0204", "0205", "0208", "0209", "0222", "0212", "0215", "0218", "0219", "0225", "0214", "0211", "0227", "0230", "0224", "0232", "0231", "0233", "0228", "0234", "0238", "0249")
         # 0199 (Nightshift AI: new ai_chat_* tables and their functions; replaces no body, names nothing these pin) was
         # reviewed the same way.
         # 0203 (the owner AI's turn log: one closed table and two owner-only functions; replaces nothing) was reviewed the same way.

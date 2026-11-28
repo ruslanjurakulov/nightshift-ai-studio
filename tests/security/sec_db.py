@@ -394,6 +394,8 @@ ON_0156 = (*(f for f in ON_0156 if f != "0228_music_per_request_price.sql"), "02
 #: 0230 (the country gate reads an allow-list vendor's own list) replaces 0208's creative_jobs_geo_gate and refuses to apply without
 #: it: a sequence that leaves 0208 out leaves 0230 out too, and puts it back last.
 ON_0156 = (*(f for f in ON_0156 if f != "0230_geo_gate_allow_list.sql"), "0230_geo_gate_allow_list.sql")
+#: 0238 (a country-listed row with an allow-list may go on sale) refuses to apply unless 0230's gate is live: after 0230, last.
+ON_0156 = (*ON_0156, "0238_country_list_sale_needs_allow_list.sql")
 ON_0155 = (MIGRATION_0156.name, *ON_0156)
 #: Migrations written on 0153's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0153 out
 #: leaves these out too, in this order.
@@ -440,6 +442,8 @@ ON_0139 = (*ON_0139, "0232_ai_chat_film_plan_leases.sql")
 ON_0139 = (*(f for f in ON_0139 if f != "0230_geo_gate_allow_list.sql"), "0230_geo_gate_allow_list.sql")
 #: 0231 (cancel audit) asks for 0226's cancel_workflow_run and refuses to apply without it: after it, in both lists.
 ON_0139 = (*ON_0139, "0231_cancel_audit.sql")
+#: 0238 asks for 0230's gate: after 0230, last (ON_0156's copy moved here).
+ON_0139 = (*(f for f in ON_0139 if f != "0238_country_list_sale_needs_allow_list.sql"), "0238_country_list_sale_needs_allow_list.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
@@ -468,8 +472,10 @@ ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164
            "0224_dated_credit_price.sql",
            # 0228 sits on 0224's creative_price and 0218's creative_params_problem: out and back with them, after them.
            "0228_music_per_request_price.sql",
-           # 0230 replaces 0208's creative_jobs_geo_gate and refuses to apply without 0208: out and back with it, last.
-           "0230_geo_gate_allow_list.sql")
+           # 0230 replaces 0208's creative_jobs_geo_gate and refuses to apply without 0208: out and back with it.
+           "0230_geo_gate_allow_list.sql",
+           # 0238 refuses to apply unless 0230's gate is live: out and back with it, last.
+           "0238_country_list_sale_needs_allow_list.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -702,7 +708,8 @@ def put_back_0224(conn_or_session) -> None:
 
 def rollback_0208_body() -> str:
     """0208's rollback, with 0224's and 0218's first (each sits on the one before, and each rollback refuses a later body): 0224's is
-    harmless where it is not on, 0218's runs only where 0218 is on."""
+    harmless where it is not on, 0218's runs only where 0218 is on. (0238 is taken off by take_off_0208, which can ask the database
+    whether it is on: a scratch database that dropped 0142's CHECK to put a country-listed model on sale has nothing to take off.)"""
     text = ROLLBACK_0208.read_text(encoding="utf-8")
     return rollback_0224_body() + "\n" + rollback_0218_if_on() + "\n" + "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
 
@@ -712,6 +719,7 @@ def take_off_0208(conn_or_session) -> None:
     reroute_creative_job() on 0196's, and their replays and rollbacks refuse any other body: taken off first with its own rollback,
     put back with put_back_0208."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0238(conn)  # 0238's CHECK lets a country-listed row on sale only behind the gate this rollback drops: off first
     take_off_0218(conn)
     conn.execute(rollback_0208_body())
 
@@ -739,6 +747,75 @@ def put_back_0230(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if _md5_of(conn, "public.creative_jobs_geo_gate()") == GEO_GATE_0208:
         conn.execute(MIGRATION_0230.read_text(encoding="utf-8"))
+    put_back_0238(conn)
+
+
+MIGRATION_0238 = MIGRATIONS / "0238_country_list_sale_needs_allow_list.sql"
+ROLLBACK_0238 = REPO / "docs" / "sql" / "rollback_0238_country_list_sale_needs_allow_list.sql"
+
+
+def has_0238(conn_or_session) -> bool:
+    """0238's CHECK is the live one: the only definition of model_registry_countries_before_sale that reads available_countries."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute(
+        "select coalesce(bool_or(position('available_countries' in pg_get_constraintdef(oid)) > 0), false) from pg_constraint "
+        "where conrelid = 'public.model_registry'::regclass and conname = 'model_registry_countries_before_sale'").fetchone()[0])
+
+
+def rollback_0238_body() -> str:
+    """0238's rollback without its own begin / commit: 0142's CHECK back (it refuses while a country-listed row is on sale)."""
+    text = ROLLBACK_0238.read_text(encoding="utf-8")
+    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+
+
+def take_off_0238(conn_or_session) -> None:
+    """0238 out (0142's CHECK back), before anything takes 0230's gate away or replays 0142."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0238(conn):
+        conn.execute(rollback_0238_body())
+
+
+def put_back_0238(conn_or_session) -> None:
+    """0238 again, only where 0230's gate is live (its guard refuses any other body) and it is not on already. A replay of 0142
+    (drop, then add) puts 0142's CHECK back over 0238's, so a test that replays 0142 calls this after."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0238(conn) and _md5_of(conn, "public.creative_jobs_geo_gate()") == GEO_GATE_0230:
+        conn.execute(MIGRATION_0238.read_text(encoding="utf-8"))
+
+
+MIGRATION_0234 = MIGRATIONS / "0234_agent_drafts_operator_only.sql"
+ROLLBACK_0234 = REPO / "docs" / "sql" / "rollback_0234_agent_drafts_operator_only.sql"
+#: md5 (white space folded) of save_agent_workflow_draft: 0130's body (rollback_0130 pins it), and 0234's operator check on it.
+AGENT_SAVE_0130 = "7fe9d1359748e6e311f95678843a6b2e"
+AGENT_SAVE_0234 = "3ec1e1922060eb771bf57be879d5bfb2"
+AGENT_DELETE_0234 = "2f7e029a513675feeed6aded38622c63"
+
+
+def has_0234(conn_or_session) -> bool:
+    """0234 replaces both draft functions in one transaction, so the save's body is enough to tell."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return _md5_of(conn, "public.save_agent_workflow_draft(uuid, integer, jsonb)") == AGENT_SAVE_0234
+
+
+def rollback_0234_body() -> str:
+    """0234's rollback without its own begin / commit, to run inside a test's transaction."""
+    text = ROLLBACK_0234.read_text(encoding="utf-8")
+    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+
+
+def take_off_0234(conn_or_session) -> None:
+    """0234 replaces 0130's two draft functions, and rollback_0130 refuses any body but 0130's. A test that applies rollback_0130 (or
+    replays 0130) on a database that has 0234 takes 0234 off first with its own rollback, and puts it back with put_back_0234."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0234(conn):
+        conn.execute(rollback_0234_body())
+
+
+def put_back_0234(conn_or_session) -> None:
+    """0234 again where 0130's save body is live (a replay of 0130 puts 0130's bodies back over 0234's)."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if _md5_of(conn, "public.save_agent_workflow_draft(uuid, integer, jsonb)") == AGENT_SAVE_0130:
+        conn.execute(MIGRATION_0234.read_text(encoding="utf-8"))
 
 
 def rollback_0159_body() -> str:

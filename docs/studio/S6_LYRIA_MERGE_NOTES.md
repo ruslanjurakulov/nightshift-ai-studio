@@ -47,8 +47,17 @@ with "rollback 0224: ... a later file sits on 0224". Every file below must keep 
 - **`tests/test_creative_prompt_limits_migration.py`**: take #945's `ON_0124` checks, extended so that `"0228_music_per_request_price.sql"`
   may follow 0219. Keep this branch's `REVIEWED_REPLACERS` (0228 replaces two 0218 bodies on purpose).
 - **`docs/MIGRATIONS.md`**: keep both sections.
-- **After the merge**, a later small PR takes `MUSIC` out of `REGISTRY_ONLY_CAPABILITIES`, once Atlas confirms 0228 is live.
-  `tests/test_sonilo.py` then loses its `| {MUSIC}`.
+- **Done (branch `claude/nsai-s6-music-on`)**: once Atlas confirmed 0228 live, `MUSIC` left `REGISTRY_ONLY_CAPABILITIES` and
+  `tests/test_sonilo.py` lost its `| {MUSIC}`. `google-lyria-3.5` and `sonilo-music` are synced dark after 0228. `video_music` and
+  `video_character_swap` stay registry-only.
+  - **What the database enforces.** The terms gate is not a hard barrier: since 0227 the owner clears it with one in-app action
+    (`owner_accept_model_terms`), and a named probe verifies the row. After that the **credit price is the last hard barrier**
+    (`quote_creative_job` refuses `unpriced`), plus, for Lyria only, 0142's `model_registry_countries_before_sale` (it carries
+    `blocked_countries`) and the `models_audio:premium` entitlement. No screen lists music, but a member can call
+    `quote_creative_job`/`create_creative_job('music')` directly with the anon key.
+  - **What nothing enforces.** The vocal-activity check on Lyria's MP3, Sonilo's written answer on its terms and the owner's legal
+    sign-off are process preconditions. No code waits for them, so **no credit price may be written for a music model before
+    them**. `tests/security/test_sec_music_synced_dark.py` (`test_lit_by_the_owner_but_unpriced_*`) pins both halves.
 - **If #0230 (geo allow-list, `claude/nsai-s6-geo-trigger`) merges first**: the `google-lyria-3.5` row must get the same
   `available_countries` list as every other `provider: google` row, or the 0230 validator fails the registry and the 0230
   trigger refuses every Lyria job as `country_unverified`. If this PR merges first, 0230's branch adds it instead.
