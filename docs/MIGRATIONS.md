@@ -3098,6 +3098,42 @@ BR-S6-03; the web half is PR #951.
 - **Tests.** `tests/test_geo_gate_allow_list_migration.py`, `tests/security/test_sec_geo_allowlist_0230.py` and
   `tests/security/test_sec_geo_allowlist_0230_breach.py` (a real PostgreSQL; contract `tests/security/sec_geo_allowlist_0230.py`),
   `command-center/tests/geo-block.test.ts`.
+
+## The Agent Builder draft functions serve platform operators only (0234)
+
+0234 (`0234_agent_drafts_operator_only.sql`, BR-S8-01 in `docs/security/LEDGER.md`) is the database half of the owner's decision of
+28 Nov that the Agent Builder is operators-only until launch; the web half (the page's `guardOperatorPage`, the four routes'
+`requireOperator`) is PR #960. Live on apply: a signed-in person who is not a platform owner or admin can no longer save or delete a
+draft through the database. No draft is deleted, and owners still read what they saved (0130's policies are not touched), but a non-operator can no
+longer delete a draft saved before 0234.
+
+- **The finding.** Both 0130 functions check only sign-in, so any authenticated non-admin saved and deleted drafts straight through
+  PostgREST with the browser key, whatever the web gate said (Breach, in the lab). Revoking EXECUTE from `authenticated` is not the
+  fix: both bind to `auth.uid()`, and the operator's own route calls them with the browser key.
+- **The change.** Both bodies, 0130's verbatim, with one marked check right after the sign-in check: unless
+  `public.is_platform_admin()` (0018; the function the Command Center's `isOperator()` asks) is true, `operator_only` with SQLSTATE
+  42501 (0130's code for `not_authenticated`). NULL is no; an error inside the lookup aborts the call. Refusal order:
+  `not_authenticated` -> `operator_only` -> 0130's own checks. `draftRpcFailure` answers `operator_only` as 403 `forbidden`.
+- **Grants unchanged.** EXECUTE for `authenticated` only, exactly 0130's, stated again and asserted by the end state.
+- **Replaces** `save_agent_workflow_draft(uuid, integer, jsonb)`: 0130's `c5175b042a9118080b0d4f12906c202d` -> 0234's
+  `a95607774a410e65ccdefb1989557946`; `delete_agent_workflow_draft(uuid)`: 0130's `7b72f3679d8e9de439d753738f8b66bc` -> 0234's
+  `5a506ee8e5b1fd93419b2fce831e3093` (0230's fingerprint: `--` comments cut, then white space folded). Folded only, as
+  `rollback_0130` pins them: save `7fe9d1359748e6e311f95678843a6b2e` -> `3ec1e1922060eb771bf57be879d5bfb2`, delete
+  `ef7540b121198f0b79cde9f8975a5c95` -> `2f7e029a513675feeed6aded38622c63`. Refuses any other body, and refuses without 0130 or
+  0018's `is_platform_admin()`. No backslash in the file.
+- **Replay.** The guard accepts 0234's own bodies: a second run writes the same bodies. Replaying 0130 is not possible (it is not
+  idempotent: it stops at its first CREATE TABLE).
+- **`rollback_0130` now refuses** (its guard pins 0130's bodies): apply `rollback_0234` first. The lab's `take_off_0234` /
+  `put_back_0234` (`tests/security/sec_db.py`) do that around the 0130 rollback test.
+- **Number.** 0234, assigned by Atlas (0233 is taken). Needs 0130 and 0018. Independent of 0230.
+- **Undo.** `docs/sql/rollback_0234_agent_drafts_operator_only.sql` (owner-applied): refuses a body that is neither 0234's nor
+  0130's, puts 0130's bodies back verbatim and asserts them and the grants. BR-S8-01 is then open again (the routes still refuse
+  non-operators).
+- **Tests.** `tests/test_agent_drafts_operator_only_migration.py`, `tests/security/test_sec_agent_drafts_operator_only_0234.py` (a
+  real PostgreSQL), `tests/security/test_sec_agent_workflow_drafts.py` (0130's guards, each caller made a platform admin for its
+  rolled-back transaction), `command-center/tests/agent-builder-operator-gate.test.tsx`, `agent-drafts-route.test.ts` and
+  `security-agent-builder-gate-breach.test.tsx`.
+
 ## Only a member spends a workspace's credits, on every path (0226, provisional)
 
 0226 (`0226_org_spender_everywhere.sql`) applies the owner's decision of 22 Nov, which 0215 applied to the film paths, to every other
