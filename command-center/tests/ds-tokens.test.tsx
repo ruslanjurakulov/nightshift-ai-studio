@@ -200,7 +200,8 @@ describe("Pixel #810 regressions", () => {
     const globals = readFileSync(path.join(root, "app/globals.css"), "utf8");
     const unlayered = globals.match(/^:where\(\*:not\(\.st\)[^\n]*\{/m)?.[0] ?? "";
     for (const c of ["ds-btn", "ds-input", "ds-chip", "ds-toggle", "ds-tip", "ds-spinner"]) expect(unlayered, c).toContain(`.${c}`);
-    expect(globals).toMatch(/@layer base \{\s*:where\(\.st, \.st \*, \.ds-btn, \.ds-input, \.ds-chip, \.ds-toggle, \.ds-tip, \.ds-spinner\)/);
+    expect(globals).toMatch(/@layer base \{\s*:where\(\.st, \.st \*, \.ds-btn, \.ds-input, \.ds-chip, \.ds-toggle, \.ds-tip, \.ds-spinner[,)]/);
+    // The adopted primitives (components/ui) are carved out the same way; tests/ui-primitives.test.tsx pins which.
   });
 
   it("a tooltip near the screen's edge is moved back inside it", () => {

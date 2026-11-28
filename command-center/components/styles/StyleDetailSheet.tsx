@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
-import { createPortal } from "react-dom";
+import { useId, type CSSProperties } from "react";
 import Link from "next/link";
 import { Check, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import type { LibraryStyle } from "@/lib/styles/library";
 import { StyleTile } from "@/components/styles/StyleTile";
+import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/Sheet";
 
 export type SheetBusy = "add" | "use" | null;
 
@@ -15,7 +15,8 @@ export type SheetBusy = "add" | "use" | null;
  * for, the suggested formats and the whole art direction (the text that is
  * added to a prompt when the style is picked). A bottom sheet on a phone, a
  * centred dialog from `sm` up; Escape and the scrim close it, focus stays
- * inside and returns to the tile that opened it.
+ * inside and returns to the tile that opened it. The shell is the shared Sheet
+ * (components/ui, Radix Dialog), which brings all of that and the inert page.
  *
  * "Add to my styles" and "Use in Studio" only call back: what they do (create
  * a style kit, open the Studio filled) is decided and explained by the page.
@@ -46,71 +47,26 @@ export function StyleDetailSheet({
   const { t, locale } = useI18n();
   const ts = t.styleLibrary;
   const titleId = useId();
-  const dialog = useRef<HTMLDivElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
-  const opener = useRef<Element | null>(null);
-
-  useEffect(() => {
-    opener.current = document.activeElement;
-    closeRef.current?.focus();
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-      if (opener.current instanceof HTMLElement) opener.current.focus();
-    };
-  }, []);
-
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      onClose();
-      return;
-    }
-    if (e.key !== "Tab" || !dialog.current) return;
-    // Keep Tab inside the dialog: it is modal, the page behind is inert to the keyboard too.
-    const items = [
-      ...dialog.current.querySelectorAll<HTMLElement>("button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])"),
-    ];
-    if (!items.length) return;
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
-
-  if (typeof document === "undefined") return null;
   const working = busy !== null;
 
-  return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-end justify-center sm:items-center sm:p-4" onKeyDown={onKeyDown}>
-      <div aria-hidden className="scrim-enter absolute inset-0 backdrop-blur-[2px]" style={{ background: "var(--ns-scrim)" }} onClick={onClose} />
-      <div
-        ref={dialog}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="sheet-enter relative flex max-h-[92dvh] w-full flex-col rounded-t-[var(--ns-r-sheet)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] sm:max-w-2xl sm:rounded-[var(--ns-r-sheet)]"
+  return (
+    <Sheet open onOpenChange={(open) => !open && onClose()}>
+      <SheetContent
+        side="auto"
+        closeLabel={null}
+        // The palette, colours and direction are the content; no separate description names it.
+        aria-describedby={undefined}
+        style={{ "--ui-sheet-w": "672px" } as CSSProperties}
+        // Escape is this sheet's: the style grid behind must not also act on it.
+        onKeyDown={(e) => {
+          if (e.key === "Escape") e.stopPropagation();
+        }}
       >
-        <header className="flex items-center justify-between gap-3 border-b border-[var(--ns-rule)] px-5 py-3">
-          <h2 id={titleId} className="g2-h2 min-w-0 truncate">
-            {style.name[locale]}
-          </h2>
-          <button
-            ref={closeRef}
-            type="button"
-            onClick={onClose}
-            aria-label={ts.close}
-            className="grid size-11 shrink-0 place-items-center rounded-full text-[var(--color-muted)] hover:bg-[var(--ns-hover)] hover:text-[var(--color-fg)]"
-          >
+        <header className="flex items-center justify-between gap-3 border-b border-[var(--ds-border)] px-5 py-3">
+          <SheetTitle className="g2-h2 min-w-0 truncate">{style.name[locale]}</SheetTitle>
+          <SheetClose aria-label={ts.close} className="ui-close tap-icon shrink-0">
             <X aria-hidden className="size-5" />
-          </button>
+          </SheetClose>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-5">
@@ -218,8 +174,7 @@ export function StyleDetailSheet({
             </Link>
           )}
         </footer>
-      </div>
-    </div>,
-    document.body,
+      </SheetContent>
+    </Sheet>
   );
 }

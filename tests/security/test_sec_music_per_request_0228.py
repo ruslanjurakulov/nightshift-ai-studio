@@ -1,8 +1,8 @@
 """Migration 0228, in a real database: the database knows `music`, and a model priced per request (Google Lyria 3.5, "per song") is
 quoted for one request with no duration. Nothing goes on sale: 0228 seeds no price.
 
-The lab plays the owner, a member and every API role on synthetic models (the real google-lyria-3.5 entry stays registry-only in the
-code until 0228 is confirmed live, so the sync never writes it).
+The lab plays the owner, a member and every API role on synthetic models (the real entries, synced dark since 0228 was confirmed
+live, are tests/security/test_sec_music_synced_dark.py).
 
 What would break, and which test says so:
   a per-request music model is asked a duration it has no field for, or billed by the second   test_a_per_request_music_model_*

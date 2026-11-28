@@ -74,7 +74,9 @@ describe("PipelineRouting", () => {
   const show = (initial: Record<string, string> = {}) =>
     render(<PipelineRouting initial={initial} configured={[]} githubConfigured videoProviders={routing.video} imageGenerators={routing.image} defaults={routing.defaults} vars={routing.vars} />);
   const videoSelect = () => screen.getByLabelText(en.providers.routingVideo) as HTMLSelectElement;
-  const autopilot = () => screen.getByRole("switch", { name: en.providers.routingAutopilot });
+  // hidden: true — while the confirm sheet is open the page behind is aria-hidden (the shared Radix Dialog), and the test
+  // still reads the switch under it.
+  const autopilot = () => screen.getByRole("switch", { name: en.providers.routingAutopilot, hidden: true });
 
   it("a generator change asks first, shows now → new, and writes nothing until confirmed", async () => {
     show();

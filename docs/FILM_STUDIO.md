@@ -41,7 +41,11 @@ Vendors take three different kinds of picture. The schema keeps the three apart:
   A take that has a last frame must also have a first frame, as every vendor requires. The table enforces this.
 - **Reference**: character, style and location pictures. MiniMax H3 and Seedance 2.x take frames *or* references, never both in
   one task. So references reach a clip through its key frame, and the key-frame models take 10-16 of them. The quote (P2) checks
-  which model can take what against the registry.
+  which model can take what against the registry. A key frame is always made by t2i (0198 `film_take_job`), and today's sellable
+  key-frame models (GPT Image 2.6) take references on edit only, so a reference on a key frame is refused by the worker
+  (`creative_adapters`: references on a capability that cannot take them are a `bad_request`). Nightshift AI's character sheets
+  (docs/studio/NIGHTSHIFT_AI.md, "Character sheets") are therefore made and kept, and attached to scenes only once the film's
+  key-frame model takes references on t2i.
 
 ### Models
 

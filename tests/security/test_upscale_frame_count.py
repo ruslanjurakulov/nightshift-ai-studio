@@ -71,6 +71,15 @@ def _routes():
             ("POST", "/v1/video_upscale", _Resp(200, {"id": TASK}))]
 
 
+def same_file(src, reading, work, **_kw):
+    """The upscale's remux, replaced by a plain copy: these pins are about the
+    READING, which runs again on the copy (BR-L-211 (a)) and must agree. The
+    remux itself is pinned with real bytes in test_upscale_normalize.py."""
+    copy = Path(work) / Path(src).name
+    shutil.copyfile(src, copy)
+    return video.Normalized(copy)
+
+
 def _probe(avg="60/1", frames=None, packets=None, stream_s=None, format_s=None, r="60/1", codec="h264"):
     s = {"index": 0, "codec_type": "video", "codec_name": codec, "avg_frame_rate": avg, "r_frame_rate": r}
     if frames is not None:
@@ -115,9 +124,10 @@ class _Upscale(unittest.TestCase):
             return subprocess.CompletedProcess(argv, 0, json.dumps(probe_json).encode(), b"")
 
         a = build_adapter("video.runway_upscale", env=ENV, session=_Session(_routes()))
+        a.normalize_of = same_file
         req = CapabilityRequest("video_upscale", input_media=(str(src),), upscale_target="4k")
         with mock.patch.object(video.shutil, "which", return_value="/usr/bin/ffprobe"), \
-                mock.patch.object(video.subprocess, "run", side_effect=fake_run):
+                mock.patch.object(video, "_bounded_run", side_effect=fake_run):
             try:
                 a.submit(req, "magnific_video_upscaler_creative")
                 err = None
@@ -226,7 +236,11 @@ class UpscaleLegitimateClipsStayAccepted(_Upscale):
         err, calls, seen = self.submit(p, name="source.webm", decoded={"streams": [{"nb_read_frames": "60"}]})
         self.assertIsNone(err, err and err.message)
         decode = [a for a in seen if "-count_frames" in a]
-        self.assertEqual(len(decode), 1, "a codec outside the allowlist must be decoded and counted")
+        # Decoded twice: the member's file, then the copy that is uploaded
+        # (BR-L-211 (a): what is priced is what is sent).
+        self.assertEqual(len(decode), 2, "a codec outside the allowlist must be decoded and counted")
+        self.assertEqual(decode[0][-1], str(self.tmp / "source.webm"))
+        self.assertNotEqual(decode[1][-1], decode[0][-1])
         self.assertEqual(decode[0][decode[0].index("-select_streams") + 1], "0")
         self.assertEqual(decode[0][decode[0].index("-protocol_whitelist") + 1], "file")
         self.assertEqual(decode[0][decode[0].index("-f") + 1], "matroska")
@@ -282,9 +296,13 @@ class UpscaleDecodedFramePins(_Upscale):
         p = _probe("30/1", 60, 60, 2.0, 2.0, codec="vp9", r="30/1")
         self.assertRefusedBeforeUpload(p, "takes up to 60", decoded={"streams": [{"nb_read_frames": "480"}]})
 
-    def test_br_l_211_mpeg4_packed_b_frames_are_counted_decoded(self):
+    def test_br_l_211_mpeg4_is_refused_for_its_codec_before_its_packed_b_frames_are_counted(self):
+        # Round 2 counted packed B-frames by decoding. #966 (Breach F2): 8
+        # pictures in one MPEG-4 sample decode as one, so MPEG-4 Part 2 is no
+        # longer taken at all; the remedy is a codec whose packing is counted.
         p = _probe("30/1", 60, 60, 2.0, 2.0, codec="mpeg4", r="30/1")
-        self.assertRefusedBeforeUpload(p, "takes up to 60", decoded={"streams": [{"nb_read_frames": "130"}]})
+        self.assertRefusedBeforeUpload(p, "export it again as H.264 or HEVC MP4",
+                                       decoded={"streams": [{"nb_read_frames": "130"}]})
 
     def test_a_decode_with_no_frame_count_is_unknown(self):
         p = _probe("30/1", 60, 60, 2.0, 2.0, codec="vp9")
@@ -777,8 +795,9 @@ class ContainerReadPins(unittest.TestCase):
         src = self.tmp / name
         src.write_bytes(data)
         a = build_adapter("video.runway_upscale", env=ENV, session=_Session(_routes()))
+        a.normalize_of = same_file
         req = CapabilityRequest("video_upscale", input_media=(str(src),), upscale_target="4k")
-        with self._hidden(), mock.patch.object(video.subprocess, "run",
+        with self._hidden(), mock.patch.object(video, "_bounded_run",
                                                side_effect=AssertionError("ffprobe is not on this machine")):
             try:
                 a.submit(req, "magnific_video_upscaler_creative")
