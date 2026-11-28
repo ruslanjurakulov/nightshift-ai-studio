@@ -1632,6 +1632,11 @@ def take_off_0244(conn_or_session) -> None:
         return
     if _md5_of(conn, "public.creative_jobs_geo_gate()") == GEO_GATE_0208:
         conn.execute(MIGRATION_0230.read_text(encoding="utf-8"))
+    # The rollback drops creative_geo_carry: its rows are kept here and put_back_0244 writes them again (as take_off_0232 keeps its
+    # leases), so the scenario's seeded rows survive a take-off and put-back that a test commits.
+    if conn.execute("select to_regclass('public.creative_geo_carry') is not null").fetchone()[0]:
+        _STASH_0244[conn.info.dbname] = conn.execute("select coalesce(jsonb_agg(to_jsonb(g)), '[]'::jsonb)::text "
+                                                     "from public.creative_geo_carry g").fetchone()[0]
     conn.execute(rollback_0244_body())
 
 
@@ -1646,6 +1651,18 @@ def put_back_0244(conn_or_session) -> None:
                         "where oid = to_regprocedure('public.workflow_advance_locked(uuid, boolean)')), false)").fetchone()[0]:
         return
     conn.execute(MIGRATION_0244.read_text(encoding="utf-8"))
+    rows = _STASH_0244.pop(conn.info.dbname, None)
+    if rows:
+        # Rows whose segment or run went with an earlier take-off are not written back (their foreign keys would refuse).
+        conn.execute("insert into public.creative_geo_carry overriding system value "
+                     "select r.* from jsonb_populate_recordset(null::public.creative_geo_carry, %s::jsonb) r "
+                     "where (r.film_segment_id is null or exists (select 1 from public.film_segments s where s.id = r.film_segment_id)) "
+                     "and (r.workflow_run_id is null or exists (select 1 from public.workflow_runs w where w.id = r.workflow_run_id)) "
+                     "on conflict do nothing", [rows])
+
+
+#: What take_off_0244 found in creative_geo_carry, by database (a take-off and its put-back may use two connections).
+_STASH_0244: dict = {}
 
 
 class SimpleSession:
