@@ -493,6 +493,9 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     const modelId = (v: unknown, fallback: string | null) => (typeof v === "string" && MODEL_ID.test(v) ? v : v === null ? null : fallback);
     const drafted = { clip: modelId(f.clip_model, pick.clip?.id ?? null), keyframe: modelId(f.keyframe_model, pick.keyframe?.id ?? null) };
     const draftedLimit = planLimits(null, promptLimitOf(catalogue, drafted.clip, drafted.keyframe)).promptMax;
+    // The plan is written to the limit the draft's own models take, the one the save below enforces (Breach BR-ST-02): a window is
+    // asked again with it, never shown over it, and no turn is spent on a storyboard the draft could only refuse.
+    limits = { ...limits, promptMax: Math.min(limits.promptMax, draftedLimit) };
     const models = { clip: nameOf(catalogue.clip, drafted.clip), keyframe: nameOf(keyframeAll, drafted.keyframe) };
     // How the film is heard, and what stops it at Create today (lib/brain/logic speechBlocks): a voice-over needs a film voice a quote
     // can price (only a creative_tts voice is one; the draft has none, and no film voice can be chosen yet), and a scene spoken in its

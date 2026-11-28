@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-import { callChatModel, fakeVendorSeam } from "@/lib/server/brain/llm";
+import { LAB_FAKE_KEY, callChatModel, fakeVendorSeam } from "@/lib/server/brain/llm";
 import { chosenModelState } from "@/lib/server/brain/session";
 
 /**
@@ -44,6 +44,36 @@ describe("the fake-vendor seam", () => {
     await callChatModel("gemini-3.6-flash", "s", "u", { fetchImpl: g, keys: { gemini: KEY } });
     expect(urlOf(g)).toBe("http://127.0.0.1:9911/google/v1beta/models/gemini-3.6-flash:generateContent");
   });
+
+  it("plain http only to this machine; any other host needs https (Lens H1)", () => {
+    const lab = (u: string) => fakeVendorSeam({ NIGHTSHIFT_AI_FAKE_BASE_URL: u, NIGHTSHIFT_AI_LAB: "1" }).state;
+    for (const u of ["http://127.0.0.1:9911", "http://localhost:9911", "http://[::1]:9911", "https://fake.lab.test"]) expect(lab(u), u).toBe("lab");
+    for (const u of ["http://fake.lab.test", "http://10.0.0.7:9911", "http://127.0.0.2:9911", "http://localhost.evil.test"]) expect(lab(u), u).toBe("refused");
+  });
+
+  it.each([["anthropic-claude-sonnet-5-5", "anthropic"], ["openai-gpt-6-luna", "openai"], ["gemini-3.6-flash", "gemini"]] as const)(
+    "in the lab, %s: the fake never receives this server's real key, in any header or the body, only the placeholder (Lens H1)", async (id, slot) => {
+      process.env.NIGHTSHIFT_AI_LAB = "1";
+      process.env.NIGHTSHIFT_AI_FAKE_BASE_URL = "http://127.0.0.1:9911";
+      process.env.AI_CHAT_ANTHROPIC_API_KEY = KEY;
+      process.env.AI_CHAT_OPENAI_API_KEY = KEY;
+      process.env.AI_CHAT_GEMINI_API_KEY = KEY;
+      try {
+        for (const keys of [undefined, { [slot]: KEY }]) {
+          const f = ok();
+          await callChatModel(id, "s", "u", { fetchImpl: f, ...(keys ? { keys } : {}) });
+          const [, init] = (f as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0];
+          const wire = JSON.stringify(init.headers) + String(init.body);
+          expect(wire).not.toContain(KEY);
+          expect(wire).not.toContain(KEY.slice(0, 12));
+          expect(wire).toContain(LAB_FAKE_KEY);
+        }
+      } finally {
+        delete process.env.AI_CHAT_ANTHROPIC_API_KEY;
+        delete process.env.AI_CHAT_OPENAI_API_KEY;
+        delete process.env.AI_CHAT_GEMINI_API_KEY;
+      }
+    });
 
   it("in production (no lab flag) every call is refused by name and nothing is sent anywhere", async () => {
     process.env.NIGHTSHIFT_AI_FAKE_BASE_URL = "http://127.0.0.1:9911";

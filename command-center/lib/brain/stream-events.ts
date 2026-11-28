@@ -41,7 +41,15 @@ export type BrainStreamEvent =
   /** Something sent provisionally is withdrawn (item #14: a scenario asked again). */
   | { type: "retract"; what: "scenario" | "plan.window"; index: number | null }
   | { type: "ping" }
-  | { type: "end"; status: number; body: unknown };
+  /** `headers`: the answer's own headers a stream's 200 could not carry (END_HEADERS), only those it set. */
+  | { type: "end"; status: number; body: unknown; headers?: Partial<Record<(typeof END_HEADERS)[number], string>> };
+
+/**
+ * The headers of today's answer that `end` carries (Lens L4): a stream sends its own 200 headers before the answer exists. Today's
+ * route sets only cache-control (no-store); retry-after is carried should a refusal ever set it. Set-Cookie cannot ride a stream
+ * at all, which is why the token is refreshed before the first byte (lib/server/brain/stream.ts).
+ */
+export const END_HEADERS = ["cache-control", "retry-after"] as const;
 
 const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 const int = (v: unknown, min = 0): v is number => typeof v === "number" && Number.isInteger(v) && v >= min;
@@ -75,7 +83,12 @@ export function readStreamLine(line: string): BrainStreamEvent | null {
     case "ping":
       return { type: "ping" };
     case "end":
-      return int(o.status, 100) ? { type: "end", status: o.status, body: o.body ?? null } : null;
+      if (!int(o.status, 100)) return null;
+      {
+        const h = obj(o.headers);
+        const headers = Object.fromEntries(END_HEADERS.flatMap((k) => (typeof h?.[k] === "string" ? [[k, h[k] as string]] : [])));
+        return { type: "end", status: o.status, body: o.body ?? null, ...(Object.keys(headers).length ? { headers } : {}) };
+      }
     case "plan.begun":
       return int(o.windows, 1) && int(o.chapters, 1)
         ? { type: "plan.begun", windows: o.windows, chapters: o.chapters, at_most: intOrNull(o.at_most), about: intOrNull(o.about) } : null;
@@ -148,13 +161,19 @@ export async function readBrainAnswer(
     const body = await res.json().catch(() => ({}));
     return { ok: res.ok, status: res.status, body: asBody(body), streamed: false };
   }
-  for await (const ev of readStreamLines(res.body)) {
-    if (ev.type === "end") return { ok: ev.status >= 200 && ev.status < 300, status: ev.status, body: asBody(ev.body), streamed: true };
-    try {
-      onEvent(ev);
-    } catch {
-      // A listener's own failure (a canvas that is gone) is not the answer's: the press still ends with `end`.
+  try {
+    for await (const ev of readStreamLines(res.body)) {
+      if (ev.type === "end") return { ok: ev.status >= 200 && ev.status < 300, status: ev.status, body: asBody(ev.body), streamed: true };
+      try {
+        onEvent(ev);
+      } catch {
+        // A listener's own failure (a canvas that is gone) is not the answer's: the press still ends with `end`.
+      }
     }
+  } catch {
+    // The connection dropped mid-stream (read() rejects, a TypeError in browsers): the same cut as a stream that closed early
+    // (Lens M1). The server's work does not depend on it, so it is never "unavailable".
+    throw new BrainStreamCut();
   }
   throw new BrainStreamCut();
 }

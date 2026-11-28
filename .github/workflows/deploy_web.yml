@@ -321,6 +321,12 @@ jobs:
             var="WEBENV_$key"
             [[ -n "${!var:-}" ]] || errors+=("variable $key is required and empty")
           done
+          # The security lab's switches never reach production (LIVE_CREATION_PLAN §3.11): the fake-vendor seam would point the
+          # chat at a scripted vendor. Mapped (every example key is), and refused here by name when either is set.
+          for key in NIGHTSHIFT_AI_LAB NIGHTSHIFT_AI_FAKE_BASE_URL; do
+            var="WEBENV_$key"
+            [[ -z "${!var:-}" ]] || errors+=("variable $key is a lab-only switch and must be empty for production; delete the repository variable")
+          done
           if [[ -n "$WEBENV_DOMAIN" && ! "$WEBENV_DOMAIN" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]]; then
             errors+=("variable DOMAIN must be a bare host name like new.nightshift-ai.studio (no https://, no slash)")
           fi

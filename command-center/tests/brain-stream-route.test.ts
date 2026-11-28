@@ -255,7 +255,7 @@ describe("on: the stream", () => {
     const windows = ev.filter((e) => e.type === "plan.window") as Extract<BrainStreamEvent, { type: "plan.window" }>[];
     expect(windows.length).toBe(windowsOf(...LONG) - 1);
     expect(JSON.stringify(windows)).not.toMatch(/batman/i);
-    expect(ev[ev.length - 1]).toEqual({ type: "end", status: 422, body: expect.objectContaining({ error: "content_refused" }) });
+    expect(ev[ev.length - 1]).toMatchObject({ type: "end", status: 422, body: expect.objectContaining({ error: "content_refused" }) });
     expect(called("save_film")).toHaveLength(0);
   });
 

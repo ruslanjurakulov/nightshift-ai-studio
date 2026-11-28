@@ -256,6 +256,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   /** What a streamed press has delivered so far (LIVE_CREATION_PLAN §3.5): real phases and checked windows only, dropped at `end`. */
   const [live, setLiveState] = useState<LivePlan | null>(null);
   const liveRef = useRef<LivePlan | null>(null);
+  /** The stream was cut and the plan is followed through its lease: the last live view stays, with words that say so. */
+  const [streamCut, setStreamCut] = useState(false);
   const setLive = (l: LivePlan | null) => {
     liveRef.current = l;
     setLiveState(l);
@@ -804,6 +806,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     } finally {
       inFlight.current = false;
       if (!signal.aborted) {
+        // The followed plan is over (read again, or failed): the view kept from a cut stream goes with it.
+        setLive(null);
+        setStreamCut(false);
         setPlanning(false);
         setBusy(false);
       }
@@ -848,6 +853,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     setBusy(true);
     setProblem(null);
     setLive(null);
+    setStreamCut(false);
     const outline = [...messages].reverse().find((m) => m.role === "assistant")?.scenarios?.[index];
     // Only a short outline with no storyboard yet is written now (lib/server/brain/plan.ts); anything else answers at once.
     const writes = brief?.kind !== "long" && !!outline && !outline.scenes?.length;
@@ -892,15 +898,22 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       // The stream was cut before its `end` (a proxy, a phone that slept): the plan goes on on the server (§3.2), so this tab
       // follows it the way a refresh does, through 0211's lease, instead of saying it failed or pressing again.
       const p = e instanceof BrainStreamCut ? pendingPlan(session) : null;
-      if (p) waiting = { title: p.title, index: p.index, until: p.at + PLAN_WAIT_MS };
-      else setProblem({ text: c.errors.unavailable, retry: () => void choose(index, rid) });
+      if (p) {
+        waiting = { title: p.title, index: p.index, until: p.at + PLAN_WAIT_MS };
+        setStreamCut(true);
+      } else setProblem({ text: c.errors.unavailable, retry: () => void choose(index, rid) });
     } finally {
       inFlight.current = false;
-      setLive(null);
+      // A cut stream keeps its last view while the plan is followed (Pixel): what was shown is still true, only the socket went.
+      const cut = !!waiting && liveRef.current !== null;
+      if (!cut) setLive(null);
       setPlanning(false);
       setBusy(false);
       setTimeout(refocus, 0);
-      if (waiting && life.current) void waitForPlan(session, waiting, life.current.signal);
+      if (waiting && life.current) {
+        void waitForPlan(session, waiting, life.current.signal);
+        setTimeout(refocus, 0);
+      }
     }
   };
   useEffect(() => {
@@ -1189,19 +1202,27 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
 
   /** The storyboard as the stream delivered it: the real chapter count, and each chapter's checked scenes once all its parts
    *  arrived, labelled "Written" (never a model's raw text, §3.5). Nothing here is chosen or priced: that is `end`'s. */
+  /** The one line the planning status region says: swapped in place, so a screen reader hears each change once (Pixel). */
+  const planLine = (): string => {
+    if (planOther) return c.errors.plan_running;
+    if (streamCut) return c.planConnectionLost;
+    const l = live;
+    if (!l) return c.planWriting;
+    const done = writtenChapters(l).length;
+    return l.phase === "pricing" ? c.planPricing
+      : l.phase === "saving" ? c.planSaving
+      : l.chapters > 0 && done >= l.chapters ? fmt(c.planAllWritten, { total: l.chapters })
+      : l.chapters > 0 ? fmt(c.planProgress, { n: done, total: l.chapters })
+      : c.planWriting;
+  };
   const livePlan = (l: LivePlan) => {
     const done = writtenChapters(l);
-    const line = l.phase === "pricing" ? c.planPricing
-      : l.phase === "saving" ? c.planSaving
-      : l.chapters > 0 && done.length >= l.chapters ? fmt(c.planAllWritten, { total: l.chapters })
-      : l.chapters > 0 ? fmt(c.planProgress, { n: done.length + 1, total: l.chapters })
-      : null;
+    if (!done.length) return null;
     return (
       <div className="flex flex-col gap-2" data-live-plan="">
-        {line && <p className="chat-note" aria-live="polite">{line}</p>}
         {done.map((ch) => (
-          <section key={ch.n} className="flex flex-col gap-1" aria-label={fmt(c.planChapter, { n: ch.n, title: ch.title })}>
-            <p className="text-xs">
+          <section key={ch.n} className="flex min-w-0 flex-col gap-1" aria-label={fmt(c.planChapter, { n: ch.n, title: ch.title })}>
+            <p className="min-w-0 text-xs [overflow-wrap:anywhere]">
               <span className="font-semibold uppercase tracking-wide text-[var(--color-muted)]">{c.planWritten}</span>{" "}
               {fmt(c.planChapter, { n: ch.n, title: ch.title })}
             </p>
@@ -1209,7 +1230,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
               {ch.scenes.map((s, i) => (
                 <li key={i}>
                   {s.title && <span className="font-medium">{s.title}: </span>}
-                  <span className="line-clamp-2 font-mono text-[var(--color-muted)]">{s.visual_prompt}</span>
+                  <span className="line-clamp-2 font-mono text-[var(--color-muted)] [overflow-wrap:anywhere]" title={s.visual_prompt}>{s.visual_prompt}</span>
                 </li>
               ))}
             </ol>
@@ -1222,8 +1243,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   const notice: ReactNode = problem || planning || (hasTail && turns.length === 0) ? (
     <>
       {hasTail && turns.length === 0 && tail}
-      {planning && <p className="chat-note" role="status">{planOther ? c.errors.plan_running : c.planWriting}</p>}
+      {/* The chapters first, the one status line under them: the count stays in view under the list at 360 px (Pixel). */}
       {planning && !planOther && live && livePlan(live)}
+      {planning && <p className="chat-note" role="status">{planLine()}</p>}
       {/* After a press: the same block as before one (gateBlock). No ProviderUnavailable: its words name a provider and offer
           another model. */}
       {problem && gateRemedy(problem.code) && gateBlock(gateRemedy(problem.code)!, String(problem.code), problem.retry)}

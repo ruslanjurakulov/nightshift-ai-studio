@@ -70,6 +70,19 @@ describe("streamable", () => {
     ]);
   });
 
+  it("end carries the answer's own cache-control and retry-after, and nothing else (Lens L4)", async () => {
+    const res = await streamable(async () => {
+      acceptStream();
+      emit({ type: "phase", phase: "thinking" });
+      return new Response(JSON.stringify({ error: "x" }), { status: 429,
+        headers: { "content-type": "application/json", "cache-control": "no-store", "retry-after": "30", "x-other": "y" } });
+    });
+    const end = (await events(res)).pop();
+    expect(end).toEqual({ type: "end", status: 429, body: { error: "x" }, headers: { "cache-control": "no-store", "retry-after": "30" } });
+    expect(readStreamLine(JSON.stringify({ type: "end", status: 200, body: {}, headers: { "set-cookie": "a=b", "retry-after": 5 } })))
+      .toEqual({ type: "end", status: 200, body: {} });
+  });
+
   it("pings while the work is quiet, every PING_MS (10 s in production)", async () => {
     expect(PING_MS).toBe(10_000);
     const res = await streamable(async () => {

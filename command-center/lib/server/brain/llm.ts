@@ -72,6 +72,8 @@ export type LlmResult =
   | { ok: false; error: LlmFailure; tokensIn: number | null; tokensOut: number | null };
 
 export function chatModelConfigured(id: ChatModelId, keys: ChatKeys = chatKeysFromEnv()): boolean {
+  // The lab's fake takes the placeholder, never a key (LAB_FAKE_KEY): a lab needs no vendor key at all.
+  if (fakeVendorSeam().state === "lab") return true;
   return Boolean(keyFor(id, keys));
 }
 
@@ -82,7 +84,15 @@ export function chatModelConfigured(id: ChatModelId, keys: ChatKeys = chatKeysFr
  * Set without the lab flag, it is a production server pointed at somewhere that is not the vendor: every call is refused by name
  * ("fake_vendor_unflagged") before anything is sent anywhere, and it is never silently ignored either (a variable that "does
  * nothing" here would be read as the lab working). The routes refuse the same way before any turn is reserved (chosenModelState).
+ *
+ * A real key never leaves toward the seam (Lens H1): in the lab every call carries LAB_FAKE_KEY instead of whatever key this server
+ * holds, chosen before the headers are built. The base is https, or plain http only to this machine (127.0.0.1, localhost, ::1),
+ * so not even a request body crosses a network in clear. The deploy refuses either variable for production (deploy_web.yml).
  */
+export const LAB_FAKE_KEY = "lab-fake-key";
+
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
 export type FakeVendorSeam = { state: "off" } | { state: "lab"; base: string } | { state: "refused" };
 
 /** Read by literal names, as every server env read is (tests/test_deploy_self_host.py). */
@@ -102,6 +112,7 @@ export function fakeVendorSeam(env: Record<string, string | undefined> = fakeVen
   }
   // A user, a password or a query would ride along on every call (and into whatever logs the fake keeps): only a plain base.
   if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password || url.search || url.hash) return { state: "refused" };
+  if (url.protocol === "http:" && !LOOPBACK.has(url.hostname.toLowerCase())) return { state: "refused" };
   return { state: "lab", base: url.toString().replace(/\/+$/, "") };
 }
 
@@ -193,7 +204,8 @@ export async function callChatModel(
   const wire = CHAT_MODELS[id];
   const seam = fakeVendorSeam();
   if (seam.state === "refused") return { ok: false, error: "fake_vendor_unflagged", tokensIn: null, tokensOut: null };
-  const key = keyFor(id, opts.keys ?? chatKeysFromEnv());
+  // In the lab the placeholder, never this server's key, whatever keys were passed or configured (Lens H1).
+  const key = seam.state === "lab" ? LAB_FAKE_KEY : keyFor(id, opts.keys ?? chatKeysFromEnv());
   if (!key) return { ok: false, error: "not_configured", tokensIn: null, tokensOut: null };
   const doFetch = opts.fetchImpl ?? fetch;
   const ctl = new AbortController();

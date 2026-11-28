@@ -107,21 +107,28 @@ describe("Nightshift AI panel: the stream", () => {
     expect(sent[0]).toMatchObject({ action: "choose", index: 0, stream: true });
     await waitFor(() => expect(ctl).not.toBeNull());
     // Before plan.begun there is no count to show: the plan's own words only, never a made-up "1 of ?".
-    expect(screen.getByText(en.planWriting)).toBeTruthy();
-    expect(screen.queryByText(/Writing chapter/)).toBeNull();
+    const region = screen.getByText(en.planWriting);
+    expect(region.getAttribute("role")).toBe("status");
+    expect(screen.queryByText(/Chapters written/)).toBeNull();
 
     await send({ type: "phase", phase: "planning" });
     await send({ type: "plan.begun", windows: 2, chapters: 2, at_most: 4, about: 2 });
-    expect(await screen.findByText(fmt(en.planProgress, { n: 1, total: 2 }))).toBeTruthy();
+    expect(await screen.findByText(fmt(en.planProgress, { n: 0, total: 2 }))).toBeTruthy();
+    // One status region, kept mounted, its words swapped (Pixel): the plan note gives way to the count, never two lines at once.
+    expect(region.isConnected).toBe(true);
+    expect(region.textContent).toBe(fmt(en.planProgress, { n: 0, total: 2 }));
+    expect(screen.queryByText(en.planWriting)).toBeNull();
     // A newer server's event the panel does not know is skipped, never a crash.
     await send({ type: "plan.scene", n: 1 });
     await send({ type: "ping" });
 
     await send({ type: "plan.window", index: 1, n: 2, of: 2, parts: [part(2, "Dusk")] });
-    expect(await screen.findByText(fmt(en.planProgress, { n: 2, total: 2 }))).toBeTruthy();
+    expect(await screen.findByText(fmt(en.planProgress, { n: 1, total: 2 }))).toBeTruthy();
     const written = screen.getByRole("region", { name: fmt(en.planChapter, { n: 2, title: "Dusk" }) });
     expect(written.textContent).toContain(en.planWritten);
     expect(written.textContent).toContain("prompt of Dusk-1");
+    // The count sits under the chapter list, so it stays in view at 360 px.
+    expect(written.compareDocumentPosition(region) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // Choosing again is closed while the stream runs (busy): only `end` decides.
     expect((chooseAlpha() as HTMLButtonElement).disabled).toBe(true);
 
@@ -158,12 +165,12 @@ describe("Nightshift AI panel: the stream", () => {
     await waitFor(() => expect(ctl).not.toBeNull());
     await send({ type: "plan.begun", windows: 3, chapters: 2, at_most: 6, about: 3 });
     await send({ type: "plan.window", index: 0, n: 1, of: 3, parts: [part(1, "Dawn", 1, 2)] });
-    expect(await screen.findByText(fmt(en.planProgress, { n: 1, total: 2 }))).toBeTruthy();
+    expect(await screen.findByText(fmt(en.planProgress, { n: 0, total: 2 }))).toBeTruthy();
     expect(screen.queryByRole("region", { name: fmt(en.planChapter, { n: 1, title: "Dawn" }) })).toBeNull();
     await send({ type: "plan.window", index: 1, n: 2, of: 3, parts: [part(1, "Dawn", 2, 2)] });
     const ch = await screen.findByRole("region", { name: fmt(en.planChapter, { n: 1, title: "Dawn" }) });
     expect(ch.querySelectorAll("li")).toHaveLength(2);
-    expect(screen.getByText(fmt(en.planProgress, { n: 2, total: 2 }))).toBeTruthy();
+    expect(screen.getByText(fmt(en.planProgress, { n: 1, total: 2 }))).toBeTruthy();
   });
 
   it("a failure in end is today's refusal, and what the stream had shown is dropped", async () => {
@@ -184,11 +191,26 @@ describe("Nightshift AI panel: the stream", () => {
     await openAndChoose();
     await waitFor(() => expect(ctl).not.toBeNull());
     await send({ type: "plan.begun", windows: 2, chapters: 2, at_most: 4, about: 2 });
+    await send({ type: "plan.window", index: 0, n: 1, of: 2, parts: [part(1, "Dawn")] });
     await act(async () => { ctl!.close(); await new Promise((r) => setTimeout(r, 0)); });
     // Still waiting for the plan that runs on the server: its words, no error, no Retry, no second press.
-    expect(await screen.findByText(en.planWriting)).toBeTruthy();
+    expect(await screen.findByText(en.planConnectionLost)).toBeTruthy();
+    // The last live view stays while the plan is followed: the chapter already written is still on screen.
+    expect(screen.getByRole("region", { name: fmt(en.planChapter, { n: 1, title: "Dawn" }) })).toBeTruthy();
     expect(screen.queryByRole("button", { name: en.retry })).toBeNull();
     expect(screen.queryByText(en.errors.unavailable)).toBeNull();
+    expect(sent).toHaveLength(1);
+  });
+
+  it("a network error mid-stream (read() rejects) is the same cut: waitForPlan, never 'unavailable' (Lens M1)", async () => {
+    const en = dictionaries.en.aiChat;
+    await openAndChoose();
+    await waitFor(() => expect(ctl).not.toBeNull());
+    await send({ type: "plan.begun", windows: 2, chapters: 2, at_most: 4, about: 2 });
+    await act(async () => { ctl!.error(new TypeError("network")); await new Promise((r) => setTimeout(r, 0)); });
+    expect(await screen.findByText(en.planConnectionLost)).toBeTruthy();
+    expect(screen.queryByText(en.errors.unavailable)).toBeNull();
+    expect(screen.queryByRole("button", { name: en.retry })).toBeNull();
     expect(sent).toHaveLength(1);
   });
 
@@ -204,7 +226,7 @@ describe("Nightshift AI panel: the stream", () => {
     await openAndChoose(locale);
     await waitFor(() => expect(ctl).not.toBeNull());
     await send({ type: "plan.begun", windows: 2, chapters: 2, at_most: 4, about: 2 });
-    expect(await screen.findByText(fmt(w.planProgress, { n: 1, total: 2 }))).toBeTruthy();
+    expect(await screen.findByText(fmt(w.planProgress, { n: 0, total: 2 }))).toBeTruthy();
     await send({ type: "plan.window", index: 0, n: 1, of: 2, parts: [part(1, "Dawn")] });
     const region = await screen.findByRole("region", { name: fmt(w.planChapter, { n: 1, title: "Dawn" }) });
     expect(region.textContent).toContain(w.planWritten);
@@ -215,7 +237,7 @@ describe("Nightshift AI panel: the stream", () => {
 
 describe("the stream's words", () => {
   it("exist in en, ru and uz, are not English in ru and uz, and keep their placeholders", () => {
-    const keys = ["planProgress", "planAllWritten", "planSaving", "planPricing", "planWritten", "planChapter"] as const;
+    const keys = ["planProgress", "planAllWritten", "planConnectionLost", "planSaving", "planPricing", "planWritten", "planChapter"] as const;
     for (const k of keys) {
       const en = dictionaries.en.aiChat[k];
       for (const l of ["ru", "uz"] as const) {

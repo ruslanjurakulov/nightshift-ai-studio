@@ -1,7 +1,7 @@
 import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { BRAIN_STREAM_CONTENT_TYPE, type BrainStreamEvent } from "@/lib/brain/stream-events";
+import { BRAIN_STREAM_CONTENT_TYPE, END_HEADERS, type BrainStreamEvent } from "@/lib/brain/stream-events";
 
 /**
  * The NDJSON writer of `POST /api/brain/turn` (docs/studio/LIVE_CREATION_PLAN.md §3.1, §3.2).
@@ -112,6 +112,14 @@ const HEADERS = {
   "x-accel-buffering": "no",
 } as const;
 
+/** The answer's own headers that `end` carries (END_HEADERS), only those it set. */
+function endHeaders(res: Response): Record<string, string> {
+  return Object.fromEntries(END_HEADERS.flatMap((k) => {
+    const v = res.headers.get(k);
+    return v === null ? [] : [[k, v]];
+  }));
+}
+
 async function bodyOf(res: Response): Promise<unknown> {
   const text = await res.text().catch(() => "");
   if (!text) return null;
@@ -135,8 +143,9 @@ export async function streamable(work: () => Promise<Response>, opts: { pingMs?:
     done.then((res) => ({ res }), (error: unknown) => ({ error })),
     begun.then(() => null),
   ]);
-  if (first && "res" in first) return first.res;
-  if (first) throw first.error;
+  // Plain only when nothing was emitted: a work that emitted and finished in the same tick still streams what it said.
+  if (first && "res" in first && !ctx.started) return first.res;
+  if (first && "error" in first && !ctx.started) throw first.error;
 
   const enc = new TextEncoder();
   let closed = false;
@@ -163,9 +172,10 @@ export async function streamable(work: () => Promise<Response>, opts: { pingMs?:
       timer = setInterval(() => write({ type: "ping" }), opts.pingMs ?? PING_MS);
       (timer as { unref?: () => void }).unref?.();
       void done
-        .then(async (res) => ({ status: res.status, body: await bodyOf(res) }), () => ({ status: 500, body: null }))
+        .then(async (res) => ({ status: res.status, body: await bodyOf(res), headers: endHeaders(res) }),
+              () => ({ status: 500, body: null, headers: {} as Record<string, string> }))
         .then((end) => {
-          write({ type: "end", status: end.status, body: end.body });
+          write({ type: "end", status: end.status, body: end.body, ...(Object.keys(end.headers).length ? { headers: end.headers } : {}) });
           if (!closed) {
             stop();
             try {

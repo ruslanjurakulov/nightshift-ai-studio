@@ -40,8 +40,11 @@ export async function endAsResponse(res: Response): Promise<Response> {
   lastStream.events = events;
   checkStream(events);
   const end = events[events.length - 1] as Extract<BrainStreamEvent, { type: "end" }>;
+  // The answer's own headers as `end` carried them (Lens L4), never made up here: a header today's route set that the stream lost
+  // would fail the test that reads it. Today's route sets cache-control: no-store on every answer, so it must be there.
+  if (end.body !== null && end.headers?.["cache-control"] !== "no-store") throw new Error(`end lost cache-control: ${JSON.stringify(end.headers)}`);
   return new Response(end.body === null ? null : JSON.stringify(end.body), {
-    status: end.status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+    status: end.status, headers: { "content-type": "application/json", ...(end.headers ?? {}) } });
 }
 
 /** `request` with `stream:true` added to its JSON body (a body that is not a JSON object is sent as it is). */

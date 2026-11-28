@@ -4,7 +4,7 @@ import { readJsonBodyCapped } from "@/lib/server/json-body";
 import { getLocale } from "@/lib/i18n/server";
 import { ownerAccess } from "@/lib/server/owner-analytics";
 import { buildOwnerFacts, OwnerOnlyError, SecondFactorRequiredError } from "@/lib/server/owner-brain-facts";
-import { callChatModel, chatModelConfigured, isChatModelId, OWNER_CHAT_MODEL } from "@/lib/server/brain/llm";
+import { callChatModel, chatModelConfigured, fakeVendorSeam, isChatModelId, OWNER_CHAT_MODEL } from "@/lib/server/brain/llm";
 import { brainJson, notFound } from "@/lib/server/brain/session";
 import { chatModelGate } from "@/lib/server/brain/google-gate";
 import { extractJson } from "@/lib/brain/logic";
@@ -116,6 +116,9 @@ export async function POST(request: Request) {
 
   const model = b.model === undefined ? OWNER_CHAT_MODEL : b.model;
   if (!isChatModelId(model)) return brainJson({ error: "bad_request" }, 400);
+  // The lab's fake-vendor address on a server that is not the lab: refused by name before any turn is reserved (Lens L3), as the
+  // customer chat does in chosenModelState; callChatModel would refuse it too, but only after the turn was taken.
+  if (fakeVendorSeam().state === "refused") return brainJson({ error: "model_unavailable", reason: "fake_vendor_unflagged" }, 409);
   if (!chatModelConfigured(model)) return brainJson({ error: "model_unavailable", reason: "not_configured" }, 409);
 
   // Keep the existing 0199 migration check. The settings row controls customer chat.
