@@ -162,7 +162,9 @@ class PreviewPriceByQualityMigration(unittest.TestCase):
 #: Every entry the registry marks operator_preview today. A new one is a decision (a hidden model the operator can run in the Studio),
 #: so it is added here on purpose, with its figure.
 PREVIEW_SET = {"minimax-h3", "minimax-h3-highspeed", "minimax-h3-lite", "minimax-h3-max", "runway-gen4.5", "runway-gen4-turbo",
-               "grounded-image-1.0", "ideogram-3", "ideogram-4", "ideogram-4.5"}
+               "grounded-image-1.0", "ideogram-3", "ideogram-4", "ideogram-4.5",
+               # 0235: the two ElevenLabs voices the operator narrates a test film with (a flat per-character figure each).
+               "elevenlabs-v3", "elevenlabs-v4"}
 
 #: The image models the owner asked to preview. The vendor states no per-image figure for any of them (2026-11-13): OpenAI bills GPT
 #: Image 2.5 by token ("The GPT Image 2 calculator does not estimate GPT-Image-2.5 token consumption"), so neither is marked and

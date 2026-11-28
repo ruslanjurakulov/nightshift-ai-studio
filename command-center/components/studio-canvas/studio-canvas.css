@@ -1307,9 +1307,11 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 .cv-tok,
 .cv-appbar,
 .cv-rail {
-  --ln-video: #8b7bff;
-  --ln-video-ink: #0d0a24;
-  --ln-audio: #3dff8a;
+  /* The design system's type colours (docs/design/SYSTEM.md, S5's --ds-type-*), with its values as the fallback until those tokens
+     load here. Lime stays the selection's; blue stays "working". */
+  --ln-video: var(--ds-type-video, #ff4fa3);
+  --ln-video-ink: #2a0016;
+  --ln-audio: var(--ds-type-audio, #3dff8a);
   --ln-audio-ink: #04210f;
   --ln-ground: color-mix(in srgb, var(--film) 55%, var(--console));
   /* A key's or a dock's edge (WCAG 1.4.11, 3:1): #5d7096 is >= 3.2:1 on every dark ground and key surface here, the
@@ -1317,11 +1319,11 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   --edge: #5d7096;
 }
 :root[data-theme="light"] :is(.cv-root, .cv-tok, .cv-appbar, .cv-rail) {
-  --ln-video: #5b47e0; --ln-video-ink: #ffffff; --ln-audio: #0a7a3a; --ln-audio-ink: #ffffff; --ln-ground: var(--console); --edge: #6b7894;
+  --ln-video: var(--ds-type-video, #b0105f); --ln-video-ink: #ffffff; --ln-audio: var(--ds-type-audio, #076b36); --ln-audio-ink: #ffffff; --ln-ground: var(--console); --edge: #6b7894;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) :is(.cv-root, .cv-tok, .cv-appbar, .cv-rail) {
-    --ln-video: #5b47e0; --ln-video-ink: #ffffff; --ln-audio: #0a7a3a; --ln-audio-ink: #ffffff; --ln-ground: var(--console); --edge: #6b7894;
+    --ln-video: var(--ds-type-video, #b0105f); --ln-video-ink: #ffffff; --ln-audio: var(--ds-type-audio, #076b36); --ln-audio-ink: #ffffff; --ln-ground: var(--console); --edge: #6b7894;
   }
 }
 /* The translated dock key pushed the page sideways when Nightshift AI narrowed the board. */
@@ -1356,7 +1358,8 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   --lh-w: 132px;
   --ruler-h: 24px;
   --tv-h: 54px;
-  --ta-h: 38px;
+  /* The voice pill is 40px high (5px above and below). */
+  --ta-h: 50px;
   container-type: inline-size;
   flex: none;
   min-width: 0;
@@ -1408,10 +1411,10 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   font: 500 12px var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
-.cv-lane-chip b { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; font-size: 11px; font-weight: 700; color: var(--ln-ink); background: var(--ln); }
+.cv-lane-chip b { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; font-size: 12px; font-weight: 700; color: var(--ln-ink); background: var(--ln); }
 .cv-lane-chip.t-video, .cv-th.t-video, .cv-pill.t-video, .cv-fly.t-video { --ln: var(--ln-video); --ln-ink: var(--ln-video-ink); }
 .cv-lane-chip.t-audio, .cv-th.t-audio, .cv-pill.t-audio, .cv-fly.t-audio { --ln: var(--ln-audio); --ln-ink: var(--ln-audio-ink); }
-.cv-lane-meta { overflow: hidden; color: var(--dim); font-size: 12px; text-overflow: ellipsis; }
+.cv-lane-meta { overflow: hidden; color: var(--dim); font-size: 13px; text-overflow: ellipsis; }
 .cv-lane-meta.is-loose { color: var(--caution); }
 .cv-lane-meta.is-loose b { font: 600 12px var(--font-mono); }
 .cv-lane-meta + .cv-lane-meta::before { content: "·"; margin-right: 12px; color: var(--faint); }
@@ -1440,7 +1443,7 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 /* The editor's track label (the owner's reference): small capitals in the reading face, here and nowhere else in the app. */
 /* As .ds-t-label (docs/design/SYSTEM.md): 12px mono capitals, 1.3, 0.08em, weight 500. */
 .cv-th-nm { overflow: hidden; font: 500 12px/1.3 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; text-overflow: ellipsis; }
-.cv-th-sub { overflow: hidden; color: var(--faint); font-size: 12px; text-overflow: ellipsis; }
+.cv-th-sub { overflow: hidden; color: var(--dim); font-size: 13px; text-overflow: ellipsis; }
 
 .cv-lane-scroll { position: relative; min-width: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: var(--rule-strong) transparent; }
 .cv-lane-in { position: relative; display: grid; grid-template-rows: var(--ruler-h) var(--tv-h) var(--ta-h); min-width: 100%; padding-bottom: 6px; }
@@ -1453,7 +1456,7 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
     linear-gradient(90deg, var(--rule-strong) 1px, transparent 1px) 0 100% / calc(var(--pxs) * 5) 9px repeat-x,
     linear-gradient(90deg, var(--rule) 1px, transparent 1px) 0 100% / var(--pxs) 5px repeat-x;
 }
-.cv-ruler i { position: absolute; top: 5px; padding-left: 5px; color: var(--faint); font: 500 11px/1 var(--font-mono); font-style: normal; font-variant-numeric: tabular-nums; }
+.cv-ruler i { position: absolute; top: 5px; padding-left: 5px; color: var(--faint); font: 500 12px/1 var(--font-mono); font-style: normal; font-variant-numeric: tabular-nums; }
 .cv-ruler-unk {
   position: absolute;
   top: 0;
@@ -1496,22 +1499,70 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   background: var(--fill);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
 }
-.cv-pill.is-made .cv-pill-nm { color: var(--ln); }
+/* The name in the text colour (>= 4.5:1 on the made fill in both themes); the hue is the edge's and the lamp's. */
+.cv-pill.is-made .cv-pill-nm { color: var(--text); }
 .cv-pill.is-unk { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ln) 22%, transparent) 0 5px, transparent 5px 11px), var(--fill); }
 .cv-pill.is-made.is-unk { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ln) 26%, transparent) 0 5px, transparent 5px 11px), var(--fill); }
 .cv-pill.s-fail { border: 1px solid var(--tally); background: color-mix(in srgb, var(--tally) 10%, transparent); }
+/* A planned length (a live film's slot before its shots are measured): a dotted edge, made or not, so it never reads as the solid
+   edge of a measured file, nor as the dashed one of a request. Its text says "plan" too: never a line style alone. */
+.cv-pill.is-planned, .cv-pill.is-made.is-planned { border-style: dotted; border-width: 1.5px; border-left-width: 1.5px; }
+.cv-lane-plan { margin-left: 6px; color: var(--dim); font: 500 12px var(--font-mono); letter-spacing: 0; text-transform: lowercase; }
+/* The master: the film the tracks become, after them at the end of the lane (not a track: it has no place on the time scale). */
+.cv-lane-row.has-master { display: grid; grid-template-columns: minmax(0, 1fr) minmax(176px, 220px); }
+/* Closed (the body is gone) or on a phone: the master is a row of its own. */
+.cv-lane.is-closed .cv-lane-row.has-master, .cv-lane.is-phone .cv-lane-row.has-master { grid-template-columns: minmax(0, 1fr); }
+.cv-lane.is-closed .cv-master, .cv-lane.is-phone .cv-master { border-left: 0; }
+.cv-lane.is-phone:not(.is-closed) .cv-master { border-top: 1px solid var(--rule); }
+/* Just landed: one pulse in the go colour (it has no place on the time scale to fly to). */
+.cv-master.is-new .cv-master-btn { animation: cv-master-in 1200ms ease-out both; }
+@keyframes cv-master-in { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--go) 70%, transparent); } 40% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--go) 35%, transparent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.cv-master {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-left: 1px solid var(--rule);
+}
+.cv-master-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px dashed var(--rule-strong);
+  border-radius: 8px;
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+}
+.cv-master.is-made .cv-master-btn { border: 1px solid color-mix(in srgb, var(--go) 60%, var(--rule)); border-left: 2px solid var(--go); background: color-mix(in srgb, var(--go) 10%, var(--key)); }
+.cv-master.s-fail .cv-master-btn { border: 1px solid var(--tally); background: color-mix(in srgb, var(--tally) 10%, transparent); }
+.cv-master.is-sel .cv-master-btn { outline: 2px solid var(--amber); outline-offset: 1px; }
+.cv-master-btn:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
+.cv-master-art { flex: none; width: 56px; height: 32px; overflow: hidden; border-radius: 5px; background: var(--film); }
+.cv-master-art img { width: 100%; height: 100%; object-fit: cover; }
+.cv-master-txt { display: grid; gap: 2px; min-width: 0; line-height: 1.25; }
+.cv-master-nm { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.cv-master-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; color: var(--dim); font-size: 13px; }
+.cv-master-st { overflow-wrap: anywhere; }
+.cv-master-act { min-width: 0; font-size: 13px; }
 .cv-pill.is-sel { outline: 2px solid var(--amber); outline-offset: 1px; box-shadow: 0 0 0 5px var(--amber-soft), 0 0 18px -4px var(--amber); z-index: 2; }
 .cv-pill:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
 .cv-pill-art { flex: none; align-self: stretch; width: 64px; margin: 3px 0 3px -1px; overflow: hidden; border-radius: 5px; background: var(--film); }
 .cv-pill-art img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
 .cv-pill-ic { flex: none; width: 15px; height: 15px; margin-left: 4px; opacity: 0.85; }
 .cv-pill-txt { display: flex; flex-direction: column; justify-content: center; min-width: 0; line-height: 1.2; }
-.cv-pill-nm { overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.cv-pill-meta { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--dim); font-size: 11px; white-space: nowrap; }
+.cv-pill-nm { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+/* A live film's pill says its tag (clip-02.1), as .ds-t-label: 12px mono capitals, 0.08em. */
+.cv-pill-nm.is-tag { font: 500 12px/1.3 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+.cv-pill-meta { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--text); font-size: 12px; white-space: nowrap; }
 .cv-pill-meta .cv-lamp { width: 7px; height: 7px; }
 .cv-pill-meta .cv-lamp.is-idle, .cv-pill-meta .cv-lamp.is-warn { border-width: 1.5px; }
-.cv-pill-len { font: 600 11px var(--font-mono); font-variant-numeric: tabular-nums; }
-.cv-pill-st { overflow: hidden; text-overflow: ellipsis; }
+.cv-pill-len { font: 600 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.cv-pill-st { overflow: hidden; font-size: 13px; text-overflow: ellipsis; }
 /* The voice track is one line: name and length side by side. */
 .t-audio .cv-pill-li { top: 5px; bottom: 5px; }
 .cv-pill.t-audio .cv-pill-txt { flex-direction: row; align-items: center; gap: 8px; }
@@ -1545,7 +1596,7 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   color: var(--ln-ink);
   background: var(--ln);
   box-shadow: 0 6px 18px -6px color-mix(in srgb, var(--ln) 80%, transparent);
-  font: 600 11px/1.3 var(--font-mono);
+  font: 600 12px/1.3 var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
   pointer-events: none;
@@ -1569,13 +1620,63 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   .cv-th-txt { display: none; }
 }
 /* The phone: a compact strip at the top of the flow, closed until opened; the same tracks, narrower. */
-.cv-lane.is-phone { --lh-w: 76px; --tv-h: 50px; --ta-h: 36px; margin: 0 0 4px; border-bottom: 1px solid var(--rule); }
+/* A phone is a finger: both tracks' pills are 44px high (WCAG 2.5.5); the coarse-pointer rule below covers a tablet. */
+.cv-lane.is-phone { --lh-w: 76px; --tv-h: 58px; --ta-h: 54px; margin: 0 0 4px; border-bottom: 1px solid var(--rule); }
 .cv-lane.is-phone .cv-lane-bar { height: 44px; gap: 10px; overflow: hidden; }
 /* A phone's bar keeps the name, the timecode and what is unknown; the counts are the tracks themselves once open. */
 .cv-lane.is-phone .cv-lane-counts { display: none; }
 .cv-lane.is-phone .cv-lane-tc { font-size: 13px; }
-.cv-lane.is-phone .cv-lane-unk { font-size: 11px; }
+.cv-lane.is-phone .cv-lane-unk { font-size: 12px; }
 .cv-lane.is-phone .cv-lane-tog { height: 44px; }
+/* A phone has no room for a third column: the master takes a row of its own under the tracks. */
+/* Tap targets: a pill and the open/close key are at least 44px high wherever the pointer is a finger (WCAG 2.5.5). */
+@media (pointer: coarse) {
+  .cv-lane, .cv-lane.is-phone { --tv-h: 58px; --ta-h: 54px; }
+  .cv-lane-tog, .cv-lane.is-phone .cv-lane-tog { min-height: 44px; }
+  .cv-lane.is-phone .cv-lane-bar { height: 48px; }
+}
 .cv-lane.is-phone .cv-th { padding: 0 6px 0 8px; }
 .cv-lane.is-phone .cv-th-txt { display: none; }
 .cv-lane.is-phone .cv-pill-art { width: 48px; }
+
+/* ── Job states with the studio effects (components/ui/effects, S5) ──────────────────────────────────────────────────
+   Running: a light runs round the card (BorderBeam) while the job's status from the database is queued or working, and
+   over the status words (TextShimmer) while it is working. Just finished: a success ring and the result opening in, for a moment,
+   only when this session saw the job go from working to done (useJustFinished). Under reduced motion nothing travels: the
+   beam is a still accent edge, the words plain, the ring drawn without a pulse; the words always say the state. */
+.cv-fcard { position: relative; }
+/* The finish ring sits OUTSIDE a person's selection mark, never in its place (lime/amber selection stays a person's). */
+.cv-node.is-just-done:not(.is-sel) { box-shadow: 0 0 0 1px var(--ds-success), 0 0 0 5px color-mix(in srgb, var(--ds-success) 22%, transparent), var(--lift-2); }
+.cv-node.is-sel.is-just-done { box-shadow: 0 0 0 1px var(--amber), 0 0 0 6px var(--amber-soft), 0 0 0 9px color-mix(in srgb, var(--ds-success) 55%, transparent), var(--lift-2); }
+.cv-finish {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  /* Inset: the card clips its overflow, so an outer ring would be cut. */
+  box-shadow: inset 0 0 0 2px var(--ds-success), inset 0 0 0 5px color-mix(in srgb, var(--ds-success) 20%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cv-node.is-just-done:not(.is-sel):not(.is-dragging) { animation: cv-finish var(--ds-dur-reveal) var(--ds-ease-emphasized) both; }
+  .cv-finish { animation: cv-finish-in var(--ds-dur-reveal) var(--ds-ease-emphasized) both; }
+  .cv-node.is-just-done .cv-art img { animation: cv-result-in var(--ds-dur-reveal) var(--ds-ease-emphasized) both; }
+}
+@keyframes cv-finish { from { box-shadow: 0 0 0 1px var(--ds-success), 0 0 0 14px transparent, var(--lift-2); } }
+@keyframes cv-finish-in { from { opacity: 0; } }
+@keyframes cv-result-in { from { opacity: 0; scale: 1.04; filter: blur(6px); } }
+
+/* The empty studio: the first question sits on a slow wash of the machine's blue through the media hues (AnimatedGradient). */
+.cv-empty-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -55%;
+  width: min(820px, 92%);
+  aspect-ratio: 16 / 9;
+  border-radius: 50%;
+  filter: blur(64px);
+  opacity: 0.7;
+  pointer-events: none;
+}
+.cv-empty > .cv-ecard { position: relative; }

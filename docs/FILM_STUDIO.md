@@ -41,7 +41,11 @@ Vendors take three different kinds of picture. The schema keeps the three apart:
   A take that has a last frame must also have a first frame, as every vendor requires. The table enforces this.
 - **Reference**: character, style and location pictures. MiniMax H3 and Seedance 2.x take frames *or* references, never both in
   one task. So references reach a clip through its key frame, and the key-frame models take 10-16 of them. The quote (P2) checks
-  which model can take what against the registry.
+  which model can take what against the registry. A key frame is always made by t2i (0198 `film_take_job`), and today's sellable
+  key-frame models (GPT Image 2.6) take references on edit only, so a reference on a key frame is refused by the worker
+  (`creative_adapters`: references on a capability that cannot take them are a `bad_request`). Nightshift AI's character sheets
+  (docs/studio/NIGHTSHIFT_AI.md, "Character sheets") are therefore made and kept, and attached to scenes only once the film's
+  key-frame model takes references on t2i.
 
 ### Models
 
@@ -333,7 +337,8 @@ can go on, paying only for what it has not made yet. Contract approved by the co
   made take's file was deleted, then `start_film_resume` as it is (the replay, the lock, the hold of the assembly line only), audited
   as `assembly_rerun` with the previous failure word. The word is the segment's `settle_reason` (the worker settles a failed
   assembly with the assembly's own reason). Only S4's retryable words are made again (`film_assembly_retryable`: assembly_crashed,
-  render_failed, render_timed_out, render_degraded, store_failed, disk_low, output_mismatch, captions_failed, captions_unavailable),
+  render_failed, render_timed_out, render_degraded, store_failed, disk_low, output_mismatch, captions_failed, captions_unavailable,
+  and from 0236 sound_mix_failed and asset_unprobed),
   and a word that was lost (the segment settled `deadline` by the sweep, `worker_lost` after its last lease, or the worker's generic
   `assembly_failed`: the cause is unknown, and a failed assembly is charged 0); any other (a film_timeline refusal, a review copy,
   narration_missing, film_unavailable, assembly_not_enabled) is `assembly_not_retryable` with the word, and the quote lists it in

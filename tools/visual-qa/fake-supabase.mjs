@@ -558,6 +558,125 @@ const TABLES = {
   ]),
 };
 
+// ── BEGIN live_lane (S3 lane lab: tools/visual-qa/studio-live-lane.mjs) ─────────────────────────────────────────────────────
+// A film mid-run whose live reading ADVANCES: each film_json read of a session moves it one step (queued → two clips landed → more
+// plus the narration → assembly running → master ready), in 0166/0171/0198's shapes (a retryable failure is the first attempt
+// `superseded` with its error_code and an attempt-2 `planned` sibling, logged only as take_retried with its kind). A session cookie
+// carries `lr` (its own run, so two browser contexts never share a sequence) or `ls` (a pinned step, for screenshots). Kept in one
+// block so a merge with other states touches nothing else; writes stay refused like every other write.
+const LANE_STATE = "live_lane";
+export const LANE_WORKER = "film-worker-lane-qa-9.internal";
+const laneReads = new Map(); // `lr` -> the step the last film_json read reached
+const LANE_PLAN = [6, 8, 6, 6]; // planned seconds; scene 2 is two shots of 4
+const LANE_TAKE_ID = (n) => `7b000000-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
+const LANE_ASSET = (n) => `7f000000-0000-4000-8000-0000000000${String(n).padStart(2, "0")}`;
+const LANE_MASTER = LANE_ASSET(99);
+// Each file as the library measured it (media_assets.duration_s), so a fully landed scene is placed where the worker cuts it.
+const LANE_ASSETS = [
+  [1, "video", 6.2], [2, "video", 4.1], [3, "video", 4.3], [4, "video", 6.4], [5, "video", 6.0], [6, "audio", 25.4], [99, "video", 26.0],
+].map(([n, kind, d]) => ({
+  id: LANE_ASSET(n), kind, mime: kind === "video" ? "video/mp4" : "audio/mpeg", bytes: 1_000_000, width: kind === "video" ? 1280 : null, height: kind === "video" ? 720 : null,
+  duration_s: d, source: "generated", original_name: n === 99 ? "Football in 2050" : `Take ${n}`, variants: kind === "video" ? ["thumb", "proxy"] : [], version: 1,
+  created_at: "2026-11-22T08:00:00Z", folder_id: null,
+}));
+function laneStepOf(claims, advance) {
+  const pinned = Number(claims.ls);
+  if (Number.isInteger(pinned) && pinned >= 1 && pinned <= 5) return pinned;
+  const run = typeof claims.lr === "string" ? claims.lr : "default";
+  const was = laneReads.get(run) ?? 0;
+  // Only a film read moves the run on: the gate's films read before it must not count as a step.
+  if (!advance) return Math.max(1, was);
+  const step = Math.min(5, was + 1);
+  laneReads.set(run, step);
+  return step;
+}
+function laneTake(n, sceneIdx, kind, status, over = {}) {
+  return {
+    id: LANE_TAKE_ID(n), scene_id: sceneIdx === null ? null : FILM_SCENES[sceneIdx].id, version: 1, shot_index: kind === "narration" ? 0 : 1, kind,
+    parent_take_id: null, attempt: 1, status, model: "qa-model", prompt_final: null, params: {},
+    duration_s: kind === "narration" ? 26 : sceneIdx === 1 ? 4 : LANE_PLAN[sceneIdx ?? 0], first_frame_asset_id: null, last_frame_asset_id: null,
+    reference_asset_ids: [], reshoot: null, creative_job_id: null, result_asset_id: null, result_last_frame_asset_id: null,
+    error_code: null, error: null, created_at: iso(-600_000), updated_at: iso(-30_000), finished_at: null, ...over,
+  };
+}
+const laneDone = (n, asset, over = {}) => ({ status: "completed", result_asset_id: LANE_ASSET(asset), finished_at: iso(-20_000), ...over });
+function laneTakes(step) {
+  const t = {
+    s1: laneTake(1, 0, "clip", step >= 2 ? "completed" : "planned", step >= 2 ? laneDone(1, 1) : {}),
+    s2a: laneTake(2, 1, "clip", step >= 2 ? "completed" : "planned", step >= 2 ? laneDone(2, 2) : {}),
+    s2b: laneTake(3, 1, "extend", step >= 3 ? "completed" : step === 2 ? "running" : "planned", { shot_index: 2, ...(step >= 3 ? laneDone(3, 3) : {}) }),
+    s4: laneTake(5, 3, "clip", step >= 3 ? "completed" : step === 2 ? "running" : "planned", step >= 3 ? laneDone(5, 5) : {}),
+    narration: laneTake(6, null, "narration", step >= 3 ? "completed" : step === 2 ? "running" : "planned", step >= 3 ? laneDone(6, 6) : {}),
+  };
+  // Scene 3: the first attempt timed out at step 3 (0198: superseded, retried_not_charged), its sibling lands at step 4.
+  const s3 =
+    step <= 2
+      ? [laneTake(4, 2, "clip", step === 2 ? "running" : "planned")]
+      : [
+          laneTake(4, 2, "clip", "superseded", { error_code: "timeout", finished_at: iso(-90_000) }),
+          laneTake(7, 2, "clip", step >= 4 ? "completed" : "planned", { attempt: 2, ...(step >= 4 ? laneDone(7, 4) : {}) }),
+        ];
+  // Each scene starts from its own generated picture (first_frame = keyframe), made before its clip.
+  const kf = [0, 1, 2, 3].map((i) => laneTake(10 + i, i, "keyframe", step >= 2 ? "completed" : "planned", { shot_index: 0, duration_s: null, ...(step >= 2 ? laneDone(10 + i, 50 + i) : {}) }));
+  return { scenes: [[kf[0], t.s1], [kf[1], t.s2a, t.s2b], [kf[2], ...s3], [kf[3], t.s4]], narration: t.narration };
+}
+function laneEvents(step) {
+  // segment_claimed names the worker that claimed it (0171): an internal host name the page must never show.
+  const ev = [["started", null, { by: "qa" }], ["segment_claimed", null, { segment_id: "5e000000-0000-4000-8000-0000000000a1", worker: LANE_WORKER, attempt: 1 }]];
+  const done = (scene, n, kind, shot = 1) => ["take_completed", scene === null ? null : FILM_SCENES[scene].id, { take_id: LANE_TAKE_ID(n), kind, shot_index: shot, attempt: 1 }];
+  if (step >= 2) ev.push(...[0, 1, 2, 3].map((i) => done(i, 10 + i, "keyframe", 0)), done(0, 1, "clip"), done(1, 2, "clip"));
+  if (step >= 3) {
+    ev.push(done(1, 3, "extend", 2), done(3, 5, "clip"), done(null, 6, "narration", 0));
+    ev.push(["take_retried", FILM_SCENES[2].id, { take_id: LANE_TAKE_ID(4), retry_take_id: LANE_TAKE_ID(7), kind: "clip", failure: "provider_timeout", error_code: "timeout", charged: 0 }]);
+  }
+  if (step >= 4) ev.push(["take_completed", FILM_SCENES[2].id, { take_id: LANE_TAKE_ID(7), kind: "clip", shot_index: 1, attempt: 2 }]);
+  if (step >= 5) ev.push(["assembly_completed", null, { segment_id: "5e000000-0000-4000-8000-0000000000a1" }], ["segment_settled", null, { segment_id: "5e000000-0000-4000-8000-0000000000a1" }]);
+  return ev.map(([event, scene_id, detail], i) => ({ id: 900 + i, film_id: FILM_ID, scene_id, event, detail, created_by: null, created_at: iso(-(ev.length - i) * 40_000) }));
+}
+const LANE_FILM_STATUS = { 1: "queued", 2: "running", 3: "running", 4: "running", 5: "ready" };
+function laneFilmJson(step) {
+  const takes = laneTakes(step);
+  const scenes = FILM_SCENES.slice(0, 4).map((s, i) => ({
+    ...s, planned_seconds: LANE_PLAN[i], shot_count: i === 1 ? 2 : 1, first_frame: "keyframe", current_version: 1,
+    status: step === 1 ? "planned" : step === 5 ? "ready" : "running", takes: takes.scenes[i],
+  }));
+  const events = laneEvents(step);
+  return {
+    film: { ...FILM_ROW, status: LANE_FILM_STATUS[step], language: "en", target_seconds: 60 }, editable: false, style_kit_missing: false, music_missing: false,
+    totals: { scenes: scenes.length, planned_seconds: LANE_PLAN.reduce((a, b) => a + b, 0) },
+    refs: [], scenes, takes: [takes.narration], events: [...events].reverse(), events_total: events.length, events_truncated: false, limits: FILM_LIMITS,
+  };
+}
+function laneSegments(step) {
+  const assembly = step >= 5 ? "completed" : step === 4 ? "running" : "planned";
+  return [{
+    id: "5e000000-0000-4000-8000-0000000000a1", status: step === 1 ? "queued" : step >= 5 ? "settled" : "running", assembly_status: assembly,
+    assembly_asset_id: step >= 5 ? LANE_MASTER : null, confirmed_credits: 96, captured_credits: step >= 5 ? 90 : null,
+    assembly_confirmed_credits: 8, assembly_charged_credits: step >= 5 ? 8 : null, created_at: iso(-700_000),
+  }];
+}
+/** The lane state's answer to an RPC or a table read, or undefined to fall through to the shared fake. */
+function laneAnswer(kind, name, claims, url) {
+  if (kind === "rpc") {
+    if (name === "film_json") return { status: 200, body: laneFilmJson(laneStepOf(claims, true)) };
+    return undefined;
+  }
+  const eqId = url.searchParams.get("id")?.startsWith("eq.") ? url.searchParams.get("id").slice(3) : null;
+  const step = laneStepOf(claims, false);
+  if (name === "films") return { status: 200, body: FILM_LIST.filter((f) => !eqId || f.id === eqId).map((f) => (f.id === FILM_ID ? { ...f, status: LANE_FILM_STATUS[step] } : f)) };
+  if (name === "film_segments") return { status: 200, body: laneSegments(step) };
+  if (name === "film_takes") {
+    const t = laneTakes(step);
+    const all = [...t.scenes.flat(), t.narration];
+    return { status: 200, body: all.map((x) => ({ id: x.id, error_code: x.error_code, confirmed_credits: 12, charged_credits: x.status === "completed" ? 12 : 0 })) };
+  }
+  if (name === "org_film_settings") return { status: 200, body: [{ org_id: ORG.id, film_studio_enabled: true }] };
+  if (name === "media_assets") return { status: 200, body: LANE_ASSETS.filter((a) => !eqId || a.id === eqId) };
+  if (name === "channels") return { status: 200, body: [CHANNEL] };
+  return undefined;
+}
+// ── END live_lane ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
 function send(res, status, body) {
   res.writeHead(status, { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "*" });
   res.end(body === undefined ? "" : JSON.stringify(body));
@@ -579,6 +698,11 @@ export function startFakeSupabase(port = 54399) {
     const state = stateOf(req);
     const rpc = url.pathname.match(/^\/rest\/v1\/rpc\/([a-z_0-9]+)/);
     if (rpc) {
+      // live_lane (its block above): the advancing film read.
+      if (state === LANE_STATE) {
+        const lane = laneAnswer("rpc", rpc[1], claimsOf(req), url);
+        if (lane) return send(res, lane.status, lane.body);
+      }
       // The Usage page's own functions, by the state the session carries.
       if (rpc[1] === "usage_summary" && state) return send(res, 200, usageSummary(state));
       if (rpc[1] === "billing_summary" && state) return send(res, 200, billingSummary(state));
@@ -635,6 +759,15 @@ export function startFakeSupabase(port = 54399) {
     }
     const table = url.pathname.match(/^\/rest\/v1\/([a-z_0-9]+)/);
     if (table && (req.method === "GET" || req.method === "HEAD")) {
+      // live_lane (its block above): the live route's reads at the session's current step.
+      if (state === LANE_STATE && req.method === "GET") {
+        const lane = laneAnswer("table", table[1], claimsOf(req), url);
+        if (lane) {
+          const single = String(req.headers.accept || "").includes("vnd.pgrst.object");
+          if (!single) return send(res, lane.status, lane.body);
+          return lane.body.length ? send(res, 200, lane.body[0]) : send(res, 406, { code: "PGRST116", message: "0 rows" });
+        }
+      }
       let rows = table[1] === "credit_accounts" && state ? [creditAccountFor(state)] : (TABLES[table[1]] ?? []);
       if (APP_STATES.has(state)) {
         // A new person has no channel, video, job or model yet; the others have a channel.

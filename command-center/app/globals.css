@@ -459,12 +459,14 @@
    hairline colour. There the default moves into the lowest layer, where anything that names a colour wins; the app
    keeps exactly the rule it had.
    The --ds-* controls (app/tokens.css, also in @layer components) are carved out the same way, wherever they sit: their
-   edges (a field's 3:1 edge, an invalid field's red, a chosen chip's lime, the spinner's open ring) are the point of them. */
-:where(*:not(.st):not(.st *):not(.ds-btn, .ds-input, .ds-chip, .ds-toggle, .ds-tip, .ds-spinner)) {
+   edges (a field's 3:1 edge, an invalid field's red, a chosen chip's lime, the spinner's open ring) are the point of them.
+   So are the adopted primitives' (components/ui/primitives.css, effects.css): a dialog's 3:1 edge, the slider thumb's
+   accent ring, the beam's transparent track. */
+:where(*:not(.st):not(.st *):not(.ds-btn, .ds-input, .ds-chip, .ds-toggle, .ds-tip, .ds-spinner, .ui-dialog, .ui-sheet, .ui-popover, .ui-command-surface, .ui-tabs-list, .ui-command-input-row, .ui-slider-thumb, .fx-beam)) {
   border-color: var(--color-border);
 }
 @layer base {
-  :where(.st, .st *, .ds-btn, .ds-input, .ds-chip, .ds-toggle, .ds-tip, .ds-spinner) {
+  :where(.st, .st *, .ds-btn, .ds-input, .ds-chip, .ds-toggle, .ds-tip, .ds-spinner, .ui-dialog, .ui-sheet, .ui-popover, .ui-command-surface, .ui-tabs-list, .ui-command-input-row, .ui-slider-thumb, .fx-beam) {
     border-color: var(--color-border);
   }
 }

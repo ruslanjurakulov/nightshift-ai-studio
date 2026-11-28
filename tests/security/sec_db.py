@@ -394,6 +394,14 @@ ON_0156 = (*(f for f in ON_0156 if f != "0228_music_per_request_price.sql"), "02
 #: 0230 (the country gate reads an allow-list vendor's own list) replaces 0208's creative_jobs_geo_gate and refuses to apply without
 #: it: a sequence that leaves 0208 out leaves 0230 out too, and puts it back last.
 ON_0156 = (*(f for f in ON_0156 if f != "0230_geo_gate_allow_list.sql"), "0230_geo_gate_allow_list.sql")
+#: 0238 (a country-listed row with an allow-list may go on sale) refuses to apply unless 0230's gate is live: after 0230, last.
+ON_0156 = (*ON_0156, "0238_country_list_sale_needs_allow_list.sql")
+#: 0235 (Film Studio's operator preview) replaces 0218's film_price (and 0171's, 0215's and 0166's callers of film_check_model) and
+#: refuses any other body: a sequence that leaves 0218 out leaves 0235 out too, and puts it back last.
+ON_0156 = (*ON_0156, "0235_film_operator_preview.sql")
+#: 0236 (clip sound refused until the cut keeps it) replaces 0235's film_price and refuses any other body: a sequence that leaves 0235
+#: out leaves 0236 out too, and puts it back last.
+ON_0156 = (*ON_0156, "0236_film_clip_sound_gate.sql")
 ON_0155 = (MIGRATION_0156.name, *ON_0156)
 #: Migrations written on 0153's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0153 out
 #: leaves these out too, in this order.
@@ -440,6 +448,12 @@ ON_0139 = (*ON_0139, "0232_ai_chat_film_plan_leases.sql")
 ON_0139 = (*(f for f in ON_0139 if f != "0230_geo_gate_allow_list.sql"), "0230_geo_gate_allow_list.sql")
 #: 0231 (cancel audit) asks for 0226's cancel_workflow_run and refuses to apply without it: after it, in both lists.
 ON_0139 = (*ON_0139, "0231_cancel_audit.sql")
+#: 0238 asks for 0230's gate: after 0230, last (ON_0156's copy moved here).
+ON_0139 = (*(f for f in ON_0139 if f != "0238_country_list_sale_needs_allow_list.sql"), "0238_country_list_sale_needs_allow_list.sql")
+#: 0235 sits on 0218's film_price and 0215's film_resume_precheck and calls 0139's creative_operator_preview: last.
+ON_0139 = (*(f for f in ON_0139 if f != "0235_film_operator_preview.sql"), "0235_film_operator_preview.sql")
+#: 0236 sits on 0235's film_price: after it, last.
+ON_0139 = (*(f for f in ON_0139 if f != "0236_film_clip_sound_gate.sql"), "0236_film_clip_sound_gate.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
@@ -468,8 +482,14 @@ ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164
            "0224_dated_credit_price.sql",
            # 0228 sits on 0224's creative_price and 0218's creative_params_problem: out and back with them, after them.
            "0228_music_per_request_price.sql",
-           # 0230 replaces 0208's creative_jobs_geo_gate and refuses to apply without 0208: out and back with it, last.
-           "0230_geo_gate_allow_list.sql")
+           # 0230 replaces 0208's creative_jobs_geo_gate and refuses to apply without 0208: out and back with it.
+           "0230_geo_gate_allow_list.sql",
+           # 0238 refuses to apply unless 0230's gate is live: out and back with it.
+           "0238_country_list_sale_needs_allow_list.sql",
+           # 0235 replaces 0218's film_price and 0215's film_resume_precheck and refuses to apply without them: last.
+           "0235_film_operator_preview.sql",
+           # 0236 replaces 0235's film_price and 0215's film_assembly_retryable and refuses to apply without them: last.
+           "0236_film_clip_sound_gate.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -495,6 +515,7 @@ def take_off_0139(session) -> None:
     first with its own rollback, and puts it back with put_back_0139 where the chain goes on. 0149 sits on 0139's creative_price(), and
     0139's rollback refuses any other body, so 0149 comes off first when it is there (and 0153, which sits on 0149's, before it, and
     0155, which sits on 0153's, before that, and 0156 on 0155's before that, and 0159 on 0156's before that)."""
+    take_off_0235(session)  # 0235's film_check_model calls 0139's creative_operator_preview, which this rollback drops
     take_off_0188(session)
     if has_0149(session) or has_0153(session) or has_0155(session) or has_0156(session) or has_0159(session):
         take_off_0149(session)
@@ -505,6 +526,7 @@ def put_back_0139(session) -> None:
     session.conn.execute(MIGRATION_0139.read_text(encoding="utf-8"))
     put_back_0149(session)
     put_back_0188(session)
+    put_back_0235(session)
 
 
 #: md5 of 0149's creative_price body (white space folded), the way its drift guard reads it.
@@ -702,7 +724,8 @@ def put_back_0224(conn_or_session) -> None:
 
 def rollback_0208_body() -> str:
     """0208's rollback, with 0224's and 0218's first (each sits on the one before, and each rollback refuses a later body): 0224's is
-    harmless where it is not on, 0218's runs only where 0218 is on."""
+    harmless where it is not on, 0218's runs only where 0218 is on. (0238 is taken off by take_off_0208, which can ask the database
+    whether it is on: a scratch database that dropped 0142's CHECK to put a country-listed model on sale has nothing to take off.)"""
     text = ROLLBACK_0208.read_text(encoding="utf-8")
     return rollback_0224_body() + "\n" + rollback_0218_if_on() + "\n" + "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
 
@@ -712,6 +735,7 @@ def take_off_0208(conn_or_session) -> None:
     reroute_creative_job() on 0196's, and their replays and rollbacks refuse any other body: taken off first with its own rollback,
     put back with put_back_0208."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0238(conn)  # 0238's CHECK lets a country-listed row on sale only behind the gate this rollback drops: off first
     take_off_0218(conn)
     conn.execute(rollback_0208_body())
 
@@ -739,6 +763,40 @@ def put_back_0230(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if _md5_of(conn, "public.creative_jobs_geo_gate()") == GEO_GATE_0208:
         conn.execute(MIGRATION_0230.read_text(encoding="utf-8"))
+    put_back_0238(conn)
+
+
+MIGRATION_0238 = MIGRATIONS / "0238_country_list_sale_needs_allow_list.sql"
+ROLLBACK_0238 = REPO / "docs" / "sql" / "rollback_0238_country_list_sale_needs_allow_list.sql"
+
+
+def has_0238(conn_or_session) -> bool:
+    """0238's CHECK is the live one: the only definition of model_registry_countries_before_sale that reads available_countries."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute(
+        "select coalesce(bool_or(position('available_countries' in pg_get_constraintdef(oid)) > 0), false) from pg_constraint "
+        "where conrelid = 'public.model_registry'::regclass and conname = 'model_registry_countries_before_sale'").fetchone()[0])
+
+
+def rollback_0238_body() -> str:
+    """0238's rollback without its own begin / commit: 0142's CHECK back (it refuses while a country-listed row is on sale)."""
+    text = ROLLBACK_0238.read_text(encoding="utf-8")
+    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+
+
+def take_off_0238(conn_or_session) -> None:
+    """0238 out (0142's CHECK back), before anything takes 0230's gate away or replays 0142."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0238(conn):
+        conn.execute(rollback_0238_body())
+
+
+def put_back_0238(conn_or_session) -> None:
+    """0238 again, only where 0230's gate is live (its guard refuses any other body) and it is not on already. A replay of 0142
+    (drop, then add) puts 0142's CHECK back over 0238's, so a test that replays 0142 calls this after."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0238(conn) and _md5_of(conn, "public.creative_jobs_geo_gate()") == GEO_GATE_0230:
+        conn.execute(MIGRATION_0238.read_text(encoding="utf-8"))
 
 
 MIGRATION_0234 = MIGRATIONS / "0234_agent_drafts_operator_only.sql"
@@ -833,7 +891,8 @@ def rollback_0218_if_on() -> str:
     their SQL is run as text by tests, which cannot ask has_0218 first)."""
     body = rollback_0218_body()
     assert "$rb0218$" not in body
-    return (f"do $if0218$ begin if (select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) from pg_proc "
+    # 0235 sits on 0218's film_price (0218's rollback refuses its body): off first, where it is on.
+    return rollback_0235_if_on() + "\n" + (f"do $if0218$ begin if (select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) from pg_proc "
             f"where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')) in ('{CREATIVE_PRICE_0218}', "
             f"'{CREATIVE_PRICE_0218_0224}') then "
             f"execute $rb0218${body}$rb0218$; end if; end $if0218$;")
@@ -844,6 +903,7 @@ def take_off_0218(conn_or_session) -> None:
     replays and rollbacks refuse any other body. A test that replays or rolls back 0208 (and so 0159 or 0156) or 0171 takes 0218 off
     first with its own rollback (take_off_0208 and take_off_0171 do it), and puts it back with put_back_0218 once all three are on."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0235(conn)  # 0235 replaces 0218's film_price, and 0218's rollback refuses any other body
     # 0228 sits on 0224's creative_price and 0218's creative_params_problem: take_off_0224 takes it off first.
     take_off_0224(conn)
     if has_0218(conn):
@@ -860,6 +920,7 @@ def put_back_0218(conn_or_session) -> None:
     # 0224 first, then 0228, which applies only on 0224's creative_price.
     put_back_0224(conn)
     put_back_0228(conn)
+    put_back_0235(conn)
 
 
 #: 0228 (music per request, S6): 0224's creative_price and 0218's creative_params_problem, one marked hunk each. Its guard accepts
@@ -895,6 +956,49 @@ def put_back_0228(conn_or_session) -> None:
     if (not has_0228(conn) and _md5_of(conn, "public.creative_price(uuid, text, text, jsonb)") == CREATIVE_PRICE_0218_0224
             and _md5_of(conn, "public.creative_params_problem(text, jsonb)") == CREATIVE_PARAMS_PROBLEM_0218):
         conn.execute(MIGRATION_0228.read_text(encoding="utf-8"))
+
+
+MIGRATION_0236 = MIGRATIONS / "0236_film_clip_sound_gate.sql"
+ROLLBACK_0236 = REPO / "docs" / "sql" / "rollback_0236_film_clip_sound_gate.sql"
+#: md5 of 0236's film_price and film_assembly_retryable (white space folded), the way its drift guard and end state read them.
+FILM_PRICE_0236 = "af0fb80cce8e92fd2360aa6d5366a942"
+FILM_ASSEMBLY_RETRYABLE_0215 = "82ec51dabd0ff178ec2280bc0c56e62b"
+FILM_ASSEMBLY_RETRYABLE_0236 = "88a312d28e63be043796bcc86f024164"
+
+
+def has_0236(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return _md5_of(conn, "public.film_price(public.films)") == FILM_PRICE_0236
+
+
+def take_off_0236(conn_or_session) -> None:
+    """0236 (a scene's clip sound refused until the cut keeps it) replaces 0235's film_price and 0215's film_assembly_retryable, and
+    those files' replays and rollbacks refuse any other body: take_off_0235 (so take_off_0218, take_off_0215, take_off_0139 and the
+    files they reach) and take_off_0215 take it off first with its own rollback, and put_back_0235 / put_back_0215 put it back once
+    both bodies are there again. Its column goes with the rollback and comes back off (the default) with the replay."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0236(conn):
+        text = ROLLBACK_0236.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def rollback_0236_if_on() -> str:
+    """0236's rollback as one statement that runs only where 0236's film_price is live: rollback_0235_if_on (and so
+    rollback_0218_if_on) starts with it, for the tests that run that SQL as text."""
+    text = ROLLBACK_0236.read_text(encoding="utf-8")
+    body = "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+    assert "$rb0236$" not in body and "$if0236$" not in body
+    return (f"do $if0236$ begin if (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc "
+            f"where oid = to_regprocedure('public.film_price(public.films)')) = '{FILM_PRICE_0236}' then "
+            f"execute $rb0236${body}$rb0236$; end if; end $if0236$;")
+
+
+def put_back_0236(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0236(conn) and _md5_of(conn, "public.film_price(public.films)") == FILM_PRICE_0235 \
+            and _md5_of(conn, "public.film_assembly_retryable(text)") == FILM_ASSEMBLY_RETRYABLE_0215 \
+            and conn.execute("select to_regclass('public.film_studio_settings') is not null").fetchone()[0]:
+        conn.execute(MIGRATION_0236.read_text(encoding="utf-8"))
 
 
 def migration_0218_lab() -> str:
@@ -1289,6 +1393,8 @@ def take_off_0215(conn_or_session) -> None:
     record of a resume), which put_back_0215 picks up again as its own. 0226's bodies call 0215's is_org_spender, which this rollback
     drops: 0226 comes off first."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0236(conn)  # 0236 replaces 0215's film_assembly_retryable, and 0215's replay and rollback refuse any other body
+    take_off_0235(conn)  # 0235 replaces 0215's film_resume_precheck, and 0215's rollback and replay refuse any other body
     take_off_0226(conn)
     if has_0215(conn):
         text = ROLLBACK_0215.read_text(encoding="utf-8")
@@ -1301,6 +1407,8 @@ def put_back_0215(conn_or_session) -> None:
     if not has_0215(conn) and has_0198(conn) and has_0187(conn) and has_0192(conn):
         conn.execute(MIGRATION_0215.read_text(encoding="utf-8"))
     put_back_0226(conn)
+    put_back_0235(conn)
+    put_back_0236(conn)
 
 
 MIGRATION_0226 = MIGRATIONS / "0226_org_spender_everywhere.sql"
@@ -1525,6 +1633,59 @@ def put_back_0233(conn_or_session) -> None:
     conn = getattr(conn_or_session, "conn", conn_or_session)
     if not has_0233(conn):
         conn.execute(MIGRATION_0233.read_text(encoding="utf-8"))
+
+
+MIGRATION_0235 = MIGRATIONS / "0235_film_operator_preview.sql"
+ROLLBACK_0235 = REPO / "docs" / "sql" / "rollback_0235_film_operator_preview.sql"
+#: md5 of 0235's bodies (white space folded), the way its drift guard and end state read them.
+FILM_PRICE_0235 = "186d34ffb633bc56a91bbf617b0b7520"
+FILM_CHECK_MODEL_0235 = "5a2c4ed8d8b56bc63d6d095085ab0361"
+FILM_MODEL_PROBLEM_0235 = "48d25f5cb4f21b9cea72658968d9c952"
+#: The bodies 0235 is written on: 0218's film_price, 0171's film_precheck, 0215's film_resume_precheck, 0166's film_apply_settings and
+#: film_save_scenes.
+_BEFORE_0235 = {"public.film_price(public.films)": FILM_PRICE_0218,
+                "public.film_precheck(public.films)": "ff4fa7e8a6386420f32ab6a3a85a778c",
+                "public.film_resume_precheck(public.films, uuid)": "aa7275ed5e8520af52cabd03c2f930d8",
+                "public.film_apply_settings(public.films, jsonb, text[])": "248ffb76f60f3a6f4e8b34b85cd0c92b",
+                "public.film_save_scenes(public.films, jsonb)": "c836631256f669318c9ef499d7c4c54b"}
+
+
+def has_0235(conn_or_session) -> bool:
+    """0235 adds the four-argument film_check_model in the same transaction as its five replacements."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.film_check_model(text, text[], text, uuid)') is not null").fetchone()[0])
+
+
+def take_off_0235(conn_or_session) -> None:
+    """0235 (Film Studio's operator preview) replaces 0218's film_price, 0171's film_precheck, 0215's film_resume_precheck and 0166's
+    film_apply_settings and film_save_scenes, and those files' replays and rollbacks refuse any other body: take_off_0218 (so
+    take_off_0171 and take_off_0208), take_off_0215 (so take_off_0198, take_off_0192, take_off_0187) and take_off_0139 take it off first
+    with its own rollback, and their put-backs put it back once every body it is written on is there again."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0236(conn)  # 0236 replaces 0235's film_price, and 0235's rollback refuses any other body
+    if has_0235(conn):
+        text = ROLLBACK_0235.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def rollback_0235_if_on() -> str:
+    """0235's rollback as one statement that runs only where 0235 is on (its four-argument film_check_model is there): rollback_0218_if_on
+    (and so rollback_0208_body and rollback_0159_body) starts with it, for the tests that run that SQL as text."""
+    text = ROLLBACK_0235.read_text(encoding="utf-8")
+    body = "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+    assert "$rb0235$" not in body and "$if0235$" not in body
+    # 0236 sits on 0235's film_price (0235's rollback refuses its body): off first, where it is on.
+    return rollback_0236_if_on() + "\n" + (f"do $if0235$ begin if to_regprocedure('public.film_check_model(text, text[], text, uuid)') is not null then "
+            f"execute $rb0235${body}$rb0235$; end if; end $if0235$;")
+
+
+def put_back_0235(conn_or_session) -> None:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0235(conn) or not has_0139(conn):
+        return
+    if {sig: _md5_of(conn, sig) for sig in _BEFORE_0235} == _BEFORE_0235:
+        conn.execute(MIGRATION_0235.read_text(encoding="utf-8"))
+    put_back_0236(conn)
 
 
 def migration_files() -> list[Path]:

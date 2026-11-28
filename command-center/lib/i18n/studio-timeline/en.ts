@@ -186,6 +186,8 @@ export const studioTimelineEn = {
       unpriced: "A line of this project has no price on the server today.",
       voice_language_unsupported: "The voice model does not speak this project's language. Choose a voice model that does, in the project.",
       voice_language_unknown: "We could not confirm that the voice model speaks this project's language. Choose a voice model whose languages are listed, in the project.",
+      // 0236 (BR-SG-01): a scene asks for its clip's own sound, and the server does not yet keep it in the final film.
+      clip_sound_not_kept: "Clip sound is not yet kept in the final film. Turn the scene's sound option off in the project, then ask for the price again.",
       other: "A line of this project could not be priced.",
     },
     // Start-specific words for every refusal the start and quote paths can answer that startFailed does not already say.

@@ -1,17 +1,15 @@
 "use client";
 
-import { useId, useLayoutEffect, useRef } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useId, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Lock, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { nextFocusIndex } from "@/lib/feedback";
 import { creditUnit, formatCredits } from "@/lib/credits";
 import { displayPriceText } from "@/lib/pricing";
 import { UPSELL_LINKS, upsellView, type Refusal, type UpsellCatalog, type UpsellKey, type UpsellView } from "@/lib/upsell";
 
-const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/Sheet";
 
 type Dict = ReturnType<typeof useI18n>["t"];
 
@@ -67,7 +65,8 @@ function lockedLine(t: Dict, v: UpsellView, modelName: string, locale: string): 
  * because the plan data has none.
  *
  * A bottom sheet on a phone, a centred dialog from `sm` up. Escape and the
- * scrim close it, Tab stays inside, and focus returns to what opened it.
+ * scrim close it, Tab stays inside, and focus returns to what opened it: the
+ * shared Sheet (components/ui, Radix Dialog) brings all of that.
  */
 export function PlanUpsellDialog({
   refusal,
@@ -87,49 +86,22 @@ export function PlanUpsellDialog({
   const u = t.upsell;
   const path = useChannelPath();
   const titleId = useId();
-  const descId = useId();
-  const panel = useRef<HTMLDivElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
-  const opener = useRef<HTMLElement | null>(null);
+  // Read during the first render, before focus moves in: the Generate key when given, else what had focus.
+  const [opener] = useState<HTMLElement | null>(() =>
+    typeof document === "undefined" ? null : (returnTo?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null)),
+  );
+  // Focus lands in the same commit that shows the dialog (a callback ref runs during the commit; Radix's own autofocus is
+  // an effect after paint), so there is no frame, and on a slow machine no keystroke, in which focus is still on the
+  // composer behind the modal. The first focus is the primary action when there is one, else Close: nothing is pressed by
+  // opening, so landing on a link is safe.
+  const placeFocus = useCallback((node: HTMLDivElement | null) => {
+    if (!node || node.contains(document.activeElement)) return;
+    (node.querySelector<HTMLElement>("[data-upsell-primary]") ?? node.querySelector<HTMLElement>("[data-upsell-close]"))?.focus();
+  }, []);
 
   const view = upsellView(refusal, model?.entitlement, data);
   const modelName = model?.name || u.modelFallback;
   const title = view.reason === "credits" ? u.titleCredits : view.reason === "run_limit" ? u.titleRunLimit : u.titleModel;
-
-  // A layout effect, not a passive one: focus lands on the dialog in the same
-  // commit that shows it, so there is no frame (and, on a slow machine, no
-  // keystroke) in which focus is still on the composer behind the modal.
-  useLayoutEffect(() => {
-    opener.current = returnTo?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
-    // The first focus is the primary action when there is one, else Close:
-    // nothing is pressed by opening, so landing on a link is safe.
-    const primary = panel.current?.querySelector<HTMLElement>("[data-upsell-primary]");
-    (primary ?? closeRef.current)?.focus();
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      const el = opener.current;
-      if (el && el.isConnected) el.focus();
-    };
-    // Mount only: the opener and the first focus belong to the opening.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      onClose();
-      return;
-    }
-    if (e.key !== "Tab" || !panel.current) return;
-    const items = Array.from(panel.current.querySelectorAll<HTMLElement>(FOCUSABLE));
-    const next = nextFocusIndex(items.indexOf(document.activeElement as HTMLElement), items.length, e.shiftKey);
-    if (next < 0) return;
-    e.preventDefault();
-    items[next].focus();
-  }
 
   const highlight = (values: Record<string, unknown>): string | null => {
     const k = view.highlight;
@@ -146,19 +118,27 @@ export function PlanUpsellDialog({
   // With credits missing, "Buy credits" is the answer; the plans are the alternative.
   const plansArePrimary = !view.buyCredits;
 
-  if (typeof document === "undefined") return null;
-  return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-end justify-center sm:items-center sm:p-4" onKeyDown={onKeyDown}>
-      <div aria-hidden className="absolute inset-0 bg-[var(--studio-scrim)]" onClick={onClose} />
-      <div
-        ref={panel}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descId}
+  return (
+    <Sheet open onOpenChange={(open) => !open && onClose()}>
+      <SheetContent
+        ref={placeFocus}
+        side="auto"
+        closeLabel={null}
         data-testid="plan-upsell"
         data-reason={view.reason}
-        className="relative flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-t-[var(--ns-r-sheet)] border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] sm:max-h-[85vh] sm:max-w-[640px] sm:rounded-[var(--ns-r-sheet)]"
+        style={{ "--ui-sheet-w": "640px" } as CSSProperties}
+        // Focus is already placed (placeFocus); Radix must not move it to its own first pick.
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => {
+          if (opener?.isConnected) {
+            e.preventDefault();
+            opener.focus();
+          }
+        }}
+        // Escape is this dialog's: the composer behind must not also act on it.
+        onKeyDown={(e) => {
+          if (e.key === "Escape") e.stopPropagation();
+        }}
       >
         <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4 sm:px-6 sm:pt-5">
           <div className="flex min-w-0 items-start gap-3">
@@ -169,23 +149,15 @@ export function PlanUpsellDialog({
               <Lock className="size-4" strokeWidth={2} />
             </span>
             <div className="flex min-w-0 flex-col gap-1">
-              <h2 id={titleId} className="text-base font-semibold leading-snug text-[var(--color-fg)]">
-                {title}
-              </h2>
-              <p id={descId} className="text-sm leading-relaxed text-[var(--color-muted)]">
+              <SheetTitle className="text-base font-semibold leading-snug text-[var(--ds-text)]">{title}</SheetTitle>
+              <SheetDescription className="text-sm leading-relaxed text-[var(--ds-muted)]">
                 {lockedLine(t, view, modelName, locale)}
-              </p>
+              </SheetDescription>
             </div>
           </div>
-          <button
-            ref={closeRef}
-            type="button"
-            onClick={onClose}
-            aria-label={u.close}
-            className="tap-icon grid size-9 shrink-0 place-items-center rounded-[var(--ns-r-key)] text-[var(--color-muted)] hover:bg-[var(--studio-field)] hover:text-[var(--color-fg)]"
-          >
+          <SheetClose data-upsell-close aria-label={u.close} className="ui-close tap-icon shrink-0">
             <X aria-hidden className="size-4" />
-          </button>
+          </SheetClose>
         </div>
 
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-4 sm:px-6">
@@ -264,8 +236,7 @@ export function PlanUpsellDialog({
             </button>
           </div>
         </div>
-      </div>
-    </div>,
-    document.body,
+      </SheetContent>
+    </Sheet>
   );
 }

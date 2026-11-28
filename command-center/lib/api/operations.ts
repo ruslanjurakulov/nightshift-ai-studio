@@ -529,7 +529,7 @@ export async function getCreativeJob(caller: ApiCaller, jobId: string): Promise<
 
 /**
  * What the API generates: the capabilities api_creative_quote / _create accept for a key, i.e. the creative list
- * (lib/creative/operations.ts) without captions (a web tool, 0125) and music (no registry capability; 0100's check). 0162's
+ * (lib/creative/operations.ts) without captions (a web tool, 0125) and music (in the database since 0228, never on the API). 0162's
  * api_creative_models lists only models with one of these (its SQL array is pinned equal by tests/test_api_creative_models_migration.py).
  */
 export const API_CREATIVE_CAPABILITIES = [

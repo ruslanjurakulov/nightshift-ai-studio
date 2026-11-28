@@ -17,6 +17,7 @@
  */
 
 import { RUN_DURATIONS_S, HOME_LANGUAGES, type HomeLanguage } from "@/lib/home";
+import type { FilmLink, RefSheet } from "@/lib/brain/ref-sheets";
 
 export type BrainKind = "long" | "short";
 export type BrainAspect = "16:9" | "9:16" | "1:1";
@@ -195,6 +196,10 @@ export interface Brief extends Partial<Omit<Scenario, "target_seconds" | "chapte
   music: { mode: "off" };
   price?: BriefPrice;
   // credit_ref and scene_map are read by the database from the job and the film (0199), never sent by the browser.
+  /** Character reference sheets (lib/brain/ref-sheets.ts): optional and additive, written only by /api/brain/sheets. */
+  ref_sheets?: RefSheet[];
+  /** The draft film the choice saved its storyboard into, scene by scene (lib/brain/ref-sheets FilmLink; the turn route writes it). */
+  film_link?: FilmLink;
   handoff: null | { kind: "film"; film_id: string; scene_map?: Record<string, string> }
     | { kind: "run"; channel_id: string; dispatched_at?: string; job_id?: string; credit_ref?: string };
 }
@@ -445,7 +450,7 @@ export function isSmallTalk(text: string): boolean {
 }
 
 const ID = /^[a-z][a-z0-9_-]{0,15}$/i;
-const sid = (v: unknown, fallback: string) => (typeof v === "string" && ID.test(v) ? v.toLowerCase() : fallback);
+export const sid = (v: unknown, fallback: string) => (typeof v === "string" && ID.test(v) ? v.toLowerCase() : fallback);
 export const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 export const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
@@ -601,13 +606,13 @@ function firstOfEach<T extends { id: string }>(items: T[]): T[] {
   return items.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
 }
 
-/** One proposed scenario, validated as BRIEF parts; null when it is not usable for this kind. */
-export function readScenario(raw: unknown, slots: BrainSlots, rules: ScenarioRules = {}): Scenario | null {
-  const r = obj(raw);
-  const title = modelText(r.title, CAP.title);
-  const idea = modelText(r.idea, CAP.idea);
-  if (!title || !idea || !slots.kind) return null;
-  const characters = firstOfEach(arr(r.characters).slice(0, CAP.characters).map((c, i): BriefCharacter => {
+/**
+ * A BRIEF's characters, read through the same caps a proposal is (at most CAP.characters, each with at most CAP.stages age stages,
+ * every part bounded): what readScenario keeps, and what /api/brain/sheets re-reads a stored BRIEF through, because 0199 stores any
+ * jsonb object and a BRIEF written straight to it must not fan one request out without bound (Breach BR-RS-03).
+ */
+export function readCharacters(raw: unknown): BriefCharacter[] {
+  return firstOfEach(arr(raw).slice(0, CAP.characters).map((c, i): BriefCharacter => {
     const o = obj(c);
     const look = readLook(o.look);
     const stages = firstOfEach(arr(o.age_stages).slice(0, CAP.stages).map(obj).map((a, k): AgeStage | null => {
@@ -619,6 +624,15 @@ export function readScenario(raw: unknown, slots: BrainSlots, rules: ScenarioRul
              image_prompt: modelText(o.image_prompt, CAP.imagePrompt), asset_id: null, character_id: null, source: "prompt",
              ...(look ? { look } : {}), ...(stages.length ? { age_stages: stages } : {}) };
   }).filter((c) => c.name));
+}
+
+/** One proposed scenario, validated as BRIEF parts; null when it is not usable for this kind. */
+export function readScenario(raw: unknown, slots: BrainSlots, rules: ScenarioRules = {}): Scenario | null {
+  const r = obj(raw);
+  const title = modelText(r.title, CAP.title);
+  const idea = modelText(r.idea, CAP.idea);
+  if (!title || !idea || !slots.kind) return null;
+  const characters = readCharacters(r.characters);
   const locations = firstOfEach(arr(r.locations).slice(0, CAP.locations).map((c, i): BriefLocation => {
     const o = obj(c);
     return { id: sid(o.id, `l${i + 1}`), name: modelText(o.name, CAP.name), description: modelText(o.description, CAP.description),
@@ -950,7 +964,7 @@ const MOVE_WORDS: Record<CameraMove, string> = {
 };
 
 /** A character as every prompt it is in says it: its look sheet verbatim (at the scene's age stage), or the older free description. */
-function characterLine(c: BriefCharacter, stageId: string | null): string {
+export function characterLine(c: BriefCharacter, stageId: string | null): string {
   const stage = stageId ? (c.age_stages ?? []).find((a) => a.id === stageId) : undefined;
   const l = stage?.look ?? c.look;
   if (!l) return `${c.name}: ${c.description || c.image_prompt}`;
