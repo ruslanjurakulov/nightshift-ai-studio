@@ -363,3 +363,24 @@ describe("LiveView after a handoff (React H1, Lens M1)", () => {
     expect(document.querySelectorAll("[data-lit]").length).toBe(0);
   });
 });
+
+describe("below 1024 px: Chat and Plan are tabs (StudioSplit, Pixel H4)", () => {
+  it("the first send of a conversation opens the plan; a later send leaves the person in the chat, with a chip to the plan", async () => {
+    const { StudioSplit } = await import("../components/studio-live/StudioSplit");
+    render(<StudioSplit chat={<textarea data-testid="box" defaultValue="half typed" />} column={<p data-testid="col">plan</p>} />);
+    const chatTab = screen.getByTestId("studio-tab-chat");
+    expect(chatTab.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("studio-split").dataset.tab).toBe("chat");
+    await activity(null, "thinking");
+    expect(screen.getByTestId("studio-split").dataset.tab).toBe("plan");
+    fireEvent.click(chatTab);
+    await activity(A, "thinking");
+    expect(screen.getByTestId("studio-split").dataset.tab).toBe("chat");
+    // Both kept mounted: the half-typed words are still there.
+    expect((screen.getByTestId("box") as HTMLTextAreaElement).value).toBe("half typed");
+    const chip = screen.getByTestId("studio-plan-chip");
+    expect(chip.textContent).toBe(c.plan.chip.planning);
+    fireEvent.click(chip);
+    expect(screen.getByTestId("studio-split").dataset.tab).toBe("plan");
+  });
+});

@@ -69,4 +69,16 @@ describe("emit and listen", () => {
     off();
     expect(handler).not.toHaveBeenCalled();
   });
+
+  it("a listener that mounts late (a refresh mid-storyboard) hears the last activity first", () => {
+    fakeWindow();
+    emitBrainActivity({ session_id: SID, phase: "storyboard" });
+    const seen: unknown[] = [];
+    const off = onBrainActivity((a) => seen.push(a));
+    expect(seen).toEqual([{ session_id: SID, phase: "storyboard" }]);
+    off();
+    const quiet: unknown[] = [];
+    onBrainActivity((a) => quiet.push(a), { replay: false })();
+    expect(quiet).toEqual([]);
+  });
 });

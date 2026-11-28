@@ -4,21 +4,20 @@
  * StoryBoard: the one read-only board a plan is drawn on (docs/studio/LIVE_CREATION_PLAN.md §3.8), in LiveView and in the Studio's
  * Plan column beside Nightshift AI. Its cards and their layout are LiveView's, moved here; what it draws is lib/studio/boardModel.ts's.
  *
- * Two things only the Plan column sets. `enter` names the cards new since the last reading, in arrival order: the ONE hook for the
- * entrance (data-enter plus --lv-enter-i, studio-live.css), so S5's motion can replace it in one place. `follow` keeps a growing plan
- * in view by moving the viewport only when cards are added. LiveView sets neither, so its board behaves as it did.
+ * `enter` names the cards new since the last reading, in arrival order: the ONE hook for an entrance (data-enter plus --lv-enter-i,
+ * studio-live.css), so S5's motion can replace it in one place. LiveView sets none, so its board behaves as it did. (The Studio's Plan
+ * column draws its own storyboard grid, PlanBoard.tsx.)
  *
  * Performance (§3.10): an unchanged card is the same React Flow node object between readings (boardModel reuses the LiveNode, and the
  * card's node object is cached on it here), the cards are memoised, and above VISIBLE_ONLY cards only those on screen are rendered.
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow, useStore, type Edge, type Node, type NodeProps } from "@xyflow/react";
+import { Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow, type Edge, type Node, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
 import { AudioLines, Clapperboard, FileText, Film, Flag, Image as ImageIcon, Lightbulb, MapPin, Music, Search, ShieldCheck, Sword, Upload, UserRound, Wand2, type LucideIcon } from "lucide-react";
 import { Lamp } from "@/components/studio-canvas/parts";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
-import { planViewport, PLAN_FIT } from "@/lib/studio/planBoard";
 import type { LiveGraph, LiveNode, LiveNodeKind, LiveStatus } from "@/lib/studio/liveGraph";
 
 export const ICONS: Record<LiveNodeKind, LucideIcon> = {
@@ -162,8 +161,6 @@ export type ViewProps = {
   lit: ReadonlySet<string>;
   /** Cards new since the last reading, each with its place in the arrival order. None under reduced motion (the caller's choice). */
   enter?: ReadonlyMap<string, number>;
-  /** The Plan column: a growing plan, kept in view from its start (Idea first), moved only when cards are added. */
-  follow?: boolean;
   /**
    * Render only the cards on screen above VISIBLE_ONLY cards. Off where a card must exist off screen: the Live lane's flights start
    * from a card's box (LiveView turns it off while the lane is mounted), and a keyboard must reach every card.
@@ -174,51 +171,6 @@ export type ViewProps = {
 /** A wire that fans out of the script into each scene, or into the assembly from each scene: drawn as right angles, not a bundle. */
 const fan = (from: string, to: string) => (from === "script" && to.startsWith("scene#")) || (to === "assembly" && from.startsWith("scene#"));
 
-/**
- * The Plan column's fit. LiveView fits the whole plan centred at a readable zoom, which on a plan wider than the board hides both ends
- * (MEASURE.md section 2: Idea and Script off-screen). A plan being written grows from the left, so it is placed from its start, and only
- * a larger plan moves the view: the same cards read again never do. Smooth, except under reduced motion.
- */
-function FollowFit({ count }: { count: number }) {
-  const { getNodes, getNodesBounds, setViewport } = useReactFlow();
-  // Every card measured (React Flow's own useNodesInitialized stays false on a controlled board with no onNodesChange: the
-  // measurements live only in its internal lookup, which is what is read here).
-  const measured = useStore((s) => s.nodeLookup.size > 0 && [...s.nodeLookup.values()].every((n) => !!n.measured.width && !!n.measured.height));
-  const ref = useRef<HTMLDivElement>(null);
-  const placed = useRef(0);
-  const place = useCallback(
-    (animate: boolean) => {
-      const board = ref.current?.closest(".lv-board");
-      if (!board) return;
-      const vp = planViewport(getNodesBounds(getNodes()), board.clientWidth, board.clientHeight, PLAN_FIT);
-      if (vp) void setViewport(vp, { duration: animate && !reduced() ? 420 : 0 });
-    },
-    [getNodes, getNodesBounds, setViewport],
-  );
-  useEffect(() => {
-    if (!measured) return;
-    if (count > placed.current) {
-      // The first placement is where the board opens, not a move: it is never animated.
-      const first = placed.current === 0;
-      placed.current = count;
-      place(!first);
-    } else placed.current = count;
-  }, [count, measured, place]);
-  // A narrower board (a details panel opening) places the same plan again, at once: it is the board that moved, not the plan.
-  useEffect(() => {
-    const el = ref.current?.closest(".lv-board");
-    if (!el || typeof ResizeObserver === "undefined") return;
-    let w = el.clientWidth;
-    const ro = new ResizeObserver(() => {
-      if (el.clientWidth === w || placed.current === 0) return;
-      w = el.clientWidth;
-      place(false);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [place]);
-  return <div ref={ref} hidden />;
-}
 
 /** Above this many cards React Flow renders only the ones on screen (a 50-scene storyboard is ~110 cards). */
 export const VISIBLE_ONLY = 40;
@@ -228,7 +180,7 @@ const sameCard = (a: CardData, b: CardData) =>
   a.node === b.node && a.name === b.name && a.statusWord === b.statusWord && a.price === b.price && a.lit === b.lit && a.selected === b.selected &&
   a.onOpen === b.onOpen && a.enter === b.enter;
 
-export function Board({ graph, selected, onOpen, names, words, prices, lit, enter, follow = false, visibleOnly = false }: ViewProps) {
+export function Board({ graph, selected, onOpen, names, words, prices, lit, enter, visibleOnly = false }: ViewProps) {
   // The node object React Flow was given for each card last time: handed back as it was when nothing on the card changed.
   const cache = useRef(new Map<string, FlowNode>());
   const nodes = useMemo<FlowNode[]>(() => {
@@ -282,14 +234,14 @@ export function Board({ graph, selected, onOpen, names, words, prices, lit, ente
           nodesFocusable={false}
           // A read-only board: React Flow's own "arrow keys move the node, delete removes it" would be a false instruction.
           disableKeyboardA11y
-          fitView={!follow}
+          fitView
           fitViewOptions={FIT}
           minZoom={0.3}
           maxZoom={1.5}
           proOptions={{ hideAttribution: true }}
           onlyRenderVisibleElements={visibleOnly && nodes.length > VISIBLE_ONLY}
         >
-          {follow ? <FollowFit count={graph.nodes.length} /> : <FitOnResize selected={selected} />}
+          <FitOnResize selected={selected} />
         </ReactFlow>
       </ReactFlowProvider>
     </div>
@@ -363,9 +315,8 @@ export function StoryBoard({
   onOpen,
   lit,
   enter,
-  follow,
   visibleOnly,
-}: Pick<ViewProps, "graph" | "selected" | "onOpen" | "lit" | "enter" | "follow" | "visibleOnly">) {
+}: Pick<ViewProps, "graph" | "selected" | "onOpen" | "lit" | "enter" | "visibleOnly">) {
   const { t } = useI18n();
   const c = t.studioLive;
   const narrow = useNarrow();
@@ -375,6 +326,6 @@ export function StoryBoard({
     () => new Map(graph.nodes.filter((n) => typeof n.price === "number").map((n) => [n.id, fmt(c.price, { n: n.price as number })])),
     [graph, c],
   );
-  const props = { graph, selected, onOpen, names, words, prices, lit, enter, follow, visibleOnly };
+  const props = { graph, selected, onOpen, names, words, prices, lit, enter, visibleOnly };
   return narrow ? <List {...props} /> : <Board {...props} />;
 }

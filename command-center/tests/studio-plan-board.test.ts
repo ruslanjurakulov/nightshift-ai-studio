@@ -5,13 +5,13 @@
  */
 import { describe, expect, it } from "vitest";
 import { coerceBrief, briefGraph } from "../lib/studio/liveGraph";
+import { cardState, planItems, planLayout } from "../lib/studio/planGrid";
 import {
   adoptSession,
   ENTER_CAP,
-  enteringCards,
+  enteringIds,
   initialView,
   parseViewMemory,
-  planViewport,
   viewOnSend,
 } from "../lib/studio/planBoard";
 
@@ -30,26 +30,24 @@ const scenes = (n: number) =>
     })!,
   );
 
-describe("enteringCards", () => {
+describe("enteringIds", () => {
+  const ids = ["idea", "script", "ref:c1", "scene#1", "scene#2", "scene#3", "assembly", "final"];
   it("the first reading after a load or refresh enters nothing", () => {
-    expect(enteringCards(null, scenes(4)).size).toBe(0);
+    expect(enteringIds(null, ids).size).toBe(0);
   });
-  it("a column that opened empty: every card of the first plan enters", () => {
-    expect(enteringCards(new Set(), drafting).size).toBe(drafting.nodes.length);
+  it("a column that opened empty: every card of the first plan enters, in reading order", () => {
+    expect([...enteringIds(new Set(), ids).keys()]).toEqual(ids);
   });
-  it("only the cards new since the last reading enter, scene by scene, picture before clip", () => {
-    const seen = new Set(drafting.nodes.map((n) => n.id));
-    const e = enteringCards(seen, scenes(3));
-    expect([...e.keys()]).toEqual(["scene#1:keyframe", "scene#1:clip", "scene#2:keyframe", "scene#2:clip", "scene#3:keyframe", "scene#3:clip"]);
-    expect([...e.values()]).toEqual([0, 1, 2, 3, 4, 5]);
+  it("only the cards new since the last reading enter, each with its place among them", () => {
+    const e = enteringIds(new Set(["idea", "script", "assembly", "final"]), ids);
+    expect([...e.entries()]).toEqual([["ref:c1", 0], ["scene#1", 1], ["scene#2", 2], ["scene#3", 3]]);
   });
   it("the same plan read again enters nothing", () => {
-    const g = scenes(3);
-    expect(enteringCards(new Set(g.nodes.map((n) => n.id)), scenes(3)).size).toBe(0);
+    expect(enteringIds(new Set(ids), ids).size).toBe(0);
   });
   it("a long storyboard's tail arrives together instead of taking seconds", () => {
-    const e = enteringCards(new Set(drafting.nodes.map((n) => n.id)), scenes(40));
-    expect(Math.max(...e.values())).toBe(ENTER_CAP);
+    const many = Array.from({ length: 40 }, (_, i) => `scene#${i + 1}`);
+    expect(Math.max(...enteringIds(new Set(), many).values())).toBe(ENTER_CAP);
   });
 });
 
@@ -85,20 +83,53 @@ describe("the switch's memory", () => {
   });
 });
 
-describe("planViewport", () => {
-  it("a plan that fits is centred", () => {
-    const v = planViewport({ x: 0, y: 0, width: 400, height: 200 }, 1000, 600)!;
-    expect(v.zoom).toBe(1);
-    expect(v.x).toBe(300);
-    expect(v.y).toBe(200);
+describe("the storyboard grid (lib/studio/planGrid.ts)", () => {
+  const items = (n: number) => planItems(scenes(n));
+  it("a scene's picture and clip fold into one scene card that keeps the steps' position-keyed ids", () => {
+    const it2 = items(2);
+    expect(it2.scenes.map((s) => s.id)).toEqual(["scene#1", "scene#2"]);
+    expect(it2.scenes[0].keyframe.id).toBe("scene#1:keyframe");
+    expect(it2.scenes[0].clip?.id).toBe("scene#1:clip");
+    expect(it2.top.map((n) => n.id)).toEqual(["idea", "script"]);
+    expect(it2.footer.map((n) => n.id)).toEqual(["assembly", "final"]);
+    // Voice off and no music: said in one line, not drawn as cards.
+    expect(it2.absent.sort()).toEqual(["music", "voice"]);
   });
-  it("a plan wider than the board starts at its first card, at a readable zoom", () => {
-    const v = planViewport({ x: 0, y: -124, width: 1616, height: 500 }, 900, 600)!;
-    expect(v.zoom).toBe(0.72);
-    expect(v.x).toBe(24);
+  it("12 scenes fit at zoom 1 in the 1440 px column (a 936 x 600 board), one card per scene, never shrunk", () => {
+    const l = planLayout(items(12), 936);
+    expect(l.cols).toBeGreaterThanOrEqual(4);
+    expect(l.cardW).toBeGreaterThanOrEqual(200);
+    expect(l.width).toBeLessThanOrEqual(936);
+    expect(l.height).toBeLessThanOrEqual(600);
   });
-  it("nothing measured: no move", () => {
-    expect(planViewport({ x: 0, y: 0, width: 0, height: 0 }, 900, 600)).toBeNull();
-    expect(planViewport({ x: 0, y: 0, width: 100, height: 100 }, 0, 0)).toBeNull();
+  it("more scenes wrap into more rows (the board scrolls down), the card width never drops below its minimum", () => {
+    const l = planLayout(items(40), 936);
+    expect(l.cardW).toBeGreaterThanOrEqual(200);
+    expect(l.height).toBeGreaterThan(600);
+    const ys = new Set(l.placed.filter((p) => p.id.startsWith("scene#")).map((p) => p.y));
+    expect(ys.size).toBe(Math.ceil(40 / l.cols));
+  });
+  it("a taller card (a measured height) makes its whole row taller: nothing overlaps the row below", () => {
+    const base = planLayout(items(8), 936);
+    const tall = planLayout(items(8), 936, new Map([["scene#2", 200]]));
+    const y = (l: typeof base, id: string) => l.placed.find((p) => p.id === id)!.y;
+    expect(y(tall, "scene#5") - y(base, "scene#5")).toBe(200 - 116);
+  });
+  it("a phone-width board: one column", () => {
+    expect(planLayout(items(3), 360).cols).toBe(1);
+  });
+});
+
+describe("cardState (S5's LiveNode states)", () => {
+  it("maps each status, and a done step with no file is unknown, not queued (rule 5)", () => {
+    expect(cardState({ status: "draft" })).toBe("ghost");
+    expect(cardState({ status: "waiting" })).toBe("queued");
+    expect(cardState({ status: "working" })).toBe("working");
+    expect(cardState({ status: "done", assetId: "a" })).toBe("arrived");
+    expect(cardState({ status: "done", assetId: null })).toBe("unknown");
+    expect(cardState({ status: "failed" })).toBe("failed");
+    expect(cardState({ status: "skipped" })).toBe("disabled");
+    expect(cardState({ status: "stopped" })).toBe("disabled");
+    expect(cardState({ status: "unknown" })).toBe("unknown");
   });
 });

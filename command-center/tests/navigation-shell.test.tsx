@@ -412,6 +412,37 @@ describe("customer page frame", () => {
     );
     expect(screen.getByRole("button", { name: en.ops.shortcutsClose })).toBeTruthy();
   });
+
+  it("an operator's Escape in the Studio closes the Studio's own things, never the page (Pixel H5); elsewhere it still ejects", () => {
+    for (const where of ["/chronos/studio", "/chronos/studio/look"]) {
+      pathname = where;
+      push.mockClear();
+      render(
+        withI18n(
+          <ShellProvider operator>
+            <SectionShell>
+              <p>page</p>
+            </SectionShell>
+          </ShellProvider>,
+        ),
+      );
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(push, where).not.toHaveBeenCalled();
+      cleanup();
+    }
+    pathname = "/chronos/videos";
+    render(
+      withI18n(
+        <ShellProvider operator>
+          <SectionShell>
+            <p>page</p>
+          </SectionShell>
+        </ShellProvider>,
+      ),
+    );
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(push).toHaveBeenCalled();
+  });
 });
 
 describe("shell copy", () => {

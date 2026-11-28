@@ -2,7 +2,6 @@
  * The Studio's Plan column (components/studio-live/PlanColumn.tsx): the plan a Nightshift AI conversation is building, drawn beside the
  * chat as it grows. The rules that decide what the person sees are here, as plain functions, so each can be pinned by a test.
  */
-import type { LiveGraph, LiveNode } from "./liveGraph";
 
 // ── which view the canvas column shows ─────────────────────────────────────────────────────
 
@@ -55,46 +54,6 @@ export function initialView(mem: ViewMemory | null, session: string | null): Col
 
 /** More than this many new cards come in together: a 50-scene storyboard must not take seconds to finish arriving. */
 export const ENTER_CAP = 16;
-
-/** The plan's reading order: the idea and the script, then each scene's picture and its clip, then the rest (as LiveView's list). */
-function readingOrder(a: LiveNode, b: LiveNode): number {
-  const group = (n: LiveNode) => (n.col < 2 ? 0 : n.col <= 3 ? 1 : 2);
-  return group(a) - group(b) || (group(a) === 1 ? a.row - b.row || a.col - b.col : a.col - b.col || a.row - b.row);
-}
-
-/**
- * The cards in `graph` that were not in the last reading, each with its place in the arrival order. `seen` null is a first reading
- * (the board just opened, or the page was refreshed): what is already there is not news, so nothing enters.
- */
-export function enteringCards(seen: ReadonlySet<string> | null, graph: LiveGraph): Map<string, number> {
-  if (!seen) return new Map();
-  const fresh = graph.nodes.filter((n) => !seen.has(n.id)).sort(readingOrder);
-  return new Map(fresh.map((n, i) => [n.id, Math.min(i, ENTER_CAP)]));
-}
-
-// ── where the board looks ───────────────────────────────────────────────────────────────────
-
-export const PLAN_FIT = { pad: 24, minZoom: 0.72, maxZoom: 1 };
-export interface Rect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-/**
- * The viewport that shows the plan at a readable zoom (LiveView's minimum, 0.72). A plan that fits is centred; one wider or taller than
- * the board starts at its first card, never in its middle. Null when there is nothing measured to place.
- */
-export function planViewport(b: Rect, w: number, h: number, fit = PLAN_FIT): { x: number; y: number; zoom: number } | null {
-  if (!(b.width > 0 && b.height > 0 && w > 0 && h > 0)) return null;
-  const roomW = Math.max(1, w - 2 * fit.pad);
-  const roomH = Math.max(1, h - 2 * fit.pad);
-  const zoom = Math.min(fit.maxZoom, Math.max(fit.minZoom, Math.min(roomW / b.width, roomH / b.height)));
-  const x = b.width * zoom <= roomW ? (w - b.width * zoom) / 2 - b.x * zoom : fit.pad - b.x * zoom;
-  const y = b.height * zoom <= roomH ? (h - b.height * zoom) / 2 - b.y * zoom : fit.pad - b.y * zoom;
-  return { x, y, zoom };
-}
 
 /**
  * The same rule for any list of card ids in reading order (the Plan column's storyboard: idea, script, cast, scenes, footer): the
