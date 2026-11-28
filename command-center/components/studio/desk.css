@@ -152,10 +152,10 @@
 .desk-tool:hover { color: var(--color-fg); border-color: var(--ns-rule-strong); }
 .desk-tool[aria-selected="true"] {
   color: var(--color-fg);
-  border-color: var(--ns-amber-ink);
-  background: var(--ns-select);
+  border-color: var(--ds-focus);
+  background: var(--ds-select-soft);
 }
-.desk-tool[aria-selected="true"] svg { color: var(--ns-amber-ink); }
+.desk-tool[aria-selected="true"] svg { color: var(--ds-focus); }
 .desk-tool-from { font-size: 13px; font-weight: 500; color: var(--color-muted); }
 
 /* A shape key draws the shape it picks. */
@@ -214,7 +214,7 @@
 }
 .desk-cast-row:hover { border-color: var(--ns-rule-strong); }
 .desk-cast-row[aria-checked="true"],
-.desk-cast-row[data-checked="true"] { border-color: var(--ns-amber-ink); background: var(--ns-select); }
+.desk-cast-row[data-checked="true"] { border-color: var(--ds-focus); background: var(--ds-select-soft); }
 
 /* Enhance's size keys: large, the thing being chosen. */
 .desk-size .studio-seg { flex-wrap: wrap; }
@@ -328,9 +328,9 @@
   background: var(--ns-film);
   text-align: left;
 }
-/* Picked: an amber border and inner line. The outline stays free for the
+/* Picked: a lime border and inner line (a person's mark). The outline stays free for the
    keyboard's focus ring, so focus and selection never look the same. */
-.desk-strip-frame[aria-pressed="true"] { border-color: var(--ns-amber); box-shadow: inset 0 0 0 2px var(--ns-amber); }
+.desk-strip-frame[aria-pressed="true"] { border-color: var(--ds-focus); box-shadow: inset 0 0 0 2px var(--ds-focus); }
 .desk-strip-pic { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; color: var(--ns-on-film); }
 .desk-strip-frame > span:nth-child(2) > span:last-child { color: var(--ns-on-film); }
 

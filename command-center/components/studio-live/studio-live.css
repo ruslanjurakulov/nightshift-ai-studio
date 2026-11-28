@@ -43,7 +43,8 @@
 .lv-card.is-draft { border-style: dashed; color: var(--dim);
   background: repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--rule) 55%, transparent) 7px 8px), var(--key); }
 .lv-price { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
-.lv-card.is-selected { outline: 2px solid var(--sel, var(--run)); outline-offset: 1px; }
+/* Selected is a person's mark: the app's selection lime, not the machine's blue. */
+.lv-card.is-selected { outline: 2px solid var(--ds-focus); outline-offset: 1px; }
 
 .lv-board .react-flow__edge-path { stroke: var(--rule-strong, var(--rule)); stroke-width: 1.5; transition: stroke 280ms ease; }
 .lv-board .lv-edge.is-none .react-flow__edge-path { stroke-dasharray: 2 6; opacity: 0.45; }

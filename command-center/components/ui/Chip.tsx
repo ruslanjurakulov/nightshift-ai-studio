@@ -8,8 +8,9 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
  * is a button with aria-pressed and a lamp that fills when on, so "on" never
  * rests on colour alone. Without `pressed` it is a plain action chip.
  *
- * Shares its look with the Studio's .studio-chip, so a screen can adopt the
- * component or keep the class and still match.
+ * Drawn from the --ds-* tokens (app/globals.css, docs/design/SYSTEM.md): a
+ * pressed chip carries the person's lime mark, the same selection colour as
+ * the Studio's .studio-chip, whose other declarations are its own.
  */
 export function Chip({
   pressed,
@@ -25,7 +26,7 @@ export function Chip({
   pressed?: boolean;
   /** A readout, not a key: drawn as a chip but not a button (a count of what is attached). */
   plain?: boolean;
-  /** `lit`: the current or chosen one (amber). `warn`: needs attention (caution). Words still say what it is. */
+  /** `lit`: the current or chosen one (the lime selection mark). `warn`: needs attention (the warning colour). Words still say what it is. */
   tone?: "lit" | "warn";
   /** A real count beside the name (references attached, results in a filter). */
   count?: number | null;

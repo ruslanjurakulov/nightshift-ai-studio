@@ -81,8 +81,9 @@
   --glass-danger-edge-hi: #e0806f;
   --glass-danger-edge-lo: #8a2414;
   --glass-danger-glow: 0 1px 2px rgb(120 30 15 / 0.25), 0 8px 20px -8px rgb(185 52 31 / 0.5);
-  /* The chosen one of a set (a pressed chip, the current tab): amber in the glass. */
-  --glass-select: color-mix(in srgb, #f29a1e 18%, rgb(255 255 255 / 0.78));
+  /* The chosen one of a set (a pressed chip, the current tab): the person's lime mark (--ds-focus, app/tokens.css) in
+     the glass. It was amber, and under the app's lime edge that read as a second selection colour. */
+  --glass-select: color-mix(in srgb, var(--ds-focus) 18%, rgb(255 255 255 / 0.78));
 }
 
 /* Dark — glass in the control room: a thin film of light over the console. */
@@ -114,7 +115,7 @@
     --glass-danger-edge-hi: #ffb0a6;
     --glass-danger-edge-lo: #b8473a;
     --glass-danger-glow: 0 1px 2px rgb(0 0 0 / 0.35), 0 10px 24px -8px rgb(255 110 94 / 0.45);
-    --glass-select: color-mix(in srgb, #ffa940 14%, rgb(255 255 255 / 0.05));
+    --glass-select: color-mix(in srgb, var(--ds-focus) 14%, rgb(255 255 255 / 0.05));
   }
 }
 :root[data-theme="dark"],
@@ -145,7 +146,7 @@
   --glass-danger-edge-hi: #ffb0a6;
   --glass-danger-edge-lo: #b8473a;
   --glass-danger-glow: 0 1px 2px rgb(0 0 0 / 0.35), 0 10px 24px -8px rgb(255 110 94 / 0.45);
-  --glass-select: color-mix(in srgb, #ffa940 14%, rgb(255 255 255 / 0.05));
+  --glass-select: color-mix(in srgb, var(--ds-focus) 14%, rgb(255 255 255 / 0.05));
 }
 
 /* A reader who asked the system for less transparency gets the solid key.

@@ -103,9 +103,10 @@ describe("FinishRing (the phone card)", () => {
 describe("the finish ring and a person's selection", () => {
   const css = readFileSync(path.join(process.cwd(), "components/studio-canvas/studio-canvas.css"), "utf8");
 
-  it("never replaces the selection mark: a selected card keeps its amber ring and gets the success ring outside it", () => {
+  it("never replaces the selection mark: a selected card keeps its lime ring and gets the success ring outside it", () => {
     expect(css).toMatch(/\.cv-node\.is-just-done:not\(\.is-sel\) \{/);
-    expect(css).toMatch(/\.cv-node\.is-sel\.is-just-done \{ box-shadow: 0 0 0 1px var\(--amber\), 0 0 0 6px var\(--amber-soft\), 0 0 0 9px/);
+    // The mark is the app's one selection lime (--ds-focus, --ds-select-soft); the success ring is spread past it (9px > 6px).
+    expect(css).toMatch(/\.cv-node\.is-sel\.is-just-done \{ box-shadow: 0 0 0 1px var\(--ds-focus\), 0 0 0 6px var\(--ds-select-soft\), 0 0 0 9px color-mix\(in srgb, var\(--ds-success\)/);
     expect(css).not.toMatch(/^\.cv-node\.is-just-done \{/m);
   });
 

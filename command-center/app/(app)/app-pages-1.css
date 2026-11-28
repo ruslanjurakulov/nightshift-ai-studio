@@ -81,8 +81,8 @@
   opacity: 0.85;
   pointer-events: none;
 }
-.desk-tool[aria-selected="true"] { border-color: var(--ns-act); background: var(--ns-act-soft); }
-.desk-tool[aria-selected="true"] svg { color: var(--ns-act-ink); }
+.desk-tool[aria-selected="true"] { border-color: var(--ds-focus); background: var(--ds-select-soft); }
+.desk-tool[aria-selected="true"] svg { color: var(--ds-focus); }
 
 /* ── Plan cards: one indigo-edged "your plan", the others ruled boxes ──────── */
 .ns-open .rounded-\[var\(--ns-r-panel\)\].border { border-radius: var(--ns-r-key); }

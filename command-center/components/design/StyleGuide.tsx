@@ -203,7 +203,7 @@ function Shape() {
           <span className="text-xs text-[var(--ns-text-dim)]">tone=&quot;sunken&quot;</span>
         </Panel>
         <Panel tone="lifted" as="div" eyebrow={t.design.lifted}>
-          <span className="text-xs text-[var(--ns-text-dim)]">--ns-lift</span>
+          <span className="text-xs text-[var(--ns-text-dim)]">--ds-elev-2</span>
         </Panel>
       </div>
     </Block>

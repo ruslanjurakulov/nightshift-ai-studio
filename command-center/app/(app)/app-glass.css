@@ -96,6 +96,10 @@
 :where(body:has(.app-shell)) .ns-price-button[data-size="md"] > .ns-price-label:first-child { padding-left: calc(1.25rem - 1px); }
 :where(body:has(.app-shell)) .ns-price-button[data-size="md"] > .ns-price-label:last-child { padding-right: calc(1.25rem - 1px); }
 :where(body:has(.app-shell)) .ns-price-button[data-size="md"] > .ns-price-tag:last-child { padding-right: calc(1rem - 1px); }
+/* The shared chip (components/ui/Chip) keeps the glass but takes a control's own edge, --ds-border-strong (3:1): the
+   glass rim alone is a faint white line that a chip in a row of chips cannot be told by. A readout takes the hairline. */
+:where(body:has(.app-shell)) .ns-chip { --g-edge-hi: var(--ds-border-strong); --g-edge-lo: var(--ds-border-strong); }
+:where(body:has(.app-shell)) .ns-chip[data-plain="true"] { --g-edge-hi: var(--ds-border); --g-edge-lo: var(--ds-border); }
 
 /* Frosted only where the browser can frost; elsewhere the same key, solid. */
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -241,22 +245,26 @@
 }
 
 /* ── 4. Chosen and lit states ──────────────────────────────────────────────── */
-/* A pressed chip / a chosen radio chip: amber glass, amber edge, the lamp still fills (on is never colour alone). */
+/* A pressed chip / a chosen radio chip: lime glass, lime edge (a person's mark), the lamp still fills (on is never colour alone). */
 :where(body:has(.app-shell)) .studio-chip[aria-pressed="true"],
 :where(body:has(.app-shell)) .ns-chip[aria-pressed="true"],
 :where(body:has(.app-shell)) .ns-chip[role="radio"][aria-checked="true"],
 :where(body:has(.app-shell)) .ns-chip[data-radio][data-on="true"] {
   --g-tint: var(--glass-select);
   --g-tint-hover: var(--glass-select);
-  --g-edge-hi: var(--ns-amber-ink);
-  --g-edge-lo: var(--ns-amber-ink);
+  --g-edge-hi: var(--ds-focus);
+  --g-edge-lo: var(--ds-focus);
   color: var(--color-fg);
   background: var(--g-bg);
   background-clip: padding-box;
   border-color: var(--g-edge);
 }
-:where(body:has(.app-shell)) .ns-chip[data-tone="lit"] { --g-edge-hi: var(--ns-amber-ink); --g-edge-lo: var(--ns-amber-ink); }
-:where(body:has(.app-shell)) .ns-chip[data-tone="warn"] { --g-edge-hi: var(--ns-caution); --g-edge-lo: var(--ns-caution); }
+/* The shared chip's selection also glows (--ds-glow-select): its edge is the mark, the 3px focus ring sits outside it. */
+:where(body:has(.app-shell)) .ns-chip[aria-pressed="true"],
+:where(body:has(.app-shell)) .ns-chip[role="radio"][aria-checked="true"],
+:where(body:has(.app-shell)) .ns-chip[data-radio][data-on="true"] { --g-shadow: var(--ds-glow-select); }
+:where(body:has(.app-shell)) .ns-chip[data-tone="lit"] { --g-edge-hi: var(--ds-focus); --g-edge-lo: var(--ds-focus); }
+:where(body:has(.app-shell)) .ns-chip[data-tone="warn"] { --g-edge-hi: var(--ds-warning); --g-edge-lo: var(--ds-warning); }
 :where(body:has(.app-shell)) .ns-chip[data-tone] { border-color: var(--g-edge); }
 /* A chip that is a readout, not a key: the glass without the hover. */
 :where(body:has(.app-shell)) .ns-chip[data-plain="true"],
@@ -356,13 +364,18 @@
     border-color: var(--g-edge);
     box-shadow: var(--g-ring), var(--g-shadow);
   }
-  /* A chosen chip keeps its amber edge under the pointer: the edge says "on". */
+  /* A chosen chip keeps its lime edge under the pointer: the edge says "on". */
+  :where(body:has(.app-shell)) .studio-chip[aria-pressed="true"]:hover:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]) {
+    --g-edge-hi: var(--ds-focus);
+    --g-edge-lo: var(--ds-focus);
+  }
+  /* …and the shared chip its glow, which the hover's shadow would otherwise replace. */
   :where(body:has(.app-shell)) .ns-chip[aria-pressed="true"]:hover:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]),
-  :where(body:has(.app-shell)) .studio-chip[aria-pressed="true"]:hover:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]),
   :where(body:has(.app-shell)) .ns-chip[role="radio"][aria-checked="true"]:hover:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]),
   :where(body:has(.app-shell)) .ns-chip[data-radio][data-on="true"]:hover:not(:disabled):not([data-plain]):not([aria-disabled="true"]):not([data-disabled="true"]) {
-    --g-edge-hi: var(--ns-amber-ink);
-    --g-edge-lo: var(--ns-amber-ink);
+    --g-edge-hi: var(--ds-focus);
+    --g-edge-lo: var(--ds-focus);
+    --g-shadow: var(--ds-glow-select);
   }
   /* The red legend stays red, and the edge it takes is red, not indigo. */
   :where(body:has(.app-shell)) .btn-quiet.btn-danger-quiet:hover:not(:disabled):not([aria-disabled="true"]),
@@ -540,7 +553,20 @@
   background: linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box;
   box-shadow: inset 0 1px 2px var(--glass-rim-lo), inset 0 -1px 0 color-mix(in srgb, var(--glass-rim-hi) 60%, transparent);
 }
-:where(body:has(.app-shell)) .studio-seg > button[aria-pressed="true"],
+/* The shared switch's groove is a control's own edge: --ds-border-strong (3:1), not the glass rim. */
+:where(body:has(.app-shell)) .ns-seg { border-color: var(--ds-border-strong); }
+:where(body:has(.app-shell)) .studio-seg > button[aria-pressed="true"] {
+  background:
+    linear-gradient(180deg, var(--glass-gloss), transparent 50%),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong));
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim-hi),
+    inset 0 -2px 0 var(--ds-focus),
+    0 0 0 1px var(--glass-edge-hi),
+    var(--glass-shadow);
+}
+/* The shared switch's plate: the person's lime mark is its own edge, with the select glow (SYSTEM.md §4); the focus
+   ring is the 3px one 2px outside the key, so the two never read as each other. */
 :where(body:has(.app-shell)) .ns-seg > button[aria-pressed="true"],
 :where(body:has(.app-shell)) .ns-seg > button[aria-checked="true"],
 :where(body:has(.app-shell)) .ns-seg > button[aria-selected="true"],
@@ -550,8 +576,8 @@
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong));
   box-shadow:
     inset 0 1px 0 var(--glass-rim-hi),
-    inset 0 -2px 0 var(--ns-amber),
-    0 0 0 1px var(--glass-edge-hi),
+    inset 0 0 0 1px var(--ds-focus),
+    var(--ds-glow-select),
     var(--glass-shadow);
 }
 :where(body:has(.app-shell)) .ns-seg[data-indicator] > button[aria-pressed="true"],
@@ -568,7 +594,7 @@
   bottom: var(--ns-ind-b, 2px);
   left: var(--ns-ind-l, 0px);
   right: var(--ns-ind-r, 0px);
-  border-radius: var(--ns-r-chip);
+  border-radius: var(--ds-r-chip);
   pointer-events: none;
 }
 @media (hover: hover) {

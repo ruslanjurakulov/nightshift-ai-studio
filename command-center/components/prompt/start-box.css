@@ -87,7 +87,8 @@
   transition: background-color var(--ds-dur-press) var(--ds-ease-out), border-color var(--ds-dur-press) var(--ds-ease-out);
 }
 .sb-chip:hover:not([aria-disabled="true"]) { background: var(--ds-hover); border-color: var(--ds-border-strong); }
-.sb-chip[aria-checked="true"], .sb-chip[aria-pressed="true"] { border-color: var(--ds-accent); background: var(--ds-accent-soft); }
+/* The chosen one is a person's mark: lime, never the machine's blue (one selection colour across the app, SYSTEM.md §4). */
+.sb-chip[aria-checked="true"], .sb-chip[aria-pressed="true"] { border-color: var(--ds-focus); background: var(--ds-select-soft); }
 /* Closed: visibly not a switch, and its reason is in words (never only a tooltip). The dashed edge in the strong border: the plain
    one is too faint to read as an edge at all in light mode. */
 .sb-chip[aria-disabled="true"] { cursor: not-allowed; color: var(--ds-text-2); border-style: dashed; border-color: var(--ds-border-strong); }

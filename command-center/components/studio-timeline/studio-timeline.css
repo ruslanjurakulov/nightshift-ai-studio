@@ -49,7 +49,7 @@
 .tl-upper { display: grid; grid-template-columns: var(--lib-w) minmax(0, 1fr) var(--insp-w); min-height: 0; border-bottom: 1px solid var(--rule); }
 .tl-tabs { display: flex; gap: 2px; }
 .tl-tabs button { min-height: 40px; border: 0; background: none; padding: 8px 10px; color: var(--dim); font-weight: 500; border-bottom: 2px solid transparent; white-space: nowrap; font-size: 14px; }
-.tl-tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--run); }
+.tl-tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--ds-focus); }
 
 .tl-lib { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--rule); background: var(--console); }
 .tl-lib > .tl-tabs { padding: 8px 8px 0; border-bottom: 1px solid var(--rule); }

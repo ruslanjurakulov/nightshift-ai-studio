@@ -188,7 +188,7 @@
 .g3-pick-input { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); opacity: 0; }
 .g3-pick:has(.g3-pick-input:focus-visible) { outline: 3px solid var(--ns-focus); outline-offset: -3px; }
 .g3-picker .ns-frame:hover .ns-frame-media { outline: 2px solid color-mix(in srgb, var(--ns-act) 70%, transparent); outline-offset: -2px; }
-.g3-picker .ns-frame[data-selected="true"]:hover .ns-frame-media { outline-color: var(--ns-amber); }
+.g3-picker .ns-frame[data-selected="true"]:hover .ns-frame-media { outline-color: var(--ds-focus); }
 .g3-projects { list-style: none; margin: 0; padding: 0; }
 .g3-project { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: 16px; min-height: 64px; padding: 14px 0; border-top: 1px solid var(--ns-rule); transition: background-color var(--ns-dur-1) var(--ns-ease); }
 .g3-projects > li:first-child .g3-project { border-top: 0; }
@@ -251,7 +251,7 @@
   transition: background-color var(--ns-dur-1) var(--ns-ease);
 }
 .g3-tm-event:hover { background: var(--ns-act-soft); }
-.g3-tm-event[aria-pressed="true"] { background: var(--ns-act-soft); box-shadow: inset 3px 0 0 var(--ns-act); }
+.g3-tm-event[aria-pressed="true"] { background: var(--ds-select-soft); box-shadow: inset 3px 0 0 var(--ds-focus); }
 .g3-tm-time { color: var(--color-muted); font-size: 13px; }
 .g3-tm-agent { color: var(--ns-act-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .g3-tm-name { min-width: 0; overflow-wrap: anywhere; }

@@ -66,10 +66,10 @@
 .sh-mode:hover { color: var(--color-fg); border-color: var(--ns-rule-strong); }
 .sh-mode[aria-checked="true"] {
   color: var(--color-fg);
-  border-color: var(--ns-amber-ink);
-  background: var(--ns-select);
+  border-color: var(--ds-focus);
+  background: var(--ds-select-soft);
 }
-.sh-mode[aria-checked="true"] svg { color: var(--ns-amber-ink); }
+.sh-mode[aria-checked="true"] svg { color: var(--ds-focus); }
 .sh-mode-live { display: inline-flex; margin-left: 2px; }
 
 /* ── the box ──────────────────────────────────────────────────────────────── */
@@ -139,7 +139,7 @@
   background: var(--studio-field);
   border-color: var(--color-border);
 }
-.sc-tool[aria-selected="true"] svg { color: var(--ns-amber-ink); }
+.sc-tool[aria-selected="true"] svg { color: var(--ds-focus); }
 .sc-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .sc-input {
   width: 100%;
@@ -231,10 +231,11 @@
 }
 .sc-pill:hover:not(:disabled) { background: var(--color-hover); border-color: var(--ns-rule-strong); }
 .sc-pill:disabled { opacity: 0.55; cursor: not-allowed; }
+/* On, or its menu open: the person's lime mark either way. */
 .sc-pill[aria-pressed="true"],
 .sc-pill[aria-expanded="true"] {
-  border-color: var(--ns-amber-ink);
-  background: var(--ns-select);
+  border-color: var(--ds-focus);
+  background: var(--ds-select-soft);
 }
 .sc-pill[data-off="true"] { border-color: var(--color-warn); }
 .sc-pill-sub { color: var(--color-muted); font-weight: 400; }

@@ -160,7 +160,7 @@
   box-shadow: inset 0 0 0 1.5px var(--ns-rule-strong);
   color: var(--ns-on-amber);
 }
-.fl-option[aria-checked="true"] .fl-option-mark { background: var(--ns-amber); box-shadow: none; }
+.fl-option[aria-checked="true"] .fl-option-mark { background: var(--ds-focus); box-shadow: none; color: var(--ds-on-select); }
 .fl-option-text { display: flex; flex-direction: column; min-width: 0; font-size: 1rem; line-height: 1.3; }
 .fl-option-sub { font-size: var(--ns-t-ui); color: var(--color-muted); }
 

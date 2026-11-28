@@ -1776,13 +1776,16 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   bottom: 4px;
   height: 2px;
   border-radius: 1px;
-  background: var(--ns-amber);
+  background: var(--ds-focus);
 }
-.studio-tab[aria-selected="true"] svg { color: var(--ns-amber-ink); }
+.studio-tab[aria-selected="true"] svg { color: var(--ds-focus); }
 /* Segmented settings inside the prompt box (shape, length, size): a row of
-   interlocked keys; the pressed one is lit. */
-.studio-seg,
-.ns-seg {
+   interlocked keys; the pressed one is lit. The Studio composer's own look: the
+   shared components' .ns-seg and .ns-chip, below, are drawn from --ds-* instead,
+   and the two lists were split so that restyle could not move the composer. Only
+   the composer's selection moved with it: lime, a person's mark, one selection
+   colour across the app (docs/design/SYSTEM.md §4). */
+.studio-seg {
   display: inline-flex;
   align-items: center;
   gap: 0;
@@ -1791,8 +1794,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   border: 1px solid var(--color-border);
   background: var(--color-panel);
 }
-.studio-seg > button,
-.ns-seg > button {
+.studio-seg > button {
   min-height: 36px;
   padding: 0 12px;
   border-radius: var(--ns-r-chip);
@@ -1800,19 +1802,14 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   color: var(--color-muted);
   transition: background-color var(--ns-dur-1) var(--ns-ease), color var(--ns-dur-1) var(--ns-ease);
 }
-.studio-seg > button:hover,
-.ns-seg > button:hover { color: var(--color-fg); }
-.studio-seg > button[aria-pressed="true"],
-.ns-seg > button[aria-pressed="true"],
-.ns-seg > button[aria-checked="true"],
-.ns-seg > button[aria-selected="true"] {
+.studio-seg > button:hover { color: var(--color-fg); }
+.studio-seg > button[aria-pressed="true"] {
   color: var(--studio-cta-fg);
   background: var(--studio-cta-bg);
 }
-/* A chip is a small key with a pilot lamp: unlit ring when off, lit amber
-   when on — so "on" never depends on colour alone (the lamp fills). */
-.studio-chip,
-.ns-chip {
+/* A chip is a small key with a pilot lamp: unlit ring when off, lit when on —
+   so "on" never depends on colour alone (the lamp fills). */
+.studio-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
@@ -1826,8 +1823,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   color: var(--color-muted);
   transition: border-color var(--ns-dur-1) var(--ns-ease), color var(--ns-dur-1) var(--ns-ease), background-color var(--ns-dur-1) var(--ns-ease);
 }
-.studio-chip[aria-pressed]::before,
-.ns-chip[aria-pressed]::before {
+.studio-chip[aria-pressed]::before {
   content: "";
   flex-shrink: 0;
   width: 6px;
@@ -1835,21 +1831,94 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   border-radius: 999px;
   box-shadow: inset 0 0 0 1.5px var(--ns-lamp-off);
 }
-.studio-chip:hover,
-.ns-chip:hover { color: var(--color-fg); background: var(--ns-key-hi); }
-.studio-chip[aria-pressed="true"],
-.ns-chip[aria-pressed="true"] {
+.studio-chip:hover { color: var(--color-fg); background: var(--ns-key-hi); }
+.studio-chip[aria-pressed="true"] {
   color: var(--color-fg);
-  border-color: var(--ns-amber-ink);
-  background: var(--ns-select);
+  border-color: var(--ds-focus);
+  background: var(--ds-select-soft);
 }
-.studio-chip[aria-pressed="true"]::before,
+.studio-chip[aria-pressed="true"]::before {
+  background: var(--ds-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ds-focus) 25%, transparent);
+}
+.studio-chip:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ── The shared switch and chip (components/ui/SegmentedSwitch, Chip) ────────
+   Drawn from --ds-* only (docs/design/SYSTEM.md §3–§5, app/tokens.css), so
+   they read the same with or without the ds-skin remap. Edges: a control's own
+   edge is --ds-border-strong (3:1); a readout's is the hairline. Selection is a
+   person's mark, lime: the chosen key's own edge plus --ds-glow-select, and a
+   lamp that fills. Focus is lime too, so it differs by SHAPE: a 3px ring drawn
+   2px outside the key (below), never the key's own edge — a focused, chosen
+   key shows both, and neither reads as the other. Blue is never a selection. */
+.ns-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 2px;
+  border-radius: var(--ds-r-key);
+  border: 1px solid var(--ds-border-strong);
+  background: var(--ds-surface-1);
+}
+.ns-seg > button {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: var(--ds-r-chip);
+  font-size: var(--ns-t-small);
+  color: var(--ds-text-2);
+  transition: background-color var(--ds-dur-press) var(--ds-ease-press), color var(--ds-dur-press) var(--ds-ease-press), box-shadow var(--ds-dur-press) var(--ds-ease-press);
+}
+.ns-seg > button:hover { color: var(--ds-text); }
+.ns-seg > button[aria-pressed="true"],
+.ns-seg > button[aria-checked="true"],
+.ns-seg > button[aria-selected="true"] {
+  color: var(--ds-text);
+  background: var(--ds-select-soft);
+  box-shadow: inset 0 0 0 1px var(--ds-focus), var(--ds-glow-select);
+}
+.ns-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: var(--ns-chip-h);
+  max-width: 100%;
+  padding: 0 14px 0 12px;
+  border-radius: var(--ds-r-chip);
+  border: 1px solid var(--ds-border-strong);
+  background: var(--ds-surface-2);
+  font-size: var(--ns-t-small);
+  color: var(--ds-text-2);
+  transition: border-color var(--ds-dur-press) var(--ds-ease-press), color var(--ds-dur-press) var(--ds-ease-press), background-color var(--ds-dur-press) var(--ds-ease-press), box-shadow var(--ds-dur-press) var(--ds-ease-press);
+}
+.ns-chip[aria-pressed]::before {
+  content: "";
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--ds-border-strong);
+}
+.ns-chip:hover { color: var(--ds-text); background: var(--ds-surface-3); }
+.ns-chip[aria-pressed="true"] {
+  color: var(--ds-text);
+  border-color: var(--ds-focus);
+  background: var(--ds-select-soft);
+  box-shadow: var(--ds-glow-select);
+}
 .ns-chip[aria-pressed="true"]::before {
-  background: var(--ns-amber);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ns-amber) 25%, transparent);
+  background: var(--ds-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ds-focus) 25%, transparent);
 }
-.studio-chip:disabled,
 .ns-chip:disabled { opacity: 0.55; cursor: not-allowed; }
+/* Keyboard focus: the global ring's shape (3px, 2px outside), in --ds-focus, on the key's own corners — the global
+   rule rounds every ring to 0.35rem, which would change the key's shape the moment it is focused. Unlayered, like
+   the global :focus-visible it refines, and more specific than it. */
+.ns-chip:focus-visible,
+.ns-seg > button:focus-visible {
+  outline: 3px solid var(--ds-focus);
+  outline-offset: 2px;
+  border-radius: var(--ds-r-chip);
+}
 /* The Studio's segment keys are 40px targets on a mouse too (Pixel audit, 2026-11-13: 36px), 44px under a finger (below); a chip already is (--ns-chip-h). */
 .studio-seg > button { min-height: 40px; }
 /* A setting with more values than fit as keys (a model with 16 lengths): the same frame, one select. */
@@ -2397,42 +2466,43 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 @media (min-width: 640px) {
   .ns-chip-row[data-wrap="true"] { flex-wrap: wrap; overflow: visible; }
 }
-.ns-chip > .ns-chip-count { color: var(--color-muted); }
-/* A readout chip is not a key: no hover, a normal-height line on a phone. */
-.ns-chip[data-plain="true"] { cursor: default; min-height: 32px; }
-.ns-chip[data-plain="true"]:hover { color: var(--color-muted); background: var(--ns-key); }
+.ns-chip > .ns-chip-count { color: var(--ds-text-2); }
+/* A readout chip is not a key: no hover, a normal-height line on a phone, and the hairline, not a control's 3:1 edge. */
+.ns-chip[data-plain="true"] { cursor: default; min-height: 32px; border-color: var(--ds-border); }
+.ns-chip[data-plain="true"]:hover { color: var(--ds-text-2); background: var(--ds-surface-2); }
+/* lit: the chosen one, so the person's lime mark. warn: needs attention, the warning colour. Words still say which. */
 .ns-chip[data-tone="lit"],
-.ns-chip[data-plain="true"][data-tone="lit"]:hover { color: var(--ns-amber-ink); border-color: var(--ns-amber-ink); }
+.ns-chip[data-plain="true"][data-tone="lit"]:hover { color: var(--ds-focus); border-color: var(--ds-focus); }
 .ns-chip[data-tone="warn"],
-.ns-chip[data-plain="true"][data-tone="warn"]:hover { color: var(--ns-caution); border-color: var(--ns-caution); }
+.ns-chip[data-plain="true"][data-tone="warn"]:hover { color: var(--ds-warning); border-color: var(--ds-warning); }
 .ns-chip[data-tone] > .ns-chip-count { color: inherit; }
 
 /* Panel: three roles — flat (a hairline rack face), sunken (a well for a
    field or a feed), lifted (the one thing on the screen). */
 .ns-panel {
-  border-radius: var(--ns-r-panel);
-  border: 1px solid var(--color-border);
-  background: var(--color-panel);
+  border-radius: var(--ds-r-panel);
+  border: 1px solid var(--ds-border);
+  background: var(--ds-surface-1);
 }
-.ns-panel[data-tone="sunken"] { background: var(--ns-key); border-color: transparent; }
-.ns-panel[data-tone="lifted"] { border-color: var(--ns-rule-strong); box-shadow: var(--ns-lift); }
+.ns-panel[data-tone="sunken"] { background: var(--ds-surface-2); border-color: transparent; }
+.ns-panel[data-tone="lifted"] { border-color: var(--ds-border-strong); box-shadow: var(--ds-elev-2); }
 /* A drop zone is a well with a dashed edge until something is in it. */
-.ns-panel.ns-dropzone { border: 1px dashed var(--ns-rule-strong); }
-.ns-panel.ns-dropzone-filled { border-style: solid; border-color: var(--color-border); }
+.ns-panel.ns-dropzone { border: 1px dashed var(--ds-border-strong); }
+.ns-panel.ns-dropzone-filled { border-style: solid; border-color: var(--ds-border); }
 .ns-panel-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
   padding: 1rem 1.25rem 0.875rem;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--ds-border);
 }
 .ns-eyebrow {
   font-size: var(--ns-t-label);
   font-weight: 500;
-  color: var(--color-muted);
+  color: var(--ds-text-2);
 }
-.ns-panel-title { font-size: 1.0625rem; font-weight: 600; color: var(--color-fg); }
+.ns-panel-title { font-size: 1.0625rem; font-weight: 600; color: var(--ds-text); }
 
 /* Segmented switch (the mode switcher in a header): sits on .ns-seg above. */
 .ns-seg > button {
@@ -2461,16 +2531,17 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  box-shadow: inset 0 0 0 1.5px var(--ns-lamp-off);
+  box-shadow: inset 0 0 0 1.5px var(--ds-border-strong);
 }
 .ns-chip[role="radio"][aria-checked="true"] {
-  color: var(--color-fg);
-  border-color: var(--ns-amber-ink);
-  background: var(--ns-select);
+  color: var(--ds-text);
+  border-color: var(--ds-focus);
+  background: var(--ds-select-soft);
+  box-shadow: var(--ds-glow-select);
 }
 .ns-chip[role="radio"][aria-checked="true"]::before {
-  background: var(--ns-amber);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ns-amber) 25%, transparent);
+  background: var(--ds-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ds-focus) 25%, transparent);
 }
 .ns-chip[data-radio]::before {
   content: "";
@@ -2478,18 +2549,21 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  box-shadow: inset 0 0 0 1.5px var(--ns-lamp-off);
+  box-shadow: inset 0 0 0 1.5px var(--ds-border-strong);
 }
 .ns-chip[data-radio][data-on="true"] {
-  color: var(--color-fg);
-  border-color: var(--ns-amber-ink);
-  background: var(--ns-select);
+  color: var(--ds-text);
+  border-color: var(--ds-focus);
+  background: var(--ds-select-soft);
+  box-shadow: var(--ds-glow-select);
 }
 .ns-chip[data-radio][data-on="true"]::before {
-  background: var(--ns-amber);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ns-amber) 25%, transparent);
+  background: var(--ds-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ds-focus) 25%, transparent);
 }
-.ns-chip[data-radio]:focus-within { outline: 2px solid var(--ns-cue); outline-offset: 2px; }
+/* The radio inside is what takes focus: the label draws the same ring as a focused chip (it was a 2px blue one,
+   which read as "the machine" and was thinner than every other ring in the app). */
+.ns-chip[data-radio]:focus-within { outline: 3px solid var(--ds-focus); outline-offset: 2px; }
 .ns-chip[data-radio][data-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
 @media (pointer: coarse), (max-width: 40rem) {
   .ns-chip[data-radio] { min-height: 44px; }
@@ -2537,7 +2611,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   background: var(--color-panel);
   color: var(--color-fg);
 }
-.ns-frame[data-selected="true"] .ns-frame-media { outline: 2px solid var(--ns-amber); outline-offset: -2px; }
+.ns-frame[data-selected="true"] .ns-frame-media { outline: 2px solid var(--ds-focus); outline-offset: -2px; }
 .ns-edge {
   display: flex;
   align-items: center;

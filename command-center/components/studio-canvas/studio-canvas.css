@@ -376,7 +376,7 @@ main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-heigh
   white-space: nowrap;
 }
 .cv-kbtn:hover:not(:disabled) { background: var(--key-hi); }
-.cv-kbtn[aria-pressed="true"] { border-color: var(--amber-light); background: var(--amber-soft); color: var(--amber-ink); }
+.cv-kbtn[aria-pressed="true"] { border-color: color-mix(in srgb, var(--ds-focus) 40%, transparent); background: var(--ds-select-soft); color: var(--ds-focus); }
 .cv-kbtn.is-icon { width: 40px; padding: 0; }
 .cv-kbtn.is-primary { color: #fff; border-color: transparent; background: var(--grad); }
 /* A key that cannot be pressed looks it: grey, not a paler violet. */
@@ -503,7 +503,7 @@ main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-heigh
 .cv-e.t-video { stroke: var(--p-video); }
 .cv-e.t-audio { stroke: var(--p-audio); }
 .cv-e.is-hl { opacity: 1; stroke-width: calc(2.6px * min(var(--inv), 2.2)); }
-.cv-e.is-sel { stroke: var(--amber) !important; opacity: 1; stroke-width: calc(3px * min(var(--inv), 2.2)); }
+.cv-e.is-sel { stroke: var(--ds-focus) !important; opacity: 1; stroke-width: calc(3px * min(var(--inv), 2.2)); }
 .cv-hit { fill: none; stroke: transparent; stroke-width: 14px; pointer-events: stroke; cursor: pointer; }
 .cv-root[data-mode="hand"] .cv-hit { pointer-events: none; }
 .cv-flowline {
@@ -538,8 +538,10 @@ main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-heigh
 .cv-node.s-failed { border-color: color-mix(in srgb, var(--tally) 60%, transparent); }
 .cv-node.s-needs { border-color: color-mix(in srgb, var(--amber) 55%, transparent); }
 .cv-node.s-closed { opacity: 0.78; }
-.cv-node.is-sel { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber), 0 0 0 6px var(--amber-soft), 0 0 34px -4px var(--amber-light), var(--lift-2); }
-.cv-node.is-sel.s-working { box-shadow: 0 0 0 1px var(--amber), 0 0 0 6px var(--amber-soft), 0 26px 50px -16px var(--violet-light); }
+/* Selected: a person's mark, the app's one selection lime (--ds-focus, app/tokens.css; SYSTEM.md §4): the card's own edge,
+   a soft band and the select glow. The focus ring is drawn outside it with a gap, so the two differ by shape. */
+.cv-node.is-sel { border-color: var(--ds-focus); box-shadow: 0 0 0 1px var(--ds-focus), 0 0 0 6px var(--ds-select-soft), var(--ds-glow-select), var(--lift-2); }
+.cv-node.is-sel.s-working { box-shadow: 0 0 0 1px var(--ds-focus), 0 0 0 6px var(--ds-select-soft), 0 26px 50px -16px var(--violet-light); }
 .cv-node.is-dragging { z-index: 5; cursor: grabbing; box-shadow: 0 0 0 1px var(--amber), var(--lift-3); }
 .cv-node.is-drop { border-color: var(--amber); outline: 2px dashed var(--amber); outline-offset: 4px; }
 /* The title bar is the handle. */
@@ -658,7 +660,7 @@ main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-heigh
 .cv-mini-h button:hover { color: var(--text); background: var(--key); }
 .cv-mn { fill: var(--rule-strong); opacity: 0.55; }
 .cv-mn.is-run { fill: var(--run); opacity: 0.9; }
-.cv-mn.is-sel { fill: var(--amber); opacity: 1; }
+.cv-mn.is-sel { fill: var(--ds-focus); opacity: 1; }
 .cv-mv { fill: none; stroke: var(--text); stroke-width: 1.5; }
 
 /* ── deck: the canvas's controls, a dock floating over the board's foot, above the timeline lane ──────────────
@@ -700,7 +702,7 @@ main:has([data-studio-canvas]) > .app-geo-credit p { font-size: 11px; line-heigh
 .cv-deck::-webkit-scrollbar { display: none; }
 .cv-deck .cv-kbtn:not(.is-primary) { border-color: transparent; background: transparent; }
 .cv-deck .cv-kbtn:not(.is-primary):hover:not(:disabled) { background: var(--key); }
-.cv-deck .cv-kbtn[aria-pressed="true"] { border-color: var(--amber-light); background: var(--amber-soft); }
+.cv-deck .cv-kbtn[aria-pressed="true"] { border-color: color-mix(in srgb, var(--ds-focus) 40%, transparent); background: var(--ds-select-soft); }
 .cv-deck .cv-kbtn:disabled { background: transparent; }
 .cv-deck .cv-seg { height: 40px; padding: 2px; border-color: transparent; background: var(--key); }
 .cv-deck .cv-seg button { min-height: 34px; width: 36px; padding: 0; justify-content: center; }
@@ -983,7 +985,7 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 .cv-pi input { flex: 1; min-width: 0; min-height: 40px; border: 0; outline: none; background: none; color: var(--text); font-size: 17px; }
 .cv-pal-list { margin: 0; padding: 6px; overflow: auto; list-style: none; }
 .cv-pal-o { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 10px; border-radius: 10px; color: var(--text); font-size: 15px; }
-.cv-pal-o[aria-selected="true"] { background: var(--key); box-shadow: inset 3px 0 0 var(--amber); }
+.cv-pal-o[aria-selected="true"] { background: var(--key); box-shadow: inset 3px 0 0 var(--ds-focus); }
 .cv-pal-o[aria-disabled="true"] { cursor: not-allowed; }
 .cv-pal-o[aria-disabled="true"] .cv-opt-on,
 .cv-pal-o[aria-disabled="true"] svg { color: var(--faint); }
@@ -1043,7 +1045,7 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   font-size: 14px;
   text-align: left;
 }
-.cv-fcard.is-sel { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
+.cv-fcard.is-sel { border-color: var(--ds-focus); box-shadow: var(--ds-glow-select); }
 .cv-fcard.s-working,
 .cv-fcard.s-queued { box-shadow: 0 0 0 1px var(--violet-light), 0 10px 26px -12px var(--violet-light); }
 .cv-fcard.s-failed { border-color: color-mix(in srgb, var(--tally) 60%, transparent); }
@@ -1540,7 +1542,7 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 }
 .cv-master.is-made .cv-master-btn { border: 1px solid color-mix(in srgb, var(--go) 60%, var(--rule)); border-left: 2px solid var(--go); background: color-mix(in srgb, var(--go) 10%, var(--key)); }
 .cv-master.s-fail .cv-master-btn { border: 1px solid var(--tally); background: color-mix(in srgb, var(--tally) 10%, transparent); }
-.cv-master.is-sel .cv-master-btn { outline: 2px solid var(--amber); outline-offset: 1px; }
+.cv-master.is-sel .cv-master-btn { outline: 2px solid var(--ds-focus); outline-offset: 1px; }
 .cv-master-btn:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
 .cv-master-art { flex: none; width: 56px; height: 32px; overflow: hidden; border-radius: 5px; background: var(--film); }
 .cv-master-art img { width: 100%; height: 100%; object-fit: cover; }
@@ -1549,7 +1551,7 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 .cv-master-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; color: var(--dim); font-size: 13px; }
 .cv-master-st { overflow-wrap: anywhere; }
 .cv-master-act { min-width: 0; font-size: 13px; }
-.cv-pill.is-sel { outline: 2px solid var(--amber); outline-offset: 1px; box-shadow: 0 0 0 5px var(--amber-soft), 0 0 18px -4px var(--amber); z-index: 2; }
+.cv-pill.is-sel { outline: 2px solid var(--ds-focus); outline-offset: 1px; box-shadow: 0 0 0 5px var(--ds-select-soft), 0 0 18px -4px var(--ds-focus); z-index: 2; }
 .cv-pill:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
 .cv-pill-art { flex: none; align-self: stretch; width: 64px; margin: 3px 0 3px -1px; overflow: hidden; border-radius: 5px; background: var(--film); }
 .cv-pill-art img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
@@ -1645,9 +1647,9 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
    only when this session saw the job go from working to done (useJustFinished). Under reduced motion nothing travels: the
    beam is a still accent edge, the words plain, the ring drawn without a pulse; the words always say the state. */
 .cv-fcard { position: relative; }
-/* The finish ring sits OUTSIDE a person's selection mark, never in its place (lime/amber selection stays a person's). */
+/* The finish ring sits OUTSIDE a person's selection mark, never in its place (the lime selection stays a person's). */
 .cv-node.is-just-done:not(.is-sel) { box-shadow: 0 0 0 1px var(--ds-success), 0 0 0 5px color-mix(in srgb, var(--ds-success) 22%, transparent), var(--lift-2); }
-.cv-node.is-sel.is-just-done { box-shadow: 0 0 0 1px var(--amber), 0 0 0 6px var(--amber-soft), 0 0 0 9px color-mix(in srgb, var(--ds-success) 55%, transparent), var(--lift-2); }
+.cv-node.is-sel.is-just-done { box-shadow: 0 0 0 1px var(--ds-focus), 0 0 0 6px var(--ds-select-soft), 0 0 0 9px color-mix(in srgb, var(--ds-success) 55%, transparent), var(--lift-2); }
 .cv-finish {
   position: absolute;
   inset: 0;

@@ -174,32 +174,40 @@ body .app-shell.atmos {
 .btn-sky.is-quiet:hover:where(:not(:disabled, [aria-disabled="true"])) { color: var(--color-fg); border-color: var(--ns-act); }
 .btn-quiet:hover { border-color: var(--ns-act); background: var(--ns-act-soft); }
 
-/* A selected key in a segmented switch is a tab, not a second primary: raised, with the amber line under it. */
-.studio-seg > button[aria-pressed="true"],
-.ns-seg > button[aria-pressed="true"],
-.ns-seg > button[aria-checked="true"],
-.ns-seg > button[aria-selected="true"] {
+/* A selected key in a segmented switch is a tab, not a second primary: raised, with the person's lime mark. The
+   composer's keep their line under the key; the shared switch (.ns-seg) takes the mark as its own edge and the select
+   glow (docs/design/SYSTEM.md §4), which the 3px focus ring outside it can never be mistaken for. */
+.studio-seg > button[aria-pressed="true"] {
   color: var(--color-fg);
   font-weight: 600;
   background: var(--ns-key-hi);
-  box-shadow: inset 0 -2px 0 var(--ns-amber);
+  box-shadow: inset 0 -2px 0 var(--ds-focus);
+}
+.ns-seg > button[aria-pressed="true"],
+.ns-seg > button[aria-checked="true"],
+.ns-seg > button[aria-selected="true"] {
+  color: var(--ds-text);
+  font-weight: 600;
+  background: var(--ds-surface-3);
+  box-shadow: inset 0 0 0 1px var(--ds-focus), var(--ds-glow-select);
 }
 
 /* ── Panel roles (components/ui/Panel) ─────────────────────────────────────── */
+/* Lifted: the 3:1 edge and the floating elevation. No blue glow: glow belongs to the one primary key in view (SYSTEM.md §3). */
 .ns-panel[data-tone="lifted"] {
   position: relative;
-  border-color: color-mix(in srgb, var(--ns-act) 38%, var(--ns-rule));
-  box-shadow: var(--ns-lift), 0 28px 70px -40px var(--ns-lit-glow);
+  border-color: var(--ds-border-strong);
+  box-shadow: var(--ds-elev-2);
 }
 .ns-panel-head { border-bottom: 0; padding-bottom: 0.25rem; }
 .ns-panel-title { font-size: 1.125rem; }
 .ns-eyebrow { display: flex; align-items: center; gap: 12px; }
-.ns-eyebrow::after { content: ""; flex: 1; height: 1px; background: var(--ns-rule); min-width: 24px; }
+.ns-eyebrow::after { content: ""; flex: 1; height: 1px; background: var(--ds-border); min-width: 24px; }
 /* Flat: an open, ruled section on the ground, not a box. */
 .ns-panel[data-tone="flat"] {
   border-radius: 0;
   border-width: 1px 0 0 0;
-  border-color: var(--ns-rule);
+  border-color: var(--ds-border);
   background: transparent;
 }
 .ns-panel[data-tone="flat"] > .ns-panel-head { padding-inline: 0; padding-top: 1.25rem; }
