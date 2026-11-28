@@ -13,7 +13,7 @@ import { availabilityFromModels, onlyOpenToSome, onlyPriced, UNKNOWN_TOOLS, type
  * when it was read, has no rate for. Those read "Not on sale yet" on the Models page, so the marks must not call their tool available.
  * Unread (no client, an error, no migration): null, and nothing is taken out on a guess.
  */
-const readCatalogStates = cache(async (orgId: string): Promise<{ id: string; state: string }[] | null> => {
+export const readCatalogStates = cache(async (orgId: string): Promise<{ id: string; state: string }[] | null> => {
   try {
     const supabase = await createClient();
     if (!supabase) return null;

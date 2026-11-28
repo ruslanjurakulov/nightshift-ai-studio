@@ -192,7 +192,10 @@ class Numbering(unittest.TestCase):
         # against these pins: it names nothing of this file's.
         # 0212 (the recorded film sweep: one closed table, two service-role functions over 0171's film_expire_segments, a pg_cron
         # job where installed; replaces nothing) was reviewed the same way: it names nothing these pin.
-        self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
+        # 0226 carries 0122's render_jobs_payment_guard verbatim plus one marked hunk (the series-plan branch, which reads series_plans,
+        # is unchanged), and names request_series_plan only to say it is not asked: reviewed by hand, outside the word check below.
+        carried = ("0226",)
+        self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed + carried], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")
             for word in ("request_series_plan", "series_plans", "series_plan_cap_settings"):

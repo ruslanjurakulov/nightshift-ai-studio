@@ -15,7 +15,7 @@ Migration: `supabase/migrations/0031_public_api.sql` (needs 0017–0030).
 | Off by default | An organization that has bought **any** credit pack (a `purchase` row in the credit ledger — the rule `derivePlan` uses), or the operator's own exempt organization, can activate it. An owner/admin clicks **Activate API** in **Developers** and accepts the Terms. Before that no key can be created and no key works (`api_not_activated`). |
 | Its own balance | US cents in `api_accounts`, not site credits. Top-ups $5–$5,000 per payment through Paddle; append-only `api_ledger` (topup / hold / usage / release / refund / adjustment). |
 | Keys | `nsk_live_` + 43 base62 chars (256 bits). Minted **by the database** (`create_api_key`, 0042), which stores only the SHA-256 — no part of the key (0040 retired the 8-character display prefix 0031 kept) — and returns the key once. A browser cannot register a key or hash it chose. Shown once, in the admin's browser. Listed by name, id, created and last-used time. Max 10 active per organization. Optional monthly spend limit per key. |
-| Who a key is | Its creator, inside the key's organization only. If the creator leaves or is no longer owner/admin, the key stops (`key_owner_not_admin`). |
+| Who a key is | Its creator, inside the key's organization only. If the creator leaves or is no longer owner/admin, the key stops (`key_owner_not_admin`). A key made by someone who is not a member of the organization at owner or admin level (a platform admin without a seat there, for one) is refused `not_a_member` (migration 0226). |
 
 ## Pricing (api_prices, editable by a platform owner/admin)
 

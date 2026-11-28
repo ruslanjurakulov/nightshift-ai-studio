@@ -43,6 +43,12 @@ export function linksSample(s: Sample, data: ShippedSamples = SHIPPED): boolean 
 
 /** The Studio form for a sample, under the all-channels workspace, with its words cut to `max` characters; null for a tool the Studio has no form for. */
 function studioPath(s: Sample, max: number, now: Date, data: ShippedSamples): string | null {
+  const section = createSection(s, max, now, data);
+  return section ? `/${ALL_CHANNELS_SLUG}${section}` : null;
+}
+
+/** The `/create?…` part of a sample's form, with no channel in front: the public site puts all-channels there, the Studio its own. */
+function createSection(s: Sample, max: number, now: Date, data: ShippedSamples): string | null {
   if (!(STUDIO_TOOL_CAPS as readonly string[]).includes(s.capability) || !MODEL_ID_RE.test(s.modelId)) return null;
   const q = new URLSearchParams({ tool: s.capability });
   if (!modelLeftOut(s, now)) q.set("model", s.modelId);
@@ -51,7 +57,16 @@ function studioPath(s: Sample, max: number, now: Date, data: ShippedSamples): st
   const words = isLinkPromptTool(s.capability) ? cleanLinkPrompt(s.capability, s.prompt) : "";
   const cut = cutWords(words, max);
   if (cut) q.set("prompt", cut);
-  return `/${ALL_CHANNELS_SLUG}/create?${q.toString()}`;
+  return `/create?${q.toString()}`;
+}
+
+/**
+ * The same form as studioTryHref, as a section of the CURRENT channel (`/create?…`, for useChannelPath): inside the Studio the
+ * person is signed in and on a channel already, and a sample there must not throw them back to all-channels (the Studio's
+ * explore grid, components/studio/StudioExplore.tsx).
+ */
+export function studioCreateSection(s: Sample, now: Date = new Date(), data: ShippedSamples = SHIPPED): string | null {
+  return createSection(s, Number.MAX_SAFE_INTEGER, now, data);
 }
 
 /** At most `max` characters of the words, ending on a whole word where there is one, never half a character. */
