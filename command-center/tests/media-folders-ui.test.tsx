@@ -193,7 +193,8 @@ describe("creating, renaming and deleting a folder", () => {
 
     fireEvent.keyDown(document.activeElement!, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.activeElement).toBe(opener);
+    // The shared Sheet (Radix) gives focus back on the next tick, after the dialog has gone.
+    await waitFor(() => expect(document.activeElement).toBe(opener));
   });
 
   it("Rename from the folder's menu: prefilled, one PATCH", async () => {
