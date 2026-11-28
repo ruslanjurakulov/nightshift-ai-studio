@@ -29,8 +29,8 @@ describe("a film", () => {
     const n = byId(g);
     expect(n.get("idea")?.status).toBe("done");
     expect(n.get("script")?.status).toBe("done");
-    expect(n.get(`scene:${S1}:keyframe`)?.status).toBe("waiting");
-    expect(n.get(`scene:${S2}:clip`)?.status).toBe("waiting");
+    expect(n.get(`scene#1:keyframe`)?.status).toBe("waiting");
+    expect(n.get(`scene#2:clip`)?.status).toBe("waiting");
     expect(n.get("music")?.status).toBe("none");
     expect(n.get("final")?.status).toBe("waiting");
     expect(g.settled).toBe(false);
@@ -44,22 +44,22 @@ describe("a film", () => {
       ]),
     );
     const n = byId(g);
-    expect(n.get(`scene:${S1}:keyframe`)).toMatchObject({ status: "done", assetId: PIC });
-    expect(n.get(`scene:${S1}:clip`)).toMatchObject({ status: "done", assetId: CLIP });
-    expect(n.get(`scene:${S2}:keyframe`)?.status).toBe("working");
-    expect(n.get(`scene:${S2}:clip`)?.status).toBe("waiting");
+    expect(n.get(`scene#1:keyframe`)).toMatchObject({ status: "done", assetId: PIC });
+    expect(n.get(`scene#1:clip`)).toMatchObject({ status: "done", assetId: CLIP });
+    expect(n.get(`scene#2:keyframe`)?.status).toBe("working");
+    expect(n.get(`scene#2:clip`)?.status).toBe("waiting");
   });
 
   it("a failed take shows failed with its stored error word, never as waiting", () => {
     const r = reading({ status: "running" }, [sceneJson(S1, 0, { current_version: 1, takes: [take("c1", "clip", "failed")] })]);
     r.errors.set("c1", "provider_timeout");
     const n = byId(filmGraph(r));
-    expect(n.get(`scene:${S1}:clip`)).toMatchObject({ status: "failed", error: "provider_timeout" });
+    expect(n.get(`scene#1:clip`)).toMatchObject({ status: "failed", error: "provider_timeout" });
   });
 
   it("without current_version (no migration writes it yet) a finished clip still shows its file", () => {
     const g = filmGraph(reading({ status: "running" }, [sceneJson(S1, 0, { current_version: null, takes: [take("c1", "clip", "completed", { result_asset_id: CLIP })] })]));
-    expect(byId(g).get(`scene:${S1}:clip`)).toMatchObject({ status: "done", assetId: CLIP });
+    expect(byId(g).get(`scene#1:clip`)).toMatchObject({ status: "done", assetId: CLIP });
   });
 
   it("a superseded attempt is history: the newest attempt speaks for the step", () => {
@@ -68,7 +68,7 @@ describe("a film", () => {
         sceneJson(S1, 0, { current_version: 1, takes: [take("c1", "clip", "superseded"), take("c2", "clip", "running", { attempt: 2 })] }),
       ]),
     );
-    expect(byId(g).get(`scene:${S1}:clip`)?.status).toBe("working");
+    expect(byId(g).get(`scene#1:clip`)?.status).toBe("working");
   });
 
   it("film_segments unreadable (0171 not applied): the assembly and the final video are unknown, not waiting or done", () => {
@@ -106,8 +106,8 @@ describe("a film", () => {
       ]),
     );
     const n = byId(g);
-    expect(n.get(`scene:${S1}:keyframe`)?.status).toBe("none");
-    expect(n.get(`scene:${S2}:keyframe`)).toMatchObject({ status: "failed", error: "first_frame_missing", assetId: null });
+    expect(n.get(`scene#1:keyframe`)?.status).toBe("none");
+    expect(n.get(`scene#2:keyframe`)).toMatchObject({ status: "failed", error: "first_frame_missing", assetId: null });
   });
   it("a failed assembly names the worker's recorded reason (films.pause_reason), and the generic word only when none was recorded", () => {
     const seg: LiveSegment = { id: "s", status: "settled", assemblyStatus: "failed", assemblyAssetId: null, confirmedCredits: 40, chargedCredits: 30, assemblyConfirmedCredits: 8, assemblyChargedCredits: 0, createdAt: "2026-11-21T00:00:00Z" };
@@ -374,18 +374,20 @@ describe("the brief, before Create", () => {
     expect(g.settled).toBe(false);
   });
 
-  it("a reference reused by a scene is wired into that scene's picture; an unknown reference is not drawn", () => {
+  it("a scene carries its own cast by name instead of a wire from each reference; an unknown reference is not named", () => {
     const g = briefGraph(brief);
-    const into = (to: string) => g.edges.filter((e) => e.to === to).map((e) => e.from);
-    expect(into(`scene:${S1}:keyframe`)).toEqual(expect.arrayContaining(["ref:hero", "ref:desert"]));
-    expect(into(`scene:${S2}:keyframe`)).toContain("ref:sword");
-    expect(g.edges.some((e) => e.from === "ref:ghost")).toBe(false);
+    const cast = (id: string) => g.nodes.find((n) => n.id === id)?.cast;
+    expect(g.edges.some((e) => e.from.startsWith("ref:") || e.to.startsWith("ref:"))).toBe(false);
+    expect(cast(`scene#1:keyframe`)).toEqual(expect.arrayContaining(["Aziz", "Desert"]));
+    expect(cast(`scene#1:clip`)).toEqual(cast(`scene#1:keyframe`));
+    expect(cast(`scene#2:keyframe`)).toContain("Sword");
+    expect(g.nodes.some((n) => n.id === "ref:ghost")).toBe(false);
   });
 
   it("a price is only where the backend gave one, never guessed, and none at all unless the server says priced", () => {
     const g = briefGraph(brief);
-    expect(g.nodes.find((n) => n.id === `scene:${S1}:clip`)?.price).toBe(12);
-    expect(g.nodes.find((n) => n.id === `scene:${S2}:clip`)?.price).toBeNull();
+    expect(g.nodes.find((n) => n.id === `scene#1:clip`)?.price).toBe(12);
+    expect(g.nodes.find((n) => n.id === `scene#2:clip`)?.price).toBeNull();
     expect(g.nodes.find((n) => n.id === "assembly")?.price).toBeNull();
     expect(g.nodes.find((n) => n.id === "music")?.status).toBe("none");
     for (const state of ["unpriced", "failed", "exempt", undefined]) {

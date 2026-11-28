@@ -89,9 +89,150 @@
   .lv-activity { margin-bottom: calc(96px + env(safe-area-inset-bottom)); }
 }
 
+
+/* ── The Studio's Plan column beside Nightshift AI (PlanColumn.tsx). Structure and legibility only: the cards' look is S5's. ── */
+.plan-col { display: grid; gap: var(--ds-space-2); min-width: 0; align-content: start; }
+/* The two tablists (Plan / My canvas; below 1024 px, Chat / Plan). */
+.plan-switch { display: inline-flex; justify-self: start; gap: 4px; padding: 4px; border: 1px solid var(--ds-border); border-radius: var(--ds-r-pill); background: var(--ds-surface-1); }
+.plan-switch [role="tab"] {
+  min-height: 44px; padding: 0 var(--ds-space-4); border-radius: var(--ds-r-pill); font-size: var(--ds-fs-body-sm); font-weight: 600;
+  color: var(--ds-text-2); background: transparent;
+  transition: background-color var(--ds-dur-panel) var(--ds-ease-out), color var(--ds-dur-panel) var(--ds-ease-out);
+}
+.plan-switch [role="tab"][aria-selected="true"] { background: var(--ds-surface-3); color: var(--ds-text); box-shadow: inset 0 0 0 1px var(--ds-border-strong); }
+.plan-switch [role="tab"]:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
+/* Both panes in one cell: the hidden canvas keeps its size and place (its height reads its own top, StudioCanvas --cv-top), and the
+   plan takes exactly that height, so the page never scrolls at a desk (Pixel L1). */
+.plan-col-stack { display: grid; min-width: 0; }
+.plan-col-stack > * { grid-area: 1 / 1; min-width: 0; min-height: 0; }
+.plan-col-canvas[data-hidden] { visibility: hidden; pointer-events: none; }
+.cv-root.plan-root, .cv-root.plan-root:not(.is-flow) {
+  z-index: 1; height: auto; min-height: 0; display: flex; flex-direction: column; gap: var(--ds-space-2);
+  padding: var(--ds-space-3); border-radius: var(--ds-r-panel); background: var(--ds-bg); color: var(--ds-text);
+}
+.plan-head { display: grid; gap: 2px; min-width: 0; }
+.plan-title { margin: 0; overflow-wrap: anywhere; }
+.plan-head .ds-t-caption, .plan-absent { margin: 0; color: var(--ds-text-2); }
+.plan-empty { margin: 0; padding: var(--ds-space-6, 24px) 0; color: var(--ds-text-2); max-width: var(--ds-measure); }
+.plan-state { display: grid; gap: var(--ds-space-3); justify-items: start; }
+.plan-state p { margin: 0; max-width: var(--ds-measure); }
+.plan-keys { display: flex; flex-wrap: wrap; gap: var(--ds-space-2); }
+/* 44 px targets (Pixel L5), a long label wraps. */
+.cv-kbtn.plan-key { height: auto; min-height: 44px; white-space: normal; text-align: center; }
+.plan-stage { position: relative; flex: 1; min-height: 0; }
+/* A step's details are a drawer over the board's right edge: the board keeps its width, so the grid never reflows from four
+   columns to two under the person's eyes (and focus never loses its card: Pixel N3). */
+.lv-main.plan-stage, .lv-main.plan-stage.has-details { grid-template-columns: minmax(0, 1fr); }
+.plan-stage > .lv-details {
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 6; width: min(360px, 92%); overflow: auto;
+  box-shadow: var(--ds-elev-3, 0 12px 32px -12px rgb(0 0 0 / 0.5));
+}
+/* The board takes the rest of the column; a longer plan scrolls inside it. */
+.lv-board.plan-board { height: auto; min-height: 280px; flex: 1; background: var(--ds-surface-1); }
+.plan-flow { position: absolute; inset: 0; }
+.plan-node { max-width: 100%; }
+/* React Flow gives a node that is neither draggable nor selectable pointer-events:none: the card takes the click itself (as LiveView's). */
+.plan-flow .psc { pointer-events: all; }
+.plan-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--ds-space-2); }
+
+/* PlanSceneCard, the placeholder for S5's <LiveNode>: a solid surface, a dashed edge for a planned step, S5's type roles. */
+.psc {
+  display: grid; gap: 4px; min-width: 0; width: 100%; padding: 10px 12px; border-radius: var(--ds-r-panel);
+  background: var(--ds-surface-1); border: 1px solid var(--ds-border-strong); color: var(--ds-text);
+}
+.psc.is-ghost, .psc.is-unknown { border-style: dashed; }
+.psc.is-failed { border-color: var(--ds-danger, var(--ds-border-strong)); }
+.psc.is-selected { box-shadow: var(--ds-glow-select); }
+.psc-head { margin: 0; min-width: 0; font: inherit; }
+.psc-key {
+  display: flex; align-items: baseline; gap: var(--ds-space-2); width: 100%; min-width: 0; min-height: 24px; padding: 0; text-align: left;
+  background: none; border: 0; color: inherit; cursor: pointer;
+}
+.psc-key::after { content: ""; position: absolute; inset: 0; border-radius: var(--ds-r-panel); }
+.psc { position: relative; }
+.psc-key:focus-visible { outline: none; }
+.psc:has(.psc-key:focus-visible) { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
+.psc-label { flex: none; color: var(--ds-text-2); }
+.psc-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.psc-summary { margin: 0; color: var(--ds-text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.psc-flag { margin: 0; color: var(--ds-text-2); }
+.psc-chips { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; overflow: hidden; flex-wrap: nowrap; }
+.psc-chip { flex: none; max-width: 100%; padding: 0 8px; border-radius: var(--ds-r-pill); background: var(--ds-surface-3); color: var(--ds-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Thinking, with no plan yet: a skeleton in the board's shape (idea, script, cast), S5's ambient shimmer, no breathing text. */
+.plan-skeleton { display: grid; gap: var(--ds-space-3); }
+.plan-skeleton-row { display: flex; gap: var(--ds-space-3); }
+.plan-skel {
+  width: 200px; max-width: 30%; height: 64px; border-radius: var(--ds-r-panel); border: 1px dashed var(--ds-border-strong);
+  background: linear-gradient(100deg, var(--ds-surface-1) 30%, var(--ds-surface-3) 50%, var(--ds-surface-1) 70%) 0 0 / 250% 100%;
+  animation: plan-shimmer var(--ds-dur-ambient) linear infinite;
+}
+.plan-skel.is-small { width: 140px; }
+@keyframes plan-shimmer { from { background-position: 120% 0; } to { background-position: -20% 0; } }
+.plan-skeleton .ds-t-caption, .plan-quiet { margin: 0; color: var(--ds-text-2); }
+/* The storyboard being written: its own row above the board, never over the cards. */
+.plan-writing { position: relative; overflow: hidden; display: grid; gap: 2px; padding: 10px 12px 12px; border: 1px solid var(--ds-border); border-radius: var(--ds-r-key); background: var(--ds-surface-1); min-width: 0; }
+.plan-writing p { margin: 0; }
+.plan-writing-head { font-weight: 600; }
+.plan-writing .ds-t-caption { color: var(--ds-text-2); }
+/* Indeterminate: a band that moves along and never fills, because there is no count to fill it with (CLAUDE.md rule 5). */
+.plan-sweep { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; overflow: hidden; background: color-mix(in srgb, var(--ds-accent) 18%, transparent); }
+.plan-sweep::before { content: ""; position: absolute; top: 0; bottom: 0; width: 35%; background: var(--ds-accent); animation: plan-sweep var(--ds-dur-ambient) var(--ds-ease-in-out) infinite; }
+@keyframes plan-sweep { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+/* React Flow's controls: 44 px keys in S5's surfaces. */
+.plan-controls.react-flow__controls { box-shadow: var(--ds-elev-1); border-radius: var(--ds-r-key); overflow: hidden; }
+.plan-controls .react-flow__controls-button { width: 44px; height: 44px; background: var(--ds-surface-2); color: var(--ds-text); border-bottom: 1px solid var(--ds-border); }
+.plan-controls .react-flow__controls-button svg { fill: currentColor; max-width: 14px; max-height: 14px; }
+.plan-controls .react-flow__controls-button:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: -2px; }
+
+/* Create in place: one status line under the title in every state (the board never moves when its words change), the film's lane
+   and activity under the board, and the board's title as the focus target after Create. */
+.plan-head .plan-status { min-height: 1.5em; }
+.plan-inline-key { display: inline; min-height: 24px; padding: 0 2px; border: 0; background: none; font: inherit; color: var(--ds-accent); text-decoration: underline; cursor: pointer; }
+.plan-inline-key:focus-visible, .plan-title:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
+.plan-title:focus:not(:focus-visible) { outline: none; }
+.plan-live-below { display: grid; gap: var(--ds-space-2); min-width: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .plan-live-below { animation: plan-below-in 200ms var(--ds-ease-out); }
+}
+@keyframes plan-below-in { from { opacity: 0; max-height: 0; overflow: hidden; } to { opacity: 1; max-height: 640px; overflow: hidden; } }
+.plan-activity { min-width: 0; border: 1px solid var(--ds-border); border-radius: var(--ds-r-key); background: var(--ds-surface-1); }
+.plan-activity-summary { display: flex; align-items: center; min-height: 44px; padding: 0 var(--ds-space-3); font-weight: 600; cursor: pointer; }
+.plan-activity-summary:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: -2px; }
+.plan-activity[open] > :not(summary) { max-height: 240px; overflow: auto; }
+.psc-state { font-weight: 600; }
+
+/* The Studio page: chat and plan side by side from 1024 px; below, one at a time as tabs (StudioSplit). */
+.studio-split-chip { justify-self: start; margin-bottom: var(--ds-space-2); min-height: 44px; }
+/* The unread mark on the Chat tab: a dot for the eye, the words for a screen reader (SegTabs). */
+.seg-dot { display: inline-block; width: 8px; height: 8px; margin-inline-start: 6px; border-radius: 50%; background: var(--ds-accent); vertical-align: middle; }
+.plan-answered { padding: var(--ds-space-3); border: 1px solid var(--ds-border); border-radius: var(--ds-r-key); background: var(--ds-surface-1); }
+@media (max-width: 767px) {
+  /* At phone width the details read in the flow, above the list, not as a drawer over it. */
+  .plan-stage > .lv-details { position: static; width: auto; order: -1; box-shadow: none; }
+}
+@media (max-width: 1023px) {
+  .studio-split[data-tab="chat"] > .studio-split-plan { display: none; }
+  /* The tabs take a row above the chat: the dock is shorter by it, so its composer stays above the app's tab bar (Pixel L-a). */
+  .studio-split[data-tab] .ns-ai-dock {
+    /* From the dock's measured top (StudioSplit) down to the app's tab bar (~64 px) and the safe area, with a little air. */
+    height: calc(100dvh - var(--split-dock-top, 11rem) - 4.5rem - env(safe-area-inset-bottom));
+    min-height: 20rem;
+    margin-bottom: 0;
+  }
+  .studio-split[data-tab="plan"] > .studio-split-chat,
+  .studio-split[data-tab="canvas"] > .studio-split-chat { display: none; }
+  .studio-split-chat { display: grid; }
+  /* On a phone the storyboard row stays in sight above the tab bar while the list scrolls. */
+  .plan-writing { position: sticky; bottom: calc(env(safe-area-inset-bottom) + 72px); z-index: 2; }
+  .lv-board.plan-board { min-height: 60dvh; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lv-card, .lv-board .react-flow__edge-path { transition: none; }
   .lv-card.is-working { transform: none; }
   .lv-card.is-working::after, .lv-card[data-lit] { animation: none; }
+  .plan-skel, .plan-sweep::before { animation: none; }
+  .plan-switch [role="tab"] { transition: none; }
   .lv-board .lv-edge.is-live .react-flow__edge-path { animation: none; }
 }

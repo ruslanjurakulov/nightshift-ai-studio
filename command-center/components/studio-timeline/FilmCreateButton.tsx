@@ -36,6 +36,9 @@ export interface FilmCreateButtonProps {
   requote?: () => Promise<FilmQuote | null>;
   /** Where a started project's progress is, when onStarted does not navigate there itself: shown as "Open progress". */
   progressHref?: string;
+  /** The caller shows the progress itself, beside this button (Nightshift AI's Plan column): once started, the note says so and no
+   *  key leads away to another page. `progressHref` is still the way on for a project that had already been started. */
+  inPlace?: boolean;
   /** A model is down: let the person pick another (it is never swapped automatically). Without it, the way forward is support. */
   onChooseAnother?: () => void;
   /**
@@ -54,7 +57,7 @@ const FOCUS_RING ="focus-visible:outline focus-visible:outline-2 focus-visible:o
  * it. It only calls the routes and stops (rule 3), shows no number the server did not answer (rule 5), and every refusal and every
  * blocked reason names one way forward (rule 6). The states live in useFilmStart; this file only says them.
  */
-export function FilmCreateButton({ filmId, quote, onStarted, requote, progressHref, onChooseAnother, fixHref, className }: FilmCreateButtonProps) {
+export function FilmCreateButton({ filmId, quote, onStarted, requote, progressHref, inPlace = false, onChooseAnother, fixHref, className }: FilmCreateButtonProps) {
   const { t, fmt, locale: rawLocale } = useI18n();
   const locale = rawLocale ?? "en";
   const c = t.studioTimeline;
@@ -228,8 +231,8 @@ export function FilmCreateButton({ filmId, quote, onStarted, requote, progressHr
       note = slow ? k.stillWorking : null;
       break;
     case "started":
-      note = state.replayed ? c.replayed : k.startedNote;
-      if (progressHref) actions = [<Link key="progress" href={progressHref} className={keyClass("primary")} data-primary>{k.openProgress}</Link>];
+      note = inPlace ? k.startedInPlace : state.replayed ? c.replayed : k.startedNote;
+      if (progressHref && !inPlace) actions = [<Link key="progress" href={progressHref} className={keyClass("primary")} data-primary>{k.openProgress}</Link>];
       break;
     case "refused":
     case "requote_failed": {

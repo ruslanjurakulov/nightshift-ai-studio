@@ -50,8 +50,9 @@ export const DEFAULT_SELECTORS = {
   planStoryboard: "[data-testid=plan-storyboard]",
   liveView: "[data-testid=live-view]",
   liveLoading: "[data-testid=live-loading]",
-  liveCards: ".lv-card",
-  liveWorking: '.lv-card[data-status="working"]',
+  // The live view's cards, or (Create in place, plan item 9) the Plan column's own cards once its board reads the film.
+  liveCards: ".lv-card, [data-testid=plan-board-pane][data-stage=making] article.psc, [data-testid=plan-board-pane][data-stage=assembled] article.psc",
+  liveWorking: '.lv-card[data-status="working"], [data-testid=plan-board-pane][data-stage=making] article.psc[data-state="working"]',
 };
 
 const SLUG = "night-owl";
@@ -229,7 +230,7 @@ export async function runBrainFlow(opts = {}) {
     const windows = [
       { name: "send→outlines", from: at.send_pressed, to: at.outlines_visible, expect: ["plan thinking", "plan card", "canvas node", "ns:plan:first-card", "ns:plan:thinking"] },
       { name: "choose→plan", from: at.choose_pressed, to: at.create_visible, expect: ["plan planning", "plan storyboard", "ns:plan:storyboard-start", "ns:plan:first-card"] },
-      { name: "confirm→first lit", from: at.confirm_pressed, to: at.first_working_seen ?? at.end, expect: ["live card", "live working", "ns:live:first-lit"] },
+      { name: "confirm→first lit", from: at.confirm_pressed, to: at.first_working_seen ?? at.end, expect: ["live card", "live working", "ns:live:first-card", "ns:live:first-lit"] },
     ];
     // DOM events. Panel events show what the person sees in the chat; board events are what the plan's targets are about.
     const defs = [

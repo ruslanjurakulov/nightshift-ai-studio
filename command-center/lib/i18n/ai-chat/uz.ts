@@ -275,4 +275,6 @@ export const aiChatUz: AiChatDictionary = {
     plan_over_cap_person: "Bu barcha ish maydonlaringiz uchun umumiy boʻlgan shaxsiy kunlik limitingiz.",
     plan_over_cap_trial: "Raskadrovka albatta tugashi uchun kamida {needed} kerak, sinov davringizda esa {left}. U boshlanmadi, hech narsa ishlatilmadi. Uni yozish uchun tarif tanlang.",
   },
+  handoffFailed: "Film boshlandi, lekin bu suhbat uni yozib qoʻya olmadi, shuning uchun yangilangandan keyin bu yerda chiqmasligi mumkin.",
+  handoffRetry: "Qayta urinish",
 };

@@ -22,7 +22,8 @@ vi.mock("@/components/studio-timeline/FilmCreateButton", () => ({
     return <div data-testid="film-create" data-film={p.filmId} data-total={p.quote?.total ?? ""} />;
   },
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }), usePathname: () => "/chronos/studio" }));
+const nav = vi.hoisted(() => ({ replace: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: nav.replace }), usePathname: () => "/chronos/studio" }));
 
 const S1 = "aaaaaaaa-0000-4000-8000-000000000001";
 const FILM_ID = "bbbbbbbb-0000-4000-8000-000000000002";
@@ -34,6 +35,8 @@ const brief = { version: 1, kind: "short", title: "Alpha", idea: "idea Alpha", t
   scenes: [{ id: "s1" }], characters: [], price: { state: "priced", total_credits: 40, spendable: 500, fits: true, shorter: null } };
 
 let sent: Record<string, unknown>[] = [];
+let handoffStatus = 200;
+let historyGone = false;
 let calls: string[] = [];
 let total = 40;
 const assign = vi.fn();
@@ -42,6 +45,9 @@ const REAL_HREF = window.location.href;
 beforeEach(() => {
   sent = [];
   calls = [];
+  handoffStatus = 200;
+  historyGone = false;
+  nav.replace.mockReset();
   total = 40;
   seen.props = null;
   seen.mounts = 0;
@@ -49,11 +55,14 @@ beforeEach(() => {
   window.sessionStorage.clear();
   Element.prototype.scrollIntoView = vi.fn();
   // Only assign() is replaced: the page stays on jsdom's own origin, so history.replaceState (announce) still works.
-  Object.defineProperty(window, "location", { configurable: true, value: { href: REAL_HREF, origin: new URL(REAL_HREF).origin, assign } });
+  // href follows history (document.URL), as a browser's does.
+  window.history.replaceState(null, "", REAL_HREF);
+  Object.defineProperty(window, "location", { configurable: true, value: { get href() { return document.URL; }, origin: new URL(REAL_HREF).origin, assign } });
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     calls.push(url);
     const json = (status: number, body: unknown) => ({ ok: status < 400, status, json: async () => body });
     if (url.startsWith("/api/brain/history")) {
+      if (/session=/.test(url) && historyGone) return json(404, { error: "gone" });
       if (/session=/.test(url)) {
         return json(200, { session: { id: S1, step: "proposing" }, card: null, brief: { version: 1, kind: "short" },
           messages: [{ id: 1, role: "assistant", content: "Pick one", payload: { scenarios: [outline("Alpha"), outline("Beta")] } }] });
@@ -63,7 +72,7 @@ beforeEach(() => {
     if (url.startsWith("/api/brain/turn")) {
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       sent.push(body);
-      if (body.action === "handoff") return json(200, { ok: true });
+      if (body.action === "handoff") return handoffStatus === 200 ? json(200, { ok: true }) : json(handoffStatus, { error: "server_error" });
       return json(200, { brief: { ...brief, price: { ...brief.price, total_credits: total } }, film: { id: FILM_ID, version: 2 },
         models: { clip: null, keyframe: null }, quote: null, film_quote: quoteFilm(total) });
     }
@@ -90,14 +99,33 @@ describe("Nightshift AI panel: Create is S2's FilmCreateButton", () => {
     expect(screen.getByTestId("film-create").getAttribute("data-film")).toBe(FILM_ID);
   });
 
-  it("a start records the handoff once, a replayed one included, and opens the live view", async () => {
+  it("a start records the handoff once, a replayed one included, and turns the board in place: no reload", async () => {
+    // Measured before (LIVE_CREATION_PLAN item 9): location.assign reloaded the page, 0.35 s with no page and then one without this
+    // panel. Now: the handoff event, &film= added to the URL with ?brain= kept, and no navigation at all.
+    const u = new URL(window.location.href);
+    u.searchParams.set("brain", S1);
+    u.searchParams.set("tab", "x");
+    window.history.replaceState(null, "", u.toString());
+    const replace = vi.spyOn(window.history, "replaceState");
+    const heard: unknown[] = [];
+    const on = (e: Event) => heard.push((e as CustomEvent).detail);
+    window.addEventListener("nightshift:brain-handoff", on);
     const p = await chosen();
     await act(async () => p.onStarted({ replayed: false }));
     await act(async () => p.onStarted({ replayed: true }));
     await act(async () => seen.props!.onStarted({ replayed: true }));
+    window.removeEventListener("nightshift:brain-handoff", on);
     const handoffs = sent.filter((b) => b.action === "handoff");
     expect(handoffs).toEqual([{ action: "handoff", session: S1, handoff: { kind: "film", film_id: FILM_ID } }]);
-    expect(assign).toHaveBeenCalledWith(`/chronos/studio?view=live&film=${FILM_ID}`);
+    expect(assign).not.toHaveBeenCalled();
+    expect(heard[0]).toEqual({ session_id: S1, film_id: FILM_ID });
+    const filmCalls = replace.mock.calls.map((c) => new URL(String(c[2]))).filter((x) => x.searchParams.get("film") === FILM_ID);
+    expect(filmCalls.length).toBe(1);
+    expect(filmCalls[0].searchParams.get("brain")).toBe(S1);
+    expect(filmCalls[0].searchParams.get("tab")).toBe("x");
+    expect(filmCalls[0].pathname).toBe(new URL(REAL_HREF).pathname);
+    expect(new URL(document.URL).searchParams.get("film")).toBe(FILM_ID);
+    replace.mockRestore();
   });
 
   it("a replay first (the press already counted) is still recorded, once", async () => {
@@ -125,5 +153,54 @@ describe("Nightshift AI panel: Create is S2's FilmCreateButton", () => {
     const src = readFileSync(join(__dirname, "../components/brain/NightshiftAiPanel.tsx"), "utf8");
     expect(src).not.toMatch(/\/start[`"']/);
     expect(src).not.toMatch(/api\/films/);
+  });
+
+  it("a recorded handoff closes the conversation as a reload would, and keeps Create's own note on screen", async () => {
+    const p = await chosen();
+    expect(p.inPlace).toBe(true);
+    // The "already started" refusal still has its way on; the started state itself offers no key that leaves (FilmCreateButton).
+    expect(p.progressHref).toBe(`/chronos/studio?view=live&film=${FILM_ID}`);
+    await act(async () => p.onStarted({ replayed: false }));
+    await waitFor(() => expect((screen.getByRole("textbox") as HTMLTextAreaElement).disabled).toBe(true));
+    expect(screen.getByTestId("film-create")).toBeTruthy();
+    expect(screen.queryByTestId("brain-handoff-failed")).toBeNull();
+  });
+
+  it("a handoff the server did not record is said, with a retry that records it (never swallowed)", async () => {
+    handoffStatus = 500;
+    const p = await chosen();
+    await act(async () => p.onStarted({ replayed: false }));
+    const line = await screen.findByTestId("brain-handoff-failed");
+    expect(line.textContent).toContain(en.handoffFailed);
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).disabled).toBe(false);
+    handoffStatus = 200;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: en.handoffRetry })));
+    await waitFor(() => expect(screen.queryByTestId("brain-handoff-failed")).toBeNull());
+    expect(sent.filter((b) => b.action === "handoff")).toHaveLength(2);
+    await waitFor(() => expect((screen.getByRole("textbox") as HTMLTextAreaElement).disabled).toBe(true));
+  });
+
+  it("New chat takes the last conversation's film off the URL with its ?brain=", async () => {
+    const p = await chosen();
+    await act(async () => p.onStarted({ replayed: false }));
+    expect(new URL(document.URL).searchParams.get("film")).toBe(FILM_ID);
+    await act(async () => fireEvent.click(screen.getAllByRole("button", { name: en.shell.newChat })[0]));
+    expect(nav.replace).toHaveBeenCalled();
+    const to = new URL(String(nav.replace.mock.calls.at(-1)![0]), "http://x");
+    expect(to.searchParams.has("brain")).toBe(false);
+    expect(to.searchParams.has("film")).toBe(false);
+  });
+
+  it("a conversation that is gone is taken off the URL with its film", async () => {
+    historyGone = true;
+    const u = new URL(REAL_HREF);
+    u.searchParams.set("brain", S1);
+    u.searchParams.set("film", FILM_ID);
+    window.history.replaceState(null, "", u.toString());
+    render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" initialSession={S1} /></I18nProvider>);
+    await waitFor(() => expect(nav.replace).toHaveBeenCalled());
+    const to = new URL(String(nav.replace.mock.calls.at(-1)![0]), "http://x");
+    expect(to.searchParams.has("brain")).toBe(false);
+    expect(to.searchParams.has("film")).toBe(false);
   });
 });

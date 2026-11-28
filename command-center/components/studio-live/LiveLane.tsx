@@ -35,6 +35,9 @@ import {
 } from "@/lib/studio/liveLaneRows";
 import { timecode } from "@/lib/studio/timeline";
 import type { LiveLoad } from "./useLiveGraph";
+import { sceneNodeId } from "@/lib/studio/liveGraph";
+
+const NO_SCENES: ReadonlyMap<string, number> = new Map();
 import "./live-lane.css";
 
 const PHONE = "(max-width: 767px)";
@@ -58,11 +61,16 @@ function usePhone(): boolean {
 
 /**
  * The board's card a piece belongs to (liveGraph's filmGraph names them): a scene's clip, the voice, and for the master the final
- * video, or the assembly step when the assembly failed (that is where its reason and credits are).
+ * video, or the assembly step when the assembly failed (that is where its reason and credits are). A scene's cards are keyed by
+ * the scene's position (sceneNodeId), so a clip piece (`v:<film_scenes id>:<shot>`) is found through `sceneNo`, the lane's own
+ * scene id to position; a scene the lane does not place has no card to name.
  */
-export function nodeOfPiece(id: string, master: MasterCell | null = null): string | null {
+export function nodeOfPiece(id: string, master: MasterCell | null = null, sceneNo: ReadonlyMap<string, number> = NO_SCENES): string | null {
   const v = /^v:(.+):\d+$/.exec(id);
-  if (v) return `scene:${v[1]}:clip`;
+  if (v) {
+    const n = sceneNo.get(v[1]);
+    return n ? sceneNodeId(n, "clip") : null;
+  }
   if (id === "a:narration") return "voice";
   if (id === "m:master") return master?.state === "failed" ? "assembly" : "final";
   return null;
@@ -70,9 +78,14 @@ export function nodeOfPiece(id: string, master: MasterCell | null = null): strin
 
 /** A card's box on the BOARD only: at list width there is no board, and a tag dropping in from above is the honest start. */
 function boardCard(nodeId: string): DOMRect | null {
-  const el = Array.from(document.querySelectorAll<HTMLElement>(".lv-board [data-node-id]")).find((e) => e.dataset.nodeId === nodeId);
+  const all = Array.from(document.querySelectorAll<HTMLElement>(".lv-board [data-node-id]"));
+  // The Plan column folds a scene's picture and clip into one card, `scene#<n>` (planGrid): a step of it lands on that card (Lens M5).
+  const scene = /^(scene#\d+):(keyframe|clip)$/.exec(nodeId)?.[1];
+  const el = all.find((e) => e.dataset.nodeId === nodeId) ?? (scene ? all.find((e) => e.dataset.nodeId === scene) : undefined);
   return el ? el.getBoundingClientRect() : null;
 }
+/** A scene's two steps are one row on the lane's side: either one selected selects that scene's clip row. */
+const sceneOf = (nodeId: string | null) => (nodeId ? (/^(scene#\d+):(keyframe|clip)$/.exec(nodeId)?.[1] ?? nodeId) : null);
 
 /** A pill (or the master) by its piece id, compared as data: no selector string to escape. */
 function pillEl(id: string): HTMLElement | undefined {
@@ -86,6 +99,8 @@ export function LiveLane({
   selected,
   onOpen,
   retry,
+  storageKey = LANE_OPEN_KEY,
+  defaultOpen,
 }: {
   load: LiveLoad;
   /** The plan on screen: a reading of another plan (one render after a switch) is not drawn. */
@@ -96,6 +111,9 @@ export function LiveLane({
   onOpen: (nodeId: string | null) => void;
   /** useLiveGraph's own "read again now" (a GET of the read-only route). */
   retry: () => void;
+  /** Where the Timeline's open/closed choice is kept, and its state before the person chooses (the Plan column's own). */
+  storageKey?: string;
+  defaultOpen?: boolean;
 }) {
   const { t, locale } = useI18n();
   const c = t.studioLive;
@@ -137,19 +155,20 @@ export function LiveLane({
   const rows = useMemo(() => (lane ? laneRows(lane, rowWords, thumbs) : []), [lane, rowWords, thumbs]);
   const master = lane ? masterRow(lane.master, masterWords, lane.master?.assetId ? (thumbs.get(lane.master.assetId) ?? null) : null) : null;
   const cell = lane ? masterCell(lane.master) : null;
+  const sceneNo = useMemo(() => new Map((lane?.video ?? []).map((p) => [p.sceneId, p.scene] as const)), [lane]);
 
   // Opening a piece scrolls its details into view; closing them gives focus back to the pill that opened them (LiveView's own
   // close focuses the board's card first; this runs after it).
   const opened = useRef<{ pill: string; node: string } | null>(null);
   const pick = useCallback(
     (id: string) => {
-      const node = nodeOfPiece(id, cell);
+      const node = nodeOfPiece(id, cell, sceneNo);
       if (!node) return;
       opened.current = { pill: id, node };
       onOpen(node);
       requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-testid=live-details]")?.scrollIntoView({ block: "nearest", behavior: reduced() ? "auto" : "smooth" }));
     },
-    [onOpen, cell],
+    [onOpen, cell, sceneNo],
   );
   const lastSelected = useRef(selected);
   useEffect(() => {
@@ -162,11 +181,19 @@ export function LiveLane({
       pillEl(from.pill)?.focus({ preventScroll: true });
     } else if (selected !== from.node) opened.current = null;
   }, [selected]);
-  const flightFrom = useCallback((id: string) => {
-    const node = nodeOfPiece(id);
-    return node ? boardCard(node) : null;
-  }, []);
-  const selectedRow = selected ? ([...rows, ...(master ? [master] : [])].find((r) => nodeOfPiece(r.id, cell) === selected)?.id ?? null) : null;
+  const flightFrom = useCallback(
+    (id: string) => {
+      const node = nodeOfPiece(id, null, sceneNo);
+      return node ? boardCard(node) : null;
+    },
+    [sceneNo],
+  );
+  const selectedRow = selected
+    ? ([...rows, ...(master ? [master] : [])].find((r) => {
+        const n = nodeOfPiece(r.id, cell, sceneNo);
+        return n === selected || (n !== null && sceneOf(n) === sceneOf(selected) && sceneOf(n) !== n);
+      })?.id ?? null)
+    : null;
 
   if (!reading || !lane) {
     if (load.state === "loading" || (load.state === "ready" && !reading)) {
@@ -271,7 +298,8 @@ export function LiveLane({
           phone={phone}
           landedIds={fly.of === base ? fly.ids : []}
           flightFrom={flightFrom}
-          storageKey={LANE_OPEN_KEY}
+          storageKey={storageKey}
+          defaultOpen={defaultOpen}
           testId="live-lane-strip"
           label={w.label}
           showTotal={false}

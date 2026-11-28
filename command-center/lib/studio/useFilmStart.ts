@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FILM_ERRORS, filmErrorFromResponse, filmsApi, newIdempotencyKey, type FilmError } from "@/lib/films";
 import { coerceQuote, startOnce, type FilmQuote, type QuoteBlock } from "@/lib/studio/timeline";
+import { nsMarkOnce } from "@/lib/studio/nsMark";
 
 /**
  * The money call of a project, as a state machine any surface can drive (the Brain's Create, later the canvas): the person confirms
@@ -524,6 +525,7 @@ export function useFilmStart({
   const confirm = useCallback(() => {
     const s = stateRef.current;
     if (s.at !== "confirming" || starter.busy) return;
+    nsMarkOnce("ns:create:confirm");
     void send(s.quote);
   }, [starter, send]);
 

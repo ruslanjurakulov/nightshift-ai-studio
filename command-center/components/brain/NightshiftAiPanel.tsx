@@ -20,6 +20,7 @@ import { coerceQuote, type FilmQuote } from "@/lib/studio/timeline";
 import { pluralForm } from "@/lib/plural";
 // The gate's client-safe vocabulary (#898): the codes and their remedies are the gate's own, never retyped here.
 import { CHAT_GATE_REMEDY, isChatGateError, type ChatGateRemedy, type ChatGateVerdict } from "@/lib/brain/chat-gate";
+import { clearBrainActivity, dispatchBrainCanvas } from "@/lib/studio/brainActivity";
 import "./nightshift-ai-panel.css";
 
 /**
@@ -33,7 +34,8 @@ import "./nightshift-ai-panel.css";
  * choose a scenario; the one that spends is the existing one:
  *   - long: a LINK to the Run now form, prefilled — that form's own priced button holds and starts (CLAUDE.md rule 3);
  *   - short: S2's FilmCreateButton (#905), given the draft and quote_film's answer: it asks the person to confirm that number and
- *     starts the film through the film route; this panel only records the handoff once it went through and opens the live view.
+ *     starts the film through the film route; this panel only records the handoff once it went through, and the board beside it
+ *     turns to the film in place (`nightshift:brain-handoff` and `&film=` in the URL; no reload).
  * Every price shown is the server's; with none, no number is shown (rule 5). Every BRIEF change is announced to the canvas (S6b) with
  * the browser event `nightshift:brain-brief`.
  *
@@ -259,6 +261,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     life.current = ctl;
     return () => ctl.abort();
   }, []);
+  useEffect(() => () => clearBrainActivity(), []);
   const [lease, setLease] = useState<PlanLease | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [opening, setOpening] = useState(false);
@@ -266,6 +269,10 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   const inFlight = useRef(false);
   /** The film whose start this conversation already recorded (the handoff): a replayed start, or a second one, records nothing. */
   const handedOff = useRef<string | null>(null);
+  /** The film started from this page, in place: its Create stays on screen with its note after the conversation closes. */
+  const [startedHere, setStartedHere] = useState<string | null>(null);
+  /** A started film this conversation could not record (the handoff POST failed): said, with a retry, never swallowed (Lens M4). */
+  const [handoffFailed, setHandoffFailed] = useState<string | null>(null);
   const keySeq = useRef(0);
   const localKey = (p: string) => `${p}${Date.now().toString(36)}-${++keySeq.current}`;
   // The shell's ids are numbers, stable per message: a thumb given to one answer stays on that answer, never on the next chat's.
@@ -285,6 +292,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     const u = new URL(window.location.href);
     if (u.searchParams.get("brain") !== sid) {
       u.searchParams.set("brain", sid);
+      // Another conversation's film is not this one's.
+      u.searchParams.delete("film");
       window.history.replaceState(null, "", u.toString());
     }
     if (b) setBrief(b);
@@ -307,6 +316,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     setChanging(null);
     setBrief(null);
     setFilm(null);
+    setStartedHere(null);
+    setHandoffFailed(null);
     setModels(null);
     setLease(null);
     setStep("asking");
@@ -324,6 +335,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       const u = new URL(window.location.href);
       if (u.searchParams.get("brain") !== sid) return;
       u.searchParams.delete("brain");
+      u.searchParams.delete("film");
       // Only a page that was drawn with ?brain= comes back with different props; otherwise there is no re-read to skip.
       if (initialSession) dropped.current = true;
       routerRef.current.replace(`${u.pathname}${u.search}${u.hash}`, { scroll: false });
@@ -631,6 +643,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     setBusy(true);
     setProblem(null);
     setAsking(label || null);
+    // Whether this press opened with a null "thinking": only that one may be closed by a null "end" (#989's rule).
+    const openedNull = sessionRef.current === null;
+    dispatchBrainCanvas({ kind: "activity", detail: { session_id: sessionRef.current, phase: "thinking" } });
     try {
       const { res, d } = await post(body);
       const sid = (d.session as { id?: string } | undefined)?.id ?? sessionRef.current;
@@ -698,6 +713,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     } finally {
       inFlight.current = false;
       setBusy(false);
+      if (sessionRef.current) dispatchBrainCanvas({ kind: "activity", detail: { session_id: sessionRef.current, phase: "end" } });
+      // A first send that made no session: the canvas is told it ended without an answer, so it never keeps "planning" (Atlas).
+      else if (openedNull) dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "end", reason: "failed" } });
       // A card's option that was pressed is gone with the card: focus goes back to the box, not to <body> (Pixel P5).
       setTimeout(refocus, 0);
     }
@@ -742,6 +760,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     setBusy(true);
     setPlanning(true);
     setPlanOther(!!w.other);
+    dispatchBrainCanvas({ kind: "activity", detail: { session_id: sid, phase: "planning" } });
     setProblem(null);
     setAsking(w.title);
     let failed: string | null = null;
@@ -773,6 +792,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
                    retry: NO_RETRY_REASONS.has(reason) ? null : () => void chooseRef.current(w.index) });
     } finally {
       inFlight.current = false;
+      if (sessionRef.current === sid) dispatchBrainCanvas({ kind: "activity", detail: { session_id: sid, phase: "end" } });
       if (!signal.aborted) {
         setPlanning(false);
         setBusy(false);
@@ -822,6 +842,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     const writes = brief?.kind !== "long" && !!outline && !outline.scenes?.length;
     if (writes && outline) {
       setPlanning(true);
+      dispatchBrainCanvas({ kind: "activity", detail: { session_id: session, phase: "planning" } });
       // The server stores this choice as the person's message: it is drawn as theirs while the storyboard is written.
       setAsking(outline.title);
       keepPlan(session, { rid, index, title: outline.title, at: Date.now() });
@@ -863,6 +884,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       inFlight.current = false;
       setPlanning(false);
       setBusy(false);
+      if (sessionRef.current === session) dispatchBrainCanvas({ kind: "activity", detail: { session_id: session, phase: "end" } });
       setTimeout(refocus, 0);
       if (waiting && life.current) void waitForPlan(session, waiting, life.current.signal);
     }
@@ -872,22 +894,46 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   });
   /** A start went through (S2's button): the conversation records which film it became, once, and the live view opens. A replay
    *  (this press already counted) is the same start: recorded once all the same. */
-  const filmStarted = async (filmId: string) => {
-    if (session && handedOff.current !== filmId) {
-      handedOff.current = filmId;
-      await post({ action: "handoff", session, handoff: { kind: "film", film_id: filmId } }).catch(() => undefined);
+  /** The server's record of the handoff. Recorded: the conversation closes, as a reload of it would show. Not recorded: said. */
+  const recordHandoff = async (filmId: string, sid: string) => {
+    handedOff.current = filmId;
+    setHandoffFailed(null);
+    const ok = await post({ action: "handoff", session: sid, handoff: { kind: "film", film_id: filmId } }).then((r) => r.res.ok, () => false);
+    if (sessionRef.current !== sid) return;
+    if (ok) setStep("created");
+    else {
+      handedOff.current = null;
+      setHandoffFailed(filmId);
     }
-    window.location.assign(liveHref(filmId));
+  };
+  const filmStarted = async (filmId: string) => {
+    // Without a conversation the board beside the panel has nothing to follow: the live page, as before.
+    if (!session) return window.location.assign(liveHref(filmId));
+    // In place, not a reload (measured: 0.35 s of no page, then a page without this panel): the board hears the film now, and the
+    // URL keeps it for a refresh; the server's handoff below stays the truth.
+    dispatchBrainCanvas({ kind: "handoff", detail: { session_id: session, film_id: filmId } });
+    setStartedHere(filmId);
+    const u = new URL(window.location.href);
+    if (u.searchParams.get("film") !== filmId || u.searchParams.get("brain") !== session) {
+      u.searchParams.set("brain", session);
+      u.searchParams.set("film", filmId);
+      window.history.replaceState(null, "", u.toString());
+    }
+    if (handedOff.current !== filmId) await recordHandoff(filmId, session);
   };
   const liveHref = (filmId: string) => `/${encodeURIComponent(channelSlug)}/studio?view=live&film=${encodeURIComponent(filmId)}`;
   /** The film's project editor (/{channel}/create/projects/{id}), where a model is set or a storyboard edited: S2's Create links
    *  there for every refusal the person fixes in the project (fixHref), and plan_superseded opens it. */
   const editorHref = (filmId: string) => `/${encodeURIComponent(channelSlug)}/create/projects/${encodeURIComponent(filmId)}`;
   const newChat = () => {
+    const was = sessionRef.current;
     clear();
+    if (was) dispatchBrainCanvas({ kind: "activity", detail: { session_id: was, phase: "end" } });
+    clearBrainActivity();
     if (typeof window === "undefined") return;
     const u = new URL(window.location.href);
     if (!u.searchParams.has("brain")) return;
+    u.searchParams.delete("film");
     // The same path as forget(): the canvas draws ?brain= from the page's props, so a history.replaceState left it drawing the old
     // conversation beside the new chat (#900's leftover). A replace, so Back does not return to it; the re-read it causes is skipped.
     u.searchParams.delete("brain");
@@ -967,6 +1013,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   const down = ready && load.model !== "available";
   const viewer = ready && !load.canEdit;
   const closed = step === "created";
+  // Started here, in place: the Create and its "being made beside this chat" note stay; nothing in it can be pressed again.
+  const createdHere = closed && !!film && startedHere === film.id;
   // The box cannot be used at all: the status above it says why and what to do.
   // The model's gate said before any press that this person cannot use it (#898 GET /api/brain `gate`): the box, the card's answers
   // and choosing are closed up front, with the remedy, instead of a press that could only be refused.
@@ -1096,10 +1144,10 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
           {card.slot === "target_seconds" && brief?.kind === "short" && <p className="text-xs text-[var(--color-muted)]">{c.shortMinNote}</p>}
         </fieldset>
       )}
-      {step === "ready" && brief && (
+      {(step === "ready" || createdHere) && brief && (
         <ReadyBlock brief={brief} film={film} models={models} channelSlug={channelSlug} lengthLabel={lengthLabel} canRun={ready && load.canRun}
-          fixHref={film ? editorHref(film.id) : undefined} onWordless={busy ? undefined : () => void send(c.wordlessAskText)}
-          sheets={brief.kind === "short" && film && session && (brief.characters?.length ?? 0) > 0 ? (
+          fixHref={film ? editorHref(film.id) : undefined} onWordless={busy || createdHere ? undefined : () => void send(c.wordlessAskText)}
+          sheets={!createdHere && brief.kind === "short" && film && session && (brief.characters?.length ?? 0) > 0 ? (
             // Character sheets (lib/brain/ref-sheets): their own route and their own confirm; attaching them re-prices the film,
             // and the Create below is remounted with that quote.
             <RefSheetsPanel key={`${session}:${film.id}:${charactersKey(brief)}`} brief={brief} sessionId={session} filmId={film.id} channelSlug={channelSlug}
@@ -1108,14 +1156,24 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
           create={brief.kind === "short" && film ? (
             // No `requote`: S2's own requoteFilm prices the film's CURRENT version and writes nothing (Lens H1). No
             // `onChooseAnother`: choosing again here would draft the same models again (Lens M1); S2 offers support instead.
-            <FilmCreateButton key={`${film.id}:${film.version ?? 0}`} filmId={film.id} quote={film.quote} onStarted={() => void filmStarted(film.id)}
-              progressHref={liveHref(film.id)} fixHref={editorHref(film.id)} />
+            <>
+              <FilmCreateButton key={`${film.id}:${film.version ?? 0}`} filmId={film.id} quote={film.quote} onStarted={() => void filmStarted(film.id)}
+                progressHref={liveHref(film.id)} inPlace={!!session} fixHref={editorHref(film.id)} />
+              {handoffFailed === film.id && session ? (
+                <p role="alert" className="text-sm" data-testid="brain-handoff-failed">
+                  {c.handoffFailed}{" "}
+                  <button type="button" className="btn-quiet min-h-11 px-3 text-sm" onClick={() => void recordHandoff(film.id, session)}>
+                    {c.handoffRetry}
+                  </button>
+                </p>
+              ) : null}
+            </>
           ) : null} />
       )}
     </>
   );
   // The chips of what was guessed stay under the newest answer until a plan is chosen, with or without a card.
-  const hasTail = (card && step === "asking") || (step === "ready" && brief) || (inferred.length > 0 && step !== "ready" && step !== "created");
+  const hasTail = (card && step === "asking") || ((step === "ready" || createdHere) && brief) || (inferred.length > 0 && step !== "ready" && step !== "created");
 
   const turns: ChatTurn[] = paired.map((p, i) => {
     const m = p.msg;

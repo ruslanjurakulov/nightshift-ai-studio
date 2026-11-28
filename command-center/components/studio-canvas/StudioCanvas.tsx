@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { CanvasActiveContext } from "./canvasActive";
 import { AlignLeft, Check, ChevronDown, Film, GitBranch, Hand, Layers, LayoutGrid, Maximize, Minus, MousePointer2, Palette, Plus, Projector, RotateCcw, Search, X, ZoomIn, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
@@ -133,13 +134,21 @@ export function StudioCanvas({
   userId,
   channel,
   filmStudio,
+  active: activeProp,
 }: {
   data: PanelData;
   userId: string;
   channel: string;
   /** NIGHTSHIFT_FILM_STUDIO, resolved for this viewer by the server: the Projects entry is listed only then. */
   filmStudio: boolean;
+  /**
+   * False while the canvas is kept mounted but hidden (the Studio's Plan column): its bar, overlays and keys stand down, and nothing
+   * can be added. Defaults to CanvasActiveContext, which is true unless a provider says otherwise.
+   */
+  active?: boolean;
 }) {
+  const activeCtx = useContext(CanvasActiveContext);
+  const active = activeProp ?? activeCtx;
   const { t, fmt } = useI18n();
   const c = t.studioCanvas;
   const { tools: availability } = useShell();
@@ -164,6 +173,14 @@ export function StudioCanvas({
   const [quick, setQuick] = useState<QuickMenuState | null>(null);
   /** The card showing its own small composer (made with "+"); the inspector replaces it when opened. */
   const [composing, setComposing] = useState<string | null>(null);
+  // Hidden: whatever was open over the canvas closes, so nothing it drew to <body> stays on screen or takes a key.
+  useEffect(() => {
+    if (active) return;
+    setPalette(null);
+    setQuick(null);
+    setDrawer(false);
+    setInspecting(false);
+  }, [active]);
   /** The server's quote per node, as its composer last reported it (never a number of ours). */
   const [quotes, setQuotes] = useState<ReadonlyMap<string, PanelQuote>>(() => new Map());
   const setQuote = useCallback((id: string, q: PanelQuote | null) => {
@@ -499,6 +516,8 @@ export function StudioCanvas({
     }
   };
   const addNode = (kind: NodeKind, at?: { x: number; y: number }, extra: Partial<CanvasNode> = {}) => {
+    // A hidden canvas adds nothing (its keys and overlays are already closed; this is the last door).
+    if (!active) return null;
     if (!kindOpen(availability, kind)) {
       say(c.wire.closed);
       return null;
@@ -528,6 +547,8 @@ export function StudioCanvas({
     return true;
   };
   const dropAsset = (a: DroppedAsset, at?: { x: number; y: number }, onto?: string) => {
+    // A file dropped on a hidden canvas (it cannot be seen, but a drop event can still be fired at it) adds nothing.
+    if (!active) return;
     const target = onto ? canvas.nodes.find((n) => n.id === onto) : undefined;
     if (target && KIND_SPEC[target.kind].accepts.includes(a.kind) && kindOpen(availability, target.kind)) {
       // Onto a node's input: the file sits beside it, wired in at once.
@@ -656,6 +677,9 @@ export function StudioCanvas({
       return !!e && (e.tagName === "INPUT" || e.tagName === "TEXTAREA" || e.tagName === "SELECT" || e.isContentEditable);
     };
     function onKey(e: KeyboardEvent) {
+      // Kept mounted but hidden behind the Studio's Plan column (`active` false): its keys are not the canvas's, or Backspace on the
+      // page would delete a card nobody can see, and ⌘K would open a search nobody can see.
+      if (!active) return;
       // ⌘K belongs to the canvas while it is open: it adds and opens, like the prototype's bar. Caught before the app's palette.
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -764,7 +788,7 @@ export function StudioCanvas({
   // scrim could dim neither the header nor the tab bar, and a phone sheet would sit under the tab bar.
   const [portalReady, setPortalReady] = useState(false);
   useEffect(() => setPortalReady(true), []);
-  const overlay = (el: ReactNode) => (el && portalReady ? createPortal(<div className="cv-tok">{el}</div>, document.body) : el);
+  const overlay = (el: ReactNode) => (!active ? null : el && portalReady ? createPortal(<div className="cv-tok">{el}</div>, document.body) : el);
 
   const busy = (counts.working ?? 0) + (counts.queued ?? 0) > 0;
   const nodesWord = canvas.nodes.length === 1 ? c.statusNodesOne : fmt(c.statusNodes, { n: canvas.nodes.length });
@@ -787,8 +811,10 @@ export function StudioCanvas({
     </div>
   );
 
-  const bar = <ProjectBar filmStudio={filmStudio} onSearch={() => setPalette("all")} inline={!slot} view="canvas" />;
-  const barEl = slot ? createPortal(bar, slot) : bar;
+  // The bar stays in the header while the canvas is hidden behind the Plan column: its project name and Canvas/Timeline are the
+  // Studio's, still true and still the way on. Only its search (which opens the canvas's palette) is the canvas's, so it goes.
+  const bar = <ProjectBar filmStudio={filmStudio} onSearch={active ? () => setPalette("all") : undefined} inline={!slot} view="canvas" />;
+  const barEl = slot ? createPortal(bar, slot) : active ? bar : null;
 
   const inspector =
     sel && inspecting ? (

@@ -98,6 +98,7 @@ export function LaneStrip({
   startFlag = true,
   showNote = true,
   pillLabel = "name",
+  defaultOpen,
 }: {
   /** Each track's rows in the order they play. */
   rows: readonly LaneRow[];
@@ -132,12 +133,14 @@ export function LaneStrip({
   /** What a pill says on its face: its name (the canvas's cards) or its tag (a live film's `clip-02.1`). The name is always in its
    *  accessible name and title. */
   pillLabel?: "name" | "tag";
+  /** Open or closed until the person chooses (their stored choice wins); default: open, closed on a phone. */
+  defaultOpen?: boolean;
 }) {
   const { t, fmt } = useI18n();
   const c = t.studioCanvas;
   const l = c.lane;
-  const [open, setOpen] = useState(!phone);
-  useEffect(() => setOpen(readOpen(storageKey, !phone)), [phone, storageKey]);
+  const [open, setOpen] = useState(defaultOpen ?? !phone);
+  useEffect(() => setOpen(readOpen(storageKey, defaultOpen ?? !phone)), [phone, storageKey, defaultOpen]);
   const toggle = () =>
     setOpen((o) => {
       writeOpen(storageKey, !o);
