@@ -5,12 +5,16 @@
  *
  * Nothing here trusts a handle id. A port is drawn per PORTS entry so a person can see where to drag, but whether a wire
  * is allowed is decided by the two nodes' types (checkConnection) and nothing else: a handle id is a DOM attribute anyone
- * can edit, and a rule keyed on it would be a rule until someone opens the devtools.
+ * can edit, and a rule keyed on it would be a rule until someone opens the devtools. (connectionAllowed narrows a pointer
+ * drag further, so a wire is never drawn onto one port and then shown on another; it never widens what the types allow.)
+ *
+ * Every id-keyed read goes through ownEntry: a node id may be "constructor" or "toString", which a plain object answers
+ * from its prototype.
  */
 import type { Edge, Node, NodeChange, EdgeChange } from "@xyflow/react";
 import type { AgentWorkflow, NodeType } from "./agent-graph";
 import { PORTS, checkConnection, clampPosition, removeNode, type NodePosition, type PortKind } from "./agent-graph-editor";
-import { defaultNodePosition } from "./agent-draft";
+import { defaultNodePosition, ownEntry } from "./agent-draft";
 
 export type WorkflowNode = AgentWorkflow["nodes"][number];
 export type AgentNodeData = { node: WorkflowNode; index: number };
@@ -22,7 +26,7 @@ export const edgeId = (source: string, target: string): string => `${source}->${
 
 /** Where a node is drawn: its saved position, or the grid slot of its index when it has none (an old draft, a new node). */
 export function nodePosition(positions: Record<string, NodePosition>, id: string, index: number): NodePosition {
-  return positions[id] ?? defaultNodePosition(index);
+  return ownEntry(positions, id) ?? defaultNodePosition(index);
 }
 
 export function toFlowNodes(
@@ -33,10 +37,10 @@ export function toFlowNodes(
   return graph.nodes.map((node, index) => ({
     id: node.id,
     type: "agent",
-    position: view.dragging?.[node.id] ?? nodePosition(positions, node.id, index),
+    position: ownEntry(view.dragging, node.id) ?? nodePosition(positions, node.id, index),
     selected: view.selected?.has(node.id) ?? false,
     // A controlled flow must hand React Flow's own measurement back, or it keeps the node hidden.
-    measured: view.measured?.[node.id],
+    measured: ownEntry(view.measured, node.id),
     data: { node, index },
   }));
 }
@@ -48,6 +52,51 @@ export function toFlowNodes(
 export function wirePorts(source: NodeType, target: NodeType): { sourceHandle: PortKind | null; targetHandle: PortKind | null } {
   const out = PORTS[source].output.find(port => PORTS[target].input.includes(port)) ?? null;
   return { sourceHandle: out, targetHandle: out };
+}
+
+/**
+ * What a pointer drag may drop on: the pair checkConnection allows and, when React Flow names the handles, exactly the ports
+ * wirePorts would draw the wire between. Without the second part a wire dropped on review's "video" input would be drawn on
+ * its "image" input the moment it was added. Handles only narrow; the types remain the rule.
+ */
+export function connectionAllowed(
+  graph: AgentWorkflow,
+  conn: { source: string | null; target: string | null; sourceHandle?: string | null; targetHandle?: string | null },
+): boolean {
+  if (!checkConnection(graph, conn.source ?? "", conn.target ?? "").ok) return false;
+  const from = graph.nodes.find(n => n.id === conn.source)!.type;
+  const to = graph.nodes.find(n => n.id === conn.target)!.type;
+  const ports = wirePorts(from, to);
+  if (conn.sourceHandle && conn.sourceHandle !== ports.sourceHandle) return false;
+  if (conn.targetHandle && conn.targetHandle !== ports.targetHandle) return false;
+  return true;
+}
+
+/** The refusals checkConnection (and inspectWorkflow behind it) can give, as keys a dictionary can translate. */
+export type ConnectionReason = "pick" | "types" | "exists" | "cycle" | "review" | "selfEdge" | "tooMany" | "invalid";
+export function connectionReason(reason: string): ConnectionReason | null {
+  if (reason === "Choose two existing nodes.") return "pick";
+  if (reason === "These node types cannot be connected.") return "types";
+  if (reason === "Connection already exists." || reason === "Duplicate edge") return "exists";
+  if (reason === "Workflow contains a cycle") return "cycle";
+  if (reason.startsWith("Export requires an upstream review.approval")) return "review";
+  if (reason === "Self-edge is forbidden") return "selfEdge";
+  if (reason.startsWith("edges:")) return "tooMany";
+  if (reason === "Invalid graph.") return "invalid";
+  return null;
+}
+
+/**
+ * The card to focus after `removed` leave: the next card that stays, else the previous one, else none (the canvas then).
+ * Without it, focus falls to <body> with the Remove button that held it, and a keyboard user starts again from the top.
+ */
+export function focusAfterRemoval(graph: AgentWorkflow, removed: ReadonlySet<string>): string | null {
+  const ids = graph.nodes.map(n => n.id);
+  const first = ids.findIndex(id => removed.has(id));
+  if (first < 0) return null;
+  const after = ids.slice(first).find(id => !removed.has(id));
+  if (after) return after;
+  return [...ids.slice(0, first)].reverse().find(id => !removed.has(id)) ?? null;
 }
 
 export function toFlowEdges(graph: AgentWorkflow, selected: ReadonlySet<string> = new Set()): AgentFlowEdge[] {
@@ -94,8 +143,9 @@ export function removeNodeAndPosition(graph: AgentWorkflow, positions: Record<st
   return { graph: removeNode(graph, id), positions: dropPosition(positions, id) };
 }
 
-export function dropPosition(positions: Record<string, NodePosition>, id: string): Record<string, NodePosition> {
-  if (!(id in positions)) return positions;
+/** The map without `id` (a position, a drag in progress, a measured size); the same object when it had no such entry. */
+export function dropPosition<T>(positions: Record<string, T>, id: string): Record<string, T> {
+  if (!Object.hasOwn(positions, id)) return positions;
   const rest = { ...positions };
   delete rest[id];
   return rest;

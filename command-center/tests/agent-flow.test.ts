@@ -5,11 +5,14 @@
  */
 import { describe, expect, it } from "vitest";
 import { NODE_TYPES, createCampaignWorkflow } from "@/lib/agent-graph";
-import { PORTS, addNode } from "@/lib/agent-graph-editor";
+import { PORTS, addNode, checkConnection, clampPosition } from "@/lib/agent-graph-editor";
 import { defaultNodePosition, exportWorkflowDraft, importWorkflowDraft } from "@/lib/agent-draft";
 import {
   applyConnect,
+  connectionAllowed,
+  connectionReason,
   edgeId,
+  focusAfterRemoval,
   readEdgeChanges,
   readNodeChanges,
   removeEdges,
@@ -139,5 +142,59 @@ describe("drafts keep the layout", () => {
     expect(toFlowNodes(back.workflow, back.positions).map(n => n.position)).toEqual(
       graph.nodes.map((n, i) => (n.id === "review" ? { x: 1234, y: 567 } : defaultNodePosition(i))),
     );
+  });
+});
+
+describe("defaultNodePosition: a slot for every node the schema allows", () => {
+  it("the first 21 slots are where every earlier draft without positions was drawn", () => {
+    for (let i = 0; i < 21; i++) expect(defaultNodePosition(i)).toEqual({ x: 20 + (i % 3) * 250, y: 20 + Math.floor(i / 3) * 250 });
+  });
+
+  it("64 default positions: all inside clampPosition's bounds, no two cards (220 x 250 slots) overlapping", () => {
+    const at = Array.from({ length: 64 }, (_, i) => defaultNodePosition(i));
+    for (const p of at) expect(p).toEqual(clampPosition(p.x, p.y));
+    for (let a = 0; a < at.length; a++) for (let b = a + 1; b < at.length; b++) {
+      const apart = Math.abs(at[a].x - at[b].x) >= 220 || Math.abs(at[a].y - at[b].y) >= 250;
+      expect(apart, `slots ${a} and ${b} overlap`).toBe(true);
+    }
+  });
+});
+
+describe("connectionAllowed: what a pointer may drop on", () => {
+  it("named handles must be the ports wirePorts draws on; absent handles leave it to the types", () => {
+    const graph = createCampaignWorkflow();
+    const g = { ...graph, edges: graph.edges.filter(e => e.target !== "review") };
+    expect(connectionAllowed(g, { source: "image", target: "review", sourceHandle: "image", targetHandle: "image" })).toBe(true);
+    expect(connectionAllowed(g, { source: "image", target: "review", sourceHandle: "image", targetHandle: "vector" })).toBe(false);
+    expect(connectionAllowed(g, { source: "image", target: "review" })).toBe(true);
+    expect(connectionAllowed(g, { source: "brand", target: "export", sourceHandle: "approval", targetHandle: "approval" })).toBe(false);
+    expect(connectionAllowed(g, { source: null, target: "review" })).toBe(false);
+  });
+});
+
+describe("connectionReason maps every refusal checkConnection gives to a dictionary key", () => {
+  it("each refusal of a real graph has a key, so no reason reaches a Russian or Uzbek reader in English", () => {
+    const graph = addNode(createCampaignWorkflow(), "video.generate");
+    const refusals = [
+      checkConnection(graph, "ghost", "prompt"),
+      checkConnection(graph, "brand", "export"),
+      checkConnection(graph, "brand", "prompt"),
+      checkConnection({ ...graph, edges: [...graph.edges, { source: "image", target: "export" }] }, "prompt", "video_generate_1"),
+    ];
+    expect(refusals.map(r => connectionReason(r.reason))).toEqual(["pick", "types", "exists", "review"]);
+    expect(connectionReason("Workflow contains a cycle")).toBe("cycle");
+    expect(connectionReason("edges: Too big: expected array to have <=128 items")).toBe("tooMany");
+    expect(connectionReason("something new")).toBeNull();
+  });
+});
+
+describe("focusAfterRemoval", () => {
+  it("the next card that stays, else the previous one, else none", () => {
+    const graph = createCampaignWorkflow();
+    expect(focusAfterRemoval(graph, new Set(["image"]))).toBe("review");
+    expect(focusAfterRemoval(graph, new Set(["image", "review"]))).toBe("export");
+    expect(focusAfterRemoval(graph, new Set(["export"]))).toBe("review");
+    expect(focusAfterRemoval(graph, new Set(graph.nodes.map(n => n.id)))).toBeNull();
+    expect(focusAfterRemoval(graph, new Set(["ghost"]))).toBeNull();
   });
 });

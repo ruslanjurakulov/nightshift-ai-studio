@@ -33,7 +33,7 @@ vi.mock("@xyflow/react", async importOriginal => {
 });
 
 import { dictionaries } from "@/lib/i18n";
-import { NODE_TYPES } from "@/lib/agent-graph";
+import { NODE_TYPES, createCampaignWorkflow } from "@/lib/agent-graph";
 import { PORTS } from "@/lib/agent-graph-editor";
 import { defaultNodePosition, importWorkflowDraft } from "@/lib/agent-draft";
 import type { AgentFlowEdge, AgentFlowNode } from "@/lib/agent-flow";
@@ -209,15 +209,24 @@ describe("Agent Builder canvas on React Flow", () => {
     expect(nodeAt("brand")).toEqual(defaultNodePosition(0));
   });
 
-  it("deleting a wire (React Flow's Delete, or the list's ×) filters graph.edges; an unknown wire id changes nothing", () => {
+  it("deleting a wire (React Flow's Delete, its × on the canvas, or the list's ×) filters graph.edges; an unknown wire id changes nothing", () => {
     mount();
     edgesChange([{ type: "remove", id: "ghost->prompt" }]);
     expect(edgeIds()).toHaveLength(5);
     edgesChange([{ type: "remove", id: "image->review" }]);
     expect(edgeIds()).not.toContain("image->review");
-    const listX = screen.getAllByRole("button", { name: "Disconnect review from export" });
-    fireEvent.click(listX[listX.length - 1]);
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect Human review required from Export after approval in list" }));
     expect(edgeIds()).toEqual(["brand->prompt", "products->prompt", "prompt->image"]);
+  });
+
+  it("a wire's canvas × exists only while the wire is selected (never an invisible Tab stop under a card), and selecting it shows it", async () => {
+    mount();
+    const onCanvas = "Disconnect Image task placeholder from Human review required on canvas";
+    expect(screen.queryByRole("button", { name: onCanvas })).toBeNull();
+    edgesChange([{ type: "select", id: "image->review", selected: true }]);
+    expect(props().edges!.find(e => e.id === "image->review")!.selected).toBe(true);
+    fireEvent.click(await screen.findByRole("button", { name: onCanvas }));
+    expect(edgeIds()).not.toContain("image->review");
   });
 
   it("Delete / Backspace removes a selected node only while focus is on the canvas, not on a sidebar button", async () => {
@@ -227,6 +236,123 @@ describe("Agent Builder canvas on React Flow", () => {
     expect(await props().onBeforeDelete!({ nodes, edges: [] })).toBe(false);
     (document.querySelector('.react-flow__node[data-id="brand"]') as HTMLElement).focus();
     expect(await props().onBeforeDelete!({ nodes, edges: [] })).toBe(true);
+  });
+
+  it("a real Delete keypress with a node selected and focus on \"Connect selected nodes\" leaves the node; on the card it removes it", async () => {
+    mount();
+    nodesChange([{ type: "select", id: "products", selected: true }]);
+    expect(props().nodes!.find(n => n.id === "products")!.selected).toBe(true);
+    const button = screen.getByRole("button", { name: "Connect selected nodes" });
+    button.focus();
+    fireEvent.keyDown(button, { key: "Delete", code: "Delete" });
+    fireEvent.keyUp(button, { key: "Delete", code: "Delete" });
+    await act(async () => { await new Promise(r => setTimeout(r, 20)); });
+    expect(props().nodes!.some(n => n.id === "products")).toBe(true);
+    const card = document.querySelector('.react-flow__node[data-id="products"]') as HTMLElement;
+    card.focus();
+    fireEvent.keyDown(card, { key: "Delete", code: "Delete" });
+    fireEvent.keyUp(card, { key: "Delete", code: "Delete" });
+    await waitFor(() => expect(props().nodes!.some(n => n.id === "products")).toBe(false));
+    expect(edgeIds()).not.toContain("products->prompt");
+  });
+
+  it("removing a node clears it and its wires from React Flow's selection: a node re-added under the same id starts unselected", () => {
+    mount();
+    addNodeOfType("video.generate");
+    connect("prompt", "video_generate_1");
+    nodesChange([{ type: "select", id: "video_generate_1", selected: true }]);
+    edgesChange([{ type: "select", id: "prompt->video_generate_1", selected: true }, { type: "select", id: "brand->prompt", selected: true }]);
+    fireEvent.click(screen.getByRole("button", { name: "Remove video / generate" }));
+    expect(props().edges!.filter(e => e.selected).map(e => e.id)).toEqual(["brand->prompt"]);
+    // addNode hands out the first free id, so the next video node is video_generate_1 again, and so is its wire.
+    addNodeOfType("video.generate");
+    connect("prompt", "video_generate_1");
+    expect(props().nodes!.find(n => n.id === "video_generate_1")!.selected).toBe(false);
+    expect(props().edges!.find(e => e.id === "prompt->video_generate_1")!.selected).toBe(false);
+  });
+
+  it("after a delete, focus moves to the next card, else the previous one, else the canvas", async () => {
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Remove Image task placeholder" }));
+    await waitFor(() => expect((document.activeElement as HTMLElement | null)?.dataset.id).toBe("review"));
+    for (const label of ["Brand kit", "Approved products", "Campaign concept", "Human review required"]) {
+      fireEvent.click(screen.getByRole("button", { name: `Remove ${label}` }));
+    }
+    await waitFor(() => expect((document.activeElement as HTMLElement | null)?.dataset.id).toBe("export"));
+    fireEvent.click(screen.getByRole("button", { name: "Remove Export after approval" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("region", { name: copy.canvasLabel })));
+  });
+
+  it("with no nodes the canvas says how to add one, and Download, Save and the badge treat the plan as not ready", () => {
+    mount();
+    for (const label of ["Brand kit", "Approved products", "Campaign concept", "Image task placeholder", "Human review required", "Export after approval"]) {
+      fireEvent.click(screen.getByRole("button", { name: `Remove ${label}` }));
+    }
+    expect(screen.getByText(copy.empty)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Download validated draft/ })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Save private draft to cloud" })).toHaveProperty("disabled", true);
+    expect(screen.getByText("NEEDS REVIEW").getAttribute("title")).toBe(copy.emptyReason);
+    expect(screen.getAllByText(copy.emptyReason).length).toBeGreaterThan(0);
+  });
+
+  it("onConnectEnd: a drag started on an input names the reason by type; output on output says to drag output to input", () => {
+    mount();
+    const state = (s: Record<string, unknown>) => s as unknown as Parameters<NonNullable<FlowProps["onConnectEnd"]>>[1];
+    // Started on export's input, dropped on brand's output: the pair is brand -> export, refused by type.
+    act(() => props().onConnectEnd!(new MouseEvent("mouseup"), state({
+      isValid: false, fromNode: { id: "export" }, toNode: { id: "brand" }, fromHandle: { type: "target" }, toHandle: { type: "source" },
+    })));
+    expect(status()).toBe(copy.reasons.types);
+    act(() => props().onConnectEnd!(new MouseEvent("mouseup"), state({
+      isValid: false, fromNode: { id: "prompt" }, toNode: { id: "image" }, fromHandle: { type: "source" }, toHandle: { type: "source" },
+    })));
+    expect(status()).toBe(copy.dragOutToIn);
+    // Click-to-connect refusals go through the same words.
+    act(() => props().onClickConnectEnd!(new MouseEvent("click"), state({
+      isValid: false, fromNode: { id: "image" }, toNode: { id: "review" }, fromHandle: { type: "source" }, toHandle: { type: "target" },
+    })));
+    expect(status()).toBe(copy.reasons.exists);
+  });
+
+  it("isValidConnection: named handles must be the ports the wire is drawn on, so a wire never jumps to another input", () => {
+    mount();
+    addNodeOfType("video.generate");
+    const valid = (sourceHandle: string | null, targetHandle: string | null) =>
+      props().isValidConnection!({ source: "prompt", target: "video_generate_1", sourceHandle, targetHandle });
+    expect(valid("prompt", "prompt")).toBe(true);
+    expect(valid(null, null)).toBe(true);
+    expect(valid("prompt", "image")).toBe(false);
+    edgesChange([{ type: "remove", id: "image->review" }]);
+    expect(props().isValidConnection!({ source: "image", target: "review", sourceHandle: "image", targetHandle: "video" })).toBe(false);
+    expect(props().isValidConnection!({ source: "image", target: "review", sourceHandle: "image", targetHandle: "image" })).toBe(true);
+    // Handles never widen: a pair the types refuse stays refused whatever the handles claim.
+    expect(props().isValidConnection!({ source: "brand", target: "export", sourceHandle: "approval", targetHandle: "approval" })).toBe(false);
+  });
+
+  it("refusals, From / To and \"Connection added.\" are in the reader's language", () => {
+    const ru = dictionaries.ru.agentBuilder;
+    render(<AgentBuilder providerPreviews={previews} copy={ru} />);
+    expect(screen.getByLabelText(ru.from)).toBeTruthy();
+    expect(screen.getByLabelText(ru.to)).toBeTruthy();
+    connect("brand", "export");
+    expect(status()).toBe(ru.reasons.types);
+    connect("brand", "prompt");
+    expect(status()).toBe(ru.reasons.exists);
+    fireEvent.click(screen.getByRole("button", { name: "Connect selected nodes" }));
+    expect(status()).toBe(ru.reasons.exists);
+    edgesChange([{ type: "remove", id: "brand->prompt" }]);
+    connect("brand", "prompt");
+    expect(status()).toBe(ru.connected);
+  });
+
+  it("the notice is announced from exactly one live region, inside the canvas", () => {
+    mount();
+    connect("brand", "export");
+    const regions = screen.getAllByRole("status");
+    expect(regions).toHaveLength(1);
+    expect(screen.getByRole("region", { name: copy.canvasLabel }).contains(regions[0])).toBe(true);
+    // React Flow keeps its own (empty unless a node is moved by keyboard) region; no other one repeats the notice.
+    expect([...document.querySelectorAll("[aria-live]")].filter(n => n.textContent === regions[0].textContent)).toEqual([regions[0]]);
   });
 
   it("no canvas interaction calls fetch: add, connect, move, rename, disconnect and remove", () => {

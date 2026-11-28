@@ -29,6 +29,8 @@ export type AgentCanvasActions = {
   onRemove: (id: string) => void;
   onNudge: (id: string, index: number, dx: number, dy: number) => void;
   onDisconnect: (edgeId: string) => void;
+  /** A node's label for a wire's accessible name ("Disconnect Brand kit from Campaign concept on canvas"). */
+  labelOf: (id: string) => string;
 };
 
 export const AgentCanvasContext = createContext<AgentCanvasActions | null>(null);
@@ -53,9 +55,13 @@ export function AgentNode({ data, selected }: NodeProps<AgentFlowNode>) {
   const ports = PORTS[node.type];
   return (
     <article className={selected ? `${styles.node} ${styles.nodeSelected}` : styles.node} data-agent-node={node.id}>
+      {/* Remove in the header, the arrows alone on the last row: with every control 40px, the card still fits the 250px row
+          of the default grid (lib/agent-draft defaultNodePosition) instead of running under the card below it. */}
       <header className={styles.nodeTop}>
         <span className={styles.nodeBadge}>{node.type}</span>
-        <span>{fmt(copy.node, { n: String(index + 1).padStart(2, "0") })}</span>
+        <button type="button" className={`nodrag nokey ${styles.nodeRemove}`} aria-label={fmt(copy.removeLabel, { label: node.label })} onClick={() => onRemove(node.id)}>
+          {copy.remove}
+        </button>
       </header>
       <input
         className={`nodrag nokey ${styles.nodeLabel}`}
@@ -64,7 +70,7 @@ export function AgentNode({ data, selected }: NodeProps<AgentFlowNode>) {
         value={node.label}
         onChange={e => onRename(node.id, e.target.value)}
       />
-      <div className={styles.nodeId}>{node.id}</div>
+      <div className={styles.nodeId}>{node.id} · {fmt(copy.node, { n: String(index + 1).padStart(2, "0") })}</div>
       <div className={styles.portGrid}>
         <div className={styles.portColumn}>
           <span className={styles.portHead}>{copy.inputs}</span>
@@ -102,32 +108,36 @@ export function AgentNode({ data, selected }: NodeProps<AgentFlowNode>) {
             </button>
           ))}
         </div>
-        <button type="button" className={`nodrag nokey ${styles.nodeRemove}`} aria-label={fmt(copy.removeLabel, { label: node.label })} onClick={() => onRemove(node.id)}>
-          {copy.remove}
-        </button>
       </footer>
     </article>
   );
 }
 
-/** A wire: a curve with a wide invisible hit path, and an × at its middle that disconnects it without a keyboard. */
+/**
+ * A wire: a curve with a wide invisible hit path. Its × (disconnect without a keyboard) is shown only while the wire is
+ * selected, just before the input it ends on: drawn on every wire at its middle it sat under cards in the default layout
+ * and was a Tab stop nobody could see. A tap or Enter selects the wire; the connection list below keeps an × for every
+ * wire at all times.
+ */
 export function AgentEdge({ id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, selected, interactionWidth }: EdgeProps<AgentFlowEdge>) {
-  const { copy, onDisconnect } = useCanvasActions();
-  const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
+  const { copy, onDisconnect, labelOf } = useCanvasActions();
+  const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
+  // A wire always enters its input from the left, so 22px left of the port is on the wire and outside the target card.
+  const [labelX, labelY] = [targetX - 22, targetY];
   return (
     <>
       <BaseEdge id={id} path={path} interactionWidth={interactionWidth} className={selected ? `${styles.wire} ${styles.wireSelected}` : styles.wire} />
-      <EdgeLabelRenderer>
+      {selected && <EdgeLabelRenderer>
         <button
           type="button"
           className={`nodrag nopan nokey ${styles.wireRemove}`}
           style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
-          aria-label={fmt(copy.disconnect, { source, target })}
+          aria-label={fmt(copy.disconnectCanvas, { from: labelOf(source), to: labelOf(target) })}
           onClick={() => onDisconnect(id)}
         >
-          ×
+          <span aria-hidden>×</span>
         </button>
-      </EdgeLabelRenderer>
+      </EdgeLabelRenderer>}
     </>
   );
 }
