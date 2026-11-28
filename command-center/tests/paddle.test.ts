@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buyAccess,
   checkoutCustomData,
+  paddleSellsTo,
+  parsePaddleTestOrgs,
   paddleLocale,
   purchaseArrived,
   resolvePaddleConfig,
@@ -64,20 +66,50 @@ describe("resolvePaddleConfig", () => {
 
 describe("buyAccess", () => {
   const config = resolvePaddleConfig(SANDBOX);
+  const listed = new Set([ORG]);
 
   it("never offers a checkout to the exempt default organization", () => {
-    expect(buyAccess(DEFAULT_ORG_ID, "owner", config)).toBe("hidden");
+    expect(buyAccess(DEFAULT_ORG_ID, "owner", config, new Set([DEFAULT_ORG_ID]))).toBe("hidden");
   });
 
   it("hides everything when Paddle is not configured", () => {
-    expect(buyAccess(ORG, "owner", null)).toBe("hidden");
+    expect(buyAccess(ORG, "owner", null, listed)).toBe("hidden");
   });
 
   it("offers the checkout to owners and admins, and tells the others who can", () => {
-    expect(buyAccess(ORG, "owner", config)).toBe("allowed");
-    expect(buyAccess(ORG, "admin", config)).toBe("allowed");
-    expect(buyAccess(ORG, "editor", config)).toBe("admin_only");
-    expect(buyAccess(ORG, "viewer", config)).toBe("admin_only");
+    expect(buyAccess(ORG, "owner", config, listed)).toBe("allowed");
+    expect(buyAccess(ORG, "admin", config, listed)).toBe("allowed");
+    expect(buyAccess(ORG, "editor", config, listed)).toBe("admin_only");
+    expect(buyAccess(ORG, "viewer", config, listed)).toBe("admin_only");
+  });
+
+  it("sandbox: a workspace that is not in PADDLE_TEST_ORG_IDS is offered no checkout at all (a test card must not buy real credits)", () => {
+    expect(buyAccess(ORG, "owner", config, new Set())).toBe("hidden");
+    expect(buyAccess(ORG, "viewer", config, new Set())).toBe("hidden");
+    expect(buyAccess(ORG, "owner", config, new Set(["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]))).toBe("hidden");
+  });
+
+  it("production sells to every workspace, list or no list", () => {
+    const live = resolvePaddleConfig({ ...SANDBOX, NEXT_PUBLIC_PADDLE_ENV: "production", NEXT_PUBLIC_PADDLE_CLIENT_TOKEN: "live_abcdefghijkl" });
+    expect(live?.environment).toBe("production");
+    expect(buyAccess(ORG, "owner", live, new Set())).toBe("allowed");
+  });
+});
+
+describe("paddleSellsTo / PADDLE_TEST_ORG_IDS", () => {
+  it("reads the list as the webhook does: uuids, any case, commas or white space, junk skipped", () => {
+    const orgs = parsePaddleTestOrgs(` ${ORG.toUpperCase()},junk\n  bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb `);
+    expect([...orgs]).toEqual([ORG, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]);
+    expect(parsePaddleTestOrgs(undefined).size).toBe(0);
+  });
+
+  it("sandbox sells only to a listed organization; nothing without a client or an organization", () => {
+    const sandbox = { environment: "sandbox" as const };
+    expect(paddleSellsTo(sandbox, ORG.toUpperCase(), new Set([ORG]))).toBe(true);
+    expect(paddleSellsTo(sandbox, ORG, new Set())).toBe(false);
+    expect(paddleSellsTo({ environment: "production" }, ORG, new Set())).toBe(true);
+    expect(paddleSellsTo(null, ORG, new Set([ORG]))).toBe(false);
+    expect(paddleSellsTo(sandbox, null, new Set([ORG]))).toBe(false);
   });
 });
 

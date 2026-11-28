@@ -7,7 +7,7 @@ import { paddleClient } from "@/lib/paddle";
 import { isCreditExempt } from "@/lib/credits";
 import { TOPUP_MAX_CENTS, TOPUP_MIN_CENTS, topupTransactionBody } from "@/lib/api/pricing";
 import { requireSameOrigin } from "@/lib/server/same-origin";
-import { paymentsProvider } from "@/lib/server/payments";
+import { paddleClientFor, paymentsProvider } from "@/lib/server/payments";
 import { parseJsonCapped } from "@/lib/server/json-body";
 
 export const runtime = "nodejs";
@@ -46,6 +46,8 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   const access = await requireOrgRole({ orgId }, "admin");
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
   if (isCreditExempt(orgId)) return NextResponse.json({ error: "exempt" }, { status: 409 });
+  // Sandbox on a production database sells only to the allow-listed test workspaces (PADDLE_TEST_ORG_IDS).
+  if (!paddleClientFor(orgId)) return NextResponse.json({ error: "test_mode_only" }, { status: 403 });
 
   const supabase = await createClient();
   if (!supabase) return NextResponse.json({ error: "not_configured" }, { status: 503 });

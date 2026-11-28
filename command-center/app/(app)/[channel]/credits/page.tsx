@@ -16,11 +16,11 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { UNIT_USD, chargePerUnit, coerceTransactions, inviteCardShown, isCreditExempt } from "@/lib/credits";
 import { creditsEnforced, readCreditAccount, readCreditPriceList, readCreditPrices } from "@/lib/server/credits";
-import { buyAccess, paddleClient, paddleConfig } from "@/lib/paddle";
+import { buyAccess, paddleConfig } from "@/lib/paddle";
 import { PLAN_ENV, balanceSplit, generationRates, planMatrix, subscribeAccess } from "@/lib/plans";
 import { DODO_CATALOG_PLAN_PRICES, dodoBuyAccess, dodoViewFor } from "@/lib/dodo";
 import { withDodoPlans } from "@/lib/payments";
-import { paymentsProvider } from "@/lib/server/payments";
+import { paddleClientFor, paddleTestOrgs, paymentsProvider } from "@/lib/server/payments";
 import { dodoServer } from "@/lib/server/dodo-api";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import { readSellableModels } from "@/lib/creative/registry";
@@ -145,7 +145,10 @@ export default async function CreditsPage() {
   const dodoCfg = dodoMode ? dodoServer() : null;
   const dodo = dodoMode ? dodoViewFor(dodoCfg, orgId) : null;
   const dodoTestOnly = dodoMode && dodoCfg !== null && dodo === null;
-  const buy = dodoMode ? dodoBuyAccess(orgId, org.current.role, dodo) : buyAccess(orgId, org.current.role, paddleConfig);
+  // Paddle's sandbox, likewise, sells only to PADDLE_TEST_ORG_IDS: a test card must not buy real credits (the webhook agrees).
+  const paddleSells = !dodoMode && paddleConfig !== null && paddleClientFor(orgId) !== null;
+  const paddleTestOnly = !dodoMode && paddleConfig !== null && !paddleSells;
+  const buy = dodoMode ? dodoBuyAccess(orgId, org.current.role, dodo) : buyAccess(orgId, org.current.role, paddleConfig, paddleTestOrgs());
   const catalog = planValue(catalogRead);
   const summary = planValue(summaryRead);
   const lots = planValue(lotsRead);
@@ -154,7 +157,7 @@ export default async function CreditsPage() {
   const lotsFailed = lotsRead.state === "failed";
   const matrix = dodoMode
     ? withDodoPlans(planMatrix(catalog, PLAN_ENV, null), dodo, DODO_CATALOG_PLAN_PRICES, locale)
-    : planMatrix(catalog, PLAN_ENV, paddleClient);
+    : planMatrix(catalog, PLAN_ENV, paddleClientFor(orgId));
   // Whether the organization already has a live subscription is unknown when
   // its summary could not be read: offering a second checkout then could
   // double-charge, so nothing is offered until it reads.
@@ -276,9 +279,15 @@ export default async function CreditsPage() {
           <p className="tnum text-xs text-[var(--color-muted)]">
             {creditsEnforced ? t.credits.enforcedOn : t.credits.enforcedOff}
           </p>
-          {!(dodoMode ? dodo : paddleConfig) && !exempt && (
+          {!(dodoMode ? dodo : paddleSells) && !exempt && (
             <p className="tnum text-xs text-[var(--color-muted)]">
-              {dodoTestOnly ? t.credits.buy.testOnlyDodo : dodoMode ? t.credits.buy.notConfiguredDodo : t.credits.buy.notConfigured}
+              {dodoTestOnly
+                ? t.credits.buy.testOnlyDodo
+                : paddleTestOnly
+                  ? t.credits.buy.testOnlyPaddle
+                  : dodoMode
+                    ? t.credits.buy.notConfiguredDodo
+                    : t.credits.buy.notConfigured}
             </p>
           )}
           {rpcActive ? (

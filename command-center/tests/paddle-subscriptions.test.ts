@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createRestStore,
   creditsForShare,
@@ -152,7 +152,7 @@ class FakeStore implements PaddleStore {
 async function deliver(store: FakeStore, body: string) {
   return handlePaddleWebhook(
     { method: "POST", rawBody: body, signature: sign(body) },
-    { secret: SECRET, prices: packs, plans, store, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} } },
+    { secret: SECRET, prices: packs, plans, store, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} }, mode: "production", testOrgs: new Set() },
   );
 }
 
@@ -319,7 +319,7 @@ describe("the handler", () => {
     const body = planPaid();
     const res = await handlePaddleWebhook(
       { method: "POST", rawBody: body, signature: sign(body) },
-      { secret: SECRET, prices: packs, plans, store: bare, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} } },
+      { secret: SECRET, prices: packs, plans, store: bare, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} }, mode: "production", testOrgs: new Set() },
     );
     expect(res.status).toBe(500);
   });
@@ -329,7 +329,7 @@ describe("the handler", () => {
     const body = planPaid();
     const res = await handlePaddleWebhook(
       { method: "POST", rawBody: body, signature: sign(body).replace(/h1=./, "h1=0") },
-      { secret: SECRET, prices: packs, plans, store, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} } },
+      { secret: SECRET, prices: packs, plans, store, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} }, mode: "production", testOrgs: new Set() },
     );
     expect(res.status).toBe(401);
     expect(store.grants).toEqual([]);
@@ -490,7 +490,7 @@ describe("discounts", () => {
     });
     await handlePaddleWebhook(
       { method: "POST", rawBody: promoPack, signature: sign(promoPack) },
-      { secret: SECRET, prices: packs, plans, store, promos, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} } },
+      { secret: SECRET, prices: packs, plans, store, promos, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} }, mode: "production", testOrgs: new Set() },
     );
     expect(store.events.get("evt_promo_pack")?.detail).toBe(`credited 1000 credits${DISCOUNT_MARK} (promo ${PROMO})`);
     await deliver(store, planPaid({ discount_id: DSC, details: { totals: { subtotal: "1900", discount: "950", grand_total: "950" } } }, "evt_plan_dsc"));
@@ -582,4 +582,92 @@ describe("discounts", () => {
     expect(decideApiTopup(topup({ subtotal: "2000", discount: "2000", grand_total: "0" }), API_PRODUCT).kind).toBe("reject");
   });
 
+});
+
+describe("plans in sandbox (PADDLE_WEBHOOK_ENV=sandbox)", () => {
+  function deliverSandbox(store: FakeStore, body: string, testOrgs: ReadonlySet<string>, mode: "sandbox" | "production" | "unknown" = "sandbox") {
+    return handlePaddleWebhook(
+      { method: "POST", rawBody: body, signature: sign(body) },
+      { secret: SECRET, prices: packs, plans, store, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} }, mode, testOrgs },
+    );
+  }
+
+  it("a test-card subscription puts no plan and no plan credits on a workspace that is not allow-listed", async () => {
+    const store = new FakeStore();
+    expect((await deliverSandbox(store, subEvent("subscription.created"), new Set())).body).toMatchObject({ status: "rejected" });
+    expect((await deliverSandbox(store, planPaid(), new Set())).body).toMatchObject({ status: "rejected" });
+    expect(store.subs.size).toBe(0);
+    expect(store.grants).toEqual([]);
+    expect(store.events.get("evt_txn1")?.detail).toMatch(/PADDLE_TEST_ORG_IDS/);
+  });
+
+  it("rejected subscription state and period payment remain terminal after mode/list corrections", async () => {
+    const store = new FakeStore();
+    const state = vi.spyOn(store, "upsertSubscription");
+    const grant = vi.spyOn(store, "grantSubscriptionCredits");
+    for (const body of [subEvent("subscription.created"), planPaid()]) {
+      expect((await deliverSandbox(store, body, new Set())).body).toMatchObject({ status: "rejected" });
+      for (const mode of ["sandbox", "production", "production"] as const)
+        expect((await deliverSandbox(store, body, new Set([ORG]), mode)).body).toEqual({ ok: true, duplicate: true, status: "rejected" });
+    }
+    expect(state).not.toHaveBeenCalled();
+    expect(grant).not.toHaveBeenCalled();
+    expect(store.subs.size).toBe(0);
+    expect(store.periods.size).toBe(0);
+    expect(store.grants).toEqual([]);
+    expect([...store.events.values()].map((e) => e.status)).toEqual(["rejected", "rejected"]);
+  });
+
+  it("unknown subscription state and payment recover once each without a duplicate period grant", async () => {
+    const store = new FakeStore();
+    const state = vi.spyOn(store, "upsertSubscription");
+    const grant = vi.spyOn(store, "grantSubscriptionCredits");
+    for (const body of [subEvent("subscription.created"), planPaid()]) {
+      expect((await deliverSandbox(store, body, new Set(), "unknown")).status).toBe(503);
+      expect((await deliverSandbox(store, body, new Set(), "production")).body).toMatchObject({ status: "processed" });
+      expect((await deliverSandbox(store, body, new Set(), "production")).body).toMatchObject({ duplicate: true });
+    }
+    expect(state).toHaveBeenCalledTimes(1);
+    expect(grant).toHaveBeenCalledTimes(1);
+    expect(store.grants).toEqual(["creator:2000"]);
+    expect(store.subs.get(SUB)?.status).toBe("active");
+    expect(store.periods.size).toBe(1);
+  });
+
+  it("an allow-listed test workspace gets its plan and its credits", async () => {
+    const store = new FakeStore();
+    const allow = new Set([ORG]);
+    expect((await deliverSandbox(store, planPaid(), allow)).body).toMatchObject({ status: "processed" });
+    expect((await deliverSandbox(store, subEvent("subscription.created"), allow)).body).toMatchObject({ status: "processed" });
+    expect(store.grants).toEqual(["creator:2000"]);
+    expect(store.subs.size).toBe(1);
+  });
+});
+
+describe("plans while PADDLE_WEBHOOK_ENV is unset", () => {
+  function deliverUnset(store: FakeStore, body: string) {
+    return handlePaddleWebhook(
+      { method: "POST", rawBody: body, signature: sign(body) },
+      { secret: SECRET, prices: packs, plans, store, now: () => NOW_MS, log: { info() {}, warn() {}, error() {} }, mode: "unknown", testOrgs: new Set() },
+    );
+  }
+
+  it("a state that grants (active, trialing) waits for Paddle's retry (503), and nothing is recorded", async () => {
+    const store = new FakeStore();
+    for (const status of ["active", "trialing"]) {
+      const r = await deliverUnset(store, subEvent("subscription.updated", { status }, `evt_${status}`));
+      expect(r.status).toBe(503);
+    }
+    expect(store.subs.size).toBe(0);
+  });
+
+  it("a cancellation, pause or past_due is recorded at once: holding it would keep a plan nobody pays for", async () => {
+    for (const status of ["canceled", "paused", "past_due"]) {
+      const store = new FakeStore();
+      const r = await deliverUnset(store, subEvent("subscription.updated", { status }, `evt_${status}`));
+      expect(r.status, status).toBe(200);
+      expect(r.body, status).toMatchObject({ status: "processed" });
+      expect(store.subs.get(SUB)?.status, status).toBe(status);
+    }
+  });
 });

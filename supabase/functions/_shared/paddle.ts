@@ -30,6 +30,14 @@
  *     that retrying CAN fix (the database was unreachable) is answered 5xx so
  *     Paddle delivers the event again.
  *   - No secret, and nothing of the payer beyond ids, is ever logged or stored.
+ *   - Sandbox on a production database grants only to the workspaces in
+ *     PADDLE_TEST_ORG_IDS (PADDLE_WEBHOOK_ENV, see paddleWebhookEnvFromEnv).
+ *     A function deployed with the sandbox destination's secret verifies a
+ *     sandbox delivery exactly like a live one, and nothing in the event says
+ *     which Paddle sent it, so a public test card would otherwise buy real
+ *     credits, a real plan or a real API balance. Unset or unrecognised, it
+ *     grants nothing and answers 503, so Paddle redelivers once it is set.
+ *     Taking credits back (refunds, chargebacks) is never gated.
  *   - An API balance top-up (migration 0031) is a transaction the Command
  *     Center created with one custom-priced line under the "API balance
  *     top-up" product and custom_data.purpose = "api_topup". It credits the
@@ -71,6 +79,48 @@ export const PADDLE_PRICE_ID_RE = /^pri_[a-z0-9]{10,40}$/;
 const TRANSACTION_ID_RE = /^txn_[a-z0-9]{10,40}$/;
 const ADJUSTMENT_ID_RE = /^adj_[a-z0-9]{10,40}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ───────────────────────────────────────────────────────────────────────────
+// Sandbox
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * PADDLE_WEBHOOK_ENV — which Paddle this function's secret belongs to, in the
+ * same words as the Command Center's NEXT_PUBLIC_PADDLE_ENV. Unlike the app's
+ * setting, empty is NOT sandbox here: an existing live deployment redeployed
+ * without it must not start refusing real customers for good (sandbox answers
+ * `rejected`, which Paddle never redelivers), nor may it guess production and
+ * let a test card buy credits. Unknown waits instead (503, then Paddle's retry).
+ */
+export type PaddleWebhookEnv = "sandbox" | "production" | "unknown";
+export function paddleWebhookEnvFromEnv(raw: string | null | undefined): PaddleWebhookEnv {
+  const v = (raw ?? "").trim().toLowerCase();
+  return v === "production" ? "production" : v === "sandbox" ? "sandbox" : "unknown";
+}
+
+/** PADDLE_TEST_ORG_IDS: organization uuids separated by commas or white space, lower-cased; anything else is skipped. */
+export function paddleTestOrgsFromEnv(raw: string | null | undefined): ReadonlySet<string> {
+  return new Set((raw ?? "").split(/[\s,]+/).map((x) => x.trim().toLowerCase()).filter((x) => UUID_RE.test(x)));
+}
+
+/** Why a sandbox event grants nothing to a workspace that is not on the list. */
+const SANDBOX_ONLY =
+  "sandbox: this organization is not in PADDLE_TEST_ORG_IDS — nothing granted (a test card must not buy real credits)";
+const ENV_UNKNOWN =
+  "PADDLE_WEBHOOK_ENV is not set to sandbox or production — nothing granted yet; waiting for Paddle's retry";
+
+type GrantGate = ((orgId: string) => { httpStatus: number; status: "rejected" | "failed"; detail: string } | null) & {
+  /** PADDLE_WEBHOOK_ENV was set (sandbox or production); false while it is unset and grants wait for Paddle's retry. */
+  envKnown: boolean;
+};
+
+function grantGate(env: PaddleWebhookEnv, testOrgs: ReadonlySet<string>): GrantGate {
+  return Object.assign((orgId: string) => {
+    if (env === "production") return null;
+    if (env === "sandbox") return testOrgs.has(orgId.toLowerCase()) ? null : { httpStatus: 200, status: "rejected" as const, detail: SANDBOX_ONLY };
+    return { httpStatus: 503, status: "failed" as const, detail: ENV_UNKNOWN };
+  }, { envKnown: env !== "unknown" });
+}
 
 /** The webhook's env var for a pack's Paddle price id, e.g. PADDLE_PRICE_STARTER. */
 export function priceEnvName(pack: CreditPackId): string {
@@ -1023,6 +1073,10 @@ export async function handlePaddleWebhook(
     plans?: PlanTable;
     /** Discounts allowed to give credits at full value (PADDLE_PROMO_DISCOUNT_IDS). */
     promos?: PromoAllowlist;
+    /** PADDLE_WEBHOOK_ENV (paddleWebhookEnvFromEnv). Required: there is no default that is safe for both a live and a sandbox deployment. */
+    mode: PaddleWebhookEnv;
+    /** PADDLE_TEST_ORG_IDS: the only workspaces a sandbox event may grant to. */
+    testOrgs: ReadonlySet<string>;
   },
 ): Promise<WebhookResponse> {
   const log: Logger = deps.log ?? console;
@@ -1052,7 +1106,7 @@ export async function handlePaddleWebhook(
     }
 
     const decision = decideEvent(event, deps.prices, deps.apiProductId, deps.plans ?? new Map(), deps.promos ?? new Set());
-    const record = await execute(decision, deps.store, log, event.eventId);
+    const record = await execute(decision, deps.store, log, event.eventId, grantGate(deps.mode, deps.testOrgs));
     await deps.store.recordEvent({ ...base, ...record.row });
     if (record.row.status === "rejected" || record.httpStatus >= 500) {
       log.warn(`paddle-webhook: ${event.eventId} ${record.row.status} — ${record.row.detail}`);
@@ -1081,6 +1135,8 @@ async function execute(
   store: PaddleStore,
   log: Logger,
   eventId: string,
+  /** Every GRANT asks this first; refunds and chargebacks never do. */
+  gate: GrantGate,
 ): Promise<{ httpStatus: number; row: RecordFields }> {
   switch (decision.kind) {
     case "ignore":
@@ -1112,6 +1168,8 @@ async function execute(
           row: { status: "rejected", detail: "paid, but the organization does not exist — not credited", ...money },
         };
       }
+      const held = gate(decision.orgId);
+      if (held) return { httpStatus: held.httpStatus, row: { status: held.status, detail: held.detail, ...money } };
       try {
         const res = await store.addPurchasedCredits(
           decision.orgId,
@@ -1154,6 +1212,8 @@ async function execute(
           row: { status: "rejected", detail: "paid API top-up, but the organization does not exist — not credited", ...money },
         };
       }
+      const held = gate(decision.orgId);
+      if (held) return { httpStatus: held.httpStatus, row: { status: held.status, detail: held.detail, ...money } };
       try {
         const res = await store.addApiTopup(decision.orgId, decision.cents, decision.transactionId, decision.note);
         log.info(`paddle-webhook: ${eventId} ${res.duplicate ? "API top-up already credited" : `API top-up ${decision.cents} cents`}`);
@@ -1183,6 +1243,13 @@ async function execute(
           row: { status: "rejected", detail: `subscription ${decision.subscriptionId} names no known organization`, orgId: null },
         };
       }
+      // A sandbox subscription must not put a real plan (its limits, its run slots) on a customer's workspace either.
+      // Only a state that grants (active, trialing) waits while PADDLE_WEBHOOK_ENV is unset: a cancellation, pause or
+      // past_due takes something away, so holding it at 503 would keep a plan a customer stopped paying for. In
+      // sandbox a non-listed workspace is still refused whatever the state (a sandbox subscription is not theirs).
+      const grants = decision.status === "active" || decision.status === "trialing";
+      const held = grants || gate.envKnown ? gate(orgId) : null;
+      if (held) return { httpStatus: held.httpStatus, row: { status: held.status, detail: held.detail, orgId } };
       try {
         const res = await store.upsertSubscription({
           orgId,
@@ -1232,6 +1299,8 @@ async function execute(
           row: { status: "rejected", detail: "paid plan, but no known organization — not credited", ...money, orgId: null },
         };
       }
+      const held = gate(orgId);
+      if (held) return { httpStatus: held.httpStatus, row: { status: held.status, detail: held.detail, ...money, orgId } };
       try {
         const res = await store.grantSubscriptionCredits({
           orgId,

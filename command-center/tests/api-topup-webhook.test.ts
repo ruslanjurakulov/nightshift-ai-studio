@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   apiShortfallWords,
   createRestStore,
@@ -97,7 +97,7 @@ function deliver(store: Store, event: Record<string, unknown>, apiProductId: str
   const body = JSON.stringify(event);
   return handlePaddleWebhook(
     { method: "POST", rawBody: body, signature: sign(body) },
-    { secret: SECRET, prices, store, now: () => NOW_MS, log: quiet, apiProductId, promos },
+    { secret: SECRET, prices, store, now: () => NOW_MS, log: quiet, apiProductId, promos, mode: "production", testOrgs: new Set() },
   );
 }
 
@@ -391,7 +391,7 @@ describe("an API top-up refund that met holds", () => {
       const body = JSON.stringify(e);
       return handlePaddleWebhook(
         { method: "POST", rawBody: body, signature: sign(body) },
-        { secret: SECRET, prices, store, now: () => NOW_MS, log, apiProductId: PRODUCT },
+        { secret: SECRET, prices, store, now: () => NOW_MS, log, apiProductId: PRODUCT, mode: "production", testOrgs: new Set() },
       );
     };
     await send(txnEvent);
@@ -471,5 +471,53 @@ describe("createRestStore: api_refund_topup's answer", () => {
     const nulled = await storeReturning({ duplicate: true, requested_cents: 2500, taken_cents: 500, shortfall_cents: 2000, on_hold_cents: null })
       .store.refundApiTopup!(TXN, ADJ, null, "n", "refund");
     expect(nulled.onHold).toBeNull();
+  });
+});
+
+describe("API top-up in sandbox (PADDLE_WEBHOOK_ENV=sandbox)", () => {
+  function deliverSandbox(store: Store, testOrgs: ReadonlySet<string>, mode: "sandbox" | "production" | "unknown" = "sandbox") {
+    const body = JSON.stringify({ event_id: "evt_01sandbox", event_type: "transaction.completed", data: txn() });
+    return handlePaddleWebhook(
+      { method: "POST", rawBody: body, signature: sign(body) },
+      { secret: SECRET, prices, store, now: () => NOW_MS, log: quiet, apiProductId: PRODUCT, mode, testOrgs },
+    );
+  }
+
+  it("a test-card top-up for a workspace that is not allow-listed adds no API balance", async () => {
+    const store = new Store();
+    expect((await deliverSandbox(store, new Set())).body).toMatchObject({ status: "rejected" });
+    expect(store.api.size).toBe(0);
+    expect(store.events.get("evt_01sandbox")?.detail).toMatch(/PADDLE_TEST_ORG_IDS/);
+  });
+
+  it("a rejected API payment is not recovered by allowlisting or production replay", async () => {
+    const store = new Store();
+    const grant = vi.spyOn(store, "addApiTopup");
+    expect((await deliverSandbox(store, new Set())).body).toMatchObject({ status: "rejected" });
+    const original = { ...store.events.get("evt_01sandbox")! };
+    for (const mode of ["sandbox", "production", "production"] as const)
+      expect((await deliverSandbox(store, new Set([ORG]), mode)).body).toEqual({ ok: true, duplicate: true, status: "rejected" });
+    expect(grant).not.toHaveBeenCalled();
+    expect(store.api.size).toBe(0);
+    expect(store.credits).toEqual([]);
+    expect(store.events.get("evt_01sandbox")).toEqual(original);
+  });
+
+  it("an unknown-mode API payment retries once in production without crediting the site balance", async () => {
+    const store = new Store();
+    const grant = vi.spyOn(store, "addApiTopup");
+    expect((await deliverSandbox(store, new Set(), "unknown")).status).toBe(503);
+    expect(grant).not.toHaveBeenCalled();
+    expect((await deliverSandbox(store, new Set(), "production")).body).toMatchObject({ status: "processed" });
+    expect((await deliverSandbox(store, new Set(), "production")).body).toMatchObject({ duplicate: true });
+    expect(grant).toHaveBeenCalledTimes(1);
+    expect([...store.api.values()]).toEqual([{ org: ORG, cents: 2500 }]);
+    expect(store.credits).toEqual([]);
+  });
+
+  it("an allow-listed test workspace's top-up is credited", async () => {
+    const store = new Store();
+    expect((await deliverSandbox(store, new Set([ORG]))).body).toMatchObject({ status: "processed" });
+    expect([...store.api.values()]).toEqual([{ org: ORG, cents: 2500 }]);
   });
 });
