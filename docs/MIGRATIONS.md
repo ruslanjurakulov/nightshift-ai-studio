@@ -3383,6 +3383,7 @@ database doors it used.
   The two rows now have no terms gate, so `--all` in the Probe models workflow includes them: one paid call each.
 - **Tests.** `tests/test_country_sale_allow_list_migration.py`, `tests/test_geoip_build.py` (`RegistryField`),
   `tests/test_google_requires_adult.py`, `tests/security/test_sec_country_sale_0238.py`, `tests/security/test_sec_country_block.py`.
+
 ## A failed vendor call is not counted as units used in the owner's provider spend (0240)
 
 - **Why.** Since PR #964 every call that reached a vendor writes one `creative_job_costs` row, including the calls that failed,
