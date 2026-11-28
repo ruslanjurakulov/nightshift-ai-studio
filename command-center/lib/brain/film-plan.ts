@@ -134,7 +134,9 @@ export function readFilmOutline(text: string, f: FilmPlanSource, chapters: { id:
   // The project's own title is the person's: kept as it is, the model's only when the project has none. "None" as plain() reads it:
   // a title of only U+3164 or zero-width characters is empty, not a title (trim() keeps those).
   const title = plain(f.title, 100) ? f.title : json.title;
-  const outline = readScenario({ ...json, title, chapters: merged }, slots, { outline: true });
+  // No `format`: a project's outline is not a chat story outline, and a model that wrote one must not switch on the story pacing and
+  // shot rules (lib/brain/plan STORY, shotRules), whose turn count the press was never told.
+  const outline = readScenario({ ...json, title, chapters: merged, format: undefined }, slots, { outline: true });
   if (!outline || outline.chapters.length !== chapters.length || outline.target_seconds !== slots.target_seconds) return { ok: false, why: "invalid" };
   if (planNamesVendor(outlineText(outline), filmText(f), extraClaimNames)) return { ok: false, why: "invalid" };
   return { ok: true, outline };

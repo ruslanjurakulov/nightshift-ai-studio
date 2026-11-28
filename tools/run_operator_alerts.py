@@ -18,7 +18,9 @@ TELEGRAM_CHAT_ID, SUPABASE_URL, SUPABASE_SERVICE_KEY, GITHUB_TOKEN /
 GITHUB_REPOSITORY (supplied by Actions), ELEVENLABS_LOW_CREDITS and the optional
 OPERATOR_APP_URL, OPERATOR_TZ, OPERATOR_QUIET_HOURS, OPERATOR_DIGEST_HOUR,
 OPERATOR_STUCK_MINUTES, OPERATOR_ALERT_MAX_PER_HOUR, OPERATOR_DEADMAN_HOURS (1-12, `off`: the dead-man switch
-of modules/operator_bot/reliability.py).
+of modules/operator_bot/reliability.py), and the film spend watch's two lines, NIGHTSHIFT_FILM_SPEND_WARN_USD
+(default 6) and NIGHTSHIFT_FILM_SPEND_STOP_USD (default 8). A malformed spend line is a refusal: the pass exits 2
+naming the variable rather than watching a paid film against a default the owner did not choose.
 
 The owner's e-mail copy (docs/OWNER_EMAIL.md) is off unless NIGHTSHIFT_OWNER_EMAIL
 is exactly `on`; it also needs RESEND_API_KEY and NIGHTSHIFT_EMAIL_FROM, and takes
@@ -48,10 +50,21 @@ from modules.supabase_sync import SupabaseSync
 from modules.telegram_control import TelegramControl
 
 
+#: The exit code of a pass that refused its configuration (the always-on service uses the same).
+EXIT_REFUSED_CONFIG = 2
+
+
+class ConfigRefused(RuntimeError):
+    """The alert pass will not start: the message names the variable and what it must be (never its value)."""
+
+
 def build_engine(control, sync) -> AlertEngine:
     """The alert engine with its real sources. Shared with the always-on service
-    (tools/operator_bot_service.py), which runs ``tick()`` on its own timer."""
+    (tools/operator_bot_service.py), which runs ``tick()`` on its own timer.
+    Raises ConfigRefused for a film spend line the watch cannot use."""
     cfg = OperatorConfig.from_env()
+    if cfg.film_spend_error:
+        raise ConfigRefused(f"film spend watch refused: {cfg.film_spend_error}")
     ops = OperatorSources(sync, default_http_get, cfg, github_token=os.getenv("GITHUB_TOKEN", ""))
     store = SupabaseAlertStore(sync)
     # The e-mail copy for the owner (docs/OWNER_EMAIL.md): None unless NIGHTSHIFT_OWNER_EMAIL is exactly `on`.
@@ -73,7 +86,11 @@ def main(argv=None) -> int:
     if not sync.enabled:
         logger.info("Supabase not configured — operator alerts are off (no state to read or remember)")
         return 0
-    engine = build_engine(control, sync)
+    try:
+        engine = build_engine(control, sync)
+    except ConfigRefused as e:
+        logger.error("%s; operator alerts did not run", e)
+        return EXIT_REFUSED_CONFIG
     if args.digest_now:
         reply = send_digest_reply(engine.ops)
         control.send(control.chat_id, reply.text, parse_mode=reply.parse_mode, reply_markup=reply.markup())

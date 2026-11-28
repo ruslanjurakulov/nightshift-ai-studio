@@ -12,8 +12,32 @@ const Draft = z.object({
 }).strict();
 export type WorkflowDraft = { format: "nightshift.agent-draft"; layoutVersion: 1; workflow: AgentWorkflow; positions: Record<string, NodePosition> };
 
+/**
+ * The read of an id-keyed map that only sees the map's own entries. A node id may be any name the id rule allows, and
+ * "constructor", "toString" or "valueOf" are allowed (by agent-graph.ts and by migration 0130): on a plain object
+ * `positions[id]` would then hand back Object.prototype's function, which draws the card at NaN and, through fitView, blanks
+ * the whole canvas.
+ */
+export function ownEntry<T>(map: Readonly<Record<string, T>> | undefined, id: string): T | undefined {
+  return map !== undefined && Object.hasOwn(map, id) ? map[id] : undefined;
+}
+
+/** The first 21 slots: three columns of 250px, seven rows, all inside clampPosition's 2200 x 1600. */
+const GRID_SLOTS = 21;
+/** Beyond them, a second block to the right of the first: 240px columns, the same 250px rows, 7 x 7 = 49 more slots. */
+const OVERFLOW_X = 760;
+const OVERFLOW_COLUMNS = 7;
+
+/**
+ * Where a node with no saved position is drawn. The first 21 slots are the ones every earlier draft was laid out in, so an
+ * old draft without positions opens exactly as it did. Past them the old 3-column grid ran off the canvas and clampPosition
+ * stacked every later card at y = 1600 (a 64-node import was 43 cards in one pile); those indices now fill the empty block
+ * to the right instead, so all 64 nodes the schema allows get a slot of their own.
+ */
 export function defaultNodePosition(index: number): NodePosition {
-  return { x: 20 + (index % 3) * 250, y: 20 + Math.floor(index / 3) * 250 };
+  if (index < GRID_SLOTS) return { x: 20 + (index % 3) * 250, y: 20 + Math.floor(index / 3) * 250 };
+  const k = index - GRID_SLOTS;
+  return clampPosition(OVERFLOW_X + (k % OVERFLOW_COLUMNS) * 240, 20 + Math.floor(k / OVERFLOW_COLUMNS) * 250);
 }
 
 /**
@@ -34,7 +58,7 @@ export function exportWorkflowDraft(workflow: AgentWorkflow, positions: Record<s
   if (!report.ok || !connectionsAllowed(workflow)) throw new Error("Invalid workflow");
   const retained: Record<string, NodePosition> = {};
   workflow.nodes.forEach((node, index) => {
-    const at = positions[node.id] ?? defaultNodePosition(index);
+    const at = ownEntry(positions, node.id) ?? defaultNodePosition(index);
     retained[node.id] = clampPosition(at.x, at.y);
   });
   return JSON.stringify({ format: "nightshift.agent-draft", layoutVersion: 1, workflow, positions: retained } satisfies WorkflowDraft, null, 2);
@@ -66,8 +90,8 @@ export function canvasEdges(workflow: AgentWorkflow, positions: Record<string, N
     const from = index.get(edge.source);
     const to = index.get(edge.target);
     if (from === undefined || to === undefined) return [];
-    const a = positions[edge.source] ?? defaultNodePosition(from);
-    const b = positions[edge.target] ?? defaultNodePosition(to);
+    const a = ownEntry(positions, edge.source) ?? defaultNodePosition(from);
+    const b = ownEntry(positions, edge.target) ?? defaultNodePosition(to);
     const x1 = a.x + 220, y1 = a.y + 72, x2 = b.x, y2 = b.y + 72;
     const bend = Math.max(50, Math.abs(x2 - x1) * 0.55);
     return [{ source: edge.source, target: edge.target, path: `M ${x1} ${y1} C ${x1+bend} ${y1}, ${x2-bend} ${y2}, ${x2} ${y2}` }];

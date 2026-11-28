@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { en } from "../lib/i18n/en";
+import { routingOptions } from "../lib/server/pipeline-options";
 
 const h = vi.hoisted(() => ({
   fetch: vi.fn(),
@@ -68,7 +69,10 @@ const tap = async (el: HTMLElement) => {
 const variablesCalls = () => h.fetch.mock.calls.filter((c) => c[0] === "/api/setup/variables");
 
 describe("PipelineRouting", () => {
-  const show = (initial: Record<string, string> = {}) => render(<PipelineRouting initial={initial} configured={[]} githubConfigured />);
+  // The lists the Providers page passes (lib/server/pipeline-options.ts): the panel no longer imports the vendor registry.
+  const routing = routingOptions();
+  const show = (initial: Record<string, string> = {}) =>
+    render(<PipelineRouting initial={initial} configured={[]} githubConfigured videoProviders={routing.video} imageGenerators={routing.image} defaults={routing.defaults} vars={routing.vars} />);
   const videoSelect = () => screen.getByLabelText(en.providers.routingVideo) as HTMLSelectElement;
   const autopilot = () => screen.getByRole("switch", { name: en.providers.routingAutopilot });
 

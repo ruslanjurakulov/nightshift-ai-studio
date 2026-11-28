@@ -1,0 +1,42 @@
+/* The lane under a live film's board (LiveLane.tsx): the transport row, then the canvas's strip (studio-canvas.css .cv-lane). */
+.ll-root {
+  /* The clock's blue: the design system's accent (S5's --ds-accent) where it is loaded, its values until then. Lime is selection's. */
+  --ll-accent: var(--ds-accent, #2f8bff);
+  display: grid; min-width: 0; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; background: var(--ln-ground, var(--console)); }
+/* The strip's own top rule would double the transport's bottom one. */
+.ll-root .cv-lane { border-top: 0; }
+.ll-transport {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  min-width: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 13px;
+  color: var(--text);
+}
+/* docs/design/SYSTEM.md's .ds-timecode (app/tokens.css, S5) where it is loaded; these are its values on the canvas's tokens until
+   then, at the transport's size. */
+.ll-tc { font: 600 20px/1 var(--font-mono); font-variant-numeric: tabular-nums slashed-zero; letter-spacing: -0.01em; color: var(--ll-accent); white-space: nowrap; }
+:root[data-theme="light"] .ll-root { --ll-accent: var(--ds-accent, #1a5fd0); }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .ll-root { --ll-accent: var(--ds-accent, #1a5fd0); } }
+/* "MADE" before the clock, as .ds-t-label (12px mono capitals): the clock is what is made, never a playhead's position. */
+.ll-tag { color: var(--dim); font: 500 12px/1.3 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+.ll-tc-total { color: var(--dim); font-size: 14px; letter-spacing: 0; }
+.ll-plan { margin-left: 6px; color: var(--dim); font: 500 12px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+.ll-status { font-weight: 600; }
+.ll-made { color: var(--dim); font-variant-numeric: tabular-nums; }
+.ll-stale { color: var(--caution); }
+.ll-grow { flex: 1; }
+.ll-note { margin: 0; color: var(--dim); font-size: 13px; }
+.ll-empty { padding: 16px 14px; }
+.ll-skeleton { display: grid; gap: 8px; padding: 14px; }
+.ll-skeleton i { display: block; height: 40px; border-radius: 8px; background: color-mix(in srgb, var(--rule) 70%, transparent); animation: ll-pulse 1.4s ease-in-out infinite; }
+.ll-skeleton i:first-of-type { height: 20px; width: 40%; }
+@keyframes ll-pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .ll-skeleton i { animation: none; } }
+.ll-root.is-phone .ll-tc { font-size: 16px; }
+.ll-root.is-phone .ll-transport { padding: 8px 10px; }
+.ll-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 14px; }
+.ll-empty a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }

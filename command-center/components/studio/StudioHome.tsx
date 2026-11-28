@@ -106,6 +106,7 @@ export function StudioHome({
   idea = false,
   ideaKind = "video",
   start = null,
+  exampleModels = {},
 }: {
   orgId: string | null;
   models: StudioModel[];
@@ -132,6 +133,8 @@ export function StudioHome({
   ideaKind?: CreateKind;
   /** The start box at the top (components/prompt/StartBox.tsx): whether the server's flag opens Nightshift AI here, and the channel; null = none. */
   start?: { agentOpen: boolean; available: StartAvailable; channel: StartChannel | null } | null;
+  /** Example id -> the model it was written for, from the server (lib/server/creative-examples.ts); absent = the box's default. */
+  exampleModels?: Readonly<Record<string, string>>;
 }) {
   const { t, locale, fmt } = useI18n();
   const th = t.studioHome;
@@ -315,7 +318,8 @@ export function StudioHome({
       return;
     }
     // The example's model only when this organization is offered it for the tool; else the box's own default.
-    const offered = e.modelId && modelsFor(models, e.capability).some((m) => m.id === e.modelId) ? e.modelId : "";
+    const written = Object.hasOwn(exampleModels, e.id) ? exampleModels[e.id] : "";
+    const offered = written && modelsFor(models, e.capability).some((m) => m.id === written) ? written : "";
     fill(
       form(e.capability, {
         model: offered,

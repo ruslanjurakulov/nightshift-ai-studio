@@ -7,8 +7,6 @@ export const confirmSheetsRu: ConfirmSheetsDictionary = {
   dAfter: "После",
   dVideo: "Видео",
   dRequestedBy: "Запросил",
-  dAccount: "Аккаунт",
-  dRole: "Роль",
   dKey: "API-ключ",
   dEffect: "Что изменится",
   dAutoPublish: "Автопубликация",
@@ -83,9 +81,4 @@ export const confirmSheetsRu: ConfirmSheetsDictionary = {
   limitKeySet: "Лимит добавляется: ключ остановится, когда он будет достигнут.",
   limitKeyBlocked: "Лимит $0 блокирует все вызовы с этим ключом, пока вы его не поднимете.",
   limitCeilingBinds: "Вы ввели {entered}, но потолок вашего тарифа {cap}, поэтому действует {cap}.",
-
-  claimTitle: "Сделать себя владельцем?",
-  claimBody:
-    "Вы станете владельцем этого рабочего пространства с полным доступом к ключам, провайдерам, кредитам и команде. Свою роль отсюда потом изменить нельзя: это может сделать только другой владелец.",
-  claimConfirm: "Стать владельцем",
 };
