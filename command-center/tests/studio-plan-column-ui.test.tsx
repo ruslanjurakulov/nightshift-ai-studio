@@ -279,6 +279,16 @@ describe("Plan column: the plan", () => {
     expect(screen.getByTestId("plan-no-answer").textContent).toBe(c.plan.noAnswer);
   });
 
+  it("a FIRST send that made no session ends as failed: the planning skeleton goes, the no-answer line shows (Atlas)", async () => {
+    render(ui(null));
+    await flush();
+    await act(async () => void dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "thinking" } }));
+    expect(screen.queryAllByTestId("plan-thinking").length).toBeGreaterThan(0);
+    await act(async () => void dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "end", reason: "failed" } }));
+    expect(screen.queryAllByTestId("plan-thinking")).toHaveLength(0);
+    expect(screen.getByTestId("plan-no-answer").textContent).toBe(c.plan.noAnswer);
+  });
+
   it("a storyboard with the server's counts says which chapter; without them, only that it is being written", async () => {
     await openOn(A, drafting);
     await activity(A, "planning");

@@ -25,6 +25,12 @@ describe("isBrainActivity: the runtime guard", () => {
   it.each(["planning", "saving", "pricing", "end"])("refuses a null session on %s", (phase) => {
     expect(isBrainActivity({ session_id: null, phase })).toBe(false);
   });
+  it('accepts a null "end" only with reason "failed", and never with a plan (Atlas, 28 Nov)', () => {
+    expect(isBrainActivity({ session_id: null, phase: "end", reason: "failed" })).toBe(true);
+    expect(isBrainActivity({ session_id: null, phase: "end", reason: "other" })).toBe(false);
+    expect(isBrainActivity({ session_id: null, phase: "thinking", reason: "failed" })).toBe(false);
+    expect(isBrainActivity({ session_id: null, phase: "end", reason: "failed", plan: { windows: 0, of: 1, chapters_written: 0, chapters: 1 } })).toBe(false);
+  });
   it("accepts null on thinking, refuses it with a plan", () => {
     expect(isBrainActivity({ session_id: null, phase: "thinking" })).toBe(true);
     expect(isBrainActivity({ session_id: null, phase: "thinking", plan: { windows: 0, of: 1, chapters_written: 0, chapters: 1 } })).toBe(false);

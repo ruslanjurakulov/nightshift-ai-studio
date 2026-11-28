@@ -34,7 +34,9 @@ export type BrainActivityPlan = { windows: number; of: number; chapters_written:
  */
 export type BrainActivity =
   | { session_id: string; phase: BrainPhase | "end"; plan?: BrainActivityPlan }
-  | { session_id: null; phase: "thinking"; plan?: never };
+  | { session_id: null; phase: "thinking"; plan?: never }
+  /** A first send that made no session ended without an answer (Atlas, 28 Nov): only after a null "thinking", never with a plan. */
+  | { session_id: null; phase: "end"; reason: "failed"; plan?: never };
 
 export type BrainCanvasEvent =
   | { kind: "brief"; detail: { session_id: string; updated_at: string } }
@@ -44,13 +46,17 @@ const PHASES: ReadonlySet<string> = new Set(["thinking", "planning", "saving", "
 
 /**
  * The runtime half of the contract, for the sender and for any listener (S3's canvas): a detail that breaks it is not an activity.
- * A null session on any phase but "thinking", an empty id, an unknown phase, or a plan with a null session are all refused.
+ * A null session is allowed only on "thinking" (a first send) and on "end" with reason "failed" (that send made no session); an
+ * empty id, an unknown phase, or a plan with a null session are all refused.
  */
 export function isBrainActivity(d: unknown): d is BrainActivity {
   if (!d || typeof d !== "object") return false;
   const a = d as Record<string, unknown>;
   if (typeof a.phase !== "string" || !PHASES.has(a.phase)) return false;
-  if (a.session_id === null) return a.phase === "thinking" && a.plan === undefined;
+  if (a.session_id === null) {
+    if (a.plan !== undefined) return false;
+    return (a.phase === "thinking" && a.reason === undefined) || (a.phase === "end" && a.reason === "failed");
+  }
   return typeof a.session_id === "string" && a.session_id.length > 0;
 }
 
@@ -93,7 +99,7 @@ export function parseBrainActivity(detail: unknown): BrainActivity | null {
   const d = detail as Record<string, unknown>;
   const mapped = typeof d.phase === "string" && Object.hasOwn(OLD, d.phase) ? { ...d, phase: OLD[d.phase] } : d;
   if (!isBrainActivity(mapped)) return null;
-  if (mapped.session_id === null) return { session_id: null, phase: "thinking" };
+  if (mapped.session_id === null) return mapped.phase === "end" ? { session_id: null, phase: "end", reason: "failed" } : { session_id: null, phase: "thinking" };
   // The board reads the conversation by its id from the URL: one that is not a conversation id is not one it can read.
   if (!SESSION.test(mapped.session_id)) return null;
   const plan = mapped.phase === "planning" ? sanePlan(mapped.plan) : undefined;
