@@ -1,7 +1,8 @@
-# Measurement only (S6, CLAUDE.md rule 8): the vocal-activity tools in tools/vocal_activity.py and tools/lyria_vocal_probe.py.
-# Deliberately NOT in requirements.txt: nothing in the product imports these, and a CPU torch build plus two models would
-# grow the worker image by about a gigabyte for a check that has no threshold yet. Installed only by
-# .github/workflows/lyria_vocal_probe.yml and by hand into a throwaway venv:
+# S6: the vocal-activity tools in tools/vocal_activity.py and tools/lyria_vocal_probe.py, and the music-check service
+# (tools/music_check_server.py) that runs the same detectors on each Lyria song.
+# Deliberately NOT in requirements.txt: no adapter and no worker imports these, and a CPU torch build plus two models would
+# grow the worker image by about a gigabyte. Installed by .github/workflows/lyria_vocal_probe.yml, into the music-check
+# service's own image (a later PR), and by hand into a throwaway venv:
 #
 #     python3.11 -m venv /var/tmp/vam && /var/tmp/vam/bin/pip install --require-hashes -r requirements-measure.txt
 #

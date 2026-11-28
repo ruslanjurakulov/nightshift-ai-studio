@@ -47,6 +47,7 @@ sys.path.insert(0, str(ROOT))
 from modules.capabilities import build_adapter  # noqa: E402
 from modules.capabilities.base import MUSIC, AdapterError, CapabilityRequest  # noqa: E402
 from modules.capabilities.google_interactions import LYRIA_INSTRUMENTAL, GoogleLyriaAdapter  # noqa: E402
+from tests.music_check_fakes import with_check  # noqa: E402
 from tests.loopback_vendor import FakeVendor, Resp, cleanup_certificate  # noqa: E402
 
 KEY = "AIzaSyD-breach-lab-FAKE-0123456789abcdefXYZ"
@@ -70,7 +71,9 @@ def vendor():
 
 def lyria(vendor, key=KEY) -> GoogleLyriaAdapter:
     env = {"GEMINI_API_KEY": key, "GEMINI_BASE_URL": vendor.base_url + "/v1beta"}
-    return build_adapter("audio.google_lyria", env=env, session=vendor.session())
+    # A music check that hears no voice: the attacks here are on the prompt and the text check (tests/test_vocal_check.py has the
+    # audio check's own).
+    return with_check(build_adapter("audio.google_lyria", env=env, session=vendor.session()))
 
 
 def music(prompt: str) -> CapabilityRequest:

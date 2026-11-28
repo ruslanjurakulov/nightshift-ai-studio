@@ -48,6 +48,7 @@ from modules.capabilities.google_interactions import (
 )
 from modules.capabilities.safe_fetch import AFTER_COMPLETION, UNCONFIRMED
 from tests.loopback_vendor import FakeVendor, Resp, cleanup_certificate
+from tests.music_check_fakes import with_check
 
 ROOT = Path(__file__).resolve().parent.parent
 KEY = "AIzaSy-test-NOT-A-REAL-KEY-0123456789abcdef"
@@ -96,7 +97,9 @@ class VendorCase(unittest.TestCase):
         self.vendor.on("POST", POST, resp)
 
     def lyria(self) -> GoogleLyriaAdapter:
-        return build_adapter("audio.google_lyria", env=self.env, session=self.vendor.session())
+        # The music check is a stand-in that hears no voice: these tests are about the call and the answer, not the audio check
+        # (tests/test_vocal_check.py).
+        return with_check(build_adapter("audio.google_lyria", env=self.env, session=self.vendor.session()))
 
     def sent(self):
         (req,) = self.vendor.seen("POST", POST)

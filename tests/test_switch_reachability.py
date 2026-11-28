@@ -53,6 +53,12 @@ INTENTIONALLY_UNREACHABLE = {
     "CHRONOS_CHANNELS_FILE": "a local channels.json path for a laptop run; the managed path reads the channels table",
     "CHRONOS_STATE_DB": "a local sqlite path; the container's default (inside the history volume) is the intended one",
     "NIGHTSHIFT_EMAIL_FAKE_DIR": "test transport: writes mail to a folder instead of sending it",
+    # -- the S6 music-check service: its compose service is the next PR -----------
+    "NIGHTSHIFT_MUSIC_CHECK_URL": "the creative worker's address of the music-check service (modules/vocal_check.py); set by the compose wiring that adds the service (the next S6 PR). Until then every Lyria job is refused before any call",
+    "NIGHTSHIFT_MUSIC_CHECK_TIMEOUT_S": "tuning of one Lyria song's check (default 900 s, modules/vocal_check.py); the compose wiring of the next S6 PR may set it",
+    "NIGHTSHIFT_MUSIC_CHECK_BIND": "the music-check service's own listen address (tools/music_check_server.py); its compose service (the next S6 PR) sets it",
+    "NIGHTSHIFT_MUSIC_CHECK_PORT": "the music-check service's own port (default 8765); fixed by its compose service (the next S6 PR)",
+    "NIGHTSHIFT_MUSIC_CHECK_CHILD_TIMEOUT_S": "tuning of one song's measurement in the music-check service (default 600 s); no known reason to move it",
     # -- tuning with a tested default ---------------------------------------------
     "CHRONOS_DEFAULT_CHANNEL_NAME": "label of the single-channel fallback; the registry names real channels",
     "CHRONOS_DEFAULT_CHANNEL_NICHE": "niche of the single-channel fallback; the registry names real channels",

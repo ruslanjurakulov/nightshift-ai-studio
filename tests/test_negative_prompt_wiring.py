@@ -92,6 +92,11 @@ def _submit(entry, picture, negative):
     hosts = getattr(cls, "upload_hosts", None)
     session = _Session(upload_url=f"https://{hosts[0]}/lab.png" if hosts else None)
     adapter = cls(env=_Env(), session=session)
+    if hasattr(adapter, "music_check"):
+        # Lyria sends nothing without its music check (modules/vocal_check.py); a stand-in lets the lab see what it sends.
+        from tests.music_check_fakes import FakeMusicCheck  # noqa: PLC0415
+
+        adapter.music_check = FakeMusicCheck()
     req = entry.probe_request(voice_id="A" * 20, generated_image=picture, generated_speech=picture,
                               generated_end_image=picture, generated_video=picture)
     cap = next((c for c in _PREFERRED if c in entry.capabilities), req.capability)

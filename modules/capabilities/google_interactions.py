@@ -50,6 +50,7 @@ from modules.capabilities.base import (
     E_AUTH,
     E_BAD_REQUEST,
     E_BAD_RESPONSE,
+    E_NOT_CONFIGURED,
     E_NOT_FOUND,
     E_POLICY,
     E_QUOTA,
@@ -71,7 +72,9 @@ from modules.capabilities.base import (
     is_url,
     json_body,
 )
-from modules.capabilities.safe_fetch import SafeResultMixin, _looks_like, after_completion, sniff_image_mime, unconfirmed
+from modules.capabilities.safe_fetch import (AFTER_COMPLETION, SafeResultMixin, _looks_like, after_completion, sniff_image_mime,
+                                             unconfirmed)
+from modules import vocal_check
 
 #: Where a result link may live: the Gemini API's own file host (``…/v1beta/files/…:download?alt=media``). A link
 #: anywhere else is refused (fail closed), not guessed at.
@@ -611,6 +614,18 @@ _MP3_TYPES = ("audio/mpeg", "audio/mp3")
 _B64 = re.compile(r"^[A-Za-z0-9+/]*={0,2}$")
 
 
+class CheckDidNotRunError(AdapterError):
+    """``check_did_not_run`` (modules/vocal_check.py): the answer's own quality check has no result. The job row stores that code,
+    so an operator tells "it heard singing" (``bad_response``) from "it could not listen". Not in ``ERROR_CODES``: the probe log's
+    closed list (migration 0190) does not know it, and tools/probe_models.py records it there as ``bad_response``."""
+
+    def __init__(self, message: str):
+        # The song was made (the interaction completed), so it carries the after-completion spend note. Built here rather than by
+        # after_completion(), which would rebuild a plain AdapterError and lose the code.
+        super().__init__(E_BAD_RESPONSE, f"{AFTER_COMPLETION}. {message}", not_accepted=False)
+        self.code = vocal_check.CHECK_DID_NOT_RUN
+
+
 class GoogleLyriaAdapter(_InteractionsBase):
     """``lyria-3.5``: music from words, one MP3 per call, through the Interactions API (aistudio.google.com/docs/music-generation,
     read 2026-11-27; docs/research/lyria-3-5.md).
@@ -638,9 +653,13 @@ class GoogleLyriaAdapter(_InteractionsBase):
          UNVERIFIED);
       3. the OUTPUT check (BR-S6-02): the lyrics or structure text Google returns beside the audio is read (``returned_singing``),
          and a song with sung lines fails as an after-completion bad response, never accepted and never retried elsewhere.
-    NOT YET BUILT, and a condition of sale: a vocal-activity measurement on the MP3 itself (the text can be absent or wrong). It
-    needs a measurement PR first (rule 8). Lyria cannot go on sale until it exists. ``vocals_requested`` in the provenance records
-    what was asked, never what was heard.
+      4. the AUDIO check (S6, modules/vocal_check.py; the rule approved in docs/MEASUREMENT.md section 10 from run 46132895972):
+         the MP3 itself goes to the music-check service (``NIGHTSHIFT_MUSIC_CHECK_URL``), and a song whose UMX vocal share above
+         -10 dB is at least 0.30, or whose PANNs voice maximum is at least 0.10, fails as an after-completion bad response, like
+         layer 3. A check that did not run, timed out or answered no number fails too, as ``check_did_not_run``: never accepted
+         unchecked. Without the URL nothing is sent to Google at all (``ready`` and ``submit`` refuse first), and ``ready`` also
+         refuses while the service is out of reach or short of memory, so a song is not paid for that cannot be checked.
+    ``vocals_requested`` in the provenance records what was asked, never what was heard.
 
     THE ANSWER. Base64 audio in a ``model_output`` step's ``audio`` content (the last one, which is what ``output_audio`` names), or
     a top-level ``output_audio`` block. Decoded strictly (the base64 alphabet only) and capped BEFORE decoding; missing, empty,
@@ -667,6 +686,34 @@ class GoogleLyriaAdapter(_InteractionsBase):
     #: A few minutes of MP3 is well under 16 MB; an answer far beyond that is not a song, and is not decoded.
     max_inline_bytes = 32 * 1024 * 1024
     SPECS = {"lyria-3.5": {"vocal_languages": ()}}
+    #: The music-check client (modules/vocal_check.py). None: built from this adapter's env, so a test can hand one in and a
+    #: deployment can only point at a service, never switch the check off.
+    music_check: Optional["vocal_check.MusicCheckClient"] = None
+
+    def _checker(self) -> "vocal_check.MusicCheckClient":
+        """The client, or ``not_configured`` with the remedy. Raised BEFORE the paid call, so ``not_accepted`` is the truth."""
+        if self.music_check is not None:
+            return self.music_check
+        try:
+            client = vocal_check.MusicCheckClient.from_env(self._env)
+        except ValueError as e:
+            raise AdapterError(E_NOT_CONFIGURED, f"{e}; nothing was sent to Google", not_accepted=True) from None
+        if client is None:
+            raise AdapterError(E_NOT_CONFIGURED, f"{vocal_check.NOT_CONFIGURED_REMEDY}; nothing was sent to Google",
+                               not_accepted=True)
+        self.music_check = client
+        return client
+
+    def ready(self, request: Optional[CapabilityRequest] = None) -> None:
+        """Rule 6: called by the creative worker before it marks a job as submitting. A song that cannot be checked is never
+        paid for: no URL is ``not_configured``; a service out of reach, or short of memory, is ``unavailable`` with its remedy."""
+        if request is not None and request.text_language is not None:
+            return  # a sung song (none is offered yet: SPECS) is not held to the instrumental check
+        client = self._checker()
+        try:
+            client.ready()
+        except vocal_check.MusicCheckNotReady as e:
+            raise AdapterError(E_UNAVAILABLE, f"{e}; nothing was sent to Google", not_accepted=True) from None
 
     @staticmethod
     def _blocked(text: str, *, http_status=None, not_accepted: bool = False) -> AdapterError:
@@ -724,6 +771,9 @@ class GoogleLyriaAdapter(_InteractionsBase):
         if bad:
             # Nothing has been sent: a refusal, not a lost answer.
             raise AdapterError(E_BAD_REQUEST, "; ".join(bad), not_accepted=True)
+        instrumental = request.text_language is None
+        # Without a music check a song is not asked for: it could only be refused afterwards, after Google may have billed it.
+        checker = self._checker() if instrumental else None
         body = {"model": vendor_model, "input": self._input(request), "response_format": {"type": "audio"},
                 "background": False, "store": False}
         try:
@@ -734,8 +784,27 @@ class GoogleLyriaAdapter(_InteractionsBase):
                 said = e.message[len(BILLING_UNKNOWN) + 2:] if e.message.startswith(BILLING_UNKNOWN) else e.message
                 raise self._blocked(said, http_status=e.http_status, not_accepted=e.not_accepted) from None
             raise
-        return ProviderTask(self.key, vendor_model, None,
-                            outputs=self._song(data, instrumental=request.text_language is None).outputs)
+        song = self._song(data, instrumental=instrumental)
+        if checker is not None:
+            self._check_audio(checker, song.outputs[0].data)
+        return ProviderTask(self.key, vendor_model, None, outputs=song.outputs)
+
+    @staticmethod
+    def _check_audio(checker: "vocal_check.MusicCheckClient", audio: bytes) -> None:
+        """Layer 4 (class doc). Runs before the song is handed to anyone: a refusal here ends the job through the worker's failure
+        path, which releases the whole hold; nothing is captured first and refunded later."""
+        try:
+            signals = checker.measure(audio, "audio/mpeg")
+            sung = vocal_check.sung_by(signals)
+        except vocal_check.CheckDidNotRun as e:
+            raise CheckDidNotRunError(f"the vocal check did not run ({e}); the song is refused, never accepted unchecked") from None
+        except Exception as e:  # a client bug is still a check that did not run, never a pass
+            raise CheckDidNotRunError(f"the vocal check did not run ({type(e).__name__}); the song is refused, never accepted "
+                                      "unchecked") from None
+        if sung:
+            # Rule 4: the audio says it is sung, whatever the text block said. Never accepted, never retried on another model.
+            raise after_completion(AdapterError(E_BAD_RESPONSE, "the vocal-activity check heard singing (" + "; ".join(sung)
+                                                + "); only instrumental music is offered"))
 
     def _song(self, data: dict, *, instrumental: bool = True) -> PollResult:
         try:

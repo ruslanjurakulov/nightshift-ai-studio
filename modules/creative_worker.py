@@ -900,6 +900,16 @@ class CreativeWorker:
                 gone = not_on_sale(self.queue, model, request.capability, request.org_id, previews=True)
                 if gone is not None:
                     raise _Refused(*gone)
+                # Rule 6: what the adapter needs beside the vendor (Lyria: its music-check service) is asked for BEFORE
+                # 'submitting', so a job that could not be finished is ended with nothing sent and its whole hold released.
+                # The claim itself cannot skip such a job: claim_creative_job takes no capability.
+                ready = getattr(adapter, "ready", None)
+                if callable(ready):
+                    try:
+                        ready(request)
+                    except Exception as e:
+                        raise _Refused(error_code_of(e), error_text_of(e),
+                                       not_accepted=getattr(e, "not_accepted", False) is True) from None
                 if not self.queue.advance(job_id, self.worker_id, "submitting"):
                     logger.warning("job %s: not ours to submit any more; leaving it", job_id)
                     return "left"
