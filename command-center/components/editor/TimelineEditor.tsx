@@ -480,6 +480,8 @@ export function TimelineEditor({
   const clips = useMemo(() => layout(model.clips), [model.clips]);
   const total = useMemo(() => modelDuration(model), [model]);
   const picture = pictureEnd(clips);
+  /** Where a new sound starts: the playhead while it is over the picture, else the start (Add sound, voice-over, music). */
+  const soundStart = () => (playhead < picture ? playhead : 0);
   const current = useMemo(() => JSON.stringify(toDoc(model)), [model]);
   const dirty = current !== saved || title.trim() !== savedTitle;
   const active = exportActive(exports);
@@ -1239,7 +1241,7 @@ export function TimelineEditor({
     let next: EditorModel | null = null;
     let pick: Selection = null;
     if (offered.kind === "audio") {
-      const out = addSound(model, offered, playhead < picture ? playhead : 0);
+      const out = addSound(model, offered, soundStart());
       if (out) {
         next = out.model;
         pick = { kind: "sound", id: out.id };
@@ -1304,7 +1306,7 @@ export function TimelineEditor({
   }
 
   function onAddSound(a: EditorAsset) {
-    const out = addSound(model, a, playhead < picture ? playhead : 0);
+    const out = addSound(model, a, soundStart());
     if (!out) return;
     setAssets((x) => ({ ...x, [a.id]: a }));
     apply(out.model);
@@ -1322,12 +1324,12 @@ export function TimelineEditor({
     return true;
   }
 
-  /** A finished "Make music" track: a sound like any other, at the playhead now, marked as music. */
-  function onAddMusic(a: EditorAsset): boolean {
-    const out = addSound(model, a, playhead < picture ? playhead : 0);
+  /** A finished "Make music" track: a sound like any other, where the playhead was at the confirm, marked as music. */
+  function onAddMusic(a: EditorAsset, at: number): boolean {
+    const out = addSound(model, a, at);
     if (!out) return false;
     setAssets((x) => ({ ...x, [a.id]: a }));
-    apply({ ...out.model, sounds: out.model.sounds.map((x) => (x.id === out.id ? { ...x, role: "music" as const } : x)) });
+    apply(updateSound(out.model, out.id, { role: "music" }, a.durationS));
     setSelected({ kind: "sound", id: out.id });
     return true;
   }
@@ -2129,7 +2131,7 @@ export function TimelineEditor({
             <VoiceOverRecorder
               orgId={orgId}
               canAdd={canAddSound(model)}
-              position={() => (playhead < picture ? playhead : 0)}
+              position={soundStart}
               onAdd={onAddVoiceOver}
               onClose={() => setRecordingVoice(false)}
             />
@@ -2148,8 +2150,10 @@ export function TimelineEditor({
               projectId={projectId}
               models={musicModels}
               canAdd={canAddSound(model)}
+              position={soundStart}
               onAdd={onAddMusic}
               onClose={closeMusic}
+              onPendingChange={setMusicPending}
             />
           ) : null}
           {addingSound ? (

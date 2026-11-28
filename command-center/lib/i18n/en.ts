@@ -6315,6 +6315,9 @@ export const en = {
     lost: "The music this page was waiting for can no longer be found, so nothing was added. If it was finished, the track is in your library.",
     pending: "Music for this project is still being made.",
     pendingShow: "Show",
+    signedOut: "Your session ended, so this page can no longer check on the music. Sign in again; the track will be in your library once it is made.",
+    stalled: "The music is taking longer than usual, or this page cannot reach the server. It may still finish: check your library later.",
+    addNow: "Add it now",
     tryAgain: "Try again",
   },
 };

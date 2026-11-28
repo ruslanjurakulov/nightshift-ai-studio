@@ -6277,7 +6277,7 @@ export const uz: Dictionary = {
     confirmGo: "Yaratish · {n} kredit",
     back: "Orqaga",
     working: "Musiqa yaratilmoqda…",
-    elapsed: "{now} dan beri",
+    elapsed: "Ishlanmoqda: {now}",
     workingNote: "Bu bir necha daqiqa olishi mumkin. Panelni yopsangiz ham jarayon toʻxtamaydi: tayyor trek kutubxonangizga tushadi.",
     reading: "Tayyor trek oʻqilmoqda…",
     failed: "Musiqa yaratilmadi va taymlaynga hech narsa qoʻshilmadi.",
@@ -6288,6 +6288,9 @@ export const uz: Dictionary = {
     lost: "Bu sahifa kutgan musiqa endi topilmadi, shuning uchun hech narsa qoʻshilmadi. Agar trek tayyor boʻlgan boʻlsa, u kutubxonangizda.",
     pending: "Bu loyiha uchun musiqa hali yaratilmoqda.",
     pendingShow: "Koʻrsatish",
+    signedOut: "Seansingiz tugadi, shuning uchun bu sahifa musiqani tekshira olmaydi. Qayta kiring: tayyor trek kutubxonangizga tushadi.",
+    stalled: "Musiqa odatdagidan uzoqroq yaratilmoqda yoki sahifa serverga ulana olmayapti. U baribir tayyor boʻlishi mumkin: keyinroq kutubxonangizni tekshiring.",
+    addNow: "Hozir qoʻshish",
     tryAgain: "Qayta urinish",
   },
 };

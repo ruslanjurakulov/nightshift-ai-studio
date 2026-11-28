@@ -130,7 +130,7 @@ const createCalls = () => calls((u, i) => u === "/api/creative/jobs" && i?.metho
 const bodyOf = (c: unknown[]) => JSON.parse(String((c[1] as RequestInit).body)) as Record<string, unknown>;
 
 function mountPanel(over: Partial<React.ComponentProps<typeof MusicMaker>> = {}, locale: Locale = "en") {
-  const props = { orgId: ORG, projectId: PID, models: [LYRIA], canAdd: true, onAdd: vi.fn(() => true), onClose: vi.fn(), ...over };
+  const props = { orgId: ORG, projectId: PID, models: [LYRIA], canAdd: true, position: vi.fn(() => 2), onAdd: vi.fn<(a: EditorAsset, at: number) => boolean>(() => true), onClose: vi.fn(), ...over };
   render(withI18n(<MusicMaker {...props} />, locale));
   return props;
 }
@@ -154,7 +154,7 @@ describe("the visibility rule: the key exists only while the Studio's list sells
     return html;
   };
 
-  it("no sellable music model (today): no Make music key, and the editor's markup is byte-for-byte what it was", () => {
+  it("no sellable music model (today): no Make music key, and an unsellable music model changes nothing at all", () => {
     for (const models of [undefined, [], [UPSCALER], [{ ...LYRIA, lock: "not_on_sale" as const }, UPSCALER]]) {
       render(editor(models));
       expect(screen.queryByRole("button", { name: tm().open })).toBeNull();
@@ -288,7 +288,26 @@ describe("the price: only the database's quote, and the key disabled with its re
     expect(makeKey().disabled).toBe(true);
     expect(why()).toContain(apiErrorMessage(en, "model_not_sellable"));
     expect(why()).toContain(tm().noSubstitute);
-    expect(screen.getByTestId("music-maker").textContent ?? "").not.toMatch(/voice|speech|tts/i);
+    // Stopped: no price, no confirm, no other model offered in its place.
+    fireEvent.click(makeKey());
+    expect(screen.queryByTestId("music-confirm")).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByTestId("music-model").textContent).toBe(fmt(tm().madeWith, { model: "Lyria 3.5" }));
+  });
+
+  it("a picked model that leaves the list is not replaced by another: the panel stops and the open confirm is dropped", async () => {
+    const props = { orgId: ORG, projectId: PID, canAdd: true, position: () => 0, onAdd: vi.fn(() => true), onClose: vi.fn() };
+    const view = render(withI18n(<MusicMaker {...props} models={[LYRIA, OTHER_MUSIC]} />));
+    await describeMusic();
+    fireEvent.click(makeKey());
+    expect(screen.getByTestId("music-confirm")).toBeTruthy();
+    view.rerender(withI18n(<MusicMaker {...props} models={[OTHER_MUSIC]} />));
+    await advance(450);
+    expect(screen.queryByTestId("music-confirm")).toBeNull();
+    expect(makeKey().disabled).toBe(true);
+    expect(screen.getByTestId("music-gone").textContent).toContain(tm().noSubstitute);
+    expect(quoteCalls().every((c) => bodyOf(c).model === LYRIA.id)).toBe(true);
+    expect(createCalls()).toHaveLength(0);
   });
 
   it("no room on the timeline: the key is disabled and says so, before anything is spent", async () => {
@@ -316,6 +335,62 @@ describe("confirm, create, and the job", () => {
     expect(Object.keys(body).sort()).toEqual(["capability", "idempotency_key", "max_credits", "model", "org_id", "params"]);
   });
 
+  it("a double press on the confirm creates one job", async () => {
+    mountPanel();
+    await describeMusic();
+    fireEvent.click(makeKey());
+    const go = screen.getByRole("button", { name: fmt(tm().confirmGo, { n: "12" }) });
+    fireEvent.click(go);
+    fireEvent.click(go);
+    await advance(0);
+    expect(createCalls()).toHaveLength(1);
+  });
+
+  it("a create whose answer is lost (5xx) is retried with the SAME idempotency key; new words get a new one", async () => {
+    let answer: () => Promise<Response> = () => json({ error: "failed" }, 502);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u === "/api/creative/quote") return json({ quote: { credits: 12 } });
+      if (u === "/api/creative/jobs" && init?.method === "POST") return answer();
+      return json({ error: "failed" }, 502);
+    });
+    const press = async () => {
+      fireEvent.click(makeKey());
+      fireEvent.click(screen.getByRole("button", { name: fmt(tm().confirmGo, { n: "12" }) }));
+      await advance(0);
+    };
+    mountPanel();
+    await describeMusic();
+    await press();
+    answer = () => Promise.reject(new TypeError("offline"));
+    await press();
+    const keys = createCalls().map((c) => bodyOf(c).idempotency_key);
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(keys[0]);
+    answer = () => json({ error: "failed" }, 502);
+    await describeMusic("calm piano and strings");
+    await press();
+    expect(bodyOf(createCalls()[2]).idempotency_key).not.toBe(keys[0]);
+  });
+
+  it("a definitive refusal (4xx) lets the next press use a new key", async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u === "/api/creative/quote") return json({ quote: { credits: 12 } });
+      if (u === "/api/creative/jobs" && init?.method === "POST") return json({ error: "insufficient_credits" }, 402);
+      return json({ error: "failed" }, 502);
+    });
+    mountPanel();
+    await describeMusic();
+    for (let i = 0; i < 2; i++) {
+      fireEvent.click(makeKey());
+      fireEvent.click(screen.getByRole("button", { name: fmt(tm().confirmGo, { n: "12" }) }));
+      await advance(0);
+    }
+    const keys = createCalls().map((c) => bodyOf(c).idempotency_key);
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+
   it("Back drops the confirm, and changing the words drops it too (a new price needs a new yes)", async () => {
     mountPanel();
     await describeMusic();
@@ -341,7 +416,7 @@ describe("confirm, create, and the job", () => {
     expect(p.onAdd).not.toHaveBeenCalled();
     await advance(3000); // second read: completed
     expect(p.onAdd).toHaveBeenCalledTimes(1);
-    expect(p.onAdd).toHaveBeenCalledWith({ id: TRACK, kind: "audio", name: "Calm piano", durationS: 30, width: null, height: null, viewUrl: null, thumbUrl: null });
+    expect(p.onAdd).toHaveBeenCalledWith({ id: TRACK, kind: "audio", name: "Calm piano", durationS: 30, width: null, height: null, viewUrl: null, thumbUrl: null }, 2);
     expect(p.onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -380,15 +455,93 @@ describe("confirm, create, and the job", () => {
     expect(calls((u) => u.startsWith("/api/media/"))).toHaveLength(0);
   });
 
-  it("a timeline that filled up while it worked: nothing is placed, and the panel says where the track is", async () => {
-    const p = mountPanel({ onAdd: vi.fn(() => false) });
+  it("a timeline that filled up while it worked: nothing is placed, it says so, and Add it now places it once there is room", async () => {
+    const onAdd = vi.fn<(a: EditorAsset, at: number) => boolean>(() => false);
+    const props = { orgId: ORG, projectId: PID, models: [LYRIA], position: () => 2, onAdd, onClose: vi.fn() };
+    const view = render(withI18n(<MusicMaker {...props} canAdd />));
     await describeMusic();
     fireEvent.click(makeKey());
     fireEvent.click(screen.getByRole("button", { name: fmt(tm().confirmGo, { n: "12" }) }));
     await advance(0); // the create answers; the job is then read every 3 s
     await advance(6100);
-    expect(p.onClose).not.toHaveBeenCalled();
+    expect(props.onClose).not.toHaveBeenCalled();
     expect(screen.getByTestId("music-error").textContent).toContain(tm().fullAfter);
+    view.rerender(withI18n(<MusicMaker {...props} canAdd={false} />));
+    expect((screen.getByTestId("music-add-now") as HTMLButtonElement).disabled).toBe(true);
+    onAdd.mockImplementation(() => true);
+    view.rerender(withI18n(<MusicMaker {...props} canAdd />));
+    fireEvent.click(screen.getByTestId("music-add-now"));
+    expect(onAdd).toHaveBeenLastCalledWith(expect.objectContaining({ id: TRACK }), 2);
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(window.sessionStorage.getItem(`nightshift:editor-music:${PID}`)).toBeNull();
+  });
+
+  it("closed while the finished file is being read: nothing is placed and nothing closes, and the job is kept for the next open", async () => {
+    let release: (r: Response) => void = () => {};
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u === "/api/creative/quote") return json({ quote: { credits: 12 } });
+      if (u === "/api/creative/jobs" && init?.method === "POST") return json({ job: jobRow("queued") }, 201);
+      if (u === `/api/creative/jobs/${JOB}`) return json({ job: jobRow("completed", { result_asset_ids: [TRACK] }) });
+      if (u === `/api/media/${TRACK}`) return new Promise<Response>((r) => (release = r));
+      return json({ error: "failed" }, 502);
+    });
+    const props = { orgId: ORG, projectId: PID, models: [LYRIA], canAdd: true, position: () => 2, onAdd: vi.fn(() => true), onClose: vi.fn() };
+    const view = render(withI18n(<MusicMaker {...props} />));
+    await describeMusic();
+    fireEvent.click(makeKey());
+    fireEvent.click(screen.getByRole("button", { name: fmt(tm().confirmGo, { n: "12" }) }));
+    await advance(0);
+    await advance(3000);
+    expect(screen.getByTestId("music-status").textContent).toBe(tm().reading);
+    view.unmount();
+    await act(async () =>
+      release(new Response(JSON.stringify({ asset: { id: TRACK, kind: "audio", mime: "audio/mpeg", name: "x", durationS: 30 }, urls: {} }), { status: 200 })),
+    );
+    await advance(10);
+    expect(props.onAdd).not.toHaveBeenCalled();
+    expect(props.onClose).not.toHaveBeenCalled();
+    expect(JSON.parse(window.sessionStorage.getItem(`nightshift:editor-music:${PID}`)!)).toMatchObject({ jobId: JOB, at: 2 });
+  });
+
+  it.each([401, 403])("a %i on a job read stops asking at once and says to sign in again", async (status) => {
+    jobAnswers = [() => json({ error: "unauthorized" }, status)];
+    const p = mountPanel();
+    await describeMusic();
+    fireEvent.click(makeKey());
+    fireEvent.click(screen.getByRole("button", { name: fmt(tm().confirmGo, { n: "12" }) }));
+    await advance(0);
+    await advance(3000);
+    expect(screen.getByTestId("music-error").getAttribute("data-state")).toBe("signedOut");
+    expect(screen.getByTestId("music-error").textContent).toContain(tm().signedOut);
+    const reads = calls((u) => u === `/api/creative/jobs/${JOB}`).length;
+    await advance(30_000);
+    expect(calls((u) => u === `/api/creative/jobs/${JOB}`).length).toBe(reads);
+    expect(p.onAdd).not.toHaveBeenCalled();
+  });
+
+  it("job reads that keep failing (a 5xx, no network) stop after a bounded run, and say to check the library", async () => {
+    jobAnswers = Array.from({ length: 30 }, (_, i) => (i % 2 ? () => json({ error: "failed" }, 502) : () => Promise.reject(new TypeError("offline"))));
+    mountPanel();
+    await describeMusic();
+    fireEvent.click(makeKey());
+    fireEvent.click(screen.getByRole("button", { name: fmt(tm().confirmGo, { n: "12" }) }));
+    await advance(0);
+    await advance(3000 * 10 + 100);
+    expect(screen.getByTestId("music-error").getAttribute("data-state")).toBe("stalled");
+    expect(screen.getByTestId("music-error").textContent).toContain(tm().stalled);
+    const reads = calls((u) => u === `/api/creative/jobs/${JOB}`).length;
+    expect(reads).toBe(10);
+    await advance(60_000);
+    expect(calls((u) => u === `/api/creative/jobs/${JOB}`).length).toBe(reads);
+  });
+
+  it("a job still running past the ceiling stops being waited for, and says so", async () => {
+    jobAnswers = [];
+    window.sessionStorage.setItem(`nightshift:editor-music:${PID}`, JSON.stringify({ jobId: JOB, startedAt: Date.now() - 21 * 60_000, at: 0 }));
+    mountPanel();
+    await advance(0);
+    expect(screen.getByTestId("music-error").getAttribute("data-state")).toBe("stalled");
   });
 
   it("a refused create says why and keeps the panel open", async () => {
@@ -413,14 +566,16 @@ describe("in the editor page", () => {
   const editor = (doc: TimelineDoc, assets: Record<string, EditorAsset>) =>
     withI18n(<TimelineEditor projectId={PID} title="Trip" rev={1} doc={doc} exports={[]} assets={assets} videos={[VIDEO]} soundFiles={[]} orgId={ORG} musicModels={[LYRIA]} />);
 
-  it("a finished track lands as a music sound at the playhead, and saves as a valid document", async () => {
+  it("a finished track lands as a music sound where the playhead was at the confirm, and saves as a valid document", async () => {
     render(editor(toDoc(toModel(newDocForAsset(VIDEO)!)), { [VID]: VIDEO }));
-    fireEvent.change(screen.getByRole("slider", { name: en.editor.playhead }), { target: { value: "3" } });
+    const slider = screen.getByRole("slider", { name: en.editor.playhead });
+    fireEvent.change(slider, { target: { value: "3" } });
     fireEvent.click(screen.getByRole("button", { name: tm().open }));
     await describeMusic();
     fireEvent.click(makeKey());
     fireEvent.click(screen.getByRole("button", { name: fmt(tm().confirmGo, { n: "12" }) }));
     await advance(0); // the create answers; the job is then read every 3 s
+    fireEvent.change(slider, { target: { value: "7" } }); // moved while it works: the track still goes where it was asked for
     await advance(6100);
     expect(screen.queryByTestId("music-maker")).toBeNull();
     await advance(10);
@@ -451,6 +606,42 @@ describe("in the editor page", () => {
     await describeMusic();
     expect(makeKey().disabled).toBe(true);
     expect(why()).toBe(tm().full);
+  });
+
+  it("closed while the job was being created: the editor still says the music is being made", async () => {
+    let release: (r: Response) => void = () => {};
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u === "/api/creative/quote") return json({ quote: { credits: 12 } });
+      if (u === "/api/creative/jobs" && init?.method === "POST") return new Promise<Response>((r) => (release = r));
+      return json({ job: jobRow("running") });
+    });
+    render(editor(toDoc(toModel(newDocForAsset(VIDEO)!)), { [VID]: VIDEO }));
+    fireEvent.click(screen.getByRole("button", { name: tm().open }));
+    await describeMusic();
+    fireEvent.click(makeKey());
+    fireEvent.click(screen.getByRole("button", { name: fmt(tm().confirmGo, { n: "12" }) }));
+    fireEvent.click(screen.getByRole("button", { name: tm().close }));
+    expect(screen.queryByTestId("music-pending")).toBeNull();
+    await act(async () => release(new Response(JSON.stringify({ job: jobRow("queued") }), { status: 201 })));
+    await advance(10);
+    expect(screen.getByTestId("music-pending").textContent).toContain(tm().pending);
+  });
+
+  it("closed mid-job: the editor says the music is still being made, and Show picks it up again", async () => {
+    jobAnswers = [() => json({ job: jobRow("running") })];
+    render(editor(toDoc(toModel(newDocForAsset(VIDEO)!)), { [VID]: VIDEO }));
+    fireEvent.click(screen.getByRole("button", { name: tm().open }));
+    await describeMusic();
+    fireEvent.click(makeKey());
+    fireEvent.click(screen.getByRole("button", { name: fmt(tm().confirmGo, { n: "12" }) }));
+    await advance(0);
+    fireEvent.click(screen.getByRole("button", { name: tm().close }));
+    await advance(10);
+    fireEvent.click(within(screen.getByTestId("music-pending")).getByRole("button", { name: tm().pendingShow }));
+    await advance(0);
+    expect(screen.getByTestId("music-status").textContent).toBe(tm().working);
+    expect(createCalls()).toHaveLength(1);
   });
 
   it("Escape closes the panel and focus returns to Make music; so does the close key", async () => {
@@ -511,7 +702,7 @@ describe("the editor page loads the music list for the workspace", () => {
 describe("a refresh mid-job, and cancel", () => {
   const KEY = `nightshift:editor-music:${PID}`;
   const pend = (project = PID) =>
-    window.sessionStorage.setItem(`nightshift:editor-music:${project}`, JSON.stringify({ jobId: JOB, startedAt: Date.now() - 20_000 }));
+    window.sessionStorage.setItem(`nightshift:editor-music:${project}`, JSON.stringify({ jobId: JOB, startedAt: Date.now() - 20_000, at: 4 }));
   async function startJob() {
     await describeMusic();
     fireEvent.click(makeKey());
