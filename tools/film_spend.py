@@ -10,6 +10,9 @@ alert ``film:spend:*`` (modules/operator_bot/sources.py ``film_spend_for``, anal
 * "recorded": the cost row carries its own usd_estimate;
 * "estimated (registry figure)": the row's quantity times model_registry's pricing.provider_usd_per_unit, in the
   same unit. The adapters leave usd_estimate empty by design, so this is the usual case;
+* "estimated (highest variant)": the same for a model priced in variants (pricing.variants.prices: resolution, image
+  size, quality, audio), at the dearest variant that states a figure: which one the vendor billed is not read, and a cap
+  watcher must not guess low. A variant table with no figure is unknown, never the base figure;
 * "unknown": no quantity, no figure for the model, another unit, or a finished take with no cost row at all. NEVER
   counted as 0: the total is the known sum plus the unknown lines, and for those the vendor's billing page is the
   only measure.
@@ -40,7 +43,10 @@ from modules.operator_bot.sources import OperatorSources  # noqa: E402
 EXIT_OK, EXIT_REFUSED = 0, 2
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
-BASIS = {"recorded": "recorded", "estimated": "estimated (registry figure)", None: "no dollar figure known yet"}
+BASIS = {"recorded": "recorded", "estimated": "estimated (registry figure)",
+         "estimated_highest": "estimated (highest variant)",
+         "estimated_mixed": "estimated (registry figure; highest variant where priced in variants)",
+         None: "no dollar figure known yet"}
 STATE = {"not_recorded": "not recorded", "unknown": "unknown", "pending": "in flight, no cost row yet",
          "no_job": "no vendor call"}
 

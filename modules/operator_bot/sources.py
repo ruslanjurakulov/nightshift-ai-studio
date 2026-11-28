@@ -534,10 +534,12 @@ class OperatorSources:
         cost_rows = [r for r in costs.data if str(r.get("job_id")) in job_ids]
         # The adapters record a quantity in the vendor's unit and leave usd_estimate NULL by design
         # (modules/creative_adapters.py, RegistryAdapter.usage): the dollars come from the registry's reviewed figure,
-        # picked out of spec by path so nothing else of the spec is read. Only the price and its unit.
+        # picked out of spec by path so nothing else of the spec is read. Only the prices and their unit.
         models = {analysis.film_job_model(r) for r in job_rows} - {""}
+        # variant_prices: spec.pricing.variants.prices ({"1K": 0.067, "4K": 0.15, ...}, a figure or null per variant).
         figures = self._in_chunks("model_registry", "id,usd_per_unit:spec->pricing->>provider_usd_per_unit,"
-                                  "price_unit:spec->pricing->>unit", "id", models) if models else Section(True, [])
+                                  "price_unit:spec->pricing->>unit,variant_prices:spec->pricing->variants->prices",
+                                  "id", models) if models else Section(True, [])
         if not figures.ok:
             return figures
         figure_rows = [r for r in figures.data if str(r.get("id")) in models]

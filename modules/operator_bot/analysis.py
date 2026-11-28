@@ -181,31 +181,47 @@ def film_job_model(job) -> str:
     return str((job or {}).get("routed_model") or (job or {}).get("requested_model") or "")
 
 
-#: How a dollar figure was arrived at, worst first: a line with any estimate is an estimate.
-SPEND_BASES = ("estimated", "recorded")
+#: How a dollar figure was arrived at, worst first: a line with any estimate is an estimate. ``estimated_highest``: a
+#: model priced in variants (resolution, image size, quality, audio, ...), estimated at its dearest stated variant, because
+#: which variant the vendor billed is not read here and a cap watcher must not guess low.
+SPEND_BASES = ("estimated_highest", "estimated", "recorded")
+
+
+def film_unit_price(figure: Optional[dict]) -> tuple[str, Optional[Decimal]]:
+    """The registry's USD per unit for a model: ("estimated", the single figure), or for a model priced in variants
+    ("estimated_highest", the highest variant that states one). A variant table with no figure at all is unknown: the
+    base figure is never used in its place."""
+    f = figure or {}
+    variants = f.get("variant_prices")
+    if isinstance(variants, dict) and variants:
+        stated = [v for v in (_usd(x) for x in variants.values()) if v is not None]
+        return ("estimated_highest", max(stated)) if stated else ("unknown", None)
+    per = _usd(f.get("usd_per_unit"))
+    return ("estimated", per) if per is not None else ("unknown", None)
 
 
 def _cost_line(row, figure: Optional[dict]) -> tuple[str, Optional[Decimal]]:
-    """One creative_job_costs row: ("recorded", usd) when the worker stored dollars; ("estimated", quantity x the
-    registry's figure) when it stored only a quantity in the figure's unit; ("unknown", None) otherwise: no quantity,
-    no figure for the model (openai-gpt-image-2.6-* has none), or a unit the figure is not priced in."""
+    """One creative_job_costs row: ("recorded", usd) when the worker stored dollars; an estimate, quantity x the
+    registry's price (film_unit_price), when it stored only a quantity in the price's unit; ("unknown", None)
+    otherwise: no quantity, no figure for the model (openai-gpt-image-2.6-* has none), or another unit."""
     usd = _usd(row.get("usd_estimate"))
     if usd is not None:
         return "recorded", usd
     qty = _usd(row.get("quantity"))
-    per = _usd((figure or {}).get("usd_per_unit"))
+    basis, per = film_unit_price(figure)
     unit, price_unit = row.get("unit"), (figure or {}).get("price_unit")
     # A quantity is only priced in the unit it was counted in: a missing unit on either side is not a match.
     if qty is None or per is None or not unit or unit != price_unit:
         return "unknown", None
-    return "estimated", qty * per
+    return basis, qty * per
 
 
 def film_spend_rollup(films: dict, takes, jobs, costs, figures=()) -> list[dict]:
     """Each film's vendor cost so far, from its takes' jobs' cost rows. Pure.
 
     ``films`` maps film id -> org id. Returns, per film, ``{"film_id", "org_id", "usd" (Decimal, the KNOWN sum: recorded
-    plus estimated), "basis" ("recorded" | "estimated" | None when nothing is known), "unknown" (lines with no dollar
+    plus estimated), "basis" ("recorded" | "estimated" | "estimated_highest" | "estimated_mixed" | None when nothing
+    is known), "unknown" (lines with no dollar
     figure: a finished take whose job has no cost row, or a cost row that can be neither read nor estimated), "takes"}``,
     and per take ``{"id", "kind", "attempt", "status", "usd", "basis", "unknown", "state"}`` where state is
     ``costed`` (every row known), ``partial`` (some rows unknown), ``unknown`` (rows, none known), ``not_recorded`` (its
@@ -239,16 +255,26 @@ def film_spend_rollup(films: dict, takes, jobs, costs, figures=()) -> list[dict]
         else:
             state = "costed" if not unknown else ("partial" if known else "unknown")
         usd = sum((v for _b, v in known), Decimal(0)) if known else None
-        basis = next((b for b in SPEND_BASES if any(k == b for k, _v in known)), None)
+        basis = _basis_of({k for k, _v in known})
         film["takes"].append({"id": t.get("id"), "kind": t.get("kind"), "attempt": t.get("attempt"),
                               "status": t.get("status"), "usd": usd, "basis": basis, "unknown": unknown,
                               "state": state})
         if usd is not None:
             film["usd"] += usd
         film["unknown"] += unknown
-        if basis is not None:
-            film["basis"] = basis if film["basis"] is None else min(film["basis"], basis, key=SPEND_BASES.index)
+        for b, _v in known:
+            film.setdefault("_bases", set()).add(b)
+    for film in out.values():
+        bases = film.pop("_bases", set())
+        film["basis"] = _basis_of(bases)
     return list(out.values())
+
+
+def _basis_of(bases: set) -> Optional[str]:
+    """One word for a set of line bases: the worst, except that both kinds of estimate together say so."""
+    if {"estimated_highest", "estimated"} <= bases:
+        return "estimated_mixed"
+    return next((b for b in SPEND_BASES if b in bases), None)
 
 
 def worker_role(row) -> str:

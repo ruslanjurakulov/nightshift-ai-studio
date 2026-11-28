@@ -526,15 +526,19 @@ The paid test film has a hard vendor cap (`docs/studio/S2_LIVE_TEST.md`). Credit
 take's retry is the platform's cost, 0171), so the watch reads the vendor dollars themselves, every pass, for each film
 with an open segment or one settled in the last 24 h: `film_segments` → `film_takes` (kind, attempt, status) →
 `creative_jobs.film_take_id` (and the job's `routed_model`, else `requested_model`) → `creative_job_costs` (quantity,
-unit, usd_estimate) → `model_registry` (`spec->pricing->>provider_usd_per_unit` and its unit only, by path select).
+unit, usd_estimate) → `model_registry` (`spec->pricing->>provider_usd_per_unit`, its unit and
+`spec->pricing->variants->prices` only, by path select).
 
 Each cost row is one of three, and every line says which:
 
 * **recorded**: the row carries its own `usd_estimate`;
 * **estimated (registry figure)**: `quantity` × the model's `provider_usd_per_unit`, only in the figure's own unit. This
   is the usual case: the adapters record the vendor's quantity and leave `usd_estimate` NULL by design
-  (`modules/creative_adapters.py`, `RegistryAdapter.usage`). The registry's figure is the base price; a model priced
-  in variants (by resolution or image size) can bill more than it;
+  (`modules/creative_adapters.py`, `RegistryAdapter.usage`);
+* **estimated (highest variant)**: the same for a model priced in variants (`pricing.variants.prices`: resolution,
+  image size, quality, audio), at the dearest variant that states a figure, because which variant the vendor billed is
+  not read and a cap watcher must not guess low (gemini-3.1-flash-image: base 0.067, 4K 0.15, estimated at 0.15). A
+  variant table that states no figure is unknown, never the base figure;
 * **unknown**: no quantity, no figure for the model (for example `openai-gpt-image-2.6-*`), another unit, or a finished
   take (`completed`, `failed`, `superseded`, `skipped`) whose job has no cost row at all. Never counted as 0: the total
   is the known sum plus "N unknown". Today the film worker records a cost only for a take that succeeded

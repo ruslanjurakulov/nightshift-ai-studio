@@ -547,6 +547,8 @@ TABLE = {
     "alert.film_spend_stop": "Film {film} — org {org}: USD {usd} at its vendors, {basis}. That is at or above the STOP line of USD {stop}. Stop the film by hand now (runbook step 6, docs/studio/S2_LIVE_TEST.md), least drastic first: 1) the workspace switch off, set_org_film_studio_enabled(&lt;org&gt;, false); 2) cancel the segment, film_cancel_segment(&lt;segment&gt;, cancelled); 3) the worker off, NIGHTSHIFT_FILM_WORKER empty, then redeploy. Unknown lines are not included: check the vendor billing pages.",
     "alert.film_spend_unrecorded": "Film {film} — org {org}: {n} vendor line(s) have no dollar figure (a finished take with no cost row, or a cost row with no quantity, or a model with no registry figure). The USD {warn} / {stop} lines cannot be watched for them. Known so far: USD {usd}, {basis}. Check the vendor billing pages.",
     "film.spend_estimated": "estimated (registry figure)",
+    "film.spend_estimated_highest": "estimated (highest variant)",
+    "film.spend_estimated_mixed": "estimated (registry figure; highest variant where priced in variants)",
     "film.spend_recorded": "recorded",
     "film.spend_nothing_known": "no dollar figure known yet",
     "film.spend_unknown_lines": ", plus {n} unknown line(s), not counted",

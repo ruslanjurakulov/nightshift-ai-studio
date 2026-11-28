@@ -228,6 +228,39 @@ class RollupTestCase(unittest.TestCase):
         self.assertEqual([t["state"] for t in f["takes"]], ["pending", "no_job"])
         self.assertEqual(f["unknown"], 0)
 
+    def test_a_model_priced_in_variants_is_estimated_at_its_dearest_variant(self):
+        figs = [{"id": CLIP, "usd_per_unit": "0.05", "price_unit": "second",
+                 "variant_prices": {"720p": 0.05, "1080p": 0.08, "4k": None}}]
+        f = self.roll([take(1)], [job(1)], [cost(1, quantity=10)], figs)
+        self.assertEqual((f["usd"], f["basis"], f["unknown"]), (Decimal("0.80"), "estimated_highest", 0))
+
+    def test_gemini_3_1_flash_image_from_the_real_registry_is_priced_at_its_4k_figure(self):
+        import json
+        from pathlib import Path
+
+        doc = json.loads((Path(__file__).resolve().parent.parent / "schemas" / "model_registry.json").read_text())
+        entry = next(m for m in (doc["models"] if isinstance(doc, dict) else doc) if m["id"] == "gemini-3.1-flash-image")
+        pricing = entry["pricing"]
+        self.assertEqual((pricing["provider_usd_per_unit"], pricing["variants"]["prices"]["4K"]), (0.067, 0.15))
+        # What PostgREST hands the bot for this row: the three path selects of sources._film_costs.
+        fig = {"id": entry["id"], "usd_per_unit": str(pricing["provider_usd_per_unit"]), "price_unit": pricing["unit"],
+               "variant_prices": pricing["variants"]["prices"]}
+        self.assertEqual(analysis.film_unit_price(fig), ("estimated_highest", Decimal("0.15")))
+        f = self.roll([take(1, kind="keyframe")], [job(1, model=entry["id"])], [cost(1, quantity=2, unit="image")], [fig])
+        self.assertEqual((f["usd"], f["basis"]), (Decimal("0.30"), "estimated_highest"))
+
+    def test_a_variant_table_with_no_figure_is_unknown_never_the_base_figure(self):
+        figs = [{"id": CLIP, "usd_per_unit": "0.05", "price_unit": "second", "variant_prices": {"720p": None, "1080p": None}}]
+        f = self.roll([take(1)], [job(1)], [cost(1, quantity=10)], figs)
+        self.assertEqual((f["usd"], f["basis"], f["unknown"]), (Decimal(0), None, 1))
+
+    def test_a_single_price_and_a_variant_price_together_say_both(self):
+        figs = FIGURES + [{"id": "img-v", "usd_per_unit": "0.04", "price_unit": "image", "variant_prices": {"1K": 0.04, "4K": 0.1}}]
+        f = self.roll([take(1), take(2, kind="keyframe")], [job(1), job(2, model="img-v")],
+                      [cost(1, quantity=10), cost(2, quantity=1, unit="image")], figs)
+        self.assertEqual((f["usd"], f["basis"]), (Decimal("0.60"), "estimated_mixed"))
+        self.assertEqual([t["basis"] for t in f["takes"]], ["estimated", "estimated_highest"])
+
     def test_another_films_rows_are_never_summed(self):
         f = self.roll([take(1), take(1, film=FILM2)], [job(1), job(1, film=FILM2)],
                       [cost(1, quantity=10), cost(1, film=FILM2, quantity=1000)])
@@ -259,6 +292,18 @@ class SpendAlertTestCase(unittest.TestCase):
                      "NIGHTSHIFT_FILM_WORKER", "Unknown lines are not included: check the vendor billing pages",
                      "estimated (registry figure)"):
             self.assertIn(word, line)
+
+    def test_a_variant_estimate_is_labelled_highest_variant_in_every_language(self):
+        t = tables_for([120])
+        t["model_registry"] = [{"id": CLIP, "usd_per_unit": "0.05", "price_unit": "second",
+                                "variant_prices": {"720p": 0.05, "1080p": 0.06}}]            # 120 s x 0.06 = 7.20
+        words = {"en": "estimated (highest variant)", "ru": "оценка (самый дорогой вариант)",
+                 "uz": "taxminiy (eng qimmat variant)"}
+        for lang in LANGUAGES:
+            a = spend_alerts(t, lang=lang)
+            self.assertEqual([x.key for x in a], [f"film:spend:{FILM}:6"])
+            self.assertIn("7.20", a[0].line)
+            self.assertIn(words[lang], a[0].line)
 
     def test_a_recorded_figure_is_labelled_recorded(self):
         t = tables_for([], extra_takes=[take(1)], extra_jobs=[job(1)], extra_costs=[cost(1, usd="6.10")])
@@ -344,7 +389,8 @@ class SpendAlertTestCase(unittest.TestCase):
         for s in selects:
             for word in ("prompt", "params", "error", "price_source", "*"):
                 self.assertNotIn(word, s)
-        self.assertIn("id,usd_per_unit:spec->pricing->>provider_usd_per_unit,price_unit:spec->pricing->>unit", selects)
+        self.assertIn("id,usd_per_unit:spec->pricing->>provider_usd_per_unit,price_unit:spec->pricing->>unit,"
+                      "variant_prices:spec->pricing->variants->prices", selects)
 
     def test_no_line_in_any_language_carries_a_secret_a_prompt_or_a_full_id(self):
         t = tables_for([100, 60], extra_takes=[take(3, status="failed")], extra_jobs=[job(3)])

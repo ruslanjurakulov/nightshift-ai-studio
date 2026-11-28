@@ -7,10 +7,11 @@ read parameters are turned into the SQL PostgREST builds for them and executed a
 is), against rows the real functions wrote: 0171's start, claim, begin, succeed, fail and cancel, 0198's
 ``film_take_job`` (the one writer of a film take's creative job) and 0037's ``record_creative_job_cost``:
 
-  * film 1: a key frame whose cost row has a quantity only (as every adapter writes it), priced by the registry's figure
-    (an estimate past the warn line), and a clip that failed at its vendor with no cost row (not recorded);
+  * film 1: a key frame whose cost row has a quantity only (as every adapter writes it), on a model priced in variants,
+    estimated at its dearest variant (past the warn line), and a clip that failed at its vendor with no cost row (not
+    recorded);
   * film 2, another organization: a key frame whose row carries its own usd_estimate (recorded, past the stop line), and a
-    clip on a model with no registry figure (unknown, never 0).
+    clip on a model whose variant table states no figure (unknown, never 0 and never its base figure).
 
 What would break: a renamed column or a missing grant (the watch goes blind), a path select that returns something other
 than the text the Python parses, a sum that differs from the one the runbook's SQL computes, or a prompt or a price source
@@ -33,9 +34,9 @@ from modules.operator_bot.sources import OperatorSources
 from test_sec_films_money import a, claims, db, no_live_segment  # noqa: F401 — the money lab's fixtures, reused as they are
 
 _COL = re.compile(r"[a-z_][a-z0-9_]*")
-_PATH = re.compile(r"^([a-z_][a-z0-9_]*)((?:->[a-z_][a-z0-9_]*)*)->>([a-z_][a-z0-9_]*)$")
+_PATH = re.compile(r"^([a-z_][a-z0-9_]*)((?:->[a-z_][a-z0-9_]*)*)->(>?)([a-z_][a-z0-9_]*)$")
 
-KEYFRAME_USD_PER_IMAGE = Decimal("6.5")     # the lab registry's figure for img-key: one picture puts film 1 past USD 6
+KEYFRAME_USD_PER_IMAGE = Decimal("6.5")     # img-key's DEAREST variant: one picture puts film 1 past USD 6
 RECORDED_USD = Decimal("8.25")              # film 2's recorded row: past USD 8
 
 
@@ -44,7 +45,7 @@ def _expr(name: str) -> str:
     m = _PATH.match(name)
     if m:
         hops = "".join(f"->'{h}'" for h in m.group(2).split("->") if h)
-        return f'"{m.group(1)}"{hops}->>\'{m.group(3)}\''
+        return f'"{m.group(1)}"{hops}->{m.group(3)}\'{m.group(4)}\''
     assert _COL.fullmatch(name), f"the lab does not translate column {name!r}"
     return f'"{name}"'
 
@@ -89,6 +90,8 @@ def _json(v):
         return float(v)
     if v is None or isinstance(v, (bool, int, float, str)):
         return v
+    if isinstance(v, (dict, list)):
+        return json.loads(json.dumps(v))      # a json path select (``a->b``) arrives as JSON, as PostgREST sends it
     return str(v)
 
 
@@ -140,12 +143,6 @@ def test_the_columns_the_watch_reads_are_the_ones_0037_0166_and_0171_made(db):
 
 
 def test_the_bots_spend_reads_run_as_the_service_role_and_sum_what_the_runbook_sql_sums(db, a):
-    # The registry's reviewed figure for the key-frame model; the clip model keeps none (like openai-gpt-image-2.6-*).
-    db.su("update public.model_registry set spec = spec || jsonb_build_object('pricing', jsonb_build_object("
-          "'unit', 'image', 'provider_usd_per_unit', %s::numeric, 'source_url', 'https://lab.example', 'as_of', '2026-11-01', "
-          "'confirmed', false)) where id = 'img-key'", [KEYFRAME_USD_PER_IMAGE])
-    db.su("update public.model_registry set spec = spec - 'pricing' where id = 'vid-clip'")
-
     # Film 1: an estimated key frame, then a clip that fails at its vendor with no cost row (as the worker leaves it today).
     film1 = db.film(a)
     s1 = db.quoted_start(a, film1)
@@ -175,6 +172,19 @@ def test_the_bots_spend_reads_run_as_the_service_role_and_sum_what_the_runbook_s
     record_cost(db, take_job(db, clip2), "second", 10)
     db.cancel(s2["id"])
 
+    # The registry's prices, set after the starts: the lab's quote reads a price-variant table as a sellable model's
+    # credit units, which these lab models do not have. The key-frame model is priced in variants (base 1.00, 4K 6.50):
+    # the watch estimates at the dearest. The clip model states a base figure but a variant table with no figure in it:
+    # unknown, never the base.
+    db.su("update public.model_registry set spec = spec || jsonb_build_object('pricing', jsonb_build_object("
+          "'unit', 'image', 'provider_usd_per_unit', 1.0, 'source_url', 'https://lab.example', 'as_of', '2026-11-01', "
+          "'confirmed', false, 'variants', jsonb_build_object('by', 'image_size', 'prices', "
+          "jsonb_build_object('1K', 1.0, '4K', %s::numeric, '8K', null)))) where id = 'img-key'", [KEYFRAME_USD_PER_IMAGE])
+    db.su("update public.model_registry set spec = spec || jsonb_build_object('pricing', jsonb_build_object("
+          "'unit', 'second', 'provider_usd_per_unit', 0.05, 'source_url', 'https://lab.example', 'as_of', '2026-11-01', "
+          "'confirmed', false, 'variants', jsonb_build_object('by', 'resolution', 'prices', "
+          "jsonb_build_object('720p', null, '1080p', null)))) where id = 'vid-clip'")
+
     sync = LabSync(db.dsn)
     cfg = OperatorConfig(app_url="https://app.example.test", github_repo="owner/repo")
     ops = OperatorSources(sync, lambda *_args: (None, None), cfg, now=lambda: datetime.now(timezone.utc))
@@ -184,7 +194,7 @@ def test_the_bots_spend_reads_run_as_the_service_role_and_sum_what_the_runbook_s
     assert {str(film1), str(film2)} <= set(by_film)
 
     f1, f2 = by_film[str(film1)], by_film[str(film2)]
-    assert (f1["usd"], f1["basis"], f1["unknown"], f1["org_id"]) == (KEYFRAME_USD_PER_IMAGE, "estimated", 1, str(a.org))
+    assert (f1["usd"], f1["basis"], f1["unknown"], f1["org_id"]) == (KEYFRAME_USD_PER_IMAGE, "estimated_highest", 1, str(a.org))
     states1 = {t["id"]: t["state"] for t in f1["takes"]}
     assert (states1[str(kf1)], states1[str(clip1)]) == ("costed", "not_recorded")
     assert (f2["usd"], f2["basis"], f2["unknown"]) == (RECORDED_USD, "recorded", 1)
@@ -197,7 +207,8 @@ def test_the_bots_spend_reads_run_as_the_service_role_and_sum_what_the_runbook_s
                "where j.film_take_id in (select id from public.film_takes where film_id = %s)")
     assert db.su(runbook, [film2])[0][0] == RECORDED_USD
     assert db.su(runbook, [film1])[0][0] is None
-    truth1 = db.su("select sum(c.quantity * (r.spec->'pricing'->>'provider_usd_per_unit')::numeric) "
+    truth1 = db.su("select sum(c.quantity * (select max(v::text::numeric) from jsonb_each(r.spec->'pricing'->'variants'->'prices') e(k, v) "
+                   "where jsonb_typeof(v) = 'number')) "
                    "from public.creative_job_costs c join public.creative_jobs j on j.id = c.job_id "
                    "join public.model_registry r on r.id = coalesce(j.routed_model, j.requested_model) "
                    "join public.film_takes t on t.id = j.film_take_id where t.film_id = %s "

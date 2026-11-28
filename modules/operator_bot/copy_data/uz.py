@@ -546,6 +546,8 @@ TABLE = {
     "alert.film_spend_stop": "Film {film} — tashkilot {org}: provayderlarda USD {usd}, {basis}. Bu USD {stop} TOʻXTATISH chegarasidan past emas. Filmni hozir qoʻlda toʻxtating (yoʻriqnomaning 6-qadami, docs/studio/S2_LIVE_TEST.md), eng yumshogʻidan boshlab: 1) ish maydoni kalitini oʻchiring, set_org_film_studio_enabled(&lt;org&gt;, false); 2) segmentni bekor qiling, film_cancel_segment(&lt;segment&gt;, cancelled); 3) ishchini oʻchiring, NIGHTSHIFT_FILM_WORKER boʻsh, soʻng qayta deploy. Nomaʼlum qatorlar hisobga olinmagan: provayderlarning toʻlov sahifalarini tekshiring.",
     "alert.film_spend_unrecorded": "Film {film} — tashkilot {org}: {n} ta provayder qatorida dollar summasi yoʻq (narx qatori yoʻq tugagan dubl, miqdori yoʻq qator yoki reyestrda narxi yoʻq model). Ular uchun USD {warn} / {stop} chegaralarini kuzatib boʻlmaydi. Hozircha maʼlum: USD {usd}, {basis}. Provayderlarning toʻlov sahifalarini tekshiring.",
     "film.spend_estimated": "taxminiy (reyestrdagi narx)",
+    "film.spend_estimated_highest": "taxminiy (eng qimmat variant)",
+    "film.spend_estimated_mixed": "taxminiy (reyestrdagi narx; narxi variantga bogʻliq joyda eng qimmat variant)",
     "film.spend_recorded": "yozilgan",
     "film.spend_nothing_known": "hali birorta dollar summasi maʼlum emas",
     "film.spend_unknown_lines": ", yana {n} ta nomaʼlum qator, hisobga olinmagan",

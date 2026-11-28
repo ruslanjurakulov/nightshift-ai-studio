@@ -424,10 +424,13 @@ def usd_line(value) -> str:
     return format(Decimal(str(value)).normalize(), "f")
 
 
+SPEND_BASIS_KEYS = {"recorded": "film.spend_recorded", "estimated": "film.spend_estimated",
+                    "estimated_highest": "film.spend_estimated_highest", "estimated_mixed": "film.spend_estimated_mixed"}
+
+
 def spend_basis(lang: str, film: dict) -> views.Raw:
     """How a film's dollars were arrived at, plus the lines that have none (never counted as 0)."""
-    basis = t(lang, "film.spend_estimated" if film.get("basis") == "estimated" else
-              "film.spend_recorded" if film.get("basis") == "recorded" else "film.spend_nothing_known")
+    basis = t(lang, SPEND_BASIS_KEYS.get(film.get("basis"), "film.spend_nothing_known"))
     extra = t(lang, "film.spend_unknown_lines", n=film["unknown"]) if film.get("unknown") else ""
     return views.Raw(basis + extra)
 
