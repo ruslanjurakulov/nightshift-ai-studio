@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Dictionary, Locale } from "@/lib/i18n";
-import { UNIT_JOB_MINIMUM, UNIT_VIDEO_MINUTE, chargePerUnit } from "@/lib/credits";
+import { UNIT_JOB_MINIMUM, UNIT_VIDEO_MINUTE } from "@/lib/credits";
 import { rateText } from "@/lib/models-discovery";
 import type { PlanFinderData, StudioRow } from "@/lib/plan-finder";
 import { settingName, stampText } from "@/components/pricing/plan-finder-text";
@@ -69,7 +69,7 @@ export function PlanCostTable({ t, locale, data }: { t: Dictionary; locale: Loca
                   <th scope="row">{c.minute}</th>
                   <td>—</td>
                   <td>
-                    <span className="st-num">{rateText(chargePerUnit(minute), locale)}</span>
+                    <span className="st-num">{rateText(minute.credits, locale)}</span>
                   </td>
                   <td>{c.perMinute}</td>
                 </tr>
@@ -78,7 +78,7 @@ export function PlanCostTable({ t, locale, data }: { t: Dictionary; locale: Loca
                     <th scope="row">{c.minimum}</th>
                     <td>—</td>
                     <td>
-                      <span className="st-num">{rateText(chargePerUnit(floor), locale)}</span>
+                      <span className="st-num">{rateText(floor.credits, locale)}</span>
                     </td>
                     <td>{c.perRun}</td>
                   </tr>

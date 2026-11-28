@@ -1,6 +1,7 @@
-import { isEffectPrompt, type Effect } from "@/lib/effects/catalog";
-import { SHOWCASE_ENTRIES, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
-import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
+import { isEffectPrompt, type Effect, type EffectSample } from "@/lib/effects/shared";
+import type { ShowcaseFiles } from "@/lib/site/showcase";
+import { showcaseCard, type ShowcaseCard } from "@/lib/site/showcase-card";
+import { SHOWCASE_CARDS, SHOWCASE_FILES } from "@/components/site/showcase-assets";
 
 // Its own module, not EffectFrame.tsx: that file is a Client Component, and a Server Component that imports a plain function
 // from a "use client" module gets a client reference it cannot call. The public gallery (a Server Component) needs the sample's
@@ -11,18 +12,26 @@ import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
  * export checked it was the operator's own completed job, byte for byte), its files are in the repository, and it IS this
  * effect's output: a clip from the effect's tool, by one of the effect's models, given exactly the effect's words (with a subject
  * in the slot). Anything less is no sample, and the card draws its placeholder: a preview is never borrowed from another job.
+ *
+ * The words are checked only where the entry carries them (a full entry, or in a test). The default is the client-safe slice
+ * (components/site/showcase-assets.ts SHOWCASE_CARDS), which has no prompt: it ran in the browser until the effects data became
+ * server-only (lib/effects/catalog.ts effectFace now runs it on the server and hands the card the answer), and the default is
+ * kept so every card shows exactly the sample it showed before. Both lists are build-time constants, so tests/showcase-cards.test.ts
+ * holding the slice's answer equal to the full entries' answer for every effect in the catalog is the same guard, run once in CI.
  */
 export function effectSample(
   effect: Pick<Effect, "previewJobId" | "capability" | "models" | "prompt">,
-  entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES,
+  entries: readonly (ShowcaseCard & { prompt?: string })[] = SHOWCASE_CARDS,
   files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES,
-): { entry: ShowcaseEntry; files: ShowcaseFiles } | null {
+): EffectSample | null {
   if (!effect.previewJobId) return null;
   const entry = entries.find((e) => e.jobId === effect.previewJobId);
   const f = files[effect.previewJobId];
   if (!entry || !f || entry.kind !== "video" || !f.clip) return null;
-  if (entry.capability !== effect.capability || !effect.models.includes(entry.modelId) || !isEffectPrompt(effect, entry.prompt)) return null;
-  return { entry, files: f };
+  if (entry.capability !== effect.capability || !effect.models.includes(entry.modelId)) return null;
+  if (entry.prompt !== undefined && !isEffectPrompt(effect, entry.prompt)) return null;
+  // A copy: EffectFrame (a Client Component) takes this as its `sample` prop, and a full entry there would cross whole.
+  return { entry: showcaseCard(entry), files: f };
 }
 
 /** The effect's own shape, height / width: what its drawing reserves. */
@@ -40,7 +49,7 @@ const SHAPE_SLACK = 0.03;
  * shape, cut from the centre (object-fit: cover; there 10% of empty backdrop off the top and the bottom), and the grid is planned
  * on that shape.
  */
-export function sampleKeepsShape(effect: Pick<Effect, "aspect">, entry: Pick<ShowcaseEntry, "width" | "height">): boolean {
+export function sampleKeepsShape(effect: Pick<Effect, "aspect">, entry: Pick<ShowcaseCard, "width" | "height">): boolean {
   return Math.abs(entry.height / entry.width / aspectRatio(effect.aspect) - 1) <= SHAPE_SLACK;
 }
 

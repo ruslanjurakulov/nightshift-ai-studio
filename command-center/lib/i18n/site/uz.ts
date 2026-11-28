@@ -2,6 +2,7 @@ import type { SiteDictionary } from "./en";
 import { studioPageUz } from "../studio-page/uz";
 import { roadmapUz } from "../roadmap/uz";
 import { trustUz } from "../trust/uz";
+import { megaMenuUz } from "../megamenu/uz";
 import { siteAutopilotUz } from "../site-autopilot/uz";
 import { publicStatsUz } from "../public-stats/uz";
 
@@ -140,6 +141,8 @@ export const siteUz: SiteDictionary = {
   },
   fx: {
     pause: "Harakatni toʻxtatish",
+    /** The title of the models strip (ModelMarquee): models that made a sample on this page; never "partners". */
+    modelsTitle: "Nightshift Studioʼdagi modellar",
   },
   bar: {
     label: "Tez boshlash",
@@ -148,6 +151,7 @@ export const siteUz: SiteDictionary = {
     dismiss: "Bu panelni yashirish",
   },
   samples: {
+    sound: "Klip ovozi",
     tag: "Namuna kadr (stok surat)",
     frameTag: "Namuna kadr (stok video)",
     clipTag: "Namuna klip (stok video)",
@@ -176,37 +180,30 @@ export const siteUz: SiteDictionary = {
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
   credits: {
     title: "Rasm mualliflari",
-    lead: "Bu sahifalardagi stok namuna deb belgilangan har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm ham mahsulotning skrinshoti emas.",
+    lead: "Bu sahifalardagi stok namuna deb belgilangan har bir surat va klip Pexels mualliflarining stok surati yoki videosi; ular faqat videoda foydalanish mumkin boʻlgan rasm turiga namuna sifatida koʻrsatilgan. Ular haqiqiy hisob natijasi emas, undagi odamlar, joylar yoki brendlar esa Nightshift’ni tavsiya qilmaydi. “AI” (sunʼiy intellekt yaratgan) belgisi bor klip yoki rasm ham mahsulotning skrinshoti emas.",
     licence: "Pexels litsenziyasi",
-    leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan.",
-    generated: "Yana bir istisno: “Sunʼiy intellekt yaratgan” belgisi bor klip yoki rasm, bu sahifalarning qayerida boʻlmasin, stok emas. U oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan.",
+    leadNoStock: "Bu sahifalarda stok rasmlar qolmadi. “AI” (sunʼiy intellekt yaratgan) belgisi bor klip yoki rasm oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan.",
+    generated: "Yana bir istisno: “AI” (sunʼiy intellekt yaratgan) belgisi bor klip yoki rasm, bu sahifalarning qayerida boʻlmasin, stok emas. U oʻzimizning Studiyamizdagi haqiqiy topshiriq boʻlib, uni Studiyadagi modellardan biri yaratgan.",
   },
   gallery: {
     label: "Nightshift Studio’da yaratilgan",
     title: "Nightshift’da yaratilgan",
-    lead: "Haqiqiy generatsiyalar: ularni jamoamiz Nightshift Studio’da yaratgan. Istalganini oching: uni yaratgan model va unga berilgan soʻzlar koʻrinadi.",
-    badge: "Sunʼiy intellekt yaratgan",
+    lead: "Jamoamiz Nightshift Studio’da yaratgan haqiqiy generatsiyalar. Nima ekanini koʻrish uchun kursorni olib boring yoki bir marta bosing; promptini Studiyada ochish uchun yana bosing.",
+    badge: "AI",
+    badgeName: "Sunʼiy intellekt yaratgan",
     model: "Model",
     prompt: "Soʻrov",
     noPrompt: "Soʻzsiz: faqat rasmdan yaratilgan.",
-    made: "Yaratilgan sana: {date}",
-    try: "Shu soʻrovni sinab koʻrish",
-    tryAria: "Shu soʻrovni sinab koʻrish: {model}",
     notInStudio: "Bu model hozircha Studiyada yoʻq",
     gone: "Bu model endi Studiyada yoʻq",
-    tryNote: "“Shu soʻrovni sinab koʻrish” va “Shu soʻrovdan foydalanish” Studiyani shu vosita va shu soʻzlar bilan ochadi. Biror narsa boshlanishidan oldin Studiya qaysi modelni ishlatishini va narxini koʻrsatadi.",
-    tryNoteSignedOut: "“Shu soʻrovni sinab koʻrish” va “Shu soʻrovdan foydalanish” avval hisob yaratishni soʻraydi, soʻng Studiyani shu vosita va shu soʻzlar bilan ochadi. Studiyada “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi, narx esa oldindan koʻrinadi.",
+    tryNote: "Har bir karta Studiyani oʻz vositasi va soʻzlari bilan toʻldirilgan shaklda ochadi. Biror narsa boshlanishidan oldin Studiya qaysi modeldan foydalanishi va narxini koʻrsatadi.",
+    tryNoteSignedOut: "Har bir karta avval hisob yaratishni taklif qiladi, soʻng Studiyani oʻz vositasi va soʻzlari bilan toʻldirilgan shaklda ochadi. Studiyada “Yaratish”ni bosmaguningizcha hech narsa boshlanmaydi, model va narx esa oldindan koʻrinadi.",
     altClip: "Sunʼiy intellekt yaratgan klip: {model} modeli",
     altImage: "Sunʼiy intellekt yaratgan tasvir: {model} modeli",
     use: "Shu soʻrovdan foydalanish",
     useNote: "Studiyani shu soʻzlar bilan undagi modellardan birida ochadi; qaysi biri va narxi qancha ekanini Studiya boshlashdan oldin koʻrsatadi.",
     bgClip: "Sunʼiy intellekt yaratgan klip",
     bgImage: "Sunʼiy intellekt yaratgan tasvir",
-    source: "Shu rasmdan yaratilgan:",
-    altSource: "Bu klip yaratilgan, sunʼiy intellekt yaratgan tasvir: {model} modeli",
-    open: "Namunani ochish",
-    detail: "Namuna haqida",
-    close: "Yopish",
   },
   prompt: {
     label: "Qanday video kerakligini tasvirlang",
@@ -529,7 +526,7 @@ export const siteUz: SiteDictionary = {
       { id: "return", word: "Qaytarish", formula: "qaytarish = zaxira − yechim;  nosozlik → qaytarish = zaxira", body: "Arizasiz darhol balansga qaytadi. Har bir qadam kredit tarixida koʻrinadi." },
     ],
     sizesTitle: "Paket hajmlari",
-    extraLine: "Avval tarif kreditlari sarflanadi. Ular tugasa, ish paketdagi qoʻshimcha kreditlar hisobidan davom etishi mumkin. Buni «Sarf» sahifasida oʻchirib qoʻyish mumkin.",
+    extraLine: "Avval tarif kreditlari sarflanadi. Ular tugasa, ish paketdagi qoʻshimcha kreditlar hisobidan davom etishi mumkin. Buni “Sarf” sahifasida oʻchirib qoʻyish mumkin.",
     mathToggle: "Hisobni koʻrsatish",
     sizesNote: "Toʻlov aynan shu paketlarni sotadi. Ularning narxlari toʻlov ochilishidan oldin shu yerda eʼlon qilinadi.",
     termsSlug: "Shartlar",
@@ -543,6 +540,7 @@ export const siteUz: SiteDictionary = {
   roadmap: roadmapUz,
   /** The public /trust page (lib/i18n/trust; English is the source). */
   trust: trustUz,
+  megaMenu: megaMenuUz,
   /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
   autopilot: siteAutopilotUz,
   liveStats: publicStatsUz,

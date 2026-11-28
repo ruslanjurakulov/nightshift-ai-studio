@@ -294,14 +294,15 @@ def test_the_lab_takes_the_whole_chain_off_and_puts_it_back_from_0156s_bodies(co
     session = SimpleNamespace(conn=conn)
     with conn.transaction(force_rollback=True):
         _become(conn, None)
-        # The lab ends at 0159, which sits on 0156's creative_price (and leaves its creative_params_problem as 0156 wrote it).
-        assert sec_db.has_0159(conn) and not sec_db.has_0156(conn) and not sec_db.has_0155(conn)
-        assert _md5_conn(conn, PP) == sec_db.CREATIVE_PARAMS_PROBLEM_0156
+        # The lab ends at 0218, on 0208, which sits on 0159's creative_price (itself on 0156's) and on 0156's creative_params_problem.
+        assert sec_db.has_0218(conn) and sec_db.has_0208(conn) and sec_db.has_0159(conn) and not sec_db.has_0156(conn)
+        assert not sec_db.has_0155(conn)
+        assert _md5_conn(conn, PP) == sec_db.CREATIVE_PARAMS_PROBLEM_0228  # 0218's, and 0228's hunk on it (after 0224)
         sec_db.take_off_0139(session)
         assert _md5_conn(conn, CP) == "e0c4a7806642086398558cf322c95a0d", "0125's body"
         assert _md5_conn(conn, PP) == PP_0126, "0126's body"
         sec_db.put_back_0139(session)
-        assert (_md5_conn(conn, PP), _md5_conn(conn, CP)) == (sec_db.CREATIVE_PARAMS_PROBLEM_0156, sec_db.CREATIVE_PRICE_0159)
+        assert (_md5_conn(conn, PP), _md5_conn(conn, CP)) == (sec_db.CREATIVE_PARAMS_PROBLEM_0228, sec_db.CREATIVE_PRICE_0228)
 
 
 def _md5s(d):

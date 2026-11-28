@@ -5,7 +5,8 @@ import { logAudit } from "@/lib/server/audit";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
 import { blockedModelsHere, geoRefusal } from "@/lib/server/geo";
-import { missingWords, sellableFor } from "@/lib/creative/route-around";
+import { geoClaimHeaders } from "@/lib/server/geo-claim";
+import { missingWords, sellableFor, wordsNotTaken } from "@/lib/creative/route-around";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +29,9 @@ export const dynamic = "force-dynamic";
  *
  * A model whose vendor forbids the country this request comes from is refused
  * here, 451 `country_blocked`, before the database is called: nothing is quoted,
- * held or queued (docs/GEO_BLOCK.md). An unknown country is allowed (and logged).
+ * held or queued (docs/GEO_BLOCK.md). An unknown country is allowed (and logged), except for a model sold only inside listed
+ * regions (Google's): 451 `country_unverified`. For such a model the call carries a server-signed country (lib/server/geo-claim.ts),
+ * without which the database refuses the job itself (0208).
  *
  * GET `?org_id=` lists the organization's newest jobs (RLS: its members);
  * `&capability=t2v,i2v` lists only those tools' jobs (a Studio desk's).
@@ -50,6 +53,9 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   // A routed create names the model its quote picked (0075), so this one check covers every mode.
   const blocked = parsed.input.model ? geoRefusal(parsed.input.model, request.headers) : null;
   if (blocked) return NextResponse.json(blocked.body, { status: blocked.status });
+  // Rule 6: refused before anything is held when the tool takes no words and some were sent (picture upscale).
+  const unworded = wordsNotTaken(parsed.input.capability, parsed.input.params);
+  if (unworded) return NextResponse.json(unworded.body, { status: unworded.status });
   // Rule 6: refused before anything is held when the model needs words that were not sent (registry inputs.prompt_required).
   const words = await missingWords(session.db, parsed.input.capability, parsed.input.model, parsed.input.params);
   if (words) return NextResponse.json(words.body, { status: words.status });
@@ -64,7 +70,8 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
       if (!sellable || sellable.some((m) => forbidden(m.id))) input = { ...input, mode: "exact" };
     }
   }
-  const out = await createGeneration(session.db, input);
+  // 0208: the database refuses a job on a model with a country list unless this server vouches for the country (sent only then).
+  const out = await createGeneration(session.db, input, geoClaimHeaders([input.model], request.headers, session.userId));
   if (out.status === 201) {
     const job = out.body.job as { id?: string; quoted_credits?: number };
     await logAudit({

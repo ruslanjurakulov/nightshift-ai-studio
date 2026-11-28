@@ -20,7 +20,7 @@ export function parseOwnerRpcFlag(value: string | undefined | null): boolean {
   return (value ?? "").trim().toLowerCase() === "on";
 }
 
-/** Every refusal the database (owner_err) can give to the six screens, plus the ones a route gives itself. */
+/** Every refusal the database (owner_err) can give to the owner screens (grants, reversals, prices), plus the ones a route gives itself. */
 export const OWNER_REFUSALS = [
   // the front door of every owner function
   "mfa_required",
@@ -51,14 +51,8 @@ export const OWNER_REFUSALS = [
   "confirm_required",
   /** The price was changed after the page was loaded (Restore only offers the newest change of a service). */
   "price_changed",
-  // team
-  "bad_role",
-  "bad_email",
-  "owner_required",
-  "already_member",
-  "no_such_member",
-  "self_change",
-  "last_owner",
+  /** The unit has a dated price (migration 0224, in force or pending): its list rate is changed by a dated row, not edited. */
+  "dated_price_scheduled",
   // a route's own
   "unauthorized",
   "forbidden",
@@ -75,7 +69,7 @@ export function isOwnerRefusal(code: unknown): code is OwnerRefusal {
   return typeof code === "string" && (OWNER_REFUSALS as readonly string[]).includes(code);
 }
 
-/** Roles the roster accepts (owner_add_member / owner_set_member_role). */
+/** The roster's roles, as owner_security_get() reports them for each owner and admin (read only: the roster has no screen). */
 const ROLE_SET = ["owner", "admin", "editor", "viewer"] as const;
 type RoleName = (typeof ROLE_SET)[number];
 
@@ -187,33 +181,6 @@ export function parsePrice(body: unknown): OwnerParse {
   return bad("bad_request");
 }
 
-export function parseTeam(body: unknown): OwnerParse {
-  const b = obj(body);
-  if (!b) return bad("bad_request");
-  const reason = optionalText(b.reason);
-  if (!reason.ok) return bad("bad_note");
-  const action = str(b.action);
-  const role = str(b.role);
-  const roleOk = role !== null && (ROLE_SET as readonly string[]).includes(role);
-  if (action === "add") {
-    const email = (str(b.email) ?? "").trim().toLowerCase();
-    if (email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return bad("bad_email");
-    if (!roleOk) return bad("bad_role");
-    return { ok: true, call: { fn: "owner_add_member", args: { p_email: email, p_role: role, p_reason: reason.value } } };
-  }
-  const member = str(b.member);
-  if (action === "role") {
-    if (!member || !UUID.test(member)) return bad("no_such_member");
-    if (!roleOk) return bad("bad_role");
-    return { ok: true, call: { fn: "owner_set_member_role", args: { p_member: member, p_role: role, p_reason: reason.value } } };
-  }
-  if (action === "remove") {
-    if (!member || !UUID.test(member)) return bad("no_such_member");
-    return { ok: true, call: { fn: "owner_remove_member", args: { p_member: member, p_reason: reason.value } } };
-  }
-  return bad("bad_request");
-}
-
 /** What a route sends back for the database's JSON answer. */
 export interface OwnerHttp {
   status: number;
@@ -242,6 +209,9 @@ export function ownerReplyToHttp(data: unknown): OwnerHttp {
   return { status: 422, body };
 }
 
+/** The SQLSTATE 0224's list-price guard raises (credit_prices_dated_guard). */
+export const DATED_PRICE_SQLSTATE = "NS428";
+
 /** An error PostgREST returned for an rpc call, as the route's answer. The database's own text is never forwarded. */
 export function ownerRpcErrorToHttp(error: { code?: string | null; message?: string | null }): OwnerHttp {
   const code = error.code ?? "";
@@ -249,6 +219,8 @@ export function ownerRpcErrorToHttp(error: { code?: string | null; message?: str
   // PGRST202: not in the schema cache; 42883: no such function. 0107 not applied (or the cache is stale).
   if (code === "PGRST202" || code === "42883") return { status: 503, body: { ok: false, error: "migration_missing" } };
   if (code === "PGRST301" || code === "PGRST303") return { status: 401, body: { ok: false, error: "unauthorized" } };
+  // 0224's credit_prices_dated_guard: a rate edit for a unit with a dated price. A refusal with a remedy, not a failed call.
+  if (code === DATED_PRICE_SQLSTATE) return { status: 422, body: { ok: false, error: "dated_price_scheduled" } };
   return { status: 502, body: { ok: false, error: "rpc_failed" } };
 }
 

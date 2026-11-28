@@ -17,7 +17,9 @@ export const dynamic = "force-dynamic";
  * `?folder=<uuid>` narrows the files to one folder (migration 0049; another
  * organization's folder simply holds nothing here), `?q=` to names containing
  * the text — matched on the server, so a library larger than one page is
- * searched whole. Both are ignored before 0049 / without them.
+ * searched whole. Both are ignored before 0049 / without them. `?mine=1` narrows files and uploads to the caller's own (created_by =
+ * the signed-in user, on the server) and marks each file `createdBy`: how a sample's copy is found again without adopting a
+ * co-member's file of the same name.
  */
 export async function GET(request: Request) {
   const user = await getUser();
@@ -35,7 +37,7 @@ export async function GET(request: Request) {
   const folder = folderRaw === null || folderRaw === "" ? null : parseMediaId(folderRaw);
   if (folderRaw !== null && folderRaw !== "" && !folder) return NextResponse.json({ error: "bad_request" }, { status: 400 });
   const query = (params.get("q") ?? "").slice(0, 400);
-  const lib = await loadMediaLibrary(org, { folder, query });
+  const lib = await loadMediaLibrary(org, { folder, query, createdBy: params.get("mine") === "1" ? user.id : null });
   if (!lib.available) return NextResponse.json({ error: "not_available", host: lib.host }, { status: 503 });
   if (lib.error) return NextResponse.json({ error: lib.error }, { status: 502 });
   return NextResponse.json({ org, ...lib });

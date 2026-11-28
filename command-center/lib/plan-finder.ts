@@ -20,7 +20,7 @@
  * (estimateRunCredits reads no voice); the page says that rather than invent a premium.
  */
 
-import { UNIT_JOB_MINIMUM, UNIT_VIDEO_MINUTE, estimateRunCredits, roundUpCredits, type PriceMap } from "@/lib/credits";
+import { UNIT_JOB_MINIMUM, UNIT_VIDEO_MINUTE, chargePerUnit, estimateRunCredits, roundUpCredits, type ChargedRate, type PriceMap } from "@/lib/credits";
 import { quoteLike } from "@/lib/plans";
 import { lowestRate, type DiscoveryModel, type DiscoveryState, type PriceUnit } from "@/lib/models-discovery";
 
@@ -52,22 +52,45 @@ export const VOICE_TIERS: readonly VoiceTier[] = ["standard", "premium"];
 /** When the rates were known: the price list's own `updated_at` (signed in), else the day the page read them. */
 export type RateStamp = { kind: "set"; at: string } | { kind: "read"; at: string };
 
+export type { ChargedRate };
+
 /**
- * The two units a YouTube video is quoted from, as charged, or null when there is no positive per-minute rate (an unset
- * or zero rate is unpublished, never free — 0089). Nothing else of the price list travels to the browser.
+ * The two units a YouTube video is quoted from. Only `{ unit, credits }` crosses to the browser: never the margin, the
+ * note or the date. The page is handed this as a Client Component's prop, so a margin in it would be published in the
+ * page's RSC payload the day the operator set one.
  */
-export function videoPrices(prices: PriceMap | null | undefined): PriceMap | null {
+export type VideoRates = { [UNIT_VIDEO_MINUTE]: ChargedRate; [UNIT_JOB_MINIMUM]?: ChargedRate };
+
+/**
+ * The two units a YouTube video is quoted from, as charged (chargePerUnit, lib/credits.ts: the same number credit_rates()
+ * returns), or null when there is no positive per-minute rate (an unset or zero rate is unpublished, never free — 0089).
+ * Nothing else of the price list travels to the browser.
+ */
+export function videoPrices(prices: PriceMap | null | undefined): VideoRates | null {
   const minute = prices?.[UNIT_VIDEO_MINUTE];
   if (!minute || !Number.isFinite(minute.creditsPerUnit) || !(minute.creditsPerUnit > 0)) return null;
-  const out: PriceMap = { [UNIT_VIDEO_MINUTE]: { ...minute, note: null } };
+  const out: VideoRates = { [UNIT_VIDEO_MINUTE]: { unit: UNIT_VIDEO_MINUTE, credits: chargePerUnit(minute) } };
   const floor = prices?.[UNIT_JOB_MINIMUM];
-  if (floor && Number.isFinite(floor.creditsPerUnit) && floor.creditsPerUnit > 0) out[UNIT_JOB_MINIMUM] = { ...floor, note: null };
+  if (floor && Number.isFinite(floor.creditsPerUnit) && floor.creditsPerUnit > 0) out[UNIT_JOB_MINIMUM] = { unit: UNIT_JOB_MINIMUM, credits: chargePerUnit(floor) };
   return out;
 }
 
-/** The newest `updated_at` of the units a video is quoted from, or null when the list did not say (the public read). */
+/**
+ * The charged rates back as a price list with no margin, for estimateRunCredits — the very function Run now holds with — to
+ * quote from in the browser. Built in memory from the prop; it is never a prop itself.
+ */
+function asPriceMap(rates: VideoRates): PriceMap {
+  const out: PriceMap = {};
+  for (const r of [rates[UNIT_VIDEO_MINUTE], rates[UNIT_JOB_MINIMUM]]) {
+    if (r) out[r.unit] = { unit: r.unit, creditsPerUnit: r.credits, margin: 0, note: null, updatedAt: null };
+  }
+  return out;
+}
+
+/** The newest `updated_at` of the units a video is quoted from, or null when the list did not say (the public read).
+ *  Read on the server from the list itself: the rates the browser gets carry no date. */
 export function videoRateSetAt(prices: PriceMap | null): string | null {
-  if (!prices) return null;
+  if (!prices || !videoPrices(prices)) return null;
   const at = [prices[UNIT_VIDEO_MINUTE]?.updatedAt, prices[UNIT_JOB_MINIMUM]?.updatedAt].filter(
     (v): v is string => typeof v === "string" && Number.isFinite(Date.parse(v)),
   );
@@ -78,14 +101,14 @@ export function videoRateSetAt(prices: PriceMap | null): string | null {
  * What one finished video of `lengthS` seconds is quoted — exactly Run now's hold for it (estimateRunCredits, the
  * per-minute basis) — or null when there is no per-minute rate. Never a history basis: a visitor has no channel.
  */
-export function youtubeVideoCredits(prices: PriceMap | null, lengthS: number): number | null {
+export function youtubeVideoCredits(prices: VideoRates | null, lengthS: number): number | null {
   return youtubeQuote(prices, lengthS)?.credits ?? null;
 }
 
 /** The same quote with whether the smallest hold (job_minimum) raised it, which the finder says in words. */
-export function youtubeQuote(prices: PriceMap | null, lengthS: number): { credits: number; floored: boolean } | null {
+export function youtubeQuote(prices: VideoRates | null, lengthS: number): { credits: number; floored: boolean } | null {
   if (!prices || !(lengthS > 0)) return null;
-  const e = estimateRunCredits({ prices, durationS: lengthS, videos: [] });
+  const e = estimateRunCredits({ prices: asPriceMap(prices), durationS: lengthS, videos: [] });
   return e.basis === "per_minute" && e.credits !== null && e.credits > 0 ? { credits: e.credits, floored: e.floorApplied } : null;
 }
 
@@ -219,7 +242,7 @@ export function cleanInput(input: FinderInput): FinderInput {
  * A month of videos in credits, from the same quote Run now holds — or null when there is no per-minute rate. The
  * voice is read and deliberately unused: the price list has no per-voice rate (see the file comment).
  */
-export function finderNeed(raw: FinderInput, prices: PriceMap | null): FinderNeed | null {
+export function finderNeed(raw: FinderInput, prices: VideoRates | null): FinderNeed | null {
   const input = cleanInput(raw);
   const quote = youtubeQuote(prices, input.lengthMin * 60);
   if (quote === null) return null;
@@ -270,8 +293,9 @@ export function finderPlans(columns: readonly { id: string; name: string; monthl
 
 /** Everything /pricing reads for this feature, already shaped for the browser (no margin, no note, no provider). */
 export interface PlanFinderData {
-  /** The two units a video is quoted from, as charged (videoPrices); null = no per-minute rate is published or readable. */
-  video: PriceMap | null;
+  /** The two units a video is quoted from, as charged (videoPrices): `{ unit, credits }` only; null = no per-minute rate is
+   *  published or readable. */
+  video: VideoRates | null;
   videoStamp: RateStamp | null;
   studio:
     | { status: "ok"; rows: StudioRow[]; stamp: RateStamp }

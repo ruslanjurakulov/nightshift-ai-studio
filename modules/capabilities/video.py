@@ -23,6 +23,7 @@ import re
 import shutil
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -63,6 +64,8 @@ from modules.capabilities.base import (
 from modules.capabilities.modelark import RESULT_HOSTS as MODELARK_RESULT_HOSTS
 from modules.capabilities.modelark import map_code as modelark_code
 from modules.capabilities.safe_fetch import SafeResultMixin, after_completion, checked_polling_url, unconfirmed
+from modules import ffmpeg_limits, media_library
+from modules.media_library import counted_rate, frame_count, parse_rate, shortest_length
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +101,8 @@ class VeoAdapter(HttpAdapter):
     Field names are those of google-genai's ``generate_videos``."""
 
     key = "video.veo"
+    #: submit sends negative_prompt in the vendor body (tests/test_negative_prompt_wiring.py proves it per registry model).
+    TAKES_NEGATIVE_PROMPT = True
     key_env = ("VEO_API_KEY", "GEMINI_API_KEY")
     base_url_env = "VEO_BASE_URL"
     default_base_url = "https://generativelanguage.googleapis.com"
@@ -225,6 +230,8 @@ class KlingAdapter(HttpAdapter):
     (``url``) is stored as returned. https://kling.ai/document-api/api/video/3-0-omni/text-to-video/legacy"""
 
     key = "video.kling"
+    #: submit sends negative_prompt in the vendor body (tests/test_negative_prompt_wiring.py proves it per registry model).
+    TAKES_NEGATIVE_PROMPT = True
     key_env = ("KLING_API_KEY", "KLING_ACCESS_KEY", "KLING_SECRET_KEY")
     base_url_env = "KLING_BASE_URL"
     default_base_url = "https://api-singapore.klingai.com"
@@ -557,34 +564,537 @@ _RUNWAY_URI = re.compile(r"^runway://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]{1,4990
 _FPS_DEMUXERS = {".mp4": "mov", ".mov": "mov", ".webm": "matroska", ".mkv": "matroska"}
 
 
-def video_fps(path: str, *, timeout: int = 30) -> Optional[float]:
-    """The first video stream's frame rate as ffprobe reads it, or None when
-    it cannot be read (no ffprobe, not a video, a 0/0 rate). Never a guess."""
+#: Codecs whose packet in MP4 / MOV / WebM / MKV decodes to at most one shown
+#: frame, so ``-count_packets`` can stand in for decoding (BR-L-211). FFmpeg's
+#: h264, hevc and prores decoders return one frame per packet and no bitstream
+#: filter splits their packets; field-coded H.264 stores a field per packet,
+#: which only overcounts. ProRes is intra-only and each sample is one ``icpf``
+#: frame. Not VP9 (a superframe holds up to 8 shown frames), not MPEG-4 Part 2
+#: (packed B-frames put 2 in a packet), not AV1 or anything else unchecked:
+#: those are decoded and counted, within the same time limit.
+_ONE_FRAME_PER_PACKET = frozenset({"h264", "hevc", "prores"})
+
+#: Still-image codecs: FFmpeg's decoder for each returns exactly one picture
+#: per packet and keeps no state between packets, so a track of at most one
+#: packet and one sample is one picture: a thumbnail kept as its own track
+#: (an MP4 or MOV muxed ``-map 0 -map 1 -c copy`` with a JPEG; cameras write
+#: the same), which main's ``v:0`` read accepted (BR-L-211 round 3, Lens).
+#: Not gif or webp: one packet of either can be an animation. Never a motion
+#: codec: a single VP9 packet can be a superframe of 8 shown frames.
+_STILL_CODECS = frozenset({"mjpeg", "png", "bmp"})
+
+#: What a member reads for a codec and a container in a refusal; anything
+#: else gets the generic wording rather than a guessed name.
+_CODEC_NAMES = {"h264": "H.264", "hevc": "HEVC", "prores": "ProRes", "vp8": "VP8", "vp9": "VP9", "av1": "AV1",
+                "mpeg4": "MPEG-4", "mpeg2video": "MPEG-2", "mjpeg": "Motion JPEG"}
+_CONTAINER_NAMES = {".mp4": "MP4", ".mov": "MOV", ".webm": "WebM", ".mkv": "MKV"}
+
+
+@dataclass(frozen=True)
+class FrameReading:
+    """What the upscale's price ceiling is checked against. ``rate`` None is
+    unknown, never a number; ``refusal`` is a reason already worded for the
+    member (more than one picture stream, a probe out of time, a frame over
+    the decoder's cap), and wins."""
+
+    rate: Optional[float] = None
+    avg: Optional[float] = None
+    frames: Optional[int] = None
+    #: The picture's length the rate was counted over (``shortest_length``).
+    #: Not the priced length: the price is the file's ``format.duration``.
+    seconds: Optional[float] = None
+    refusal: Optional[str] = None
+    #: More shown frames were decoded than there are packets (VP9 superframes,
+    #: packed B-frames): a high rate in disguise, not a cut clip's extra frames.
+    packed: bool = False
+
+
+def _ffprobe_run(argv: List[str], timeout: float, **kw) -> Tuple[Optional[dict], bytes]:
+    """ffprobe's JSON (None when it is not JSON) and its stderr. A timeout is
+    raised: it needs its own remedy, not the unreadable file's."""
+    try:
+        out = subprocess.run(argv, capture_output=True, timeout=timeout, check=False, **kw)
+    except subprocess.TimeoutExpired:
+        raise
+    except (OSError, subprocess.SubprocessError):
+        return None, b""
+    err = out.stderr if isinstance(out.stderr, bytes) else b""
+    try:
+        data = json.loads(out.stdout or b"{}")
+    except ValueError:
+        return None, err
+    return (data if isinstance(data, dict) else None), err
+
+
+def _is_still(stream: dict) -> bool:
+    count = frame_count(stream)
+    return str(stream.get("codec_name") or "").lower() in _STILL_CODECS and count is not None and count <= 1
+
+
+def _what(codec: Optional[str], suffix: str) -> str:
+    """"VP9 WebM", "WebM" or "video": only what the probe and the type said."""
+    container = _CONTAINER_NAMES.get(suffix)
+    name = _CODEC_NAMES.get(str(codec or "").lower())
+    if name and container:
+        return f"{name} {container}"
+    return container or (f"{name} video" if name else "video")
+
+
+def _decode_refusal(stderr: bytes, what: str) -> Optional[str]:
+    """The decoder refused a frame (ffmpeg_limits.REFUSAL_MARKERS), so the
+    count it returned is short: a refusal with its own remedy, not a reading
+    and not "unknown"."""
+    if not any(m in stderr for m in ffmpeg_limits.REFUSAL_MARKERS):
+        return None
+    if b"exceeds specified max pixel count" in stderr:
+        # Floored, so the figure stated is one the cap accepts.
+        cap_mp = int(media_library.VIDEO_MAX_PIXELS / 100_000) / 10
+        return (f"a frame in this {what} is larger than the upscale accepts; export it again at no more than "
+                f"{cap_mp:.1f} megapixels a frame (8K UHD, 7680x4320, fits)")
+    return (f"decoding this {what} needed more memory than the upscale allows; export it again at a smaller "
+            "frame size")
+
+
+#: The largest ``moov`` box the container read loads (its sample tables; a 200 MB upload's are a few MB at most).
+_MOOV_MAX_BYTES = 32 * 1024 * 1024
+#: Boxes the container read descends into on the way to a video track's timing.
+_MP4_CONTAINERS = {b"trak", b"mdia", b"minf", b"stbl"}
+
+
+def _boxes(buf: bytes, start: int, end: int):
+    """(type, payload start, payload end) of each box in ``buf[start:end]``; stops at the first malformed header."""
+    pos = start
+    while pos + 8 <= end:
+        size = int.from_bytes(buf[pos:pos + 4], "big")
+        kind = buf[pos + 4:pos + 8]
+        head = 8
+        if size == 1:
+            if pos + 16 > end:
+                return
+            size, head = int.from_bytes(buf[pos + 8:pos + 16], "big"), 16
+        elif size == 0:
+            size = end - pos
+        if size < head or pos + size > end:
+            return
+        yield kind, pos + head, pos + size
+        pos += size
+
+
+#: Top-level boxes the container read walks before it gives up: a real MP4 has a handful (ftyp, moov, mdat, free), and
+#: a file of millions of 8-byte boxes would otherwise cost one seek and read each before ``moov`` is found.
+_MP4_MAX_TOP_BOXES = 10_000
+
+
+#: Sample entries whose one sample is one shown frame: ``_ONE_FRAME_PER_PACKET``
+#: (H.264, HEVC, ProRes) as an MP4 / MOV names them. Without ffprobe nothing
+#: decodes any other codec to count its frames (a VP9 superframe or a packed
+#: MPEG-4 B-frame is several frames in one sample), so any other is unknown.
+_MP4_ONE_FRAME_ENTRIES = frozenset({b"avc1", b"avc3", b"hvc1", b"hev1",
+                                    b"apch", b"apcn", b"apcs", b"apco", b"ap4h", b"ap4x"})
+#: ``_STILL_CODECS`` as QuickTime names them (JPEG, Motion JPEG A / B, PNG).
+_MP4_STILL_ENTRIES = frozenset({b"jpeg", b"mjpa", b"mjpb", b"png "})
+#: An MP4 (not MOV) stores a JPEG or PNG thumbnail as ``mp4v`` and names it in
+#: esds' objectTypeIndication (ISO 14496-1: 0x6C JPEG, 0x6D PNG): what ffmpeg
+#: writes for ``-map 0 -map 1 -c copy`` of a JPEG into .mp4, a file the
+#: ffprobe path accepts as a still.
+_MP4V_STILL_TYPES = frozenset({0x6C, 0x6D})
+#: Where a VisualSampleEntry's own boxes (avcC, esds) start: 8 bytes of
+#: SampleEntry and 70 of the visual fields (ISO 14496-12 12.1.3).
+_VISUAL_ENTRY_FIELDS = 78
+
+
+def _descriptor(buf: bytes, pos: int, end: int) -> Optional[Tuple[int, int, int]]:
+    """(tag, body start, body end) of one MPEG-4 descriptor; its size is up to
+    four 7-bit bytes. None when it does not fit."""
+    if pos >= end:
+        return None
+    tag, pos, size = buf[pos], pos + 1, 0
+    for _ in range(4):
+        if pos >= end:
+            return None
+        b = buf[pos]
+        pos += 1
+        size = (size << 7) | (b & 0x7F)
+        if not b & 0x80:
+            break
+    else:
+        return None
+    if pos + size > end:
+        return None
+    return tag, pos, pos + size
+
+
+def _esds_object_type(buf: bytes, start: int, end: int) -> Optional[int]:
+    """The objectTypeIndication of an ``esds`` box's payload, or None."""
+    es = _descriptor(buf, start + 4, end)
+    if not es or es[0] != 0x03:
+        return None
+    _, pos, stop = es
+    if pos + 3 > stop:
+        return None
+    flags = buf[pos + 2]
+    pos += 3
+    if flags & 0x80:
+        pos += 2
+    if flags & 0x40:
+        if pos >= stop:
+            return None
+        pos += 1 + buf[pos]
+    if flags & 0x20:
+        pos += 2
+    dc = _descriptor(buf, pos, stop)
+    if not dc or dc[0] != 0x04 or dc[1] >= dc[2]:
+        return None
+    return buf[dc[1]]
+
+
+def _sample_entry(buf: bytes, start: int, end: int) -> Optional[bytes]:
+    """The fourcc of an ``stsd`` that holds exactly one sample entry, with an
+    ``mp4v`` JPEG / PNG named ``jpeg``; None for none, several, or unreadable:
+    a second entry may be a second codec, and the reading would be neither's."""
+    if end - start < 8 or int.from_bytes(buf[start + 4:start + 8], "big") != 1:
+        return None
+    entries = list(_boxes(buf, start + 8, end))
+    if len(entries) != 1:
+        return None
+    kind, ps, pe = entries[0]
+    if kind == b"mp4v":
+        for k, s, e in _boxes(buf, ps + _VISUAL_ENTRY_FIELDS, pe):
+            if k == b"esds" and _esds_object_type(buf, s, e) in _MP4V_STILL_TYPES:
+                return b"jpeg"
+    return kind
+
+
+def _full_box_duration(buf: bytes, start: int, end: int, v0: Tuple[int, int], v1: Tuple[int, int]
+                       ) -> Optional[Tuple[Optional[int], int]]:
+    """(timescale or None, duration) at a full box's version-0 or version-1
+    offsets (each a pair, the timescale's offset -1 when the box has none);
+    None when the box is too short. An all-ones duration is ISO's "unknown",
+    read as 0, so it is no length at all rather than the longest one."""
+    wide = buf[start] == 1
+    ts_at, dur_at = v1 if wide else v0
+    n = 8 if wide else 4
+    if dur_at + n > end - start or (ts_at >= 0 and ts_at + 4 > end - start):
+        return None
+    dur = int.from_bytes(buf[start + dur_at:start + dur_at + n], "big")
+    if dur == (1 << (8 * n)) - 1:
+        dur = 0
+    ts = int.from_bytes(buf[start + ts_at:start + ts_at + 4], "big") if ts_at >= 0 else None
+    return ts, dur
+
+
+#: mvhd / mdhd: timescale then duration; tkhd: duration only (mvhd's timescale).
+_HD_OFFSETS = {b"mvhd": ((12, 16), (20, 24)), b"mdhd": ((12, 16), (20, 24)), b"tkhd": ((-1, 20), (-1, 28))}
+#: The shortest payload of each, version 0 / 1 (ISO 14496-12 8.2.2, 8.3.2, 8.4.2).
+_HD_MIN = {b"mvhd": (100, 112), b"mdhd": (24, 36), b"tkhd": (84, 96)}
+
+
+def _header(buf: bytes, kind: bytes, start: int, end: int) -> Optional[Tuple[Optional[int], int]]:
+    if end - start < 1 or end - start < _HD_MIN[kind][1 if buf[start] == 1 else 0]:
+        return None
+    v0, v1 = _HD_OFFSETS[kind]
+    return _full_box_duration(buf, start, end, v0, v1)
+
+
+#: The boxes a track's reading takes, each in its own parent only (a stts
+#: directly in minf is not the sample table); stsz and stz2 share one slot.
+_TRACK_SLOTS = {(b"tkhd", b"trak"): "tkhd", (b"mdhd", b"mdia"): "mdhd", (b"stts", b"stbl"): "stts",
+                (b"stsz", b"stbl"): "stsz", (b"stz2", b"stbl"): "stsz", (b"stsd", b"stbl"): "stsd"}
+
+
+@dataclass
+class _Mp4Track:
+    """One video ``trak`` as its own boxes describe it. ``samples`` is the
+    time-to-sample total only when the sample-size table counts the same
+    (ffprobe's ``nb_frames`` is the stsz count, and the stts average is over
+    the stts total: two counts are no count)."""
+
+    entry: Optional[bytes] = None
+    samples: Optional[int] = None
+    ticks: int = 0
+    timescale: Optional[int] = None
+    media_ticks: int = 0
+    track_ticks: int = 0
+    malformed: bool = False
+
+    def is_still(self) -> bool:
+        # ``_is_still``'s rule: a still codec and at most one sample, both read.
+        return (not self.malformed and self.entry in _MP4_STILL_ENTRIES
+                and self.samples is not None and self.samples <= 1)
+
+
+def _mp4_track(buf: bytes, start: int, end: int) -> Optional[_Mp4Track]:
+    """A ``trak``'s codec, sample counts and lengths, or None when it is not
+    video. Each box counts once in its own parent: a second mdhd, stts, stsz,
+    stsd or tkhd leaves the reading ambiguous, and malformed is unknown, never
+    one of the two."""
+    handler = None
+    t = _Mp4Track()
+    stts_total = stsz_count = None
+    seen = set()
+    stack = [(b"trak", start, end)]
+    while stack:
+        parent, s, e = stack.pop()
+        for kind, ps, pe in _boxes(buf, s, e):
+            if kind in _MP4_CONTAINERS:
+                stack.append((kind, ps, pe))
+                continue
+            if kind == b"hdlr" and parent == b"mdia" and pe - ps >= 12:
+                # Only the media handler names the track's kind: a QuickTime file has a second hdlr in minf (the data
+                # handler, "alis"), which would otherwise hide that the track is video.
+                handler = buf[ps + 8:ps + 12]
+                continue
+            slot = _TRACK_SLOTS.get((kind, parent))
+            if slot is None:
+                continue
+            if slot in seen:
+                t.malformed = True
+                continue
+            seen.add(slot)
+            if slot in ("tkhd", "mdhd"):
+                got = _header(buf, kind, ps, pe)
+                if got is None:
+                    t.malformed = True
+                elif slot == "tkhd":
+                    t.track_ticks = got[1]
+                else:
+                    t.timescale, t.media_ticks = got
+            elif slot == "stts":
+                count = int.from_bytes(buf[ps + 4:ps + 8], "big") if pe - ps >= 8 else -1
+                if count < 0 or 8 + count * 8 > pe - ps:
+                    t.malformed = True
+                    continue
+                stts_total = 0
+                for i in range(count):
+                    at = ps + 8 + i * 8
+                    n, delta = int.from_bytes(buf[at:at + 4], "big"), int.from_bytes(buf[at + 4:at + 8], "big")
+                    stts_total += n
+                    t.ticks += n * delta
+            elif slot == "stsz":
+                # stsz and stz2 both keep the sample count at offset 8.
+                if pe - ps < 12:
+                    t.malformed = True
+                    continue
+                stsz_count = int.from_bytes(buf[ps + 8:ps + 12], "big")
+            else:
+                t.entry = _sample_entry(buf, ps, pe)
+    # The walk finishes even after a malformed box, so a broken audio track is still known to be "not video".
+    if handler != b"vide":
+        return None
+    if stts_total is not None and stts_total == stsz_count:
+        t.samples = stts_total
+    return t
+
+
+def _read_moov(path: str) -> Optional[bytes]:
+    """The payload of an MP4 / MOV file's first ``moov`` box, or None: no
+    moov, a malformed top-level box, one over ``_MOOV_MAX_BYTES``, or more
+    than ``_MP4_MAX_TOP_BOXES`` boxes before it."""
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, 2)
+            total = fh.tell()
+            pos = 0
+            walked = 0
+            while pos + 8 <= total:
+                walked += 1
+                if walked > _MP4_MAX_TOP_BOXES:
+                    return None
+                fh.seek(pos)
+                head = fh.read(16)
+                size, kind, skip = int.from_bytes(head[:4], "big"), head[4:8], 8
+                if size == 1 and len(head) == 16:
+                    size, skip = int.from_bytes(head[8:16], "big"), 16
+                elif size == 0:
+                    size = total - pos
+                if size < skip or pos + size > total:
+                    return None
+                if kind == b"moov":
+                    if size > _MOOV_MAX_BYTES:
+                        return None
+                    fh.seek(pos + skip)
+                    return fh.read(size - skip)
+                pos += size
+    except OSError:
+        return None
+    return None
+
+
+def mp4_frames(path: str) -> FrameReading:
+    """``read_frames`` for an MP4 / MOV without ffprobe, from the file's own
+    boxes (#949's container read, under BR-L-211's rules).
+
+    The Probe models workflow's runner installs no system ffmpeg and the
+    pinned imageio-ffmpeg ships no ffprobe; the live Runway upscale probe of
+    2026-11-27 was refused with "frame rate could not be read" before any
+    call, although the drawn clip is a plain 24 fps H.264 MP4
+    (tests/test_runway_upscale_probe_fps.py). The stts average alone, which
+    #949 read, is the header BR-L-211 caught lying both ways, so the rate is
+    counted here as ``read_frames`` counts it: the larger of the stts average
+    and the samples over the shortest positive of mdhd's, mvhd's and tkhd's
+    length, one frame forgiven. Samples are the stts total, and unknown when
+    stsz counts otherwise.
+
+    The same stream rules: one-sample still tracks are dropped (cover art is
+    in udta, not a trak), more than one video track is refused, and samples
+    are frames only for ``_MP4_ONE_FRAME_ENTRIES``; nothing here can decode
+    another codec to count it, so it is unknown. Never a guess: a malformed
+    box, a missing table or length, or a file ``_read_moov`` refuses is
+    unknown."""
+    moov = _read_moov(path)
+    if moov is None:
+        return FrameReading()
+    movie_scale, movie_ticks, mvhd_seen = None, 0, False
+    tracks: List[_Mp4Track] = []
+    for kind, ps, pe in _boxes(moov, 0, len(moov)):
+        if kind == b"mvhd":
+            got = _header(moov, kind, ps, pe)
+            if mvhd_seen or got is None:
+                return FrameReading()
+            mvhd_seen = True
+            movie_scale, movie_ticks = got
+        elif kind == b"trak":
+            track = _mp4_track(moov, ps, pe)
+            if track is not None:
+                tracks.append(track)
+    pictures = [t for t in tracks if not t.is_still()]
+    if len(pictures) > 1:
+        return FrameReading(refusal=f"this file holds {len(pictures)} video streams; export it again with just "
+                                    "the one to upscale")
+    if not pictures:
+        return FrameReading()
+    t = pictures[0]
+    if t.malformed or t.entry not in _MP4_ONE_FRAME_ENTRIES or not t.samples or not t.timescale or not t.ticks:
+        return FrameReading()
+    lengths = [t.media_ticks / t.timescale]
+    if movie_scale:
+        lengths += [movie_ticks / movie_scale, t.track_ticks / movie_scale]
+    lengths = [x for x in lengths if x > 0]
+    if not lengths:
+        return FrameReading()
+    seconds = min(lengths)
+    avg = f"{t.samples * t.timescale}/{t.ticks}"
+    rate = counted_rate({"nb_frames": t.samples, "avg_frame_rate": avg, "duration": seconds}, {}, slack_frames=1)
+    return FrameReading(rate=rate, avg=parse_rate(avg), frames=t.samples, seconds=seconds)
+
+
+def mp4_fps(path: str) -> Optional[float]:
+    """``mp4_frames``' rate, or None when it is unknown or refused."""
+    reading = mp4_frames(path)
+    return None if reading.refusal else reading.rate
+
+
+def read_frames(path: str, *, timeout: int = 30) -> FrameReading:
+    """The one picture stream's counted frame rate for pricing a per-frame
+    bill (BR-L-211). Never a guess.
+
+    Counted, not declared: the larger of the stream's average rate and its
+    frames over the shorter of the file's and the stream's length, one frame
+    forgiven (a length measured first-to-last timestamp is a frame short). The
+    header alone lied both ways: a sample table padded at the tail read 0.287
+    fps for 120, and a shortened mvhd/mdhd/tkhd read 10 s of 60 fps as 0.25 s.
+    Frames are the larger of packets and samples (``frame_count``): samples an
+    edit list leaves out are never read as packets, and are still sent.
+
+    Every stream is read, not ``v:0``: moving ``moov/udta`` ahead of the trak
+    made the cover art stream 0 (one packet, so 0 fps), and a 1 fps first
+    stream vouched for a 240 fps second one; the vendor is sent the whole file.
+    Cover art and one-picture still tracks are dropped, and more than one
+    picture left is refused. Frames are packets only for
+    ``_ONE_FRAME_PER_PACKET``; any other codec is decoded and counted, in what
+    is left of ``timeout``, under the limits every other decode of a member's
+    file runs under (``ffmpeg_limits``, ``media_library.decoder_cap``)."""
     exe = shutil.which("ffprobe")
     if not exe:
-        return None
+        # Without ffprobe (the Probe models runner) an MP4 / MOV is read from
+        # its own boxes under the same rules; WebM and MKV still need ffprobe,
+        # which the worker image has.
+        if Path(str(path)).suffix.lower() in (".mp4", ".mov"):
+            return mp4_frames(str(path))
+        return FrameReading()
+    suffix = Path(str(path)).suffix.lower()
     # The file is a member's library copy: only the file protocol, and the
     # demuxer its type names (as the media library's own probe does), so a
     # playlist or concat script cannot make ffprobe open anything else.
-    demuxer = _FPS_DEMUXERS.get(Path(str(path)).suffix.lower())
-    forced = ["-f", demuxer] if demuxer else []
+    demuxer = _FPS_DEMUXERS.get(suffix)
+    base = [exe, "-v", "error", "-protocol_whitelist", "file", *(["-f", demuxer] if demuxer else [])]
+    deadline = time.monotonic() + timeout
     try:
-        out = subprocess.run([exe, "-v", "error", "-protocol_whitelist", "file", *forced,
-                              "-select_streams", "v:0", "-show_entries",
-                              "stream=avg_frame_rate,r_frame_rate", "-of", "json", str(path)],
-                             capture_output=True, timeout=timeout, check=False)
-        stream = (json.loads(out.stdout or b"{}").get("streams") or [{}])[0]
-    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
-        return None
-    for key in ("avg_frame_rate", "r_frame_rate"):
-        num, _, den = str(stream.get(key) or "").partition("/")
+        data, _ = _ffprobe_run([*base, "-count_packets", "-show_entries",
+                                "stream=index,codec_type,codec_name,avg_frame_rate,nb_frames,nb_read_packets,"
+                                "duration:stream_disposition=attached_pic:format=duration",
+                                "-of", "json", str(path)], timeout)
+    except subprocess.TimeoutExpired:
+        # Counting packets is reading the file once, whatever its codec (which
+        # this probe did not get to report): only a shorter file helps.
+        return FrameReading(refusal=f"this {_what(None, suffix)} is too long to read within the time limit; "
+                                    "shorten it and upscale the shorter copy")
+    if data is None:
+        return FrameReading()
+    streams, fmt = data.get("streams"), data.get("format") or {}
+    if not isinstance(streams, list) or not isinstance(fmt, dict):
+        return FrameReading()
+    pictures = [st for st in streams if isinstance(st, dict) and st.get("codec_type") == "video"
+                and not (st.get("disposition") if isinstance(st.get("disposition"), dict) else {}).get("attached_pic")
+                and not _is_still(st)]
+    if len(pictures) > 1:
+        return FrameReading(refusal=f"this file holds {len(pictures)} video streams; export it again with just "
+                                    "the one to upscale")
+    if not pictures:
+        return FrameReading()
+    stream = dict(pictures[0])
+    codec = str(stream.get("codec_name") or "").lower()
+    if codec not in _ONE_FRAME_PER_PACKET:
+        what = _what(codec, suffix)
+        # The file's own codec and container: telling a VP9 WebM to become
+        # H.264 MP4 was a remedy for a file the member does not have.
+        too_slow = (f"this {what} is too long to count its frames within the time limit; shorten it and upscale "
+                    "the shorter copy")
+        remaining = deadline - time.monotonic()
+        index = stream.get("index")
+        if remaining <= 0:
+            return FrameReading(refusal=too_slow)
+        if not isinstance(index, int) or isinstance(index, bool) or index < 0:
+            return FrameReading()
+        # A decode of the member's frames, so it gets what the proxy and the
+        # thumbnail get: the frame cap before the input (VP9, AV1 and H.264 can
+        # switch to a bigger frame at any keyframe, which only the decoder
+        # meets), two decoder threads, the address-space limit and
+        # MALLOC_ARENA_MAX. The upscale takes video types only, so the cap is
+        # the video one whatever the suffix.
+        mime = _RUNWAY_VIDEO_TYPES.get(suffix, "video/mp4")
+        argv = ffmpeg_limits.limited_argv([*base, *media_library.decoder_cap(mime), "-count_frames",
+                                           "-select_streams", str(index), "-show_entries", "stream=nb_read_frames",
+                                           "-of", "json", str(path)])
         try:
-            rate = float(num) / float(den or 1)
-        except (ValueError, ZeroDivisionError):
-            continue
-        if rate > 0:
-            return rate
-    return None
+            decoded, stderr = _ffprobe_run(argv, remaining, env=ffmpeg_limits.child_env())
+        except subprocess.TimeoutExpired as e:
+            # A frame refused on the way is the truer reason than the clock.
+            stderr = e.stderr if isinstance(e.stderr, bytes) else b""
+            return FrameReading(refusal=_decode_refusal(stderr, what) or too_slow)
+        refused = _decode_refusal(stderr, what)
+        if refused:
+            return FrameReading(refusal=refused)
+        got = (decoded or {}).get("streams")
+        got = got[0] if isinstance(got, list) and got and isinstance(got[0], dict) else {}
+        shown = frame_count({"nb_read_packets": got.get("nb_read_frames")})
+        packets = frame_count(stream)
+        if not shown or packets is None:
+            return FrameReading()
+        # The larger of the two: a decode that stops early must not lower the
+        # count below the samples the vendor is sent.
+        stream = {**stream, "nb_read_packets": str(max(shown, packets))}
+        packed = shown > packets
+    else:
+        packed = False
+    return FrameReading(rate=counted_rate(stream, fmt, slack_frames=1), avg=parse_rate(stream.get("avg_frame_rate")),
+                        frames=frame_count(stream), seconds=shortest_length(stream, fmt), packed=packed)
+
+
+def video_fps(path: str, *, timeout: int = 30) -> Optional[float]:
+    """``read_frames``' rate, or None when it is unknown or refused."""
+    reading = read_frames(path, timeout=timeout)
+    return None if reading.refusal else reading.rate
 
 
 class RunwayVideoUpscaleAdapter(RunwayAdapter):
@@ -616,7 +1126,7 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
     MIN_BYTES = 512
     MAX_BYTES = 200 * 1024 * 1024
     #: Replaced in tests; the worker image ships ffprobe (Dockerfile.worker).
-    fps_of = staticmethod(video_fps)
+    fps_of = staticmethod(read_frames)
 
     def problems(self, request: CapabilityRequest, entry) -> List[str]:
         out = super().problems(request, entry)
@@ -664,13 +1174,31 @@ class RunwayVideoUpscaleAdapter(RunwayAdapter):
         size = path.stat().st_size
         if not self.MIN_BYTES <= size <= self.MAX_BYTES:
             raise AdapterError(E_BAD_REQUEST, "Runway takes videos from 512 bytes to 200 MB")
-        fps = self.fps_of(str(path))
+        reading = self.fps_of(str(path))
+        if reading.refusal:
+            raise AdapterError(E_BAD_REQUEST, reading.refusal)
+        fps = reading.rate
         if fps is None:
             raise AdapterError(E_BAD_REQUEST, "the video's frame rate could not be read, so its upscale "
-                                              "cannot be priced; export it again as MP4")
+                                              "cannot be priced; export it again as H.264 MP4")
         if fps > self.MAX_FPS + 0.5:
-            raise AdapterError(E_BAD_REQUEST, f"this video runs at {fps:.0f} frames a second; the upscale "
-                                              f"takes up to {self.MAX_FPS:.0f}")
+            if not reading.packed and reading.avg is not None and reading.avg <= self.MAX_FPS + 0.5 \
+                    and reading.frames is not None and reading.seconds is not None:
+                # The rate is honest and the frames outnumber the length: what
+                # a stream-copied cut is (it keeps the frames back to the last
+                # keyframe), and what a forged header looks like. Refused
+                # either way, since what Runway bills for the extra frames is
+                # unverified; re-encoding is the fix for both.
+                # "Of picture": the rate is counted over the picture's length,
+                # the price over the file's (format.duration); they differ when
+                # the sound outlasts the picture (Lens round 3, 4).
+                raise AdapterError(E_BAD_REQUEST, f"the file holds {reading.frames} frames in "
+                                                  f"{reading.seconds:.1f} seconds of picture, as a clip cut "
+                                                  "without re-encoding does; re-encode the trimmed clip and "
+                                                  "upscale the new copy")
+            raise AdapterError(E_BAD_REQUEST, f"this video runs at {fps:.0f} frames a second of picture; the "
+                                              f"upscale takes up to {self.MAX_FPS:.0f}, so export it again at "
+                                              f"{self.MAX_FPS:.0f} frames a second or fewer")
         uri = self._upload(path)
         data = self.post(f"{self.base_url}/v1/video_upscale",
                          {"model": vendor_model, "videoUri": uri, "resolution": request.upscale_target})
@@ -1002,6 +1530,8 @@ class WanAdapter(HttpAdapter):
     https://www.alibabacloud.com/help/en/model-studio/text-to-video-api-reference"""
 
     key = "video.wan"
+    #: submit sends negative_prompt in the vendor body (tests/test_negative_prompt_wiring.py proves it per registry model).
+    TAKES_NEGATIVE_PROMPT = True
     key_env = ("WAN_API_KEY", "DASHSCOPE_API_KEY")
     base_url_env = "WAN_BASE_URL"
     default_base_url = "https://dashscope-intl.aliyuncs.com"

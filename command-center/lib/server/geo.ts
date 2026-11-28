@@ -5,14 +5,16 @@ import { gunzipSync } from "node:zlib";
 import { headers } from "next/headers";
 import { isPublicIp, lookupCountry, parseGeoTable, parseIp, type GeoTable } from "@/lib/geo/table";
 import { ON_VERCEL, trustedClientIp } from "@/lib/geo/client-ip";
-import { BLOCKED_COUNTRIES, blockedCountriesOf, withoutBlocked, type BlockedMap } from "@/lib/geo/blocked";
+import { BLOCKED_COUNTRIES, blockedCountriesOf, isBlockedIn, isKnownCountry, refusesUnknownCountry, withoutBlocked, type BlockedMap } from "@/lib/geo/blocked";
 
 /**
  * The request's country, from the address our own proxy vouches for (lib/geo/client-ip) and the DB-IP table shipped in the image
  * (data/geoip/country.bin.gz, docs/GEO_BLOCK.md). Server only: the table is read from disk once per process, and only when a
  * model with a country list is asked about, so a deployment where no model has one never reads it.
  *
- * "Unknown" is never guessed. What happens next depends on why (the reason is logged, the address is not: it is personal data):
+ * "Unknown" is never guessed. For a model whose vendor allows use only inside listed regions (REFUSE_UNKNOWN_COUNTRY in lib/geo/blocked,
+ * Google's), an unknown country is refused and hidden whatever the reason (451 country_unverified). For every other listed model,
+ * what happens next depends on why (the reason is logged, the address is not: it is personal data):
  *   not_in_table   an address DB-IP has no country for: a visitor's real situation. Allowed and logged, everywhere.
  *   no_address     no trusted address header, not_public: a private or local one, no_table: the table cannot be read. On the
  *                  self-hosted box each means the setup is broken (Caddy did not write the header, or the image lost its table), not
@@ -58,7 +60,8 @@ export function readCountry(h: Pick<Headers, "get">, load: () => GeoTable | null
   const table = load();
   if (!table) return { country: null, why: "no_table" };
   const country = lookupCountry(table, ip);
-  return country ? { country, why: "found" } : { country: null, why: "not_in_table" };
+  // BR-S6-03: a code that is not a country (ISO 3166-1 alpha-2, or Google's XK) is unknown, never a country to look up in a list.
+  return isKnownCountry(country) ? { country, why: "found" } : { country: null, why: "not_in_table" };
 }
 
 /**
@@ -66,17 +69,26 @@ export function readCountry(h: Pick<Headers, "get">, load: () => GeoTable | null
  * holds or queues anything. The words are neutral (`country_blocked`: "not available in your region"), never the vendor's name or
  * its terms. A model with no list costs nothing: no header is read and no table is loaded.
  */
+/** country_blocked: the country is known and the model is not offered there. country_unverified: an allow-list model, no known country. */
+export type GeoRefusal = { status: 451; body: { error: "country_blocked" | "country_unverified" } };
+
 export function geoRefusal(
   model: string,
   h: Pick<Headers, "get">,
   map: BlockedMap = BLOCKED_COUNTRIES,
   load: () => GeoTable | null = () => loadGeoTable(),
   strict: boolean = GEO_STRICT,
-): { status: 451; body: { error: "country_blocked" } } | null {
+): GeoRefusal | null {
   const list = blockedCountriesOf(model, map);
   if (list.length === 0) return null;
   const reading = readCountry(h, load);
   if (reading.country === null) {
+    // An allow-list vendor (Google): its terms allow use only inside a listed region, so "we could not tell" is refused for every
+    // reason, a visitor's not_in_table included, and the answer names the remedy (a connection whose country can be read).
+    if (refusesUnknownCountry(model)) {
+      console.warn("geo: the country is unknown (%s) for a model sold only in listed regions; refused", reading.why);
+      return { status: 451, body: { error: "country_unverified" } };
+    }
     if (unknownRefuses(reading.why, strict)) {
       console.error("geo: the country is unknown (%s): the setup is broken; a model sold by country is refused", reading.why);
       return { status: 451, body: { error: "country_blocked" } };
@@ -84,7 +96,7 @@ export function geoRefusal(
     console.warn("geo: the country is unknown (%s) for a model sold by country; allowed", reading.why);
     return null;
   }
-  return list.includes(reading.country) ? { status: 451, body: { error: "country_blocked" } } : null;
+  return isBlockedIn(model, reading.country, map) ? { status: 451, body: { error: "country_blocked" } } : null;
 }
 
 /** The same for several models at once (a workflow's steps): the first refusal, or null. Each model is asked once. */
@@ -94,7 +106,7 @@ export function geoRefusalAny(
   map: BlockedMap = BLOCKED_COUNTRIES,
   load: () => GeoTable | null = () => loadGeoTable(),
   strict: boolean = GEO_STRICT,
-): { status: 451; body: { error: "country_blocked" } } | null {
+): GeoRefusal | null {
   for (const m of new Set(models)) {
     const refusal = geoRefusal(m, h, map, load, strict);
     if (refusal) return refusal;
@@ -118,11 +130,11 @@ export function blockedModelsHere(
   const reading = readCountry(h, load);
   let ids: Set<string>;
   if (reading.country === null) {
-    if (!unknownRefuses(reading.why, strict)) return null;
-    ids = new Set(listed);
+    // A broken setup forbids every listed model; otherwise only the allow-list ones (their terms need a known, listed country).
+    ids = new Set(unknownRefuses(reading.why, strict) ? listed : listed.filter(refusesUnknownCountry));
   } else {
     const here = reading.country;
-    ids = new Set(listed.filter((m) => blockedCountriesOf(m, map).includes(here)));
+    ids = new Set(listed.filter((m) => isBlockedIn(m, here, map)));
   }
   return ids.size > 0 ? (model) => ids.has(model) : null;
 }
@@ -142,7 +154,7 @@ export function hideBlockedModels<T extends { id: string }>(
       console.error("geo: the country is unknown (%s): the setup is broken; every model sold by country is hidden", reading.why);
       return withoutListed(models, map);
     }
-    console.warn("geo: the country is unknown (%s); no model is hidden", reading.why);
+    console.warn("geo: the country is unknown (%s); only models sold in listed regions are hidden", reading.why);
   }
   return withoutBlocked(models, reading.country, map);
 }
@@ -158,7 +170,7 @@ export async function hideBlockedModelsHere<T extends { id: string }>(models: T[
   try {
     h = await headers();
   } catch {
-    return GEO_STRICT ? withoutListed(models, BLOCKED_COUNTRIES) : models;
+    return GEO_STRICT ? withoutListed(models, BLOCKED_COUNTRIES) : models.filter((m) => !refusesUnknownCountry(m.id));
   }
   return hideBlockedModels(models, h);
 }

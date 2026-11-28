@@ -1,13 +1,15 @@
 import "server-only";
 import { existsSync } from "node:fs";
 import { createClient } from "@/lib/supabase/server";
-import { isCreditExempt, type PriceMap } from "@/lib/credits";
+import { isCreditExempt } from "@/lib/credits";
 import { readCreditAccount, readCreditPrices } from "@/lib/server/credits";
 import {
   DOWNLOAD_REQUEST_COLUMNS,
   coerceDownloadRequests,
   coerceMaster,
+  downloadPrices,
   type DownloadMaster,
+  type DownloadRates,
   type DownloadRequestRow,
 } from "@/lib/downloads";
 
@@ -33,7 +35,7 @@ export interface DownloadPanelData {
   /** This host can serve HD files (the shared volume is mounted). */
   host: boolean;
   master: DownloadMaster | null;
-  prices: PriceMap;
+  prices: DownloadRates;
   requests: DownloadRequestRow[];
   /** Credits available to the video's organization (null = unknown). */
   balance: number | null;
@@ -82,7 +84,7 @@ export async function loadDownloads(videoId: string, channelId: string): Promise
       ...empty,
       available: true,
       master: coerceMaster(masterRes.data),
-      prices: prices.prices,
+      prices: downloadPrices(prices.prices),
       requests: coerceDownloadRequests(reqRes.data),
       balance,
       exempt,

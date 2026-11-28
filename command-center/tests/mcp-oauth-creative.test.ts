@@ -21,15 +21,16 @@ const ALL = ["videos:read", "videos:create", "videos:publish", "studio:create"];
 const PROMPT = { prompt: "a lighthouse at dawn", aspect_ratio: "16:9" };
 const ASSET = "9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a";
 
-type Quote = { id: string; capability: string; model: string; params: Record<string, unknown>; credits: number; expires: number; job: string | null };
+type Quote = { id: string; capability: string; model: string; params: Record<string, unknown>; credits: number; expires: number; job: string | null; exposure: "mcp" | "operator" };
 
 const ok = (data: unknown, status = 200) => ({ ok: true, status, data });
 const err = (status: number, code: string, message: string, details: Record<string, unknown> = {}) => ({ ok: false, status, error: { code, message, ...details } });
 
-/** A fake of 0191: which models are switched on, the price list, the quotes, the jobs, the connection's limit. */
+/** A fake of 0191 (and 0219's operator route, "ok_operator"): which models are switched on, the price list, the quotes, the jobs,
+ * the connection's limit. */
 const db = {
   calls: [] as { fn: string; args: Record<string, unknown> }[],
-  on: new Map<string, "ok" | "acknowledgement_required" | "not_offered">(),
+  on: new Map<string, "ok" | "ok_operator" | "acknowledgement_required" | "not_offered">(),
   price: new Map<string, number>(),
   quotes: new Map<string, Quote>(),
   jobs: new Map<string, { id: string; quote: string; idem: string; credits: number }>(),
@@ -57,7 +58,17 @@ const fake: Rpc = async (fn, args) => {
   switch (fn) {
     case "oauth_creative_models":
       return {
-        data: ok({ capability: args.p_capability ?? null, models: [...db.on].filter(([, s]) => s === "ok").map(([id]) => ({ id, capabilities: ["t2i"] })) }),
+        data: ok({
+          capability: args.p_capability ?? null,
+          models: [...db.on]
+            .filter(([, s]) => s === "ok" || s === "ok_operator")
+            .map(([id, s]) => ({
+              id,
+              capabilities: ["t2i"],
+              operator_only: s === "ok_operator",
+              ...(s === "ok_operator" ? { availability_note: "Operator workspace only (first-party use)." } : {}),
+            })),
+        }),
         error: null,
       };
     case "oauth_media_list":
@@ -65,11 +76,15 @@ const fake: Rpc = async (fn, args) => {
     case "oauth_creative_quote": {
       const model = String(args.p_model);
       const s = state(model);
-      if (s !== "ok") return { data: refusal(s, model), error: null };
+      if (s !== "ok" && s !== "ok_operator") return { data: refusal(s, model), error: null };
       const id = uuid(db.next++);
-      const q: Quote = { id, capability: String(args.p_capability), model, params: args.p_params as Record<string, unknown>, credits: db.price.get(model) ?? 3, expires: Date.now() + 900_000, job: null };
+      const exposure = s === "ok_operator" ? "operator" : "mcp";
+      const q: Quote = { id, capability: String(args.p_capability), model, params: args.p_params as Record<string, unknown>, credits: db.price.get(model) ?? 3, expires: Date.now() + 900_000, job: null, exposure };
       db.quotes.set(id, q);
-      return { data: ok({ quote_id: id, capability: q.capability, model, params: q.params, credits: q.credits, expires_at: new Date(q.expires).toISOString() }, 201), error: null };
+      return {
+        data: ok({ quote_id: id, capability: q.capability, model, params: q.params, credits: q.credits, expires_at: new Date(q.expires).toISOString(), ...(exposure === "operator" ? { operator_only: true } : {}) }, 201),
+        error: null,
+      };
     }
     case "oauth_creative_create": {
       const idem = String(args.p_idem_key);
@@ -83,7 +98,8 @@ const fake: Rpc = async (fn, args) => {
       if (q.job) return { data: err(409, "quote_used", "used", { job_id: q.job }), error: null };
       if (q.expires <= Date.now()) return { data: err(409, "quote_expired", "expired"), error: null };
       const s = state(q.model);
-      if (s !== "ok") return { data: refusal(s, q.model), error: null };
+      if (s !== "ok" && s !== "ok_operator") return { data: refusal(s, q.model), error: null };
+      if ((s === "ok_operator" ? "operator" : "mcp") !== q.exposure) return { data: err(409, "quote_exposure_changed", "changed", { model: q.model }), error: null };
       const now = db.price.get(q.model) ?? 3;
       if (now !== q.credits) return { data: err(409, "price_changed", "changed", { quoted_credits: q.credits, price_credits: now }), error: null };
       if (db.spent + q.credits > db.limit)
@@ -361,5 +377,49 @@ describe("the database door", () => {
       expect((r.data as { error: { code: string } }).error.code, fn).toBe("not_available_for_connected_apps");
     }
     expect(seen).toHaveLength(1);
+  });
+});
+
+describe("the operator's own workspace (0219)", () => {
+  it("the list passes operator_only through for every model, with its note only on an operator-only one", async () => {
+    db.on = new Map([["img-on", "ok"], ["clip-web", "ok_operator"]]);
+    const { client } = await connect(ALL);
+    const r = await call(client, "list_creative_models", {});
+    expect(r.isError).toBe(false);
+    const models = (r.body as { models: { id: string; operator_only: boolean; availability_note?: string }[] }).models;
+    expect(models.find((m) => m.id === "img-on")).toMatchObject({ operator_only: false });
+    expect(models.find((m) => m.id === "img-on")?.availability_note).toBeUndefined();
+    expect(models.find((m) => m.id === "clip-web")).toMatchObject({ operator_only: true, availability_note: "Operator workspace only (first-party use)." });
+  });
+
+  it("the list and quote descriptions tell the assistant what operator_only means", async () => {
+    const { client } = await connect(ALL);
+    const tools = (await client.listTools()).tools;
+    expect(tools.find((t) => t.name === "list_creative_models")?.description).toMatch(/operator_only: true is available only because this is the operator's own workspace/);
+    expect(tools.find((t) => t.name === "quote_creative")?.description).toMatch(/Some models may be marked operator_only/);
+  });
+
+  it("an operator-only quote says so, and create still sends only the quote id and the key", async () => {
+    db.on = new Map([["clip-web", "ok_operator"]]);
+    const { client } = await connect(ALL);
+    const q = await call(client, "quote_creative", { capability: "t2i", model: "clip-web", params: PROMPT });
+    expect(q.isError).toBe(false);
+    expect(q.body).toMatchObject({ model: "clip-web", operator_only: true });
+    const c = await call(client, "create_creative", { quote_id: (q.body as { quote_id: string }).quote_id, idempotency_key: "op-1" });
+    expect(c.isError).toBe(false);
+    expect(Object.keys(created()[0].args).sort()).toEqual(["p_idem_key", "p_quote_id", "p_request_id", "p_token_hash"].sort());
+  });
+
+  it("a quote whose route changed is refused with the remedy (quote again), and nothing is started", async () => {
+    db.on = new Map([["img-on", "ok"]]);
+    const { client } = await connect(ALL);
+    const q = (await call(client, "quote_creative", { capability: "t2i", model: "img-on", params: PROMPT })).body as { quote_id: string };
+    db.on.set("img-on", "ok_operator");
+    const r = await call(client, "create_creative", { quote_id: q.quote_id, idempotency_key: "moved-route" });
+    expect(r.isError).toBe(true);
+    expect(r.text).toContain("How the model img-on is offered to this connection changed since the quote");
+    expect(r.text).toContain("Nothing was started and nothing was charged");
+    expect(r.text).toContain("quote_creative again");
+    expect(db.jobs.size).toBe(0);
   });
 });

@@ -8,6 +8,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+// The country check is not what these tests are about (tests/geo-google.test.ts is): an unknown country would hide the Google rows.
+vi.mock("@/lib/server/geo", () => ({ hideBlockedModelsHere: async <T,>(m: T[]) => m }));
 
 const ROWS = [
   { id: "veo-3.1", display_name: "Veo 3.1", capabilities: ["t2v"], availability: "ga", verified_at: "2026-10-01T00:00:00Z" },

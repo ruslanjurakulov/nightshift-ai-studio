@@ -28,7 +28,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function TrustRoute() {
   const { t, locale } = await getDictionary();
   return (
-    <PublicShell t={t} fresh>
+    <PublicShell t={t} current="resources" fresh>
       <TrustPage t={t} locale={locale} origin={runtimeSiteOrigin()} />
     </PublicShell>
   );

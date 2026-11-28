@@ -59,7 +59,7 @@ export function improvePromptMax(tool: ImproveStudioTool): number {
 
 /**
  * Whether the tool is asked by words — the same rule the Studio's box follows (lib/creative/studio promptRule):
- * "required" (edit by prompt), "optional" (upscale, animate) or "none" (cut out, the video and voice tools, captions).
+ * "required" (edit by prompt), "optional" (animate) or "none" (cut out, upscale, the video and voice tools, captions).
  */
 export function improveWords(tool: ImproveTool): "required" | "optional" | "none" {
   return isStudioTool(tool) ? promptRule(tool) : "none";
@@ -69,13 +69,18 @@ export function improveWords(tool: ImproveTool): "required" | "optional" | "none
 export const AUTO_MODEL = "auto";
 
 // Never part of what a person typed on purpose, and the words travel in a link anyone can craft: C0 controls other
-// than a line break and a tab, DEL and the C1 controls, and the bidi overrides and isolates (U+202A–202E,
-// U+2066–2069), which would make the words shown in the Studio's box read in another order than they are sent; and the
-// characters that show nothing at all: zero-width spaces, joiners and marks (U+200B–200F), the word joiner and invisible
-// operators (U+2060–2064), the byte-order mark, and the tag characters (U+E0000–E007F), which can carry a whole hidden
-// sentence inside words that look harmless; plus the soft hyphen, the Arabic letter mark, the Mongolian vowel separator and the
-// supplementary variation selectors (U+E0100–E01EF). tools/export_showcase.py CONTROL_RE is the same set.
-const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/gu;
+// than a line break and a tab, DEL and the C1 controls; every format character (Unicode Cf: the bidi overrides and isolates,
+// which would make the words shown in the Studio's box read in another order than they are sent, the zero-width spaces,
+// joiners and marks, the word joiner and invisible operators, the byte-order mark, the soft hyphen, the Arabic letter mark,
+// the Mongolian vowel separator, the interlinear annotation marks, the Egyptian/shorthand/musical format controls); the
+// fillers that draw nothing (U+034F, the Hangul fillers U+115F/1160/3164/FFA0, the Khmer inherent vowels U+17B4/17B5, the
+// Mongolian selectors U+180B-180F, U+FFF0-FFF8); and the WHOLE tag-and-selector plane block U+E0000-E0FFF, not just its
+// assigned ranges: Breach (S8, BR-1) spelled a hidden sentence as U+E0080+byte, which browsers draw as nothing and the old
+// set (E0000-E007F, E0100-E01EF) let through. Same set as migration 0090's inbox_clean_text. The prepended concatenation
+// marks (U+0600-0605, U+06DD, U+070F, U+0890/0891, U+08E2, U+110BD, U+110CD) are Cf but visible, so they stay.
+// tools/export_showcase.py CONTROL_RE is the same set.
+const CONTROL =
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180F\u3164\uFFA0\uFFF0-\uFFF8\u{E0000}-\u{E0FFF}]|(?![\u0600-\u0605\u06DD\u070F\u0890\u0891\u08E2\u{110BD}\u{110CD}])\p{Cf}/gu;
 /** A variation selector alone is ordinary (U+FE0F after a symbol makes it an emoji); a run of them shows nothing at all. */
 const VS_RUN = /[\uFE00-\uFE0F]{2,}/g;
 

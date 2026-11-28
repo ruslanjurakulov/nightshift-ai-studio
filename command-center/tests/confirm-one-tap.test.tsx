@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * The one-tap owner actions that now ask first: channel switches, extra credits, publish approvals, API activation and
- * limits, and claiming the team. (The video review panel's Approve is a database function with its own sheet: review-approve.test.tsx.)
+ * limits. (The video review panel's Approve is a database function with its own sheet: review-approve.test.tsx.)
  *
  * What would break: a stolen unlocked phone (or one stray thumb) turning auto publish on, spending bought credits,
  * approving a publish request, activating the API or changing a limit with a single tap. For each action: the first
@@ -63,7 +63,6 @@ import { dictionaries, type Locale } from "@/lib/i18n";
 import { ChannelCard } from "@/components/channels/ChannelCard";
 import { UsageView } from "@/components/usage/UsageView";
 import { ApprovalsBoard } from "@/components/approvals/ApprovalsBoard";
-import { MembersBoard } from "@/components/members/MembersBoard";
 import { coerceUsageSummary, type UsageSummary } from "@/lib/usage";
 import type { ChannelHealth } from "@/lib/channels";
 import type { ChannelRow } from "@/lib/types";
@@ -463,41 +462,5 @@ describe("publish approvals", () => {
     approvals();
     const key = await screen.findByRole("button", { name: en.approvals.approve });
     expect(key.className).toContain("min-h-11");
-  });
-});
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Claiming the team
-// ---------------------------------------------------------------------------------------------------------------------
-
-describe("claim ownership", () => {
-  function claimBoard() {
-    h.reads.app_members = [];
-    return wrap(<MembersBoard myRole="owner" myEmail="me@a.uz" myUserId="u-me" />);
-  }
-
-  it("explains what owner means and inserts nothing on the first tap", async () => {
-    claimBoard();
-    fireEvent.click(await screen.findByRole("button", { name: en.members.claim }));
-    const text = screen.getByRole("alertdialog").textContent ?? "";
-    expect(text).toContain(cs.claimBody);
-    expect(text).toContain("me@a.uz");
-    expect(h.writes).toEqual([]);
-  });
-
-  it("inserts the owner row once after the sheet, and not after Cancel", async () => {
-    claimBoard();
-    fireEvent.click(await screen.findByRole("button", { name: en.members.claim }));
-    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: en.ux.confirmCancel }));
-    await settle();
-    expect(h.writes).toEqual([]);
-    fireEvent.click(screen.getByRole("button", { name: en.members.claim }));
-    const key = confirmKey(cs.claimConfirm);
-    fireEvent.click(key);
-    fireEvent.click(key);
-    await waitFor(() => expect(h.writes.length).toBe(1));
-    await settle();
-    expect(h.writes[0]).toMatchObject({ table: "app_members", op: "insert", args: [{ email: "me@a.uz", user_id: "u-me", role: "owner" }] });
-    expect(h.writes.length).toBe(1);
   });
 });

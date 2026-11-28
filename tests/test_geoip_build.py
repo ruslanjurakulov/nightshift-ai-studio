@@ -6,11 +6,13 @@ the same month that is a different file; the committed table and its manifest di
 TypeScript reader drifting apart (both read command-center/tests/fixtures/geoip-fixture.*).
 """
 
+import copy
 import gzip
 import hashlib
 import importlib.util
 import ipaddress
 import json
+import re
 import struct
 import unittest
 from pathlib import Path
@@ -54,6 +56,21 @@ class Build(unittest.TestCase):
         self.assertEqual(v4, want4)
         self.assertEqual(v6, want6)
         self.assertIn("ZZ", codes)
+
+    def test_br_s6_03_a_code_that_is_not_a_country_is_written_as_unknown(self):
+        # EU, AP, QQ are DB-IP placeholders or typos: on no deny-list and not on Google's list, so a reader would let them through.
+        lines = ["0.0.0.0,127.255.255.255,EU", "128.0.0.0,255.255.255.255,XK", "::,ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff,AP"]
+        codes, v4, v6 = read(gb.build_table(lines))
+        self.assertEqual([c for _, c in v4], ["ZZ", "XK"])
+        self.assertEqual([c for _, c in v6], ["ZZ"])
+        self.assertNotIn("EU", codes)
+
+    def test_the_iso_list_is_the_twin_of_the_web_one(self):
+        ts = (ROOT / "command-center" / "lib" / "geo" / "blocked.ts").read_text(encoding="utf-8")
+        block = ts[ts.index("export const ISO_3166_ALPHA2"):]
+        block = block[:block.index("];")]
+        self.assertEqual(set(re.findall(r'"([A-Z]{2})"', block)), set(gb.ISO_3166_ALPHA2))
+        self.assertEqual(len(gb.ISO_3166_ALPHA2), 249)
 
     def test_the_committed_fixture_is_what_the_tool_writes(self):
         # The TypeScript reader's test reads this file: the two implementations meet here.
@@ -149,7 +166,10 @@ class RegistryField(unittest.TestCase):
         self.reg = reg
         self.doc = json.loads((ROOT / "schemas" / "model_registry.json").read_text(encoding="utf-8"))
         self.web_only = next(m for m in self.doc["models"] if m["api_exposure"] == "web_only")
-        self.any = next(m for m in self.doc["models"] if m["api_exposure"] == "any")
+        # The registry may hold no model the API sells (luma-ray-3.2 and seedance-1.5-pro became web_only on their terms),
+        # so the "any" case is built from a copy rather than borrowed from the file.
+        self.any = copy.deepcopy(self.web_only)
+        self.any.update(api_exposure="any", terms_gate=None)
 
     def test_a_web_only_model_takes_a_list_of_codes(self):
         self.web_only["blocked_countries"] = ["IN", "PK"]
@@ -172,6 +192,7 @@ class RegistryField(unittest.TestCase):
 
     def test_a_model_the_api_sells_cannot_be_blocked_by_country(self):
         self.any["blocked_countries"] = ["IN"]
+        self.doc["models"] = [self.any if m is self.web_only else m for m in self.doc["models"]]
         self.assertTrue(any("blocked_countries needs api_exposure web_only" in e for e in self.reg.validate(self.doc)))
 
     def test_codes_are_two_upper_case_letters_listed_once(self):

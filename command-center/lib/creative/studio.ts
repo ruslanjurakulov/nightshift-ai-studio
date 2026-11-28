@@ -8,6 +8,7 @@
  */
 import {
   CREATIVE_ERRORS,
+  WORDLESS_CAPABILITIES,
   type CreativeCapability,
   type CreativeError,
   DESCRIBE_LANGUAGES,
@@ -19,6 +20,9 @@ import {
   EXPAND_ASPECTS,
   type ExpandAspect,
   IMAGE_QUALITIES,
+  IMAGE_SIZES,
+  isImageSize,
+  type ImageSize,
   type ImageQuality,
   MAX_VIDEO_EDIT_WORDS,
   MEDIA_SOURCE_CAPABILITIES,
@@ -41,7 +45,7 @@ import {
   isImageQuality,
   isUuid,
 } from "@/lib/creative/operations";
-import { VOICES } from "@/lib/ttsModels";
+import { VOICES } from "@/lib/voices";
 import { registryName } from "@/lib/creative/model-names";
 import { planGate } from "@/lib/models-discovery";
 import { formatCredits } from "@/lib/credits";
@@ -189,7 +193,21 @@ export function isVoiceId(v: unknown): v is string {
   return typeof v === "string" && VOICE_ID_RE.test(v);
 }
 
-export { IMAGE_QUALITIES, type ImageQuality, isImageQuality };
+export { IMAGE_QUALITIES, type ImageQuality, isImageQuality, IMAGE_SIZES, type ImageSize, isImageSize };
+
+/**
+ * 0208: the size a model priced by size is asked for: the one picked if this model sells it, else its smallest (the list is in the
+ * schema's order, smallest first), shown in the picker and named in the quote, never left to the vendor's default. null = the model
+ * is not priced by size, so none is sent (the database refuses a size on such a model).
+ */
+export function effectiveImageSize(
+  model: Pick<StudioModel, "imageSizes"> | null | undefined,
+  picked: ImageSize | null | undefined,
+): ImageSize | null {
+  const offered = model?.imageSizes ?? [];
+  if (offered.length === 0) return null;
+  return picked && offered.includes(picked) ? picked : offered[0];
+}
 
 /** 0060: the picture tools that are sold by quality tier (when the model lists tiers). */
 export function takesQuality(c: string): boolean {
@@ -233,7 +251,7 @@ export function takesStyle(c: string): boolean {
   return (STYLE_CAPABILITIES as readonly string[]).includes(c);
 }
 
-/** 0046 / 0050 / 0052 / 0055: the prompt is required for these, optional for i2v / upscale, refused for remove_bg, the voice and video tools and describe. */
+/** 0046 / 0050 / 0052 / 0055: the prompt is required for these, optional for i2v, refused for remove_bg, upscale, the voice and video tools and describe. */
 export function promptRule(
   c: StudioCapability,
   model?: Pick<StudioModel, "wordsRequired"> | null,
@@ -241,10 +259,13 @@ export function promptRule(
   // A video edit is asked by its words (0100); the other video tools take none.
   if (c === "video_edit") return "required";
   if (c === "remove_bg" || c === "describe" || needsRecording(c) || needsVideo(c)) return "none";
+  // Picture upscale's only model (Ideogram's Topaz Standard V2) takes no words, and the server refuses a prompt for it
+  // (lib/creative/route-around WORDLESS_CAPABILITIES): the box must not invite words that are refused after the press.
+  if (WORDLESS_CAPABILITIES.includes(c)) return "none";
   // expand (what the new areas show) and relight (the light, instead of a look) are asked by a choice; their words are optional.
   // Optional for the kind, unless the picked model's registry entry says it needs words for it (inputs.prompt_required): MiniMax
   // H3 refuses an animation with no words, and a job sent without them used to fail after the press with a vague message.
-  if (c === "i2v" || c === "upscale" || c === "expand" || c === "relight") return model?.wordsRequired?.includes(c) ? "required" : "optional";
+  if (c === "i2v" || c === "expand" || c === "relight") return model?.wordsRequired?.includes(c) ? "required" : "optional";
   return "required";
 }
 
@@ -335,6 +356,11 @@ export interface StudioModel {
    * is asked of /api/creative/quote (the database).
    */
   qualities?: ImageQuality[];
+  /**
+   * 0208: the picture sizes the model is sold by (spec.image_sizes, only when spec.pricing.variants.by is image_size), smallest
+   * first; absent = it is not priced by size. Each size's price is asked of /api/creative/quote (the database).
+   */
+  imageSizes?: ImageSize[];
   /**
    * 0070: the clip may be made with or without sound, each priced apart
    * (spec.audio_out and spec.pricing.variants.by audio / resolution_audio).
@@ -655,6 +681,11 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
     const looks = Array.isArray(spec.relight_looks) ? RELIGHT_LOOKS.filter((l) => (spec.relight_looks as unknown[]).includes(l)) : [];
     // In the canonical order, so the selector reads low, medium, high whatever the row's order.
     const tiers = Array.isArray(spec.qualities) ? IMAGE_QUALITIES.filter((q) => (spec.qualities as unknown[]).includes(q)) : [];
+    // 0208: the sizes, in the schema's order, only for a model whose price follows the size (any other model is sent no size).
+    const sizes =
+      spec.price_variants_by === "image_size" && Array.isArray(spec.image_sizes)
+        ? IMAGE_SIZES.filter((s) => (spec.image_sizes as unknown[]).includes(s))
+        : [];
     const makerLine = modelAttribution(spec.attribution);
     // The lists the quote reads (0155: shapes; 0159: lengths; 0070: resolutions), only as the spec states them.
     const strList = (v: unknown): string[] | null => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : null);
@@ -687,6 +718,7 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
       ...(reframes.length ? { reframeAspects: reframes } : {}),
       ...(looks.length ? { relightLooks: looks } : {}),
       ...(tiers.length ? { qualities: tiers } : {}),
+      ...(sizes.length ? { imageSizes: sizes } : {}),
       ...(spec.audio_out === true && (spec.price_variants_by === "audio" || spec.price_variants_by === "resolution_audio")
         ? { soundChoice: true }
         : {}),
@@ -816,6 +848,11 @@ export interface StudioForm {
    */
   audio?: boolean | null;
   /**
+   * 0208: the picture's size, only for a picture tool whose model is priced by size (the panel passes the model's effective size,
+   * else null). null / absent = the key is left out.
+   */
+  imageSize?: ImageSize | null;
+  /**
    * The picked model takes no aspect ratio (StudioModel.fixedShape): a text picture / text video is sent without one, so the
    * model makes its own shape. The panel passes it for the hand-picked model only (Auto's model is not known before the quote).
    * null / absent = the aspect is sent as before.
@@ -837,8 +874,10 @@ export function buildParams(form: StudioForm): Partial<Record<ParamKey, string |
   const styled = takesStyle(form.capability) && isUuid(form.styleKitId) ? { ...base, style_kit_id: form.styleKitId } : base;
   // A tier only for the picture tools, and never an unnamed one (the database refuses a tier on any other tool).
   const tiered = takesQuality(form.capability) && isImageQuality(form.quality) ? { ...styled, quality: form.quality } : styled;
+  // A size likewise only for the picture tools, and never an unnamed one (0208 refuses a size on any other tool).
+  const sized = takesQuality(form.capability) && isImageSize(form.imageSize) ? { ...tiered, image_size: form.imageSize } : tiered;
   // The soundtrack only for the video tools, and only a real choice (the database refuses it on any other tool).
-  return takesSound(form.capability) && typeof form.audio === "boolean" ? { ...tiered, audio: form.audio } : tiered;
+  return takesSound(form.capability) && typeof form.audio === "boolean" ? { ...sized, audio: form.audio } : sized;
 }
 
 function isNamedResolution(v: unknown): v is string {
@@ -869,7 +908,8 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
         ...(isUuid(form.endFrameId) ? { end_asset_id: form.endFrameId } : {}),
       };
     case "upscale":
-      return { ...(prompt ? { prompt } : {}), source_asset_id: source, factor: form.factor ?? 2 };
+      // Never the words, even a stale draft's or the price check's stand-in: the server refuses a prompt for upscale.
+      return { source_asset_id: source, factor: form.factor ?? 2 };
     case "expand": {
       // The shape is the ask; the words (optional) say what the new areas show.
       const words = oneLine(form.prompt, PICTURE_OP_PROMPT_MAX.expand);
@@ -1308,6 +1348,10 @@ const REASON_GROUPS: Record<string, keyof Dictionary["gen"]["reasons"]> = {
   mode_not_supported: "service",
   submit_interrupted: "service",
   worker_lost: "service",
+  // The worker's last look before the paid call (modules/creative_worker.py, "Still on sale"): the model went off sale, or was
+  // switched off, while the job waited. Nothing was sent and the hold was released; the remedy is another model.
+  model_not_available: "service",
+  model_temporarily_off: "service",
   credits_unavailable: "credits",
   no_credit_hold: "credits",
   hold_not_open: "credits",

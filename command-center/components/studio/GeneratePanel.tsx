@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowUp, AtSign, ChevronDown, Clock, Languages, Lock, Maximize2, MonitorPlay, Plus, RectangleHorizontal, Settings2, X, type LucideIcon } from "lucide-react";
 import { DESK_TOOLS, pictureToolFor, type MediaDesk } from "@/lib/creative/desks";
 import { ATTACH_ACCEPT } from "@/lib/site/pending-attachment";
+import { AUTO_MODEL } from "@/lib/creative/improve";
 import { Timecode } from "@/components/ui/Timecode";
 import { useI18n } from "@/lib/i18n/context";
 import { formatCredits } from "@/lib/credits";
@@ -44,6 +45,7 @@ import {
   defaultDescribeLanguage,
   durationsFor,
   effectiveQuality,
+  effectiveImageSize,
   entitlementReason,
   effectiveSound,
   errorAction,
@@ -78,6 +80,7 @@ import {
   type DubLanguage,
   type ExpandAspect,
   type ImageQuality,
+  type ImageSize,
   type ModelLock,
   type QuoteState,
   routedLine,
@@ -297,6 +300,8 @@ export function GeneratePanel({
   // the pick and its price; the press sends both back. Off = the picked model, exactly.
   // A link may start it on ("Improve with AI" with Auto picked); it only counts where Auto is offered (`routed` below).
   const [auto, setAuto] = useState(initial?.auto === true);
+  // The tool the form came with: the model it brought was asked for that tool only, so on another tab there is nothing to say about it.
+  const prefillCap = useRef(initial?.capability);
   const [sourceId, setSourceId] = useState<string | null>(initial?.sourceId ?? null);
   const [factor, setFactor] = useState<UpscaleFactor>(initial?.factor ?? 2);
   // A retried job keeps its own choice (even "none"); a fresh form starts from the channel's look.
@@ -320,6 +325,8 @@ export function GeneratePanel({
   );
   // 0060: the picture's render quality; null = not picked, so the model's default (medium) applies.
   const [quality, setQuality] = useState<ImageQuality | null>(initial?.quality ?? null);
+  // 0208: the picture size, for a model priced by size; the model's smallest until one is picked (shown, never implied).
+  const [imageSize, setImageSize] = useState<ImageSize | null>(null);
   // 0070: a clip's soundtrack; null = not picked, so the model's default (silent) applies.
   const [sound, setSound] = useState<boolean | null>(initial?.audio ?? null);
   // What the person has set, as asked (not the effective values, which also move when the models or the style kits load): a change
@@ -374,6 +381,19 @@ export function GeneratePanel({
   // name sorts first), else the first at all (then its lock is named).
   const effectiveModel = pickedOff ? "" : available.some((m) => m.id === model) ? model : ((usable[0] ?? available[0])?.id ?? "");
   const current = available.find((m) => m.id === effectiveModel) ?? null;
+  // A model the form came with (a sample's "Try this prompt", a catalog link, a retried job) that this workspace is not offered for
+  // this tool at all: an unknown or delisted id, an operator preview on a customer's page, a model of another kind. (A model only
+  // locked for this organization IS in `available`: it is taken and its lock named.) The owner's decision (22 Nov): open on the
+  // default model AND say which one — the form used to take the default without a word, so the person was quoted for model Y after
+  // clicking a sample made with X (CLAUDE.md #4, no silent fallback). Auto and a switched-off model have their own words.
+  const modelGone =
+    !routed &&
+    capability === prefillCap.current &&
+    model !== "" &&
+    model !== AUTO_MODEL &&
+    !pickedOff &&
+    current !== null &&
+    !available.some((m) => m.id === model);
   // Why the picked model cannot be bought here: no price is asked (the database would refuse it), the reason is named instead.
   const locked: ModelLock | null = !routed && current?.lock ? current.lock : null;
   // Model ids -> the names the picker shows, for Auto's pick.
@@ -399,6 +419,8 @@ export function GeneratePanel({
   const effectiveLook = capability !== "relight" ? null : look && looks.includes(look) ? look : null;
   // A tier only for a picture tool on a model that sells tiers; another model never gets one.
   const effectiveQ = !routed && takesQuality(capability) ? effectiveQuality(current, quality) : null;
+  // A size only for a picture tool on a model priced by size; another model never gets one.
+  const effectiveSize = !routed && takesQuality(capability) ? effectiveImageSize(current, imageSize) : null;
   // A soundtrack choice only for a video tool on a model that sells it; another model never gets one.
   const effectiveSnd = !routed && takesSound(capability) ? effectiveSound(current, sound) : null;
   // The shapes, lengths and resolutions come from the picked model's own spec (Auto: every model's that this organization can
@@ -454,6 +476,7 @@ export function GeneratePanel({
     describeLanguage,
     quality: effectiveQ,
     audio: effectiveSnd,
+    imageSize: effectiveSize,
     noAspect: shapeless,
   };
   const params = useMemo(
@@ -476,9 +499,10 @@ export function GeneratePanel({
         describeLanguage,
         quality: effectiveQ,
         audio: effectiveSnd,
+        imageSize: effectiveSize,
         noAspect: shapeless,
       }),
-    [capability, prompt, effectiveAspect, effectiveSeconds, effectiveRes, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, effectiveShape, effectiveLook, describeLanguage, effectiveQ, effectiveSnd, shapeless],
+    [capability, prompt, effectiveAspect, effectiveSeconds, effectiveRes, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, effectiveShape, effectiveLook, describeLanguage, effectiveQ, effectiveSnd, effectiveSize, shapeless],
   );
   const paramsKey = JSON.stringify(params);
   // A price is asked for only once the form is complete (the picture, the words).
@@ -600,7 +624,7 @@ export function GeneratePanel({
     selectedId: effectiveModel,
     params: sheetParams,
     // Each model at ITS shape, length and resolution (the ones it would be sent if picked).
-    settingsFor: sheetSettings,
+    settingsFor: withSizes(sheetSettings, takesQuality(capability) ? available.map((m) => [m.id, effectiveImageSize(m, imageSize)]) : []),
     // Each model is priced at ITS tier: a model without tiers is asked without one.
     // Likewise its soundtrack: a model that offers no choice is asked without one.
     soundFor: takesSound(capability) ? Object.fromEntries(available.map((m) => [m.id, effectiveSound(m, sound)])) : undefined,
@@ -1044,6 +1068,29 @@ export function GeneratePanel({
       ? models.find((m) => m.id === quote.routed?.model)?.attribution
       : undefined
     : current?.attribution;
+  // Only a name the models list gives is used: an id the list does not know has nothing honest to be called, so the line names none.
+  // The default is always named: on the video desk the model block is folded away, so this line is the only place it shows.
+  const goneName = modelGone ? modelNames.get(model) : undefined;
+  const goneText =
+    modelGone && current
+      ? goneName
+        ? fmt(t.gen.modelGoneNamed, { model: goneName, default: current.displayName })
+        : fmt(t.gen.modelGone, { default: current.displayName })
+      : "";
+  // One live region per layout, always mounted (a region added with its text already in it is often not read); empty, it takes no
+  // room. The prompt and the price key point at it while it has text, so it is read where focus lands.
+  const goneNote = (
+    <p
+      id="gen-model-gone"
+      role="status"
+      aria-live="polite"
+      className={goneText ? "text-xs text-[var(--color-muted)]" : "sr-only"}
+      data-testid="gen-model-gone"
+    >
+      {goneText}
+    </p>
+  );
+  const goneRef = goneText ? " gen-model-gone" : "";
   // The model: what will make it, how fast, how good — and a way to change it.
   const modelBlock = pickedOff ? (
     <div className="studio-field flex items-center gap-3 p-3" data-testid="gen-model-off">
@@ -1120,6 +1167,9 @@ export function GeneratePanel({
           data-testid="gen-auto"
           onClick={() => {
             setAuto((a) => !a);
+            // Auto is the person's choice of model: the default they were shown becomes the model, so turning Auto off again does
+            // not bring back the note about a model they already moved on from.
+            setModel((m) => (available.some((x) => x.id === m) ? m : effectiveModel));
             edited();
           }}
           className="studio-chip tap press shrink-0 font-medium"
@@ -1455,6 +1505,7 @@ export function GeneratePanel({
             maxLength={wordsMax(capability)}
             autoFocus={initial !== null}
             placeholder={t.gen.promptPh[capability]}
+            aria-describedby={goneText ? "gen-model-gone" : undefined}
             className={`${arrange === "voice" && isVoice ? "desk-script " : ""}${isVoice ? "" : "studio-shot "}min-h-[104px] w-full resize-none bg-transparent px-3 pb-2 pt-3 text-base leading-relaxed text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus-visible:outline-none sm:text-[14px]`}
           />
           {settings && settingsInField && <div className="px-2 pb-2">{settings}</div>}
@@ -1529,6 +1580,35 @@ export function GeneratePanel({
           })}
         </div>
         <span className="text-xs text-[var(--color-muted)]">{t.gen.qualityNote}</span>
+      </div>
+    ) : null;
+
+  // 0208: the picked model's sizes; the price of the picked one is the quote's (the database's), never a number from here.
+  const sizes: readonly ImageSize[] = takesQuality(capability) && !locked ? (current?.imageSizes ?? []) : [];
+  const imageSizeBlock =
+    sizes.length > 0 && effectiveSize ? (
+      <div className="flex flex-col gap-2" data-testid="gen-size">
+        <span className="studio-label" id="gen-size-label">
+          {t.gen.sizeLabel}
+        </span>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="gen-size-label">
+          {sizes.map((z) => (
+            <button
+              key={z}
+              type="button"
+              data-testid={`gen-size-${z}`}
+              aria-pressed={effectiveSize === z}
+              onClick={() => {
+                setImageSize(z);
+                edited();
+              }}
+              className="studio-chip"
+            >
+              {z}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-[var(--color-muted)]">{t.gen.sizeNote}</span>
       </div>
     ) : null;
 
@@ -1691,7 +1771,7 @@ export function GeneratePanel({
       className={`ns-price-button${size === "md" ? " sc-send" : ""}`}
       data-size={size}
       data-testid="gen-need-credits"
-      aria-describedby="gen-status"
+      aria-describedby={`gen-status${goneRef}`}
       aria-label={
         live && quote.status === "ready"
           ? fmt(t.gen.needMoreLabel, { cost: formatCredits(quote.credits, locale), available: formatCredits(live.available, locale) })
@@ -1734,7 +1814,7 @@ export function GeneratePanel({
         disabled={disabled}
         onClick={generate}
         aria-busy={submitting || quote.status === "quoting"}
-        aria-describedby="gen-status"
+        aria-describedby={`gen-status${goneRef}`}
         aria-label={submitting ? t.gen.starting : keyName}
         label={
           submitting
@@ -1877,6 +1957,9 @@ export function GeneratePanel({
               data-testid="gen-auto"
               onClick={() => {
                 setAuto((a) => !a);
+                // Auto is the person's choice of model: the default they were shown becomes the model, so turning Auto off again does
+                // not bring back the note about a model they already moved on from.
+                setModel((m) => (available.some((x) => x.id === m) ? m : effectiveModel));
                 edited();
               }}
               className="studio-chip tap press font-medium"
@@ -1956,7 +2039,7 @@ export function GeneratePanel({
                   maxLength={wordsMax(capability)}
                   autoFocus={autoFocusPrompt ?? initial !== null}
                   placeholder={t.gen.promptPh[capability]}
-                  aria-describedby="gen-status sc-enter-hint"
+                  aria-describedby={`gen-status sc-enter-hint${goneRef}`}
                   className="sc-input"
                 />
               </>
@@ -2067,7 +2150,7 @@ export function GeneratePanel({
             disabled={disabled}
             onClick={generate}
             aria-busy={submitting || quote.status === "quoting"}
-            aria-describedby="gen-status"
+            aria-describedby={`gen-status${goneRef}`}
             aria-label={submitting ? t.gen.starting : keyName}
             label={<span className="sc-send-word">{sendLabel}</span>}
             credits={!submitting && quote.status === "ready" ? quote.credits : null}
@@ -2086,6 +2169,8 @@ export function GeneratePanel({
             {th.enterHint}
           </span>
         </div>
+        {/* The model's facts are folded away here; the pill shows the default's name, so why it is not the asked one is said under the box. */}
+        <div className={goneText ? "sc-foot" : undefined}>{goneNote}</div>
         {snapText && (
           // The composer folds its settings away: the change is said under the box, where it is seen.
           <div className="sc-foot">
@@ -2123,6 +2208,8 @@ export function GeneratePanel({
               </div>
             )}
             {promptBlock}
+            {/* Outside the fold: a note inside a closed <details> would be the silent swap again. */}
+            {goneNote}
             {/* The defaults are sensible (the channel's look, the best model for the shot): sound, look and
                 model stay one tap away, folded, so the first view is the shot, its length and the price. */}
             <details className="fl-more" data-testid="gen-more">
@@ -2161,6 +2248,7 @@ export function GeneratePanel({
               {voiceBlock}
               {dubLangBlock}
               {modelBlock}
+              {goneNote}
               {dockBlock}
             </div>
           </>,
@@ -2195,6 +2283,7 @@ export function GeneratePanel({
               </div>
               <div className="desk-bench-go">
                 {modelBlock}
+                {goneNote}
                 {dockBlock}
               </div>
             </>,
@@ -2222,7 +2311,9 @@ export function GeneratePanel({
             {promptBlock}
             {styleBlock}
             {qualityBlock}
+            {imageSizeBlock}
             {modelBlock}
+            {goneNote}
           </>,
         )}
         {dockBlock}
@@ -2240,6 +2331,7 @@ export function GeneratePanel({
         "flex flex-col gap-4",
         <>
           {modelBlock}
+          {goneNote}
           {sourceBlock}
           {describeLangBlock}
           {endFrameBlock}
@@ -2250,6 +2342,7 @@ export function GeneratePanel({
           {lookBlock}
           {promptBlock}
           {qualityBlock}
+          {imageSizeBlock}
           {soundBlock}
           {styleBlock}
         </>,
@@ -2258,4 +2351,18 @@ export function GeneratePanel({
       {dialogs}
     </section>
   );
+}
+
+/**
+ * 0208: each model's own size merged into the sheet's per-model settings: a model priced by size is asked at its effective size, and
+ * every other model with the key left out (null), so the form's size never reaches a model that is not sold by size.
+ */
+function withSizes(
+  settings: Record<string, Record<string, string | number | null>> | undefined,
+  sizes: Array<[string, ImageSize | null]>,
+): Record<string, Record<string, string | number | null>> | undefined {
+  if (sizes.length === 0) return settings;
+  const out: Record<string, Record<string, string | number | null>> = { ...(settings ?? {}) };
+  for (const [id, size] of sizes) out[id] = { ...(out[id] ?? {}), image_size: size };
+  return out;
 }

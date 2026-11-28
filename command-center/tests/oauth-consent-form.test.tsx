@@ -18,7 +18,7 @@ afterEach(() => {
 const text: ConsentText = {
   limitLabel: "Monthly limit", limitHint: "hint", limitInvalid: "Enter a whole number.", limitEcho: "{app} can spend {n} credits", limitEchoOne: "{app} one", limitEchoZero: "{app} zero",
   allow: "Allow", deny: "Deny", working: "Working", failed: "Failed", expired: "Expired", sessionEnded: "Signed out",
-  tooManyConnections: "Too many live", tooManyToday: "Too many today",
+  tooManyConnections: "Too many live", tooManyToday: "Too many today", notAMember: "Not a member",
 };
 
 function setup(offerStudio = false) {

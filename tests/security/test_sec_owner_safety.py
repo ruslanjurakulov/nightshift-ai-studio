@@ -25,7 +25,7 @@ import psycopg
 import pytest
 from psycopg import sql
 
-from sec_db import ANON, SERVICE, REPO, Session, as_superuser
+from sec_db import ANON, SERVICE, REPO, Session, as_superuser, take_off_0233
 
 MIGRATION = REPO / "supabase" / "migrations" / "0107_owner_safety.sql"
 GOOD = "A reason that is long enough"
@@ -125,6 +125,14 @@ def tx(conn):
         conn.execute("select set_config('request.jwt.claims', '', true)")
         yield Tx(conn)
         conn.execute("reset role")
+
+
+def roster_open(t: Tx):
+    """0233 closed the roster functions and the direct app_members writes to every API role. The functions are still in the
+    database (dormant) and their own checks are what a re-grant would rely on, so the tests of those checks take 0233 off with
+    its rollback, inside this rolled-back transaction. test_sec_roster_closed_0233.py proves the closed state."""
+    t.conn.execute("reset role")
+    take_off_0233(t.conn)
 
 
 def gate_on(t: Tx):
@@ -348,6 +356,7 @@ def test_an_unreadable_factor_table_never_blocks(conn, sc):
 
 def test_an_admin_without_a_factor_is_never_blocked_with_the_gate_on(conn, sc):
     with tx(conn) as t:
+        roster_open(t)
         gate_on(t)
         s = t.as_(sc.operator)  # aal1, no factor
         out = grant(s, sc.bob.org, 10, "key-nofactor-1")
@@ -358,6 +367,7 @@ def test_an_admin_without_a_factor_is_never_blocked_with_the_gate_on(conn, sc):
 
 def test_an_admin_with_a_factor_and_a_password_only_session_is_refused_with_a_document(conn, sc):
     with tx(conn) as t:
+        roster_open(t)
         gate_on(t)
         factors(t, sc.operator, 1)
         before = balance(t, sc.bob.org)
@@ -943,6 +953,7 @@ def test_the_price_trails_exist_for_the_seeded_prices(conn):
 
 def test_a_failing_trail_never_fails_a_price_or_roster_write(conn, sc):
     with tx(conn) as t:
+        roster_open(t)
         t.sup("alter table public.security_events add constraint security_events_break check (false) not valid")
         t.sup("alter table public.credit_price_history add constraint credit_price_history_break check (false) not valid")
         before = t.sup("select count(*) from public.security_events")[0][0]
@@ -975,6 +986,7 @@ def member_id(t, email):
 
 def test_an_owner_adds_changes_and_removes_members_with_both_records(conn, sc):
     with tx(conn) as t:
+        roster_open(t)
         s = t.as_(sc.operator)
         added = s.value("select public.owner_add_member('  New.Person@X.test ', 'editor', 'joined the team')")
         assert added["ok"] is True and added["email"] == "new.person@x.test" and added["role"] == "editor"
@@ -1000,6 +1012,7 @@ def test_the_audit_names_match_what_the_operator_bot_alerts_on(conn, sc):
         assert f'"{name}"' in actions, name
     # and every audit row an owner function writes is a name the bot looks for (and has no channel)
     with tx(conn) as t:
+        roster_open(t)
         s = t.as_(sc.operator)
         grant(s, sc.bob.org, 5, "key-bot-000001")
         price(s, "unit_bot_1", 1, 0)
@@ -1014,11 +1027,13 @@ def test_the_audit_names_match_what_the_operator_bot_alerts_on(conn, sc):
 @pytest.mark.parametrize("email", ["", "plain", "a@b", "@x.test", "a b@x.test", "a@@x.test", "x" * 250 + "@x.test", None])
 def test_a_bad_address_is_refused(conn, sc, email):
     with tx(conn) as t:
+        roster_open(t)
         assert t.as_(sc.operator).value("select public.owner_add_member(%s, 'viewer')", [email])["error"] == "bad_email"
 
 
 def test_bad_roles_and_duplicates_and_missing_people_are_answers(conn, sc):
     with tx(conn) as t:
+        roster_open(t)
         s = t.as_(sc.operator)
         for role in (None, "", "root", "OWNER", "owner "):
             assert s.value("select public.owner_add_member('role@x.test', %s)", [role])["error"] == "bad_role"
@@ -1034,6 +1049,7 @@ def test_bad_roles_and_duplicates_and_missing_people_are_answers(conn, sc):
 
 def test_only_an_owner_mints_or_touches_admins_and_owners(conn, sc):
     with tx(conn) as t:
+        roster_open(t)
         make_admin(t, sc)
         t.sup("insert into public.app_members (email, role) values ('target-editor@x.test', 'editor') returning 1")
         t.sup("insert into public.app_members (email, role) values ('target-admin@x.test', 'admin') returning 1")
@@ -1060,6 +1076,7 @@ def test_only_an_owner_mints_or_touches_admins_and_owners(conn, sc):
 
 def test_nobody_changes_or_removes_themselves(conn, sc):
     with tx(conn) as t:
+        roster_open(t)
         make_admin(t, sc)
         me, dana = member_id(t, sc.operator.email), member_id(t, sc.dana.email)
         o = t.as_(sc.operator)
@@ -1074,6 +1091,7 @@ def test_nobody_changes_or_removes_themselves(conn, sc):
 
 def test_the_last_confirmed_owner_cannot_be_demoted_or_removed(conn, sc):
     with tx(conn) as t:
+        roster_open(t)
         # a second owner exists, but only by an unconfirmed address ... and a pending invite does not count either
         t.sup("update auth.users set email_confirmed_at = null where id = %s", [sc.operator.uid])
         t.sup("insert into public.app_members (user_id, email, role) values (%s, %s, 'owner') returning 1", [sc.dana.uid, sc.dana.email])
@@ -1091,6 +1109,7 @@ def test_the_last_confirmed_owner_cannot_be_demoted_or_removed(conn, sc):
 
 def test_a_second_confirmed_owner_can_be_removed_by_the_first(conn, sc):
     with tx(conn) as t:
+        roster_open(t)
         t.sup("insert into public.app_members (user_id, email, role) values (%s, %s, 'owner') returning 1", [sc.dana.uid, sc.dana.email])
         out = t.as_(sc.operator).value("select public.owner_remove_member(%s)", [member_id(t, sc.dana.email)])
         assert out["ok"] is True and out["removed_role"] == "owner"
@@ -1099,6 +1118,7 @@ def test_a_second_confirmed_owner_can_be_removed_by_the_first(conn, sc):
 
 def test_the_roster_functions_do_not_open_the_empty_roster_bootstrap(conn, sc):
     with tx(conn) as t:
+        roster_open(t)
         t.sup("delete from public.app_members")
         # nobody is a platform admin on an empty roster except a default-org member: the operator is one
         out = t.as_(sc.operator).value("select public.owner_set_member_role(gen_random_uuid(), 'viewer')")
@@ -1111,6 +1131,7 @@ def test_roster_changes_wait_for_each_other(conn, sc):
     try:
         other.execute("select pg_advisory_xact_lock(hashtext('nightshift.owner'), hashtext('roster'))")
         with tx(conn) as t:
+            roster_open(t)
             t.conn.execute("set local lock_timeout = '300ms'")
             out = t.as_(sc.operator).run("select public.owner_add_member('lock@x.test', 'viewer')")
         assert not out.ok and out.sqlstate == "55P03"
@@ -1119,9 +1140,18 @@ def test_roster_changes_wait_for_each_other(conn, sc):
         other.close()
 
 
-def test_the_direct_roster_paths_are_unchanged_while_dormant(conn, sc):
-    # The Team page still writes app_members straight from the browser; 0107 adds no guard there.
+def test_the_direct_roster_paths_are_closed_and_still_trailed_if_reopened(conn, sc):
+    # Since 0233 the operator's own session cannot write app_members either (the Team page is gone); taken off, the 0107
+    # trail still records every direct write.
     with tx(conn) as t:
+        s = t.as_(sc.operator)
+        for stmt in ("insert into public.app_members (email, role) values ('direct@x.test', 'admin')",
+                     "update public.app_members set role = 'viewer' where email = 'direct@x.test'",
+                     "delete from public.app_members where email = 'direct@x.test'"):
+            out = s.run(stmt)
+            assert not out.ok and out.sqlstate == "42501", (stmt, out)
+    with tx(conn) as t:
+        roster_open(t)
         s = t.as_(sc.operator)
         assert s.run("insert into public.app_members (email, role) values ('direct@x.test', 'admin')").ok
         assert s.run("update public.app_members set role = 'viewer' where email = 'direct@x.test'").ok
@@ -1258,6 +1288,7 @@ def test_the_rollback_file_removes_exactly_what_the_migration_added_and_the_migr
     body = "\n".join(ln for ln in rollback.splitlines() if ln.strip() not in ("begin;", "commit;"))
     assert "begin;" in rollback and "commit;" in rollback
     with tx(conn) as t:
+        roster_open(t)  # "the old paths" include the direct roster write that 0233 closed
         before_fn = {r[0] for r in t.sup("select proname from pg_proc where pronamespace = 'public'::regnamespace")}
         t.conn.execute(body)
         after_fn = {r[0] for r in t.sup("select proname from pg_proc where pronamespace = 'public'::regnamespace")}

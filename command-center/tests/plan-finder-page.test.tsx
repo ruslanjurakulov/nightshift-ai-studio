@@ -46,7 +46,8 @@ afterEach(() => {
 
 const READ_AT = "2026-11-14T08:00:00Z";
 /** public_video_rates() as charged: 12.5 credits a finished minute (10 with a 25% margin), a 30-credit smallest hold. */
-const PUBLIC_VIDEO = videoPrices(parsePrices([{ unit: "video_minute", credits_per_unit: 12.5 }, { unit: "job_minimum", credits_per_unit: 30 }]));
+const PUBLIC_LIST = parsePrices([{ unit: "video_minute", credits_per_unit: 12.5 }, { unit: "job_minimum", credits_per_unit: 30 }]);
+const PUBLIC_VIDEO = videoPrices(PUBLIC_LIST);
 
 function catalog() {
   return coercePlanCatalog(
@@ -87,7 +88,7 @@ const out = (el: HTMLElement, what: string) => el.querySelector(`[data-output="$
 describe("each plan card says what it makes", () => {
   it("in finished YouTube videos: floor(credits ÷ Run now's quote), with the settings and the date printed", () => {
     const { container } = renderPricing(signedOut);
-    const quote = estimateRunCredits({ prices: PUBLIC_VIDEO!, durationS: DEFAULT_LENGTH_S, videos: [] }).credits!;
+    const quote = estimateRunCredits({ prices: PUBLIC_LIST, durationS: DEFAULT_LENGTH_S, videos: [] }).credits!;
     expect(quote).toBe(62.5);
     expect(out(card(container, "creator"), "youtube")).toBe(`≈ ${Math.floor(2000 / quote)}`); // 32
     expect(out(card(container, "pro"), "youtube")).toBe(`≈ ${Math.floor(6000 / quote)}`); // 96
@@ -237,7 +238,7 @@ describe("the plan finder", () => {
     const { container } = finder();
     for (const len of ["1", "2", "7", "13", "60"]) {
       fireEvent.change(screen.getByLabelText(en.planFinder.finder.length), { target: { value: len } });
-      const quote = estimateRunCredits({ prices: PUBLIC_VIDEO!, durationS: Number(len) * 60, videos: [] }).credits!;
+      const quote = estimateRunCredits({ prices: PUBLIC_LIST, durationS: Number(len) * 60, videos: [] }).credits!;
       const perVideo = container.querySelectorAll(".pf-break dd b")[1].textContent;
       expect(perVideo, `${len} min`).toBe(`${formatCredits(quote, "en")} credits`);
     }
