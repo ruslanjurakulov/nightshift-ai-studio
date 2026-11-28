@@ -7,6 +7,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import { useShell } from "@/components/shell/ShellContext";
 import { DESK_TOOLS, deskHref, type MediaDesk } from "@/lib/creative/desks";
 import { closedTools, deskOpen, nothingOnSale } from "@/lib/tool-availability";
+import { isSoundTool } from "@/lib/creative/studio";
 import "@/components/studio/availability.css";
 
 /**
@@ -41,7 +42,8 @@ export function DeskAvailabilityNote({ desk }: { desk: MediaDesk }) {
   const { t, fmt } = useI18n();
   const path = useChannelPath();
   const { tools } = useShell();
-  const closed = closedTools(tools, DESK_TOOLS[desk]);
+  // A sound tool with nothing on sale has no tab (lib/creative/studio offeredTools), so it is not named as closed either.
+  const closed = closedTools(tools, DESK_TOOLS[desk]).filter((c) => !isSoundTool(c));
   if (closed.length === 0) return null;
   const a = t.availability;
   const names = closed.map((c) => t.desk.tools[c]).join(", ");

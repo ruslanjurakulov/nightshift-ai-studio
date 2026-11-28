@@ -100,8 +100,18 @@ export const PICTURE_OPS = PICTURE_OP_CAPABILITIES;
  */
 export const VIDEO_OPS = VIDEO_OP_CAPABILITIES;
 
+/**
+ * The sound tools: a sound effect from a description. On the Voice desk, not in the sidebar's tool rows, and shown only once a model
+ * is sold for it (offeredTools): until the owner has proven and priced one, no tab, note or form mentions it. Nothing here makes it
+ * available: the form offers exactly the models the database sells for the capability.
+ *
+ * Music is deliberately not one of them: Lyria's terms (Google APIs Terms 4(a), registry terms_notes) allow it only inside a
+ * project's workflow (the editor's music track, the film pipeline), never as a free-standing prompt-to-song tool.
+ */
+export const SOUND_TOOLS = ["sfx"] as const satisfies readonly CreativeCapability[];
+
 /** Everything the composer can make, in the order its tabs show the tools. */
-export const PANEL_CAPABILITIES = [...COMPOSER_CAPABILITIES, ...PICTURE_OPS, ...VIDEO_OPS] as const;
+export const PANEL_CAPABILITIES = [...COMPOSER_CAPABILITIES, ...PICTURE_OPS, ...VIDEO_OPS, ...SOUND_TOOLS] as const;
 export type StudioCapability = (typeof PANEL_CAPABILITIES)[number];
 
 /** The tools that start from a picture in the library (migration 0046). */
@@ -125,6 +135,28 @@ export function isVideoOp(c: unknown): c is (typeof VIDEO_OPS)[number] {
 /** An AI edit tool (0099, 0100): nothing is sold for it until the owner proves and prices a model. */
 export function isAiEdit(c: unknown): boolean {
   return isPictureOp(c) || isVideoOp(c);
+}
+
+export function isSoundTool(c: unknown): c is (typeof SOUND_TOOLS)[number] {
+  return typeof c === "string" && (SOUND_TOOLS as readonly string[]).includes(c);
+}
+
+/**
+ * The tools a composer shows, of the ones it would offer: every tool, except that a sound tool is shown only while at least one
+ * model this workspace is offered makes it (the list the panel already reads: sellable_models(), the owner's switch, the country
+ * rule, the previews). With none, there is no tab, no note and no form: a permanent "not available" tab is a dead end, and the
+ * day a model is sold the tool appears by itself.
+ */
+export function offeredTools<T extends string>(tools: readonly T[], models: readonly Pick<StudioModel, "capabilities">[]): T[] {
+  return tools.filter((c) => !isSoundTool(c) || models.some((m) => m.capabilities.includes(c)));
+}
+
+/**
+ * The tools whose length is a setting picked from the model's own list (spec.durations_s; 0159 refuses any other). A sound effect
+ * is one (0228's creative_params_problem requires duration_s for sfx).
+ */
+export function takesLength(c: unknown): boolean {
+  return c === "t2v" || c === "i2v" || c === "sfx";
 }
 
 /** The tools asked by a shape: an expand extends a picture to it, a reframe changes a video to it. */
@@ -479,14 +511,28 @@ export function shapesFor(
   return orderShapes(available.flatMap((m) => modelShapes(m, cap) ?? [...ASPECT_RATIOS]));
 }
 
-/** The clip lengths offered, chosen the same way as the shapes (VIDEO_DURATIONS when a spec was not read). */
+/**
+ * The lengths offered, chosen the same way as the shapes. `standIn` is what a model whose spec was not read is offered: a clip's
+ * VIDEO_DURATIONS. A sound effect passes [] (soundLengthsFor): a clip's 5 s is no reading of a sound model, and a guessed length
+ * would be quoted as if the model had listed it.
+ */
 export function durationsFor(
   available: readonly Pick<StudioModel, "durations">[],
   current: Pick<StudioModel, "durations"> | null,
   routed: boolean,
+  standIn: readonly number[] = VIDEO_DURATIONS,
 ): number[] {
-  if (!routed) return orderSeconds(current?.durations ?? VIDEO_DURATIONS);
-  return orderSeconds(available.flatMap((m) => m.durations ?? VIDEO_DURATIONS));
+  if (!routed) return orderSeconds(current?.durations ?? standIn);
+  return orderSeconds(available.flatMap((m) => m.durations ?? standIn));
+}
+
+/** A sound effect's lengths: only what the models list. A model that lists none (or whose list was not read) offers none. */
+export function soundLengthsFor(
+  available: readonly Pick<StudioModel, "durations">[],
+  current: Pick<StudioModel, "durations"> | null,
+  routed: boolean,
+): number[] {
+  return durationsFor(available, current, routed, []);
 }
 
 /**
@@ -522,8 +568,8 @@ export function modelSettings(
     const list = modelShapes(m, cap);
     out.aspect_ratio = list === null ? (m.fixedShape ? null : aspect) : list.length ? snapShape(aspect, list) : null;
   }
+  if (takesLength(cap)) out.duration_s = snapSeconds(seconds, m.durations ?? []);
   if (cap === "t2v" || cap === "i2v") {
-    out.duration_s = snapSeconds(seconds, m.durations ?? []);
     out.resolution = resolution && resolution !== m.defaultResolution && resolutionsFor(m, false).includes(resolution) ? resolution : null;
   }
   return out;
@@ -577,7 +623,7 @@ export function capabilityLine(t: Dictionary, m: StudioModel, cap: string): stri
     if (shapes && shapes.length === 0) parts.push(g.factOwnShape);
     else if (shapes) parts.push(...shapes.slice(0, 3), ...(shapes.length > 3 ? [fmt(g.factMore, { n: shapes.length - 3 })] : []));
   }
-  if ((cap === "t2v" || cap === "i2v") && m.durations && m.durations.length) {
+  if (takesLength(cap) && m.durations && m.durations.length) {
     const s = orderSeconds(m.durations);
     const lo = s[0];
     const hi = s[s.length - 1];
@@ -944,6 +990,9 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
     case "video_upscale":
       // The length (and so the price) is the video's own: never sent.
       return { source_asset_id: source, target_resolution: form.target ?? "" };
+    case "sfx":
+      // The length is required (creative_params_problem) and is one the picked model lists (0159; the panel snaps it to durationsFor).
+      return { prompt, duration_s: form.duration };
     default:
       // Speech: the words are the prompt (the price counts their characters)
       // and the voice is the one picked — the speech provider needs one.
@@ -1029,6 +1078,8 @@ export const WORDS_FREE_PRICE: readonly StudioCapability[] = [
   "video_edit",
   "video_reframe",
   "video_remove_bg",
+  // A sound effect is priced by its seconds, whatever the words.
+  "sfx",
 ];
 const PRICE_STAND_IN = "price check";
 

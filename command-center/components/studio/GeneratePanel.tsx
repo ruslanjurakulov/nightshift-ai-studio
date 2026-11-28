@@ -53,6 +53,7 @@ import {
   generateLabel,
   isAiEdit,
   isPictureOp,
+  isSoundTool,
   modelSettings,
   modelShapes,
   modelsFor,
@@ -60,16 +61,19 @@ import {
   needsSource,
   needsVideo,
   newIdempotencyKey,
+  offeredTools,
   promptRule,
   reframeShapesFor,
   relightLooksFor,
   resolutionLabel,
   resolutionsFor,
   shapesFor,
+  soundLengthsFor,
   sheetQuoteParams,
   snapSeconds,
   snapShape,
   soundQuoteParams,
+  takesLength,
   takesQuality,
   takesShape,
   takesSound,
@@ -109,9 +113,13 @@ function shapeGlyph(a: string): CSSProperties | undefined {
 /** What a tool starts from in the library: switching to a tool that starts from another kind starts the pick again. */
 const startsFrom = (c: StudioCapability) =>
   needsSource(c) ? "picture" : needsRecording(c) ? "recording" : needsVideo(c) ? "video" : null;
-const MAKE_KINDS = PANEL_CAPABILITIES.filter((c) => startsFrom(c) === null);
-/** The picture tools (0046), the voice tools (0050) and the video tools (0052): each starts from something in the library. */
-const MEDIA_TOOLS = PANEL_CAPABILITIES.filter((c) => startsFrom(c) !== null);
+/**
+ * The mode switch outside a desk: Image, Video, Voice. The sound tools start from words too, but stay in the tool row: the switch is
+ * the three things this panel has always made, and a mode nobody can use yet would be the first thing on it.
+ */
+const MAKE_KINDS = PANEL_CAPABILITIES.filter((c) => startsFrom(c) === null && !isSoundTool(c));
+/** The tool row: the picture tools (0046), the voice tools (0050) and the video tools (0052), which start from a library file, then the sound tools. */
+const MEDIA_TOOLS = PANEL_CAPABILITIES.filter((c) => !MAKE_KINDS.includes(c));
 
 /** The longest recording each voice tool takes (0050's source check; the database still decides). */
 const RECORDING_MAX_SECONDS: Record<"voice_change" | "dub", number> = { voice_change: 300, dub: 1800 };
@@ -271,7 +279,12 @@ export function GeneratePanel({
   const { t, fmt, locale } = useI18n();
   const path = useChannelPath();
   // The tools this composer offers: its desk's, or every one.
-  const tools: readonly StudioCapability[] = only && only.length > 0 ? only : desk ? DESK_TOOLS[desk] : PANEL_CAPABILITIES;
+  // A sound tool only while a model is offered for it (offeredTools); `only` is the page's own choice and is taken as given.
+  const tools: readonly StudioCapability[] = useMemo(
+    () => (only && only.length > 0 ? only : offeredTools(desk ? DESK_TOOLS[desk] : PANEL_CAPABILITIES, models)),
+    [only, desk, models],
+  );
+  const mediaTools = useMemo(() => offeredTools(MEDIA_TOOLS, models), [models]);
   // `desk` picks the tools; `arrange` is the desk's own look, which the composer does not use.
   const composer = layout === "composer";
   const arrange: MediaDesk | null = composer ? null : desk;
@@ -427,13 +440,16 @@ export function GeneratePanel({
   // buy). 0155 refuses a shape the model does not list and 0159 a length, so offering a fixed list sold refusals.
   const textShape = capability === "t2i" || capability === "t2v";
   const clip = capability === "t2v" || capability === "i2v";
+  // A clip, or a sound effect: the length is picked from the model's own list (0159 refuses any other; 0228 requires one for sfx).
+  const timed = takesLength(capability);
   const pool = usable.length ? usable : available;
   const shapeList = textShape ? shapesFor(pool, current, routed, capability) : [];
   const ownShapes = !routed && textShape ? modelShapes(current, capability) : null;
   // A model whose spec lists no aspect ratio makes its own shape: no shape is offered or sent for it (Auto: not known, as above).
   const shapeless = !routed && textShape && (ownShapes ? ownShapes.length === 0 : current?.fixedShape === true);
   const effectiveAspect = snapShape(aspect, shapeList);
-  const lengths = clip ? durationsFor(pool, current, routed) : [];
+  // A sound effect is offered only the lengths its models list: never a clip's stand-in, for no model or a spec that names none.
+  const lengths = clip ? durationsFor(pool, current, routed) : timed ? soundLengthsFor(pool, current, routed) : [];
   const effectiveSeconds = snapSeconds(duration, lengths);
   // A resolution only on a hand-picked model whose price follows it; the default stands for "send none".
   const resolutions = clip ? resolutionsFor(current, routed) : [];
@@ -442,12 +458,19 @@ export function GeneratePanel({
   const effectiveRes = resolutions.length > 0 && shownRes && shownRes !== defaultRes ? shownRes : null;
   // A model whose spec lists no clip length at all cannot be sold a clip (0159 refuses every length): no price is asked for a
   // stand-in length, the reason is named instead.
-  const noLength = clip && !routed && !!current && Array.isArray(current.durations) && current.durations.length === 0;
+  // A sound effect with a model but no listed length (an empty list or none at all, hand-picked or under Auto) is the same: 0228
+  // requires a length, and the 5 s the form starts with is not one any model offered. Auto for a clip is left to the database,
+  // which refuses an unlisted length by name: its list falls back to the clip stand-in for a spec not read, so it is never empty there
+  // unless every model states an empty list.
+  const noLength =
+    capability === "sfx"
+      ? !!current && lengths.length === 0
+      : clip && !routed && !!current && Array.isArray(current.durations) && current.durations.length === 0;
   // What was asked for (a retried job, a link, a setting kept from another model) and is NOT what will be sent: said in one line,
   // never changed silently (CLAUDE.md #4).
   const snapped: Array<[string, string]> = [];
   if (textShape && !shapeless && shapeList.length > 0 && aspect !== effectiveAspect) snapped.push([aspect, effectiveAspect]);
-  if (clip && lengths.length > 0 && duration !== effectiveSeconds)
+  if (timed && lengths.length > 0 && duration !== effectiveSeconds)
     snapped.push([fmt(t.gen.seconds, { n: duration }), fmt(t.gen.seconds, { n: effectiveSeconds })]);
   if (clip && !routed && current && resolution && resolution !== shownRes)
     snapped.push([resolutionLabel(resolution), shownRes ? resolutionLabel(shownRes) : t.gen.snapModelDefault]);
@@ -596,7 +619,7 @@ export function GeneratePanel({
   // Each model's own shape, length and resolution for the sheet's prices, and, where they are not the form's, those settings in
   // words beside its price ("at 8 s · 16:9"): a number asked at other settings is never shown as if it were this form's.
   const sheetSettings =
-    textShape || clip
+    textShape || timed
       ? Object.fromEntries(
           available.map((m) => [m.id, modelSettings(m, capability, effectiveAspect, effectiveSeconds, m.id === effectiveModel ? effectiveRes : null)]),
         )
@@ -792,7 +815,11 @@ export function GeneratePanel({
   const blockedText = pickedOff
     ? t.modelSwitch.studio.offBody
     : noLength && current
-      ? fmt(t.gen.noLength, { model: current.displayName })
+      ? capability === "sfx"
+        ? routed
+          ? t.gen.noSoundLengthAuto
+          : fmt(t.gen.noSoundLength, { model: current.displayName })
+        : fmt(t.gen.noLength, { model: current.displayName })
       : blocked === "no_model" && isAiEdit(capability)
       ? t.gen.notAvailableYet
       : blocked === "need_words" && current && promptRule(capability) === "optional"
@@ -832,7 +859,7 @@ export function GeneratePanel({
 
   // A tablist: ←/→ (and ↑/↓) move and choose, Home/End jump; one tab stop.
   // On a desk it is the desk's tools; outside one, the tool row under the mode switch.
-  const rowTools: readonly StudioCapability[] = desk ? tools : MEDIA_TOOLS;
+  const rowTools: readonly StudioCapability[] = desk ? tools : mediaTools;
   function onTabKey(e: KeyboardEvent<HTMLButtonElement>, c: StudioCapability) {
     const i = rowTools.indexOf(c);
     const n = rowTools.length;
@@ -953,6 +980,7 @@ export function GeneratePanel({
     (capability === "t2i" && !shapeless && shapeList.length > 0) ||
     capability === "t2v" ||
     capability === "i2v" ||
+    (capability === "sfx" && lengths.length > 0) ||
     capability === "upscale" ||
     (filmed && targets.length > 0) ||
     (takesShape(capability) && shapes.length > 0);
@@ -975,7 +1003,7 @@ export function GeneratePanel({
         !shapeless &&
         shapeList.length > 0 &&
         choice(t.gen.aspectLabel, arrange ? null : RectangleHorizontal, shapeList, effectiveAspect, setAspect, aspectText, (a) => a, true)}
-      {clip &&
+      {timed &&
         lengths.length > 0 &&
         choice(t.gen.durationLabel, Clock, lengths, effectiveSeconds, setDuration, durationText, (d) => fmt(t.gen.seconds, { n: d }))}
       {clip &&
@@ -991,7 +1019,7 @@ export function GeneratePanel({
           (r) => (r === defaultRes ? fmt(t.gen.resolutionDefault, { r: resolutionLabel(r) }) : resolutionLabel(r)),
           true,
         )}
-      {routed && (textShape || clip) && (
+      {routed && (textShape || timed) && (
         <span className="basis-full text-xs text-[var(--color-muted)]" data-testid="gen-auto-settings">
           {t.gen.autoSettingsNote}
         </span>
@@ -1036,7 +1064,7 @@ export function GeneratePanel({
     </div>
   ) : (
     <div className="flex flex-col gap-2">
-      {/* The mode switch: what to make. The tools below it start from something in the library. */}
+      {/* The mode switch: what to make. The tool row below holds the tools that start from a library file, then the sound tools. */}
       <SegmentedSwitch
         semantics="tab"
         label={t.gen.kindLabel}
@@ -1052,7 +1080,7 @@ export function GeneratePanel({
         })}
       />
       <div role="tablist" aria-label={t.gen.toolRowLabel} className="grid grid-cols-3 gap-1">
-        {MEDIA_TOOLS.map(tab)}
+        {mediaTools.map(tab)}
       </div>
     </div>
   );
@@ -1488,7 +1516,9 @@ export function GeneratePanel({
               : t.gen.voiceTextLabel
             : isAiEdit(capability)
               ? (t.gen.opWords as Record<string, string>)[capability]
-              : arrange === "video"
+              : isSoundTool(capability)
+                ? t.gen.soundWords[capability]
+                : arrange === "video"
                 ? t.desk.shot
                 : t.gen.promptLabel}
           {words === "optional" && <span> · {t.gen.optional}</span>}
@@ -1919,7 +1949,7 @@ export function GeneratePanel({
     // The settings key's own words: what is set now (the shape, the length, the size), never a price.
     const summary = [
       textShape && !shapeless && shapeList.length > 0 ? effectiveAspect : null,
-      clip ? fmt(t.gen.seconds, { n: effectiveSeconds }) : null,
+      clip || (timed && lengths.length > 0) ? fmt(t.gen.seconds, { n: effectiveSeconds }) : null,
       effectiveRes ? resolutionLabel(effectiveRes) : null,
       capability === "upscale" ? fmt(t.gen.factor, { n: factor }) : null,
       effectiveTarget ? effectiveTarget.replace(/k$/, "K") : null,
@@ -2017,7 +2047,13 @@ export function GeneratePanel({
             {words !== "none" && (
               <>
                 <label htmlFor="gen-prompt" className="sr-only">
-                  {isVoice ? t.gen.voiceTextLabel : isAiEdit(capability) ? (t.gen.opWords as Record<string, string>)[capability] : t.gen.promptLabel}
+                  {isVoice
+                    ? t.gen.voiceTextLabel
+                    : isAiEdit(capability)
+                      ? (t.gen.opWords as Record<string, string>)[capability]
+                      : isSoundTool(capability)
+                        ? t.gen.soundWords[capability]
+                        : t.gen.promptLabel}
                   {words === "optional" ? ` · ${t.gen.optional}` : ""}
                 </label>
                 <textarea

@@ -225,8 +225,12 @@ describe("params (0052's rules)", () => {
     expect([...STUDIO_CAPABILITIES]).toEqual(["t2i", "t2v", "tts", "edit", "i2v", "upscale", "remove_bg"]);
     // lib/navigation mirrors COMPOSER_CAPABILITIES, so the sidebar links it too.
     expect(COMPOSER_CAPABILITIES.at(-1)).toBe("video_upscale");
-    // The Enhance desk's AI picture (0099) and video (0100) tools follow, and are not sidebar rows.
-    expect([...PANEL_CAPABILITIES]).toEqual([...COMPOSER_CAPABILITIES, "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg"]);
+    // The Enhance desk's AI picture (0099) and video (0100) tools follow, then the Voice desk's sound tools; none is a sidebar row.
+    expect([...PANEL_CAPABILITIES]).toEqual([
+      ...COMPOSER_CAPABILITIES,
+      ...["expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg"],
+      "sfx",
+    ]);
     // The Library's "Use in Studio" picture links never offer the video tool for a picture.
     expect(SOURCE_CAPABILITIES as readonly string[]).not.toContain("video_upscale");
   });

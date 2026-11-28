@@ -32,8 +32,9 @@ export const DESK_TOOLS: Record<MediaDesk, readonly StudioCapability[]> = {
   // change a picture with AI (0099): extend it to another shape, change its light, erase one object;
   // and a video (0100): change it by a prompt, change its shape without cropping, take its background out.
   enhance: ["upscale", "remove_bg", "video_upscale", "expand", "relight", "erase", "video_edit", "video_reframe", "video_remove_bg"],
-  // Speech from words, a new voice on a recording, a dub.
-  voice: ["tts", "voice_change", "dub"],
+  // Speech from words, a new voice on a recording, a dub; and a sound effect from words (lib/creative/studio SOUND_TOOLS), on this
+  // desk because its result is a sound, like every other tool here.
+  voice: ["tts", "voice_change", "dub", "sfx"],
 };
 
 export function isDesk(v: unknown): v is Desk {

@@ -165,6 +165,19 @@ describe("the note over a desk's composer", () => {
     expect(within(note).getByRole("link", { name: t.availability.noneCta }).getAttribute("href")).toBe("/chronos/create?desk=youtube");
   });
 
+  it("never names a sound effect: with nothing sold for it, it has no tab to warn about", () => {
+    const { container } = render(wrap(<DeskAvailabilityNote desk="voice" />, { state: "known", sold: ["tts", "voice_change", "dub"] }));
+    expect(container.textContent).toBe("");
+    cleanup();
+    render(wrap(<DeskAvailabilityNote desk="voice" />, { state: "known", sold: ["tts"] }));
+    const line = screen.getByTestId("desk-some-closed").textContent ?? "";
+    expect(line).toBe(`Not available yet on this desk: ${t.desk.tools.voice_change}, ${t.desk.tools.dub}.`);
+    expect(line).not.toContain(t.desk.tools.sfx);
+    cleanup();
+    render(wrap(<DeskAvailabilityNote desk="voice" />, { state: "known", sold: ["t2i"] }));
+    expect(screen.getByTestId("desk-closed").textContent).not.toContain(t.desk.tools.sfx);
+  });
+
   it("says nothing while every tool is on sale, or while that is unknown", () => {
     const { container } = render(wrap(<DeskAvailabilityNote desk="image" />, { state: "known", sold: ["t2i", "edit", "describe"] }));
     expect(container.textContent).toBe("");

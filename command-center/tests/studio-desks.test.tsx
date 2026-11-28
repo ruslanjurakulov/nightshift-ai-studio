@@ -41,7 +41,7 @@ import {
   isDesk,
   pictureToolFor,
 } from "@/lib/creative/desks";
-import { PANEL_CAPABILITIES, STUDIO_VOICES, needsSource, type StudioModel } from "@/lib/creative/studio";
+import { PANEL_CAPABILITIES, STUDIO_VOICES, needsSource, offeredTools, type StudioModel } from "@/lib/creative/studio";
 import { listJobs, parseCapabilityFilter, type CreativeDb } from "@/lib/creative/operations";
 import { LocalTime, utcStamp } from "@/components/ui/LocalTime";
 import { renderToString } from "react-dom/server";
@@ -128,7 +128,7 @@ describe("the desks (pure)", () => {
     expect(deskFromQuery({ hasRunPrefill: true })).toBe("youtube");
     expect(deskFromQuery({ desk: "youtube", tool: "t2i" })).toBe("youtube");
     // Junk falls through, never throws.
-    expect(deskFromQuery({ desk: "<script>", tool: "sfx" })).toBe("overview");
+    expect(deskFromQuery({ desk: "<script>", tool: "captions" })).toBe("overview");
     expect(deskFromQuery({ desk: ["video", "image"] })).toBe("video");
     expect(isDesk("overview")).toBe(true);
     expect(deskHref("overview")).toBe("/create");
@@ -175,8 +175,10 @@ describe("a desk's composer", () => {
       const { unmount } = render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} desk={desk} />));
       const list = screen.getByRole("tablist", { name: t.gen.kindLabel });
       const tabs = within(list).getAllByRole("tab");
-      expect(tabs).toHaveLength(DESK_TOOLS[desk].length);
-      expect(tabs.map((x) => x.id)).toEqual(DESK_TOOLS[desk].map((c) => `gen-tab-${c}`));
+      // A sound tool has a tab only while a model is sold for it (offeredTools): none here sells a sound effect.
+      const shown = offeredTools(DESK_TOOLS[desk], MODELS);
+      expect(tabs).toHaveLength(shown.length);
+      expect(tabs.map((x) => x.id)).toEqual(shown.map((c) => `gen-tab-${c}`));
       expect(tabs.filter((x) => x.getAttribute("tabindex") === "0")).toHaveLength(1);
       expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(tabs.find((x) => x.getAttribute("aria-selected") === "true")?.id);
       unmount();
@@ -187,6 +189,7 @@ describe("a desk's composer", () => {
     render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} desk="voice" />));
     const tts = document.getElementById("gen-tab-tts") as HTMLElement;
     expect(tts.getAttribute("aria-selected")).toBe("true");
+    // Left from the first tool wraps to the last tab shown: Dub, since no sound-effect model is sold here (no tab to land on).
     fireEvent.keyDown(tts, { key: "ArrowLeft" });
     expect(document.getElementById("gen-tab-dub")?.getAttribute("aria-selected")).toBe("true");
     expect(document.activeElement?.id).toBe("gen-tab-dub");
@@ -362,7 +365,7 @@ describe("a desk's results", () => {
     render(withI18n(<JobFeed orgId={ORG} models={MODELS} capabilities={DESK_TOOLS.voice} variant="takes" />));
     await waitFor(() => expect(fetchMock.mock.calls.some(([u]) => String(u).startsWith("/api/creative/jobs"))).toBe(true));
     const url = String(fetchMock.mock.calls.find(([u]) => String(u).startsWith("/api/creative/jobs"))?.[0]);
-    expect(url).toBe(`/api/creative/jobs?org_id=${ORG}&capability=${encodeURIComponent("tts,voice_change,dub")}`);
+    expect(url).toBe(`/api/creative/jobs?org_id=${ORG}&capability=${encodeURIComponent("tts,voice_change,dub,sfx")}`);
   });
 
   it("Try again and Use as picture on a desk only fill the form", async () => {

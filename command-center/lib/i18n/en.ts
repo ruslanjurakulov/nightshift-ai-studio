@@ -3852,7 +3852,7 @@ export const en = {
     subtitle: "Describe it, see the price, generate. Credits are held while it works and charged only when it succeeds.",
     kindLabel: "What to make",
     toolRowLabel: "Tools",
-    kinds: { t2i: "Image", t2v: "Video", tts: "Voice", sfx: "Sound", music: "Music", edit: "Edit", i2v: "Animate", upscale: "Upscale", remove_bg: "Remove background", voice_change: "Change voice", dub: "Dub / translate", video_upscale: "Upscale video", describe: "Describe", captions: "Captions", expand: "Extend picture", relight: "Relight", erase: "Erase object", video_edit: "Edit video", video_reframe: "Reframe video", video_remove_bg: "Remove video background" },
+    kinds: { t2i: "Image", t2v: "Video", tts: "Voice", sfx: "Sound effect", music: "Music", edit: "Edit", i2v: "Animate", upscale: "Upscale", remove_bg: "Remove background", voice_change: "Change voice", dub: "Dub / translate", video_upscale: "Upscale video", describe: "Describe", captions: "Captions", expand: "Extend picture", relight: "Relight", erase: "Erase object", video_edit: "Edit video", video_reframe: "Reframe video", video_remove_bg: "Remove video background" },
     promptLabel: "Describe it",
     voiceTextLabel: "Words to speak",
     promptPh: {
@@ -3873,6 +3873,7 @@ export const en = {
       video_edit: "What to change — make the scene look like dusk, keep the people and the motion",
       video_reframe: "",
       video_remove_bg: "",
+      sfx: "A heavy wooden door creaking open, then a soft thud",
     },
     toolsLabel: "Start from a picture",
     optional: "optional",
@@ -3893,6 +3894,7 @@ export const en = {
     looks: { soft: "Soft", warm: "Warm", cool: "Cool", golden_hour: "Golden hour", dramatic: "Dramatic", studio: "Studio" },
     lookOrWords: "Or describe the light below. Your words replace the chosen light.",
     opWords: { expand: "What the new areas show", relight: "Describe the light", erase: "What to erase", video_edit: "What to change" },
+    soundWords: { sfx: "Describe the sound" },
     expandNote: "The picture is extended to the shape you pick and the new edges are filled in. The result is saved to your Library as a new version. The price is the same for every shape.",
     relightNote: "Only the light and the shadows change. Pick a light or describe it. The result is saved to your Library as a new version.",
     eraseNote: "Name one object. It is taken out and the space is filled in; nothing to draw. The result is saved to your Library as a new version.",
@@ -3985,6 +3987,8 @@ export const en = {
     snapAuto: "No model here makes {from} — set to {to}.",
     snapModelDefault: "its own default",
     noLength: "{model} offers no clip length here, so it cannot be priced. Pick another model.",
+    noSoundLength: "{model} offers no sound length here, so it cannot be quoted.",
+    noSoundLengthAuto: "No model here offers a sound length, so it cannot be quoted.",
     // A requested model this workspace is not offered for this tool (owner decision 22 Nov): the default is taken and named, never swapped silently.
     modelGone: "The requested model isn't offered for this tool here, so {default} is selected.",
     modelGoneNamed: "{model} isn't offered for this tool here, so {default} is selected.",
@@ -4048,7 +4052,7 @@ export const en = {
     dismiss: "Dismiss",
     cancel: "Cancel",
     cancelling: "Cancelling…",
-    tabs: { t2i: "Image", t2v: "Video", tts: "Voice", edit: "Edit", i2v: "Animate", upscale: "Upscale", remove_bg: "Cut out", voice_change: "Change voice", dub: "Dub / translate", video_upscale: "Upscale video", describe: "Describe", expand: "Extend", relight: "Relight", erase: "Erase", video_edit: "Edit video", video_reframe: "Reframe", video_remove_bg: "Video cut-out" },
+    tabs: { t2i: "Image", t2v: "Video", tts: "Voice", edit: "Edit", i2v: "Animate", upscale: "Upscale", remove_bg: "Cut out", voice_change: "Change voice", dub: "Dub / translate", video_upscale: "Upscale video", describe: "Describe", expand: "Extend", relight: "Relight", erase: "Erase", video_edit: "Edit video", video_reframe: "Reframe", video_remove_bg: "Video cut-out", sfx: "Sound effect" },
     modelChange: "Change",
     modelChangeLabel: "Change model",
     blocked: {
@@ -5018,6 +5022,7 @@ export const en = {
       video_edit: "Edit video",
       video_reframe: "Reframe video",
       video_remove_bg: "Cut out video",
+      sfx: "Sound effect",
     },
     toolFrom: {
       t2i: "from a description",
@@ -5037,6 +5042,7 @@ export const en = {
       video_edit: "change it by typing",
       video_reframe: "another shape, no cropping",
       video_remove_bg: "background taken out",
+      sfx: "a short sound, from words",
     },
     voiceStyles: {
       "pNInz6obpgDQGcFmaJgB": "deep, narration",
