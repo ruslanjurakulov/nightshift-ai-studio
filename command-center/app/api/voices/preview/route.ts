@@ -3,7 +3,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { requireOperator } from "@/lib/auth/org-roles";
 import { VOICE_PREVIEW_RATE, rateRefusal, takeWebRate } from "@/lib/server/web-rate";
 import { dispatchWorkflow, isGithubConfigured } from "@/lib/server/github-secrets";
-import { isVoiceId } from "@/lib/ttsModels";
+import { isVoiceId } from "@/lib/voices";
 import { guardAdminPost } from "@/lib/server/admin-post-guard";
 import { parseJsonCapped } from "@/lib/server/json-body";
 

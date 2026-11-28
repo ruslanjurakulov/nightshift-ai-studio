@@ -315,6 +315,9 @@ def test_rollback_and_replay(db):
     mig = sec_db.MIGRATION_0224.read_text(encoding="utf-8")
     md5 = f"select md5(regexp_replace((select prosrc from pg_proc where oid = '{CP}'::regprocedure), '\\s+', ' ', 'g'))"
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        # 0228 (music per request) sits on 0224's creative_price, and 0224's guard refuses its body: off first.
+        assert c.execute(md5).fetchone()[0] == sec_db.CREATIVE_PRICE_0228
+        sec_db.take_off_0228(c)
         assert c.execute(md5).fetchone()[0] == sec_db.CREATIVE_PRICE_0224
         c.execute(mig)                                                   # a replay changes nothing
         assert c.execute(md5).fetchone()[0] == sec_db.CREATIVE_PRICE_0224
@@ -327,13 +330,13 @@ def test_rollback_and_replay(db):
         # The owner's rows stay (and stay append-only); they change no quote without the reader.
         assert c.execute("select count(*) from public.credit_price_schedule where reason = 'rb'").fetchone()[0] == 1
         c.execute(sec_db.rollback_0224_body())                           # twice: harmless
-        sec_db.put_back_0224(c)                                          # back on 0218's body
-        assert c.execute(md5).fetchone()[0] == sec_db.CREATIVE_PRICE_0224
+        sec_db.put_back_0224(c)                                          # back on 0218's body, and 0228 on it
+        assert c.execute(md5).fetchone()[0] == sec_db.CREATIVE_PRICE_0228
         c.execute(sec_db.rollback_0208_body())                           # the lab's chain: 0224's, 0218's, then 0208's
         assert c.execute(md5).fetchone()[0] == sec_db.CREATIVE_PRICE_0159
         c.execute(sec_db.MIGRATION_0208.read_text(encoding="utf-8"))
-        sec_db.put_back_0218(c)                                          # and 0224 on it
-        assert c.execute(md5).fetchone()[0] == sec_db.CREATIVE_PRICE_0224
+        sec_db.put_back_0218(c)                                          # and 0224 on it, and 0228 on that
+        assert c.execute(md5).fetchone()[0] == sec_db.CREATIVE_PRICE_0228
         c.rollback()
     # Out of the transaction, the live chain is unchanged and the rolled-back row never existed.
     assert db.su("select count(*) from public.credit_price_schedule where reason = 'rb'") == [(0,)]

@@ -1,6 +1,6 @@
 import "server-only";
 import { createHmac } from "node:crypto";
-import { blockedCountriesOf, BLOCKED_COUNTRIES, type BlockedMap } from "@/lib/geo/blocked";
+import { blockedCountriesOf, BLOCKED_COUNTRIES, isKnownCountry, type BlockedMap } from "@/lib/geo/blocked";
 import { loadGeoTable, readCountry } from "@/lib/server/geo";
 import type { GeoTable } from "@/lib/geo/table";
 
@@ -28,7 +28,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 /** `v1.<CC>.<uid>.<exp>.<hex hmac>`: the exact shape 0208's geo_claim_country() parses. */
 export function signGeoClaim(country: string, userId: string, nowS: number, key: string): string {
-  if (!/^[A-Z]{2}$/.test(country) || !UUID_RE.test(userId)) throw new Error("geo claim: bad country or user id");
+  // BR-S6-03: only a code that is a country is vouched for; the database reads whatever code a claim carries.
+  if (!isKnownCountry(country) || !UUID_RE.test(userId)) throw new Error("geo claim: bad country or user id");
   const body = `v1.${country}.${userId}.${Math.floor(nowS) + GEO_CLAIM_TTL_S}`;
   return `${body}.${createHmac("sha256", key).update(body, "utf8").digest("hex")}`;
 }
