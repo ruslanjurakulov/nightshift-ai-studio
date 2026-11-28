@@ -1108,7 +1108,7 @@
       },
       "credit_unit": "model_gemini_3_pro_image_image",
       "entitlement": "models_image:premium",
-      "terms_gate": "terms_review_required",
+      "terms_gate": null,
       "terms_notes": [
         "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
         "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch",
@@ -1116,10 +1116,15 @@
         "Gemini API Additional Terms, Use Restrictions: the Gemini API is for professional or business purposes, not for consumer use. Needs the owner's lawyer's reading for a product open to the public",
         "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading",
         "Gemini API Additional Terms re-read 2026-11-11 (aistudio.google.com/docs/terms, 'Effective March 23, 2026'): 'You must be 18 years of age or older to use the APIs' and the API 'is for developers building with Google AI models for professional or business purposes, not for consumer use.'",
-        "Those clauses keep gemini-nano-banana-2.1 and gemini-omni-1.1-flash gated until the owner's lawyer has read them, and they cover this model the same way: terms_review_required (was null until 2026-11-11). No credit price was changed; the gate makes it inert."
+        "Those clauses keep gemini-nano-banana-2.1 and gemini-omni-1.1-flash gated until the owner's lawyer has read them, and they cover this model the same way: terms_review_required (was null until 2026-11-11). No credit price was changed; the gate makes it inert.",
+        "Owner decision 2026-11-28 (relayed by Atlas): cleared the Gemini API Additional Terms Age Requirements and Use Restrictions (18+, not for consumer use) and Google Cloud Service Terms §20.d (not for services likely used by under-18s). terms_gate set to null.",
+        "Owner's reasoning, 2026-11-28: the 18+ attestation (migration 0192, requires_adult) is asked of every user, Europe included, so the responsibility for those clauses does not fall on us. The decision covers only those 18+ and consumer-use clauses.",
+        "Still OPEN after 2026-11-28: Google Cloud Service Terms §17.a (competing products) and Google APIs ToS §4(a) (sublicensing), hence api_exposure stays web_only. Not on sale: availability stays hidden and no credit price is added; opening for sale is the owner's act.",
+        "operator_preview true since 2026-11-28 (0139): hidden, the operator's credits-exempt organization only; never a customer, API or MCP. Lab-measured: creative_price (0208) quotes a size-priced preview with no per-size credit_prices row as unpriced, so it does not run yet."
       ],
       "attribution": null,
       "api_exposure": "web_only",
+      "operator_preview": true,
       "blocked_countries": [
         "AF",
         "BV",
@@ -8817,7 +8822,7 @@
       },
       "credit_unit": "model_gemini_nano_banana_2_1_image",
       "entitlement": "models_image:premium",
-      "terms_gate": "terms_review_required",
+      "terms_gate": null,
       "terms_notes": [
         "Google Cloud Service Terms §20.d, as the registry cites it for Google models (NOT re-read for the Gemini API, whose own terms are the notes below): not for a service directed to, or likely to be accessed by, people under 18",
         "Google Cloud Service Terms §17.a, as cited for Google models (NOT re-read here): no use to develop a similar or competing product; needs a lawyer's reading before launch",
@@ -8826,10 +8831,15 @@
         "Google APIs Terms of Service §4(a) (last modified 2021-11-09): no sublicensing an API for use by a third party, nor an API Client that functions substantially the same as the APIs. Hence api_exposure web_only; needs the owner's lawyer's reading",
         "Use only in an available region (Gemini API Additional Terms); EEA/CH/UK users need Paid Services. Uzbekistan is on Google's region list; billing from Uzbekistan was NOT verified. Output carries invisible SynthID; no customer watermark duty found.",
         "Not read: whether a refused or failed request is billed (no Google page says). Requests are sent store=false (the interaction is not kept for later turns); what Google retains otherwise, e.g. for abuse review, was not read.",
-        "Gate stays open until the owner's lawyer has read the Gemini API Additional Terms and the Google APIs Terms for a credits-based creative platform whose users may be under 18 or consumers. No credit price may be added before that."
+        "Gate stays open until the owner's lawyer has read the Gemini API Additional Terms and the Google APIs Terms for a credits-based creative platform whose users may be under 18 or consumers. No credit price may be added before that.",
+        "Owner decision 2026-11-28 (relayed by Atlas): cleared the Gemini API Additional Terms Age Requirements and Use Restrictions (18+, not for consumer use) and Google Cloud Service Terms §20.d (not for services likely used by under-18s). terms_gate set to null.",
+        "Owner's reasoning, 2026-11-28: the 18+ attestation (migration 0192, requires_adult) is asked of every user, Europe included, so the responsibility for those clauses does not fall on us. The decision covers only those 18+ and consumer-use clauses.",
+        "Still OPEN after 2026-11-28: Google Cloud Service Terms §17.a (competing products) and Google APIs ToS §4(a) (sublicensing), hence api_exposure stays web_only. Not on sale: availability stays hidden and no credit price is added; opening for sale is the owner's act.",
+        "operator_preview true since 2026-11-28 (0139): hidden, the operator's credits-exempt organization only; never a customer, API or MCP. Lab-measured: creative_price (0208) quotes a size-priced preview with no per-size credit_prices row as unpriced, so it does not run yet."
       ],
       "attribution": null,
       "api_exposure": "web_only",
+      "operator_preview": true,
       "blocked_countries": [
         "AF",
         "BV",
