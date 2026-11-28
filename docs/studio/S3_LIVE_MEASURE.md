@@ -304,3 +304,26 @@ column: at 1440×900 the board already shares the column's height with the lane.
 The 0.44–0.48 s includes the stub's 300 ms start answer. The remaining stretch is `useLiveGraph`'s 6 s poll: item 12 (Realtime).
 The film read is the fake's fixed film, not the one planned. `ns:` marks now emitted: `ns:plan:first-card`,
 `ns:plan:storyboard-start`, `ns:create:confirm`, `ns:live:first-card`, `ns:live:first-lit`.
+
+### Review round (Lens M1–M5, Pixel H1–H4, M1–M5)
+
+- The panel's Create stays on screen after an in-place start with "Started. It is being made on the board beside this chat." and no
+  key to the old page; focus goes to the board's title. A recorded handoff closes the conversation as a reload would; one the server
+  did not record is said, with a retry.
+- The board: one status line under the title in every state ("Started · reading its progress…", the film's own read errors, then
+  "Being made…"); the idea and script read "Made", not "Unknown"; scene cards keep the plan's cast and planned length and say their
+  state in words; a URL film the brief does not name is never drawn and is taken off the URL; the film is read only while the plan is
+  shown; at 1440×900 the lane starts folded, the board is fitted once, and the activity log sits folded under the lane (opening itself
+  on a failed step). A refresh on `?brain=&film=` below 1024 px opens on the Plan tab.
+
+Measured again after this round (same stub):
+
+| Measure | #993 L=2 s | this, L=2 s | #993 L=8 s | this, L=8 s |
+|---|---|---|---|---|
+| Full-page reloads after Create | 1 | 0 | 1 | 0 |
+| Confirm → first live card | 1.35 s | 0.53 s | 1.29 s | 0.44 s |
+| Confirm → first working card | 7.26 s | 6.46 s | 7.11 s | 6.46 s |
+| Longest unchanged stretch (confirm → first lit) | 5.81 s | 5.32 s | 5.81 s | 5.32 s |
+
+Lab: the Create flow and the layout pass at 1440, 768, 390 and 360, light and dark, en, ru and uz, before and after Create (the
+footer row wholly in view and at least three card rows at 1440×900) all passed.

@@ -298,6 +298,8 @@ async function flow() {
       brain: u.searchParams.get("brain"),
       view: u.searchParams.get("view"),
       lane: !!document.querySelector("[data-testid=plan-board-pane] [data-testid=live-lane]"),
+      focusTitle: document.activeElement?.classList?.contains("plan-title") ?? false,
+      openProgress: [...document.querySelectorAll("[data-testid=nightshift-ai-panel] a")].some((a) => (a.getAttribute("href") ?? "").includes("view=live")),
       marks: performance.getEntriesByType("mark").map((m) => m.name).filter((n) => n.startsWith("ns:")),
     };
   });
@@ -357,6 +359,8 @@ async function flow() {
   check(after.sameCard, `${run}: the scene card is the same element before and after Create (no remount)`);
   check(after.film === FILM_ID && after.brain === SID && after.view === null, `${run}: &film= added, ?brain= kept (${after.brain}, ${after.film})`);
   check(after.lane, `${run}: the film's lane is under the board`);
+  check(after.focusTitle, `${run}: focus is on the board's title after Create (Pixel H1)`);
+  check(!after.openProgress, `${run}: no "Open progress" link to the old page in the panel after an in-place Create`);
   check(state.handoffs === 1, `${run}: the handoff was recorded once (${state.handoffs})`);
   check(errors.length === 0, `${run}: no page error`);
 }
@@ -495,7 +499,11 @@ async function layout() {
         state.brief = { ...readyN(N), status: "created", handoff: { kind: "film", film_id: FILM_ID } };
         await page.goto(`${BASE}/${SLUG}/studio?brain=${SID}&film=${FILM_ID}`, { waitUntil: "load", timeout: 120000 });
         await page.waitForSelector("[data-testid=studio-split]", { timeout: 60000 });
-        if (width < 1024) await page.locator("[data-testid=studio-tab-plan]").click().catch(() => {});
+        if (width < 1024) {
+          // A refresh after Create opens on the Plan tab by itself (Pixel M5): asserted, never clicked.
+          const tab = await page.locator("[data-testid=studio-split]").getAttribute("data-tab");
+          check(tab === "plan", `${name}: a refresh on ?brain=&film= opens on the Plan tab (${tab})`);
+        }
         const made = await page
           .waitForFunction(() => document.querySelector("[data-testid=plan-board-pane]")?.getAttribute("data-stage") === "making", null, { timeout: 20000 })
           .then(() => true, () => false);
@@ -508,6 +516,20 @@ async function layout() {
         }));
         check(made && m.cards > 0 && m.lane, `${name}: after Create the Plan column shows the film's board (${m.cards} cards) and its lane`);
         check(m.scrollW <= m.clientW, `${name}: after Create, no horizontal overflow (${m.scrollW} <= ${m.clientW})`);
+        if (width === 1440) {
+          // At 1440×900 the film's board keeps its rows, its footer row (assembly, final video) wholly in view (Pixel M2).
+          await sleep(600);
+          const fit = await page.evaluate(() => {
+            const board = document.querySelector("[data-testid=plan-board]")?.getBoundingClientRect();
+            const rect = (id) => [...document.querySelectorAll("[data-testid=plan-board] [data-node-id]")].find((e) => e.dataset.nodeId === id)?.closest("article")?.getBoundingClientRect();
+            const foot = ["assembly", "final"].map(rect).filter(Boolean);
+            const inside = (r) => board && r.top >= board.top - 0.5 && r.bottom <= board.bottom + 0.5;
+            const rows = new Set([...document.querySelectorAll("[data-testid=plan-board] article.psc")].map((a) => a.getBoundingClientRect()).filter(inside).map((r) => Math.round(r.top))).size;
+            return { foot: foot.length, footIn: foot.length > 0 && foot.every(inside), rows, boardH: board ? Math.round(board.height) : 0 };
+          });
+          check(fit.footIn, `${name}: after Create the footer row is wholly visible (${JSON.stringify(fit)})`);
+          check(fit.rows >= 3, `${name}: after Create the board keeps at least 3 card rows in view (${fit.rows})`);
+        }
         await page.screenshot({ path: path.join(dir, `${name}-making.png`), fullPage: phone });
         check(errors.length === 0, `${name}: no page error ${errors.join(" | ")}`);
         await ctx.close();
