@@ -216,6 +216,11 @@ class CreativePromptLimitsMigration(unittest.TestCase):
                     # (tests/test_dated_credit_price_migration.py pins both).
                     self.assertIn("'59c5c289009a874af043c534b29934ee', 'ea2b58e88fe34ae18b261e5a0fbef435'", text)
                     continue
+                if f == "0239_film_keyframe_refs_quote.sql" and name == "film_price":
+                    # 0239 replaces 0236's film_price (this file's plus 0235's and 0236's hunks) with its own hunks, and refuses any
+                    # other base (tests/test_film_keyframe_refs_quote_migration.py undoes them back to 0236's body).
+                    self.assertIn("('public.film_price(public.films)', 'af0fb80cce8e92fd2360aa6d5366a942',", text)
+                    continue
                 if f == "0235_film_operator_preview.sql" and name == "film_price":
                     # 0235 replaces it with this file's body plus its marked check calls, and refuses any other base
                     # (tests/test_film_operator_preview_migration.py undoes its hunks back to this file's body).
@@ -366,14 +371,15 @@ class CreativePromptLimitsMigration(unittest.TestCase):
         # 0218 closes the list, or is followed only by 0219 (which refuses to apply without it), 0224 (on its creative_price), 0228 (on
         # 0224's creative_price and 0218's creative_params_problem) and 0230 (which refuses to apply without 0208, out and back with
         # it), in this order: 0218, 0219, 0224, 0228, 0230;
-        # and 0238 (which refuses to apply without 0230's gate) after 0230; then 0235 (on 0218's film_price), last.
+        # and 0238 (which refuses to apply without 0230's gate) after 0230; then 0235 (on 0218's film_price), 0236 (on 0235's) and 0239 (on 0236's), last.
         self.assertRegex(on_0124, r'"0218_creative_prompt_limits\.sql"(,\s*(#[^\n]*\s*)*"0219_oauth_creative_operator_models\.sql")?'
                                   r'(,\s*(#[^\n]*\s*)*"0224_dated_credit_price\.sql")?'
                                   r'(,\s*(#[^\n]*\s*)*"0228_music_per_request_price\.sql")?'
                                   r'(,\s*(#[^\n]*\s*)*"0230_geo_gate_allow_list\.sql")?'
                                   r'(,\s*(#[^\n]*\s*)*"0238_country_list_sale_needs_allow_list\.sql")?'
                                   r'(,\s*(#[^\n]*\s*)*"0235_film_operator_preview\.sql")?'
-                                  r'(,\s*(#[^\n]*\s*)*"0236_film_clip_sound_gate\.sql")?$')
+                                  r'(,\s*(#[^\n]*\s*)*"0236_film_clip_sound_gate\.sql")?'
+                                  r'(,\s*(#[^\n]*\s*)*"0239_film_keyframe_refs_quote\.sql")?$')
         # 0218 before 0224 in every list both are in (0224 sits on 0218's creative_price; put back in this order).
         self.assertLess(on_0124.index('"0218_creative_prompt_limits.sql"'), on_0124.index('"0224_dated_credit_price.sql"'))
         self.assertLess(LAB.index("ON_0156 = (*ON_0156, MIGRATION_0218.name)"),
