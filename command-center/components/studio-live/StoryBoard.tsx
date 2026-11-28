@@ -44,6 +44,8 @@ export const ICONS: Record<LiveNodeKind, LucideIcon> = {
 export const TONE: Record<LiveStatus, "ok" | "run" | "fail" | "warn" | "idle"> = {
   draft: "idle",
   waiting: "idle",
+  // Its first attempt failed; the retry has not begun: not fine, not running.
+  retried: "warn",
   working: "run",
   done: "ok",
   failed: "fail",
@@ -128,6 +130,7 @@ const CardView = memo(function CardView({ data }: NodeProps<Node<CardData, "step
         type="button"
         className={`lv-card is-${data.node.status}${data.selected ? " is-selected" : ""}`}
         data-testid={`live-node-${data.node.id}`}
+        data-node-id={data.node.id}
         data-status={data.node.status}
         data-lit={data.lit ? "" : undefined}
         data-enter={data.enter === undefined ? undefined : ""}
@@ -294,6 +297,7 @@ const ListCard = memo(function ListCard({ node: n, name, word, price, lit, enter
         type="button"
         className={`lv-card is-${n.status}${selected ? " is-selected" : ""}`}
         data-testid={`live-node-${n.id}`}
+        data-node-id={n.id}
         data-status={n.status}
         data-lit={lit ? "" : undefined}
         data-enter={enter === undefined ? undefined : ""}

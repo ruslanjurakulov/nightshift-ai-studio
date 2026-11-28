@@ -47,6 +47,8 @@ const client = {
 };
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => { h.sessionReads++; return client; } }));
+// The operator gate has its own test (agent-builder-operator-gate.test.tsx); here every caller is the operator.
+vi.mock("@/lib/auth/org-roles", () => ({ requireOperator: async () => ({ ok: true }) }));
 
 const list = await import("../app/api/agent-builder/drafts/route");
 const one = await import("../app/api/agent-builder/drafts/[id]/route");
@@ -210,5 +212,17 @@ describe("draftRpcFailure", () => {
     for (const message of ["invalid_agent_draft", "invalid_agent_edge", "anything_else"]) {
       expect(draftRpcFailure({ code: "22023", message }).status).toBe(400);
     }
+  });
+
+  it("0234's operator_only (42501) is the route's own 403 forbidden, not 401 and not a 503 outage", () => {
+    expect(draftRpcFailure({ code: "42501", message: "operator_only" })).toEqual({ status: 403, error: "forbidden" });
+    expect(draftRpcFailure({ code: "42501", message: "not_authenticated" })).toEqual({ status: 401, error: "unauthorized" });
+  });
+
+  it("a save the database refuses as operator_only is answered 403 and returns no id", async () => {
+    h.rpc.save_agent_workflow_draft = { data: null, error: { code: "42501", message: "operator_only" } };
+    const res = await post({ document: DOCUMENT });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "forbidden" });
   });
 });

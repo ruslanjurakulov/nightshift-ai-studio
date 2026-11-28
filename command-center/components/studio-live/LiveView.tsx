@@ -12,6 +12,7 @@ import { useMediaUrls } from "@/components/studio-timeline/useTimelineData";
 import { JOB_ERROR_CODES } from "@/lib/job-errors";
 import { useBrainBrief, handoffTarget } from "./useBrainBrief";
 import { ActivityPanel } from "./ActivityPanel";
+import { LiveLane } from "./LiveLane";
 import { utc } from "@/lib/studio/utc";
 import { type Brief, type LiveGraph, type LiveNode, type LiveStatus, type RunVideoRef, type Activity, type ActivityItem } from "@/lib/studio/liveGraph";
 import { useLiveGraph, type LiveTarget } from "./useLiveGraph";
@@ -348,6 +349,7 @@ export function LiveView({
           {sel ? <Details node={sel} run={run} filmId={target?.kind === "film" ? target.id : null} video={graph.video} onClose={close} /> : null}
         </div>
       ) : null}
+      {target?.kind === "film" && shown && !draft ? <LiveLane load={load} planKey={planKey} stale={stale} selected={selected} onOpen={setSelected} retry={retry} /> : null}
       {graph && activity ? (
         // Below the board, never beside it: a side column narrows the board until its ends fall outside at 1280-1440 (Pixel HIGH).
         <ActivityPanel activity={activity} run={run} />
