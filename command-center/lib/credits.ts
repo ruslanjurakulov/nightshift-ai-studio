@@ -19,7 +19,8 @@
  */
 
 import { formatNumber } from "@/lib/number-format";
-import { percentile } from "@/lib/billing";
+// Not from lib/billing: that import once carried the vendor billing table into every public page (lib/stats.ts).
+import { percentile } from "@/lib/stats";
 import { DEFAULT_ORG_ID } from "@/lib/orgs";
 import type { VideoEconomics } from "@/lib/unitEconomics";
 import { fmt } from "@/lib/i18n/core";

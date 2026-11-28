@@ -11,7 +11,10 @@ import { Meter } from "@/components/ui/Meter";
 import { StateBlock } from "@/components/states/StateBlock";
 import { relativeTime } from "@/lib/format";
 import { formatNumber, formatUsdOwner } from "@/lib/number-format";
-import { planTopups, type ElevenLabsRunway, type ProviderLedger, type SourceUse } from "@/lib/billing";
+// Types only from lib/billing (erased at compile time): the module itself is server-only, and the vendor rows reach
+// this board as ProviderView props computed on the server.
+import type { ElevenLabsRunway, ProviderLedger, SourceUse } from "@/lib/billing";
+import { planTopups } from "@/lib/topup-plan";
 import { BulkPay, PayPanel } from "@/components/billing/TopupControls";
 import { postOperator } from "@/lib/operator-post";
 import { operatorFailureText } from "@/lib/setup-errors";
@@ -21,8 +24,12 @@ import type { BillingLedgerDictionary } from "@/lib/i18n/billing-ledger/en";
 export interface ProviderView {
   id: string;
   name: string;
-  /** Null when no billing page was verified in the vendor's own docs: no link is shown rather than a guess. */
-  billingUrl: string | null;
+  /**
+   * The vendor's own top-up page (lib/billing.ts billingUrl), or null when none was verified in its docs: no link is shown
+   * rather than a guess. Named apart from the server field so scripts/billing-bundle-check.mjs can fail on `billingUrl`
+   * anywhere in a static chunk; the value reaches only the signed-in operator's page response.
+   */
+  payUrl: string | null;
   unitLabel: string;
   keySet: boolean;
   /** The key-name read (GitHub) failed: the lamp says "unknown", not "key missing". */
@@ -55,8 +62,8 @@ export interface ProviderView {
   autoRecharge: boolean;
   /** False when the YouTube pipeline never calls this vendor (Studio and probes only): no pipeline figure, no pipeline price. */
   pipeline?: boolean;
-  /** USD per vendor credit (Runway's $0.01), or null when the vendor sells none at a fixed price. */
-  creditUsd?: number | null;
+  /** USD per vendor credit, or null when the vendor sells none at a fixed price (lib/billing.ts creditUsd, server-side). */
+  usdPerCredit?: number | null;
   /** The owner's ledger: bought, used by source, left (lib/billing.ts providerLedger). Absent: the page did not compute one. */
   ledger?: ProviderLedger;
 }
@@ -254,7 +261,7 @@ function unitWord(units: Record<string, string>, unit: string): string {
 const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 /** One source of use (pipeline, Studio, probes) as one line: a figure, or exactly why there is none. */
-export function sourceText(src: SourceUse, creditUsd: number | null, tl: BillingLedgerDictionary, locale: string): string {
+export function sourceText(src: SourceUse, usdPerCredit: number | null, tl: BillingLedgerDictionary, locale: string): string {
   if (src.state === "unread") return tl.state.unread;
   if (src.state === "untracked") return tl.state.untracked;
   if (src.state === "not_used") return tl.state.notUsed;
@@ -263,7 +270,7 @@ export function sourceText(src: SourceUse, creditUsd: number | null, tl: Billing
   const bits: string[] = [];
   if (src.usd !== null) {
     bits.push(usd(src.usd, locale));
-    if (creditUsd) bits.push(fmt(tl.credits, { n: formatNumber(src.usd / creditUsd, locale, 2) }));
+    if (usdPerCredit) bits.push(fmt(tl.credits, { n: formatNumber(src.usd / usdPerCredit, locale, 2) }));
   } else if (src.pricedUsd > 0) {
     bits.push(fmt(tl.atLeast, { usd: usd(src.pricedUsd, locale) }));
   }
@@ -281,10 +288,10 @@ export function sourceText(src: SourceUse, creditUsd: number | null, tl: Billing
 }
 
 /** Bought, used (with its three sources) and left: the owner's ledger of one provider. Every unknown says why. */
-function LedgerFacts({ ledger, creditUsd }: { ledger: ProviderLedger; creditUsd: number | null }) {
+function LedgerFacts({ ledger, usdPerCredit }: { ledger: ProviderLedger; usdPerCredit: number | null }) {
   const { t, locale } = useI18n();
   const tl = t.billingLedger;
-  const credits = (usdValue: number) => (creditUsd ? fmt(tl.credits, { n: formatNumber(usdValue / creditUsd, locale, 2) }) : "");
+  const credits = (usdValue: number) => (usdPerCredit ? fmt(tl.credits, { n: formatNumber(usdValue / usdPerCredit, locale, 2) }) : "");
   const join = (...parts: string[]) => parts.filter(Boolean).join(" · ");
 
   const b = ledger.bought;
@@ -322,7 +329,7 @@ function LedgerFacts({ ledger, creditUsd }: { ledger: ProviderLedger; creditUsd:
         <dd>{used}</dd>
         {(["pipeline", "studio", "probes"] as const).map((k) => (
           <dd key={k} className="g5-ledger-sub" data-source={k}>
-            <span className="g5-k">{tl.sources[k]}</span> {sourceText(ledger.sources[k], creditUsd, tl, locale)}
+            <span className="g5-k">{tl.sources[k]}</span> {sourceText(ledger.sources[k], usdPerCredit, tl, locale)}
           </dd>
         ))}
       </div>
@@ -393,7 +400,7 @@ function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
       </div>
       <dl className="g5-prov-facts">
         {p.ledger ? (
-          <LedgerFacts ledger={p.ledger} creditUsd={p.creditUsd ?? null} />
+          <LedgerFacts ledger={p.ledger} usdPerCredit={p.usdPerCredit ?? null} />
         ) : (
           <div>
             <dt className="g5-k">{t.billing.balance}</dt>
@@ -450,8 +457,8 @@ function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
         <button type="button" onClick={() => setPaying((v) => !v)} aria-expanded={paying} className="btn-quiet">
           {t.billing.pay}
         </button>
-        {p.billingUrl ? (
-          <a href={p.billingUrl} target="_blank" rel="noopener noreferrer" className="g5-link">
+        {p.payUrl ? (
+          <a href={p.payUrl} target="_blank" rel="noopener noreferrer" className="g5-link">
             {t.billing.openBilling}
             <ExternalLink className="size-4" aria-hidden />
           </a>
