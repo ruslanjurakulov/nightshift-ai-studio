@@ -3691,7 +3691,7 @@
         "source_url": null,
         "as_of": null,
         "confirmed": false,
-        "note": "Ideogram v2 upscale bills per OUTPUT megapixel ($0.03/$0.06/$0.09 per MP by model; which model bills which is unpublished): do not price this per image (the legacy $0.06/image row no longer matches). Measured rate: unknown until the vendor's own billing for a probe run shows it; never from docs."
+        "note": "rate known from vendor price list; see owner notes. Billed per OUTPUT megapixel, never per image; which model bills which rate is unpublished. Measured rate (the vendor's own billing for a probe run): unknown, none measured yet (probe row 77); a list rate is not a measurement."
       },
       "credit_unit": "model_ideogram_upscale_image",
       "entitlement": "models_image:basic",
@@ -5796,7 +5796,11 @@
         "Owner's rule (2026-11-13): through Runway's API we use only Runway's own models. This is Magnific's upscaler resold by Runway, a middleman whose margin stacks on ours; wire Magnific or Freepik's own API instead. Gated so it is never sold.",
         "Runway API terms: show 'Powered by Runway' linking runway.com where the feature appears; our user terms must protect Runway at least as much",
         "Runway Terms of Use (runway.com/terms-of-use, 'Last updated October 23, 2026', read 2026-11-11) §1: the APIs may be used to 'make that functionality available to end users as part of Your Application', which must 'prominently display \"Powered by Runway\" and link to runway.com'.",
-        "Same terms §1.3(a): 'you shall not license, sell, rent, lease, transfer, assign, reproduce, distribute, host, or similarly exploit any Services except as permitted through the APIs'; §2.1: API keys 'are for your use only'. Hence api_exposure web_only."
+        "Same terms §1.3(a): 'you shall not license, sell, rent, lease, transfer, assign, reproduce, distribute, host, or similarly exploit any Services except as permitted through the APIs'; §2.1: API keys 'are for your use only'. Hence api_exposure web_only.",
+        "Terms review, not a decision (the owner decides before ungating), Runway Terms of Use (runway.com/terms-of-use, updated 2026-10-23) §1: a prominent 'Powered by Runway' linking runway.com, which conflicts with the owner's rule of not naming providers on the site.",
+        "Terms review, not a decision: same terms §4.4, Runway may train on Inputs and Outputs; customers would have to be told before their videos are sent.",
+        "Terms review, not a decision: same terms §2.5, an enforceable end-user agreement is required between us and each customer.",
+        "Terms review, not a decision: same terms §5(viii), no competing products; whether this platform's own video tools count is for the owner to judge."
       ],
       "attribution": {
         "text": "Powered by Runway",
