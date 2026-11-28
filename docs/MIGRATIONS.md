@@ -3442,6 +3442,34 @@ allows it. Nothing changes for any customer. Dark until the registry marks a row
 - **Tests.** `tests/test_film_operator_preview_migration.py`, `tests/test_creative_model_recheck.py` (the worker's recheck),
   `tests/security/test_sec_film_operator_preview_0235.py` (a real PostgreSQL; contract `tests/security/sec_film_operator_preview_0235.py`).
 
+## Film clip sound: refused until the cut keeps it (0236, provisional)
+
+0236 (`0236_film_clip_sound_gate.sql`) closes Breach BR-SG-01 (S1). On main, `modules/film_timeline.py` dropped a clip's own sound,
+while 0218's `film_price` sold the priced sound option (`clip_params.audio = true`: kling-v3, seedance-1.5-pro) at its with-sound
+rate: the person paid for sound the film never played.
+
+- **The switch**: `film_studio_settings.clip_sound_kept`, a new column on 0171's one-row switch table, boolean, **default false**.
+  No API role reads or writes the table (0171's grants, said again; RLS on). The owner writes it from the SQL editor.
+- **`film_price`** replaced on 0235's body (`186d34ff…`: 0218's plus 0235's org-aware model checks) -> `af0fb80cce8e92fd2360aa6d5366a942`
+  (white space folded), with one
+  six-line hunk, every line marked `-- 0236`: while the switch is off, each clip line of a scene asking for clip sound is
+  `clip_sound_not_kept` ("scene N: clip sound is not yet kept in the final film; turn the scene's sound option off"), unpriced, so
+  the total is NULL. quote_film, start_film and the resume paths inherit it, so the refusal is server-side on every path;
+  `/api/films/[id]/start` answers the same word, with its sentence in `lib/i18n/studio-timeline/{en,ru,uz}.ts`. `film_precheck`
+  is not replaced (start_film always reaches `film_price`).
+- **`film_assembly_retryable`** replaced on 0215's body (`82ec51da…` -> `88a312d28e63be043796bcc86f024164`) with one marked
+  two-line hunk: `sound_mix_failed` and `asset_unprobed` (the S2 assembly's transient words, whose remedy is "retry the assembly")
+  are retryable, so `rerun_film_assembly` makes them again. `clip_without_sound` (re-shoot) stays not retryable. 0215's replay and
+  rollback refuse 0236's body: `sec_db.take_off_0215` takes 0236 off first and `put_back_0215` puts it back.
+- **Owner step, in this order**: deploy the media worker carrying the S2 clip-sound fix (`CLIP_SOUND_IN_CUT = True` in
+  `modules/film_timeline.py`, `modules/film_mix.py`), then `update public.film_studio_settings set clip_sound_kept = true,
+  updated_at = now() where id;`. Turning it on earlier sells sound a running worker still drops.
+- **Order**: 0235 -> 0236 -> 0239 -> 0240 (Atlas). 0236 refuses 0218's `film_price` ("apply 0235 first") and any body but 0235's
+  or its own. The lab: `take_off_0235` takes 0236 off first, `put_back_0235` puts it back, `rollback_0235_if_on` starts with 0236's.
+- **No backslash** in the file or its rollback: 0218's one backslash goes through `chr(92)`.
+- **Lab**: `tests/security/test_sec_film_clip_sound_0236.py`; `sec_db.take_off_0236` / `put_back_0236` ride on
+  `take_off_0218` / `put_back_0218` / `rollback_0218_if_on`.
+- Rollback: `docs/sql/rollback_0236_film_clip_sound_gate.sql` (0235's and 0215's bodies back byte for byte, the column dropped).
 ## A running take's vendor percent and status word, and the assembly's measured percent (0246)
 
 - **Why.** The live view showed a running take as "running" from its first poll to its last. Runway answers a progress

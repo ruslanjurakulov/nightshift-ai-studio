@@ -321,3 +321,71 @@ class AssemblyThrottle(unittest.TestCase):
 if __name__ == "__main__":
     logging.basicConfig()
     unittest.main()
+
+
+class AssemblyMeterShare(unittest.TestCase):
+    """The assembly's percent across the sound passes and the render, in media seconds (film_assembly.AssemblyMeter)."""
+
+    def test_no_percent_before_the_mix_says_how_many_passes_it_runs(self):
+        got = []
+        m = fa.AssemblyMeter(got.append, 10.0)
+        m.at(0, 5.0)
+        self.assertEqual(got, [])
+
+    def test_each_pass_is_one_film_length_and_the_render_two_and_100_waits_for_the_render(self):
+        got = []
+        m = fa.AssemblyMeter(got.append, 10.0)
+        m.plan(3)                 # premaster, measure, loudnorm: work = (3 + 2) x 10 = 50 s
+        m.at(0, 5.0)              # 5 of 50
+        m.step_done(0)            # 10 of 50
+        m.at(1, 12.0)             # past the film: not a measurement, nothing added
+        m.step_done(1)
+        m.mix_finished()          # the skipped or finished third pass: 30 of 50
+        m.render(50.0)            # half the render: 40 of 50
+        self.assertEqual(got, [0.0, 10.0, 20.0, 20.0, 40.0, 60.0, 80.0])
+        self.assertNotIn(100.0, got)
+        m.render(100.0)           # RenderProgress says 100 only after its last ffmpeg exited 0
+        self.assertEqual(got[-1], 100.0)
+
+    def test_a_pass_that_says_nothing_adds_nothing_until_it_finished(self):
+        got = []
+        m = fa.AssemblyMeter(got.append, 10.0)
+        m.plan(2)
+        m.step_done(0)
+        self.assertEqual(got[-1], 25.0)       # 10 of 40; pass 1 has reported nothing: no share is guessed for it
+        m.render(99.99)
+        self.assertLess(got[-1], 100.0)
+
+
+@unittest.skipUnless(Path("/usr/bin/ffmpeg").exists(), "ffmpeg binary not available")
+class MixProgressReal(unittest.TestCase):
+    def test_every_planned_sound_pass_reports_and_finishes_and_the_mix_is_the_same(self):
+        from modules import film_mix as fm
+        from modules import timeline as tl
+        from tests.test_film_clip_sound import SoundFilm
+
+        root = Path(tempfile.mkdtemp())
+        film = SoundFilm(root, ["narrated", "wordless", "dialogue"])
+        cut = film.cut()
+        calls = []
+
+        class Rec:
+            def plan(self, n):
+                calls.append(("plan", n))
+
+            def at(self, k, s):
+                calls.append(("at", k, s))
+
+            def step_done(self, k):
+                calls.append(("done", k))
+
+        (root / "w1").mkdir()
+        mixed = fm.master(tl.load(cut.doc), cut, film.resolver(), ffmpeg="/usr/bin/ffmpeg", workdir=str(root / "w1"),
+                          timeout_s=300, progress=Rec())
+        plan = [c[1] for c in calls if c[0] == "plan"]
+        done = [c[1] for c in calls if c[0] == "done"]
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(done, list(range(plan[0])))
+        self.assertTrue(all(0 <= c[2] <= cut.length_s + 1 for c in calls if c[0] == "at"))
+        self.assertFalse(list((root / "w1").glob("*.progress")), "a -progress file was left behind")
+        self.assertTrue(mixed.tracks)

@@ -337,7 +337,8 @@ can go on, paying only for what it has not made yet. Contract approved by the co
   made take's file was deleted, then `start_film_resume` as it is (the replay, the lock, the hold of the assembly line only), audited
   as `assembly_rerun` with the previous failure word. The word is the segment's `settle_reason` (the worker settles a failed
   assembly with the assembly's own reason). Only S4's retryable words are made again (`film_assembly_retryable`: assembly_crashed,
-  render_failed, render_timed_out, render_degraded, store_failed, disk_low, output_mismatch, captions_failed, captions_unavailable),
+  render_failed, render_timed_out, render_degraded, store_failed, disk_low, output_mismatch, captions_failed, captions_unavailable,
+  and from 0236 sound_mix_failed and asset_unprobed),
   and a word that was lost (the segment settled `deadline` by the sweep, `worker_lost` after its last lease, or the worker's generic
   `assembly_failed`: the cause is unknown, and a failed assembly is charged 0); any other (a film_timeline refusal, a review copy,
   narration_missing, film_unavailable, assembly_not_enabled) is `assembly_not_retryable` with the word, and the quote lists it in

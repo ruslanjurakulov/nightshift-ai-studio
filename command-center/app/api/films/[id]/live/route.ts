@@ -78,6 +78,29 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     }
   }
 
+  // The finished file's own record of its sound (S2: modules/film_assembly.py sound_record, on the master's provenance), for the
+  // final video's panel. Only those two keys are read. A read that fails is null: the view says the record could not be read.
+  let master: { asset_id: string; mix_format: unknown; sound: unknown } | null = null;
+  const newest = (segments ?? []).find((s) => typeof (s as { assembly_asset_id?: unknown }).assembly_asset_id === "string") as
+    | { assembly_asset_id: string }
+    | undefined;
+  if (newest) {
+    try {
+      const m = await gate.supabase
+        .from("media_assets")
+        .select("id,mix_format:provenance->mix_format,sound:provenance->sound")
+        .eq("id", newest.assembly_asset_id)
+        .maybeSingle();
+      if (!m.error && m.data) {
+        const d = m.data as { mix_format?: unknown; sound?: unknown };
+        master = { asset_id: newest.assembly_asset_id, mix_format: d.mix_format ?? null, sound: d.sound ?? null };
+      }
+    } catch {
+      master = null;
+    }
+  }
+
+
   // 0248: how long a take of each of this film's models usually takes (basis yours | nightshift | null; no ids). Only the named
   // fields pass, and n only for "yours": Nightshift's own figure never says how many takes it rests on. Null when not readable.
   let typical: unknown[] | null = null;
@@ -96,5 +119,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     typical = null;
   }
 
-  return NextResponse.json({ film: read.raw, segments: onlyWhileRunning(segments, "assembly_status", ["assembly_progress", "assembly_progress_at"]), takes: onlyWhileRunning(takes, "status", ["progress", "vendor_state", "progress_at"]), typical }, { headers: NO_STORE });
+  return NextResponse.json(
+    {
+      film: read.raw,
+      segments: onlyWhileRunning(segments, "assembly_status", ["assembly_progress", "assembly_progress_at"]),
+      takes: onlyWhileRunning(takes, "status", ["progress", "vendor_state", "progress_at"]),
+      master,
+      typical,
+    },
+    { headers: NO_STORE },
+  );
 }
