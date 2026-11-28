@@ -142,6 +142,10 @@ def test_a_replay_changes_nothing(conn, sc):
         before = s.rows(q)
         s.conn.execute(MIGRATION.read_text(encoding="utf-8"))
         s.conn.execute(MIGRATION.read_text(encoding="utf-8"))
+        # 0238 narrowed this CHECK under the same name: a replay of 0142 (drop, then add) puts 0142's definition back over it, so
+        # the lab puts 0238 on again, as the owner would (docs/MIGRATIONS.md, 0238). Twice is the same as once.
+        assert not sec_db.has_0238(s)
+        sec_db.put_back_0238(s)
         assert s.rows(q) == before
 
 
