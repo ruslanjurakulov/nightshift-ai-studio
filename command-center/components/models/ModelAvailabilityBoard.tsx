@@ -2,16 +2,17 @@
 
 import { postOperator } from "@/lib/operator-post";
 import { operatorFailureText } from "@/lib/setup-errors";
-import { useId, useState } from "react";
+import { useId, useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TriangleAlert } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
-import { fmt } from "@/lib/i18n";
+import { fmt, type Dictionary } from "@/lib/i18n";
 import { relativeTime } from "@/lib/format";
 import { formatCredits } from "@/lib/credits";
 import { useChannelPath } from "@/lib/channels-client";
 import { useToast } from "@/components/feedback/ToastProvider";
+import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Chip } from "@/components/ui/Chip";
 import { SegmentedSwitch } from "@/components/ui/SegmentedSwitch";
@@ -22,6 +23,7 @@ import {
   type AdminModel,
   type Availability,
   type Blocker,
+  type ModelTermsAcceptance,
   type ProbeSummary,
 } from "@/lib/models-admin";
 
@@ -36,12 +38,16 @@ export function ModelAvailabilityBoard({
   models,
   probes,
   prices,
+  terms,
+  platformOwner,
 }: {
   models: AdminModel[];
   /** Newest probe per model; null when the probe log could not be read. */
   probes: Record<string, ProbeSummary> | null;
   /** credits_per_unit by unit; null when the price list could not be read. */
   prices: Record<string, number> | null;
+  terms: Record<string, ModelTermsAcceptance> | "not_enabled" | "failed";
+  platformOwner: boolean;
 }) {
   const { t } = useI18n();
   const onSale = models.filter((m) => isOnSale(m.availability)).length;
@@ -49,10 +55,19 @@ export function ModelAvailabilityBoard({
     <div className="flex flex-col gap-4">
       <p className="g2-note tnum">{fmt(t.models.count, { n: models.length, sale: onSale })}</p>
       {probes === null && <p className="g2-warn">{t.models.probesFailed}</p>}
+      {typeof terms === "string" && <p className="g2-warn">{t.models.terms.errors[terms]}</p>}
       <section className="ns-desk g2-desk g2-wizard" aria-label={t.models.title}>
         <div className="g2-models">
           {models.map((m) => (
-            <ModelCard key={m.id} model={m} probe={probes?.[m.id] ?? null} probesRead={probes !== null} prices={prices} />
+            <ModelCard
+              key={m.id}
+              model={m}
+              probe={probes?.[m.id] ?? null}
+              probesRead={probes !== null}
+              prices={prices}
+              acceptance={typeof terms !== "string" && Object.hasOwn(terms, m.id) ? terms[m.id] : null}
+              canManageTerms={platformOwner && typeof terms !== "string"}
+            />
           ))}
         </div>
       </section>
@@ -67,20 +82,26 @@ function ModelCard({
   probe,
   probesRead,
   prices,
+  acceptance,
+  canManageTerms,
 }: {
   model: AdminModel;
   probe: ProbeSummary | null;
   probesRead: boolean;
   prices: Record<string, number> | null;
+  acceptance: ModelTermsAcceptance | null;
+  canManageTerms: boolean;
 }) {
   const { t, locale } = useI18n();
   const router = useRouter();
   const toast = useToast();
   const path = useChannelPath();
   const warnId = useId();
-  const [availability, setAvailability] = useState<Availability>(model.availability);
+  const [availability, setOptimisticAvailability] = useOptimistic(model.availability);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, startRefresh] = useTransition();
+  const refresh = () => startRefresh(() => router.refresh());
 
   const label = (a: Availability): string =>
     ({ hidden: t.models.avail_hidden, beta: t.models.avail_beta, ga: t.models.avail_ga, disabled: t.models.avail_disabled })[a];
@@ -97,7 +118,7 @@ function ModelCard({
   };
 
   async function change(to: Availability) {
-    if (busy || to === availability) return;
+    if (busy || refreshing || to === availability) return;
     const blocker = availabilityBlocker(model, to);
     if (blocker) {
       setError(errorText(blocker));
@@ -117,15 +138,16 @@ function ModelCard({
       toast.error(msg, { title: model.displayName });
       return;
     }
-    setAvailability(to);
     toast.success(fmt(t.models.saved, { model: model.displayName, availability: label(to) }), { title: model.displayName });
-    router.refresh();
+    startRefresh(() => {
+      setOptimisticAvailability(to);
+      router.refresh();
+    });
   }
 
   const price = model.creditUnit && prices ? prices[model.creditUnit] : undefined;
   const warnings: string[] = [];
   if (!model.verifiedAt) warnings.push(t.models.unverifiedWarning);
-  if (model.termsGate) warnings.push(fmt(t.models.termsGate, { gate: model.termsGate }));
   if (!model.creditUnit) warnings.push(t.models.noUnit);
   if (model.removedFromFile) warnings.push(t.models.removed);
 
@@ -216,8 +238,18 @@ function ModelCard({
           </div>
         )}
 
-        <fieldset className="flex flex-col gap-2" disabled={busy}>
-          <legend className="g2-label mb-2">{busy ? t.models.saving : t.models.availability}</legend>
+        {(model.termsGate || acceptance) && (
+          <ModelTerms
+            model={model}
+            acceptance={acceptance}
+            canManage={canManageTerms}
+            disabled={busy || refreshing}
+            refresh={refresh}
+          />
+        )}
+
+        <fieldset className="flex flex-col gap-2" disabled={busy || refreshing}>
+          <legend className="g2-label mb-2">{busy || refreshing ? t.models.saving : t.models.availability}</legend>
           <SegmentedSwitch
             label={t.models.availability}
             size="lg"
@@ -235,5 +267,92 @@ function ModelCard({
         )}
       </div>
     </article>
+  );
+}
+
+function requirementCopy(gate: string, copy: Dictionary["models"]["terms"]["requirements"]) {
+  if (gate === "terms_review_required") return copy.review;
+  if (gate === "written_consent_required") return copy.consent;
+
+  const planToken = /^plan_required:(.+)$/.exec(gate)?.[1];
+  const words = (planToken ?? gate).replace(/[_:-]+/g, " ").trim();
+  const label = words.charAt(0).toUpperCase() + words.slice(1);
+  const templates = planToken ? copy.plan : copy.other;
+  const vars: Record<string, string> = planToken ? { plan: label } : { requirement: label };
+  return {
+    label: fmt(templates.label, vars),
+    accept: fmt(templates.accept, vars),
+    confirmMessage: fmt(templates.confirmMessage, vars),
+  };
+}
+
+function ModelTerms({
+  model,
+  acceptance,
+  canManage,
+  disabled,
+  refresh,
+}: {
+  model: AdminModel;
+  acceptance: ModelTermsAcceptance | null;
+  canManage: boolean;
+  disabled: boolean;
+  refresh: () => void;
+}) {
+  const { t, locale } = useI18n();
+  const { confirm, dialog } = useConfirm();
+  const c = t.models.terms;
+  const gate = model.termsGate;
+  const requirement = gate ? requirementCopy(gate, c.requirements) : null;
+  const blockedProvider = model.provider === "bytedance";
+
+  async function change(revoke: boolean) {
+    if (disabled || !canManage || (revoke ? !acceptance : !requirement || blockedProvider)) return;
+    const action = revoke ? null : requirement;
+    const revokeMessage = gate ? c.revokePreviousMessage : c.revokeMessage;
+    const ok = await confirm({
+      title: fmt(revoke ? c.revokeTitle : c.confirmTitle, { model: model.displayName }),
+      message: action?.confirmMessage ?? revokeMessage,
+      confirmLabel: action?.accept ?? c.revoke,
+      tone: revoke ? "danger" : "primary",
+      ...(revoke ? {} : { typeToConfirm: model.id, exactConfirmation: true }),
+      run: async (typed) => {
+        const out = await postOperator("/api/models/terms", revoke ? { id: model.id, revoke: true } : { id: model.id, gate, confirm: typed });
+        if (out.ok) return true;
+        const code = out.data.error;
+        if (code === "gate_changed" || code === "not_accepted") refresh();
+        if (typeof code === "string" && Object.hasOwn(c.errors, code)) return c.errors[code as keyof typeof c.errors];
+        return operatorFailureText(t, out, c.errors.write_failed);
+      },
+      successMessage: revoke ? c.revoked : c.saved,
+    });
+    if (ok) refresh();
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-2">
+      {requirement && <p className="g2-warn break-words">{fmt(t.models.termsGate, { gate: requirement.label })}</p>}
+      {acceptance && (
+        <p className={gate ? "g2-note" : "g2-ok"}>
+          {fmt(gate ? c.previousAcceptance : acceptance.acceptedByYou ? c.acceptedByYou : c.accepted, {
+            gate: requirementCopy(acceptance.gate, c.requirements).label,
+            date: new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "UTC" }).format(new Date(acceptance.acceptedAt)),
+          })}
+        </p>
+      )}
+      {model.termsUrl && <a href={model.termsUrl} target="_blank" rel="noopener noreferrer" className="tap-link g2-link text-sm">{c.link}</a>}
+      {gate && blockedProvider && <p className="g2-note">{c.errors.bytedance}</p>}
+      {canManage && requirement && !blockedProvider && (
+        <button type="button" disabled={disabled} className="btn-quiet min-h-11 px-3 text-sm" onClick={() => void change(false)}>
+          {requirement.accept}
+        </button>
+      )}
+      {canManage && acceptance && (
+        <button type="button" disabled={disabled} className="btn-quiet min-h-11 px-3 text-sm" onClick={() => void change(true)}>
+          {c.revoke}
+        </button>
+      )}
+      {dialog}
+    </div>
   );
 }

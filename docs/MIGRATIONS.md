@@ -2743,3 +2743,106 @@ table or grant; `film_expire_segments` is called, never replaced. It spends noth
   what the old functions wrote in between.
 - Lab: `tests/security/test_sec_worker_identity_reads.py`. Rollback: `docs/sql/rollback_0225_creative_jobs_member_columns.sql`
   restores the table grant only; the redaction is not undone (the worker ids are not stored anywhere else).
+
+## The operator's own assistant may use the Studio's web models; no ByteDance model for any assistant (0219)
+
+0219 (`0219_oauth_creative_operator_models.sql`) lets a connected assistant (0191) in the operator's own workspace generate with the
+models the Studio sells on the web, for first-party marketing samples made by the owner through our own MCP connection (S9,
+`docs/studio/S9_MCP_CREATIVE.md`, decision of 2026-11-22). Every other workspace gets 0191/0192's answers.
+
+- **Who.** `oauth_creative_operator_org(org)` is `credits_exempt(org)`, which is exactly `org = default_org_id()` (0020), under a name
+  that says what is asked. Not callable by any API role.
+- **The judgement.** `oauth_creative_org_model_state(org, capability, model)`, shared by the list, the quote and the create:
+  - a ByteDance / BytePlus model (`oauth_creative_bytedance`: id `seedance` / `seedream`, provider `bytedance` / `byteplus`, adapter
+    `video.seedance*` / `image.seedream*`, or the vendor's model id) is `not_offered` for every workspace, the operator's included:
+    BytePlus's service terms §4.2.3 forbid re-integrating its video API into an AI content-creation tool (`docs/FILM_STUDIO.md`);
+    ByteDance models stay hidden on every surface, the web Studio included, until a terms review says otherwise (BytePlus service
+    terms §4.2.3);
+  - otherwise 0191's `oauth_creative_model_state(capability, model)`, called unchanged (its body is guarded, not replaced);
+  - only in the operator's workspace, where that answer is `not_offered`: 0191's gates again without the two third-party ones
+    (`spec.mcp_oauth_exposure` and the `mcp` surface). Still required: one of the API's capabilities (never captions), no
+    `blocked_countries`, no rights acknowledgement (`acknowledgement_required`), the owner's switch (`model_temporarily_off`), and on
+    sale in the Studio (`sellable_models(cap, 'web')`). That is `ok_operator`.
+- **The list.** The operator's workspace lists from `sellable_models(cap, 'web')`; every model carries `operator_only` (true only for a
+  model reached by the operator route, with `availability_note` "Operator workspace only (first-party use)."). No price, no terms
+  notes, as before.
+- **The record.** `exposure text not null default 'mcp' check (exposure in ('mcp', 'operator'))` on `oauth_creative_quotes` and
+  `oauth_creative_jobs` (additive; every existing row is `mcp`). The quote stores it (an operator quote also answers
+  `operator_only: true`); create asks the judgement again and refuses a quote whose route no longer holds (409
+  `quote_exposure_changed`, nothing held); the job row and the `creative.generate` audit row record it. Create still runs exactly the
+  quoted capability, model, params and credits.
+- **Replaces** `oauth_creative_models` (0192's, `beafb530…` → `3c19fec2…`), `oauth_creative_quote` (0192's, `e3340606…` →
+  `13c96006…`) and `oauth_creative_create` (0191's, `527ce668…` → `86e36ace…`), each with marked hunks, grants unchanged (anon only).
+  Guards `oauth_creative_model_state` at 0191's `45811a3b…`. Ends with `notify pgrst`.
+- **Registry.** `seedance-1.5-pro` becomes `api_exposure: web_only` in `schemas/model_registry.json` (the registry sync applies it;
+  the migration writes no model data), and `modules/model_registry.py` refuses any ByteDance model that is not `web_only` or has
+  `mcp_oauth_exposure`.
+- **Without it.** Everything works as under 0192; the operator's assistant sees only the models switched on for assistants.
+- **Replay.** `create or replace` plus `if not exists`: a replay changes nothing. Replaying 0191 or 0192 over it is refused by 0192's
+  guard (or, for 0191, silently restores 0191's create): apply this file's rollback first, re-run, then 0219 again.
+- **Number.** 0219, assigned by the S9 lead. Apply order 0208 -> 0218 -> 0219 -> 0224. Needs 0191, 0192 and 0218 (its guard reads
+  0218's `prompt_too_long` in `creative_price`); replaces nothing 0208 or 0218 replaces.
+- **Undo.** `docs/sql/rollback_0219_oauth_creative_operator_models.sql` (owner-applied): refuses a door that is not 0219's, puts
+  0192's two and 0191's create back verbatim, drops the three helpers, keeps the exposure columns (the record). An open operator
+  quote is then refused at create by 0191's judgement.
+- **Tests.** `tests/test_oauth_creative_operator_models_migration.py`, `tests/test_no_bytedance_assistant.py`,
+  `tests/security/test_sec_oauth_creative_operator.py` (a real PostgreSQL), `command-center/tests/mcp-oauth-creative.test.ts`.
+
+## Owner model terms acceptance (0227)
+
+0227 (`0227_owner_model_terms_acceptance.sql`) adds an owner-only approval for a model's exact vendor terms gate.
+Applying it leaves existing model rows untouched. Owners confirm the model ID and use the existing availability control
+to offer a model after approval. The probe and pricing requirements still apply. ByteDance terms cannot be approved.
+
+The registry preserves approvals for matching gates. A changed gate on a model with an earlier approval hides the model
+if it is on sale. Revoking an approval hides it if it is on sale and restores the recorded gate when there is no newer gate.
+The audit allow-list adds `model.terms_accept` and `model.terms_revoke`.
+
+Apply as one transaction after 0018 (platform role), 0035 (registry), 0107 (operator MFA) and 0145 (audit allow-list).
+The owner-applied rollback is `docs/sql/rollback_0227_owner_model_terms_acceptance.sql`.
+
+## The country gate reads an allow-list vendor's own list (0230)
+
+0230 (`0230_geo_gate_allow_list.sql`, BR-S6-04 and BR-S6-05 in `docs/security/LEDGER.md`) changes no answer for a model on sale
+today (every Google model carries `blocked_countries`, and 0142 keeps every such model off sale). It closes the database half of
+BR-S6-03; the web half is PR #951.
+
+- **The finding.** Google's terms are an allow-list, but the registry carried only its complement (`blocked_countries` = every ISO
+  code Google does not list), and 0208's `creative_jobs_geo_gate` refused a signed claim only when its code was on that list. A code
+  on neither list (EU, AP, ZZ, any two capital letters) started a job on a Google model (BR-S6-04). Breach then found that 0208's
+  early return, which asks `blocked_countries` alone whether a model has a country list, ran before the allow-list: a row with
+  `available_countries` and no (or an empty) `blocked_countries`, which 0142 lets go on sale, took any code and no claim at all
+  (BR-S6-05).
+- **Registry.** Every `provider = 'google'` row in `schemas/model_registry.json` carries `available_countries`, Google's own list
+  (ISO codes plus XK), equal to `GOOGLE_AVAILABLE_REGIONS` in `command-center/lib/geo/blocked.ts` (`tests/geo-block.test.ts`). The
+  schema adds the optional key; `modules/model_registry.py` refuses it without `blocked_countries`, a code on both lists, and a
+  Google row with `blocked_countries` but no `available_countries`. The registry sync copies it into `spec` unchanged (no change to
+  `sync_rows` or `sync_model_registry`).
+- **The gate.** 0208's body with 0230's lines marked. A model is left unasked only when its spec has no deny-list AND no key
+  `available_countries` (any value; a JSON null fails closed below). 0208's two refusals stay in order: no claim is
+  `country_unverified`, and a code on a non-empty deny-list (or a deny-list that is not an array) is `country_blocked`, asked only of
+  a row that has a deny-list. Then a row whose spec carries `available_countries`, or any `provider = 'google'` row with a country
+  list, refuses a code not on `available_countries` (or a list that is missing or not an array) as NS400 `country_unverified`, the
+  chat gate's word. So a row with an allow-list alone is answered by it. A non-Google deny-list-only model (grounded-image-1.0) and a
+  model with no list are unchanged. No model id is written in the SQL.
+- **Replaces** `creative_jobs_geo_gate()`: 0208's `1715dc38085e3a98cc21ceba95f85d5f` -> 0230's
+  `6a7b6f2b075c4775ee83808932f88bd0`, and checks `geo_claim_country()` is 0208's `6cb8abcd7ab3dff8fb2a4ce33afa58d6`. These are md5s
+  of prosrc with `--` comments cut to the end of the line (chr(10) / chr(13)) and then white space folded with `[[:space:]]+`:
+  folding alone, as 0208's and 0218's guards do, hashes a line of code and the same line swallowed by the comment above it alike
+  (BR-S6-05; those merged guards are not edited). Folded only, as 0208 pins them: gate `71468a6f60d2659cd44199a3c834dc69` ->
+  `6d28388da6b6b927b0da500524fe0325`, claim reader `add85b6752c03be6882a59a0ff8017ba`. Refuses any other body, and refuses without
+  0208. No backslash in the file. Grants unchanged (no API role); the trigger is not recreated.
+- **Owner step: the registry sync** (`python tools/probe_models.py --sync`, which spends nothing) writes `available_countries` into
+  each Google row's spec. It may run before or after applying 0230; syncing first avoids a window in which every job on a Google
+  model is refused `country_unverified` (that window fails closed, and none is on sale). The file raises a NOTICE while an enabled
+  Google row is not yet synced, and its Verify block has a `google_rows_synced` column; both leave out `disabled` rows (removed from
+  the registry file), which the sync never rewrites.
+- **Replay.** `create or replace` on a guarded body: a replay changes nothing. Replaying 0208 over it puts 0208's body back (0208
+  does not guard the gate); apply 0230 again after it (the lab's `put_back_0208` does).
+- **Number.** 0230, assigned by the S6 lead. Needs 0208 and 0036. Independent of 0218, 0219, 0224, 0227 and 0228.
+- **Undo.** `docs/sql/rollback_0230_geo_gate_allow_list.sql` (owner-applied): refuses a gate that is neither 0230's nor 0208's
+  (same fingerprint), puts 0208's body back verbatim and asserts it; keeps `available_countries` in the registry rows (0208's body
+  never reads it). BR-S6-04 and BR-S6-05's gate half are then open again.
+- **Tests.** `tests/test_geo_gate_allow_list_migration.py`, `tests/security/test_sec_geo_allowlist_0230.py` and
+  `tests/security/test_sec_geo_allowlist_0230_breach.py` (a real PostgreSQL; contract `tests/security/sec_geo_allowlist_0230.py`),
+  `command-center/tests/geo-block.test.ts`.
