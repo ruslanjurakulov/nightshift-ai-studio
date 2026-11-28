@@ -1602,7 +1602,8 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
   .cv-th-txt { display: none; }
 }
 /* The phone: a compact strip at the top of the flow, closed until opened; the same tracks, narrower. */
-.cv-lane.is-phone { --lh-w: 76px; --tv-h: 50px; --ta-h: 36px; margin: 0 0 4px; border-bottom: 1px solid var(--rule); }
+/* A phone is a finger: both tracks' pills are 44px high (WCAG 2.5.5); the coarse-pointer rule below covers a tablet. */
+.cv-lane.is-phone { --lh-w: 76px; --tv-h: 58px; --ta-h: 54px; margin: 0 0 4px; border-bottom: 1px solid var(--rule); }
 .cv-lane.is-phone .cv-lane-bar { height: 44px; gap: 10px; overflow: hidden; }
 /* A phone's bar keeps the name, the timecode and what is unknown; the counts are the tracks themselves once open. */
 .cv-lane.is-phone .cv-lane-counts { display: none; }

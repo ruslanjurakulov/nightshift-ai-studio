@@ -38,6 +38,8 @@ const LABEL_EVERY = 5;
 const THUMB_MIN_W = 128;
 /** A tagged pill narrower than this has no room for its status words beside the tag. */
 const NARROW_PILL_W = 150;
+/** Narrower than this a tag loses its kind (`clip-02.1` → `02.1`): the track already says it, and the number is what matters. */
+const FULL_TAG_W = 100;
 const TRACK_ICON: Record<LaneTrack, LucideIcon> = { video: Film, audio: AudioLines };
 
 function readOpen(key: string, fallback: boolean): boolean {
@@ -278,7 +280,8 @@ export function LaneStrip({
       .join(" ");
     const label = fmt(l.seg, { n: index, name: s.name, status: s.statusWords, length: lengthWords(s.length) });
     const art = s.thumb && w >= THUMB_MIN_W;
-    // A narrow tagged pill keeps the tag and the lamp; its status words are in its title and accessible name.
+    // A narrow tagged pill keeps the whole tag (its ".2" is what tells two shots apart) and the lamp: its icon goes, and its status
+    // words move to its title and accessible name.
     const roomy = pillLabel === "name" || w >= NARROW_PILL_W;
     return (
       <li key={s.id} className="cv-pill-li" style={{ left: x, width: w }}>
@@ -298,11 +301,11 @@ export function LaneStrip({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={s.thumb!} alt="" draggable={false} />
             </span>
-          ) : (
+          ) : roomy ? (
             <Icon aria-hidden className="cv-pill-ic" strokeWidth={2} />
-          )}
+          ) : null}
           <span className="cv-pill-txt" aria-hidden>
-            <span className={pillLabel === "tag" ? "cv-pill-nm is-tag" : "cv-pill-nm"}>{pillLabel === "tag" ? s.tag : s.name}</span>
+            <span className={pillLabel === "tag" ? "cv-pill-nm is-tag" : "cv-pill-nm"}>{pillLabel === "tag" ? (w >= FULL_TAG_W ? s.tag : s.tag.slice(s.tag.indexOf("-") + 1)) : s.name}</span>
             <span className="cv-pill-meta">
               <span className={`cv-lamp is-${s.status}${s.status === "run" ? " is-live" : ""}`} />
               <span className="cv-pill-len">{lengthText(s.length)}</span>

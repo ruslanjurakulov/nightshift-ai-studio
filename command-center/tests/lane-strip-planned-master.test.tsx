@@ -163,3 +163,11 @@ describe("a live caller's options (the canvas's defaults unchanged)", () => {
     expect(screen.getByTestId("lane-seg-a").querySelector(".cv-pill-len")!.textContent).toBe("0:07");
   });
 });
+
+describe("a tag on a narrow pill", () => {
+  it("keeps its number whole and drops only its kind (the track says it): clip-02.1 reads 02.1, never clip-0…", () => {
+    render(strip([row("a", { tag: "clip-02.1", length: { seconds: 2, basis: "measured" } })], { pillLabel: "tag" }));
+    expect(screen.getByTestId("lane-seg-a").querySelector(".cv-pill-nm")!.textContent).toBe("02.1");
+    expect(screen.getByTestId("lane-seg-a").querySelector(".cv-pill-ic")).toBeNull();
+  });
+});

@@ -137,6 +137,11 @@ async function measure(page, locale) {
       made: el.className.includes("is-made"),
       len: el.querySelector(".cv-pill-len")?.textContent ?? "",
       face: el.querySelector(".cv-pill-nm")?.textContent ?? "",
+      // The tag must be whole on screen: a cut "clip-02…" hides the ".1" that tells two shots apart.
+      cut: (() => {
+        const nm = el.querySelector(".cv-pill-nm");
+        return !!nm && nm.scrollWidth > nm.clientWidth + 1;
+      })(),
       h: el.getBoundingClientRect().height,
     }));
     // Every visible text leaf in the lane: labels (mono capitals, lengths, ruler) may be 12px, prose never under 13.
@@ -162,8 +167,8 @@ async function measure(page, locale) {
       download: !!document.querySelector("[data-testid=live-lane-download]"),
       pills,
       totals: totals.length,
-      // The pill's face is its tag: clip-NN, clip-NN.k, or voice.
-      faceMismatch: pills.filter((p) => !/^(clip-\d\d(\.\d)?|voice)$/.test(p.face)).map((p) => `${p.id}=${p.face}`),
+        // A pill too narrow for "clip-" keeps the number (the track names the kind); never anything else.
+      faceMismatch: pills.filter((p) => !/^((clip-)?\d\d(\.\d)?|voice)$/.test(p.face)).map((p) => `${p.id}=${p.face}`),
       qMismatch: pills.filter((p) => (p.len.trim() === "?") !== (p.basis === "unknown")).map((p) => p.id),
       planMismatch: pills.filter((p) => (p.basis === "planned") !== p.len.toLowerCase().includes(plan) || (p.basis === "planned" && p.len.includes("~"))).map((p) => p.id),
       worker: html.includes(worker) || html.includes(worker.split(".")[0]),
@@ -183,6 +188,7 @@ function check(base, m, errors, expect) {
   if (m.worker) bad.push(`${base}: the worker's host name is in the page`);
   if (m.qMismatch.length) bad.push(`${base}: "?" and length basis disagree on ${m.qMismatch.join(",")}`);
   if (m.planMismatch.length) bad.push(`${base}: a planned length that does not say so on ${m.planMismatch.join(",")}`);
+  if (m.pills.some((p) => p.cut)) bad.push(`${base}: a tag is cut on its pill: ${m.pills.filter((p) => p.cut).map((p) => p.face).join(", ")}`);
   if (m.faceMismatch.length) bad.push(`${base}: a pill's face is not its tag: ${m.faceMismatch.join(", ")}`);
   if (m.totals !== 1) bad.push(`${base}: ${m.totals} visible totals (one only)`);
   if (m.download && m.master !== "ok") bad.push(`${base}: a download while the master is ${m.master}`);
