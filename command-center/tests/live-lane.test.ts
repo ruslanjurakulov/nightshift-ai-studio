@@ -205,28 +205,28 @@ describe("the lane and the canvas agree on which take drives a slot", () => {
 
   it("a retry waiting to begin is `retried` on the canvas node and on the lane piece, clip and narration alike", () => {
     const { nodes, lane } = both(retry("planned"));
-    expect(nodes.get(`scene:${S1}:clip`)).toBe("retried");
+    expect(nodes.get(`scene#1:clip`)).toBe("retried");
     expect(nodes.get("voice")).toBe("retried");
     expect(lane.video[0]).toMatchObject({ takeId: "c2", state: "retried" });
     expect(lane.audio[0]).toMatchObject({ takeId: "n2", state: "retried" });
     // Once attempt 2 runs, both say working.
     const run = both(retry("running"));
-    expect(run.nodes.get(`scene:${S1}:clip`)).toBe("working");
+    expect(run.nodes.get(`scene#1:clip`)).toBe("working");
     expect(run.lane.video[0].state).toBe("working");
   });
 
   it("only 0171's retry basis makes a superseded sibling a retry, when the basis was read; unread, it is 0171's retry", () => {
     const other = both(retry("planned", { bases: new Map([["c1", "reshoot_not_charged"], ["n1", "reshoot_not_charged"]]) }));
-    expect(other.nodes.get(`scene:${S1}:clip`)).toBe("waiting");
+    expect(other.nodes.get(`scene#1:clip`)).toBe("waiting");
     expect(other.lane.video[0].state).toBe("pending");
     const named = both(retry("planned", { bases: new Map([["c1", "retried_not_charged"], ["n1", "retried_not_charged"]]) }));
-    expect(named.nodes.get(`scene:${S1}:clip`)).toBe("retried");
+    expect(named.nodes.get(`scene#1:clip`)).toBe("retried");
     expect(named.lane.video[0].state).toBe("retried");
   });
 
   it.each(["cancelled", "ready", "paused"])("on a %s film that is over, a slot still waiting or waiting to retry is skipped on both", (status) => {
     const { nodes, lane } = both(retry("planned", { status }));
-    expect(nodes.get(`scene:${S1}:clip`)).toBe("skipped");
+    expect(nodes.get(`scene#1:clip`)).toBe("skipped");
     expect(nodes.get("voice")).toBe("skipped");
     expect(lane.video[0].state).toBe("skipped");
     expect(lane.audio[0].state).toBe("skipped");
@@ -235,13 +235,13 @@ describe("the lane and the canvas agree on which take drives a slot", () => {
   it("a paused film with a segment still open is not over: its waiting slot stays pending", () => {
     const r = reading({ status: "paused" }, [sceneJson(S1, 0, { current_version: 1, takes: [take("c1", "clip", "planned")] })], { segments: [seg({ status: "running" })] });
     const { nodes, lane } = both(r);
-    expect(nodes.get(`scene:${S1}:clip`)).toBe("waiting");
+    expect(nodes.get(`scene#1:clip`)).toBe("waiting");
     expect(lane.video[0].state).toBe("pending");
   });
 
   it("a cancelled film's slot with no row is stopped on the canvas and skipped on the lane, never unknown", () => {
     const { nodes, lane } = both(reading({ status: "cancelled" }, [sceneJson(S1, 0, { current_version: 1 })], { segments: [seg({ status: "released" })] }));
-    expect(nodes.get(`scene:${S1}:clip`)).toBe("stopped");
+    expect(nodes.get(`scene#1:clip`)).toBe("stopped");
     expect(lane.video[0].state).toBe("skipped");
     expect(AS_LANE.stopped).toBe(lane.video[0].state);
   });
@@ -252,7 +252,7 @@ describe("the lane and the canvas agree on which take drives a slot", () => {
     ], { takes: [take("n1", "narration", "completed", { result_asset_id: VO }), take("n2", "narration", "superseded", { version: 2 })] });
     const nodes = new Map(filmGraph(r).nodes.map((n) => [n.id, n.status]));
     const lane = liveLane(r, none);
-    expect(lane.video[0]).toMatchObject({ takeId: "c1", state: AS_LANE[nodes.get(`scene:${S1}:clip`)!] });
+    expect(lane.video[0]).toMatchObject({ takeId: "c1", state: AS_LANE[nodes.get(`scene#1:clip`)!] });
     expect(lane.audio[0]).toMatchObject({ takeId: "n1", state: AS_LANE[nodes.get("voice")!] });
     expect(lane.video[0].state).toBe("landed");
   });

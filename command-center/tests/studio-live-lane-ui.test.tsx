@@ -29,7 +29,7 @@ vi.mock("next/link", () => ({
 vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `/alpha${p}` }));
 vi.mock("next/navigation", () => ({ usePathname: () => "/alpha/studio", useRouter: () => ({ refresh() {} }) }));
 
-const { LiveLane } = await import("../components/studio-live/LiveLane");
+const { LiveLane, nodeOfPiece } = await import("../components/studio-live/LiveLane");
 const { LiveView } = await import("../components/studio-live/LiveView");
 
 const C1 = "c1000000-0000-4000-8000-0000000000c1";
@@ -240,8 +240,8 @@ describe("pieces landing", () => {
     const onOpen = vi.fn();
     const { rerender } = render(lane(loadOf(TWO_CLIPS), { onOpen }));
     fireEvent.click(seg2());
-    expect(onOpen).toHaveBeenCalledWith(`scene:${S2}:clip`);
-    rerender(lane(loadOf(TWO_CLIPS), { onOpen, selected: `scene:${S2}:clip` }));
+    expect(onOpen).toHaveBeenCalledWith(`scene#2:clip`);
+    rerender(lane(loadOf(TWO_CLIPS), { onOpen, selected: `scene#2:clip` }));
     rerender(lane(loadOf(TWO_CLIPS), { onOpen, selected: null }));
     expect(document.activeElement).toBe(seg2());
     fireEvent.click(screen.getByTestId("lane-seg-a:narration"));
@@ -305,5 +305,35 @@ describe("in the live view", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ job: null }), { status: 200 })));
     render(<LiveView filmStudio target={{ kind: "run", id: "42" }} />);
     expect(screen.queryByTestId("live-lane")).toBeNull();
+  });
+});
+
+describe("a piece and its board card (position-keyed ids)", () => {
+  it("every clip piece names a card the board has, by the scene's position, never by the film's scene id", async () => {
+    const load = loadOf(TWO_CLIPS);
+    if (load.state !== "ready" || !load.film) throw new Error("fixture");
+    const { liveLane } = await import("../lib/studio/liveLane");
+    const l = liveLane(load.film, new Map());
+    const sceneNo = new Map(l.video.map((p) => [p.sceneId, p.scene] as const));
+    const ids = new Set(load.graph.nodes.map((n) => n.id));
+    expect(l.video.map((p) => nodeOfPiece(p.id, null, sceneNo))).toEqual(["scene#1:clip", "scene#2:clip"]);
+    for (const p of l.video) expect(ids.has(nodeOfPiece(p.id, null, sceneNo)!)).toBe(true);
+    // A scene the lane does not place has no card to name (not a guessed one).
+    expect(nodeOfPiece(`v:${S2}:1`)).toBeNull();
+  });
+
+  it("a press on scene 2's pill opens the board card the lane's flights start from (data-node-id)", () => {
+    const onOpen = vi.fn();
+    render(
+      <>
+        <div className="lv-board">
+          <button type="button" data-node-id="scene#2:clip">card</button>
+        </div>
+        {lane(loadOf(TWO_CLIPS), { onOpen })}
+      </>,
+    );
+    fireEvent.click(seg2());
+    const id = onOpen.mock.calls[0][0] as string;
+    expect(document.querySelector(`.lv-board [data-node-id="${id}"]`)).not.toBeNull();
   });
 });

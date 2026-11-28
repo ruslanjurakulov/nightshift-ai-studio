@@ -20,6 +20,7 @@ import { coerceQuote, type FilmQuote } from "@/lib/studio/timeline";
 import { pluralForm } from "@/lib/plural";
 // The gate's client-safe vocabulary (#898): the codes and their remedies are the gate's own, never retyped here.
 import { CHAT_GATE_REMEDY, isChatGateError, type ChatGateRemedy, type ChatGateVerdict } from "@/lib/brain/chat-gate";
+import { clearBrainActivity, dispatchBrainCanvas } from "@/lib/studio/brainActivity";
 import "./nightshift-ai-panel.css";
 
 /**
@@ -259,6 +260,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     life.current = ctl;
     return () => ctl.abort();
   }, []);
+  useEffect(() => () => clearBrainActivity(), []);
   const [lease, setLease] = useState<PlanLease | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [opening, setOpening] = useState(false);
@@ -631,6 +633,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     setBusy(true);
     setProblem(null);
     setAsking(label || null);
+    // Whether this press opened with a null "thinking": only that one may be closed by a null "end" (#989's rule).
+    const openedNull = sessionRef.current === null;
+    dispatchBrainCanvas({ kind: "activity", detail: { session_id: sessionRef.current, phase: "thinking" } });
     try {
       const { res, d } = await post(body);
       const sid = (d.session as { id?: string } | undefined)?.id ?? sessionRef.current;
@@ -698,6 +703,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     } finally {
       inFlight.current = false;
       setBusy(false);
+      if (sessionRef.current) dispatchBrainCanvas({ kind: "activity", detail: { session_id: sessionRef.current, phase: "end" } });
+      // A first send that made no session: the canvas is told it ended without an answer, so it never keeps "planning" (Atlas).
+      else if (openedNull) dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "end", reason: "failed" } });
       // A card's option that was pressed is gone with the card: focus goes back to the box, not to <body> (Pixel P5).
       setTimeout(refocus, 0);
     }
@@ -742,6 +750,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     setBusy(true);
     setPlanning(true);
     setPlanOther(!!w.other);
+    dispatchBrainCanvas({ kind: "activity", detail: { session_id: sid, phase: "planning" } });
     setProblem(null);
     setAsking(w.title);
     let failed: string | null = null;
@@ -773,6 +782,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
                    retry: NO_RETRY_REASONS.has(reason) ? null : () => void chooseRef.current(w.index) });
     } finally {
       inFlight.current = false;
+      if (sessionRef.current === sid) dispatchBrainCanvas({ kind: "activity", detail: { session_id: sid, phase: "end" } });
       if (!signal.aborted) {
         setPlanning(false);
         setBusy(false);
@@ -822,6 +832,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     const writes = brief?.kind !== "long" && !!outline && !outline.scenes?.length;
     if (writes && outline) {
       setPlanning(true);
+      dispatchBrainCanvas({ kind: "activity", detail: { session_id: session, phase: "planning" } });
       // The server stores this choice as the person's message: it is drawn as theirs while the storyboard is written.
       setAsking(outline.title);
       keepPlan(session, { rid, index, title: outline.title, at: Date.now() });
@@ -863,6 +874,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       inFlight.current = false;
       setPlanning(false);
       setBusy(false);
+      if (sessionRef.current === session) dispatchBrainCanvas({ kind: "activity", detail: { session_id: session, phase: "end" } });
       setTimeout(refocus, 0);
       if (waiting && life.current) void waitForPlan(session, waiting, life.current.signal);
     }
@@ -884,7 +896,10 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
    *  there for every refusal the person fixes in the project (fixHref), and plan_superseded opens it. */
   const editorHref = (filmId: string) => `/${encodeURIComponent(channelSlug)}/create/projects/${encodeURIComponent(filmId)}`;
   const newChat = () => {
+    const was = sessionRef.current;
     clear();
+    if (was) dispatchBrainCanvas({ kind: "activity", detail: { session_id: was, phase: "end" } });
+    clearBrainActivity();
     if (typeof window === "undefined") return;
     const u = new URL(window.location.href);
     if (!u.searchParams.has("brain")) return;

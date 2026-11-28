@@ -60,6 +60,10 @@ export interface LiveNode {
   /** Draft reference nodes: the generated reference picture, once there is one. */
   /** When the step's last event was recorded (runs only). */
   at?: string | null;
+  /** A scene's characters, place and props, by the names the brief gave them, from the scene's own ids (never its position). */
+  cast?: string[];
+  /** A scene's length in seconds, as the brief planned it; absent when it gave none. */
+  seconds?: number | null;
   /** Column and row on the board. */
   col: number;
   row: number;
@@ -399,6 +403,15 @@ function assemblyStatus(s: string | null): LiveStatus {
   }
 }
 
+/**
+ * A scene's card, keyed by the scene's place in the plan (1-based), never by a scene id. The brief's scene ids are the conversation's
+ * ("s1", or the model's own words) and the film's are film_scenes uuids: keyed by id, every scene card was a different card after
+ * Create, so the board re-mounted and re-animated the whole storyboard at the moment the person pressed it (LIVE_CREATION_PLAN §3.8).
+ */
+export function sceneNodeId(position: number, kind: "keyframe" | "clip"): string {
+  return `scene#${position}:${kind}`;
+}
+
 export function filmGraph(r: FilmReading): LiveGraph {
   const { view } = r.film;
   const fs = view.film.status;
@@ -434,7 +447,7 @@ export function filmGraph(r: FilmReading): LiveGraph {
               : "unknown"
           : "none";
     const kfDone = scene.firstFrame === "asset" ? null : chosenKeyframe(scene, takes);
-    const kfId = `scene:${scene.id}:keyframe`;
+    const kfId = sceneNodeId(i + 1, "keyframe");
     nodes.push({
       id: kfId,
       kind: "keyframe",
@@ -455,7 +468,7 @@ export function filmGraph(r: FilmReading): LiveGraph {
     const shotStatuses = picks.map((p) => slotStatus(p, phase, fs));
     const clipStatus = chosenShots(scene, takes) ? "done" : combine(shotStatuses);
     const failedShot = shots.find((s) => s.status === "failed");
-    const clipId = `scene:${scene.id}:clip`;
+    const clipId = sceneNodeId(i + 1, "clip");
     nodes.push({
       id: clipId,
       kind: "clip",
@@ -710,6 +723,8 @@ export interface BriefScene {
   characterIds: string[];
   locationId: string | null;
   propIds: string[];
+  /** duration_s as the brief planned it, or null. */
+  seconds: number | null;
 }
 export type BriefHandoff =
   | { kind: "film"; filmId: string }
@@ -777,6 +792,10 @@ export function coerceBrief(raw: unknown): Brief | null {
       characterIds: strs(r.character_ids),
       locationId: str(r.location_id),
       propIds: strs(r.prop_ids),
+      seconds: (() => {
+        const v = num(r.duration_s);
+        return v !== null && v > 0 ? v : null;
+      })(),
     }));
   const price = rec(b.price);
   const prices = new Map<string, number>();
@@ -834,25 +853,30 @@ export function briefGraph(b: Brief): LiveGraph {
     { list: b.props, kind: "prop" },
   ];
   let refRow = 0;
-  const refIds = new Set<string>();
+  // A reference's name by its id: a scene names its cast by id, and the card shows the names.
+  const names = new Map<string, string>();
   for (const { list, kind } of refs) {
     for (const r of list) {
       const id = `ref:${r.id}`;
-      refIds.add(r.id);
-      // A reference picture that exists already (uploaded, or from the library) is real; one still to be made is a sketch.
+      // An unnamed reference is still in the scene: its chip says "Unnamed" (the UI's word), it is never dropped.
+      names.set(r.id, r.name);
+      // A reference picture that exists already (uploaded, or from the library) is real; one still to be made is a sketch. No wire
+      // from the script: the card sits under it in the same column, so the wire looped backwards (Pixel L2).
       nodes.push({ id, kind, status: r.assetId ? "done" : "draft", sceneTitle: r.name || undefined, assetId: r.assetId, col: 1, row: ++refRow });
-      edges.push({ from: "script", to: id });
     }
   }
   b.scenes.forEach((s, i) => {
-    const kf = `scene:${s.id}:keyframe`;
-    const clip = `scene:${s.id}:clip`;
-    nodes.push({ id: kf, kind: "keyframe", status: "draft", scene: s.n, sceneTitle: s.title ?? undefined, text: s.visualPrompt, col: 2, row: i });
+    const kf = sceneNodeId(i + 1, "keyframe");
+    const clip = sceneNodeId(i + 1, "clip");
+    // A character, place or prop made once and reused in every shot that names it is how the scenes stay consistent. It is carried
+    // on the scene's own cards by name, from the scene's own ids, not as a wire from each reference to each scene that names it (on
+    // the measured plan that was a bundle of 23 crossing wires per character: Pixel H2).
+    const cast = [...s.characterIds, ...(s.locationId ? [s.locationId] : []), ...s.propIds].flatMap((r) => (names.has(r) ? [names.get(r) as string] : []));
+    const story = { scene: s.n, sceneTitle: s.title ?? undefined, text: s.visualPrompt, cast, seconds: s.seconds };
+    nodes.push({ id: kf, kind: "keyframe", status: "draft", ...story, col: 2, row: i });
     // brief.price.nodes is per scene: the scene's number sits on its clip, the step that costs it.
-    nodes.push({ id: clip, kind: "clip", status: "draft", scene: s.n, sceneTitle: s.title ?? undefined, text: s.visualPrompt, price: price(s.id), col: 3, row: i });
+    nodes.push({ id: clip, kind: "clip", status: "draft", ...story, price: price(s.id), col: 3, row: i });
     edges.push({ from: "script", to: kf }, { from: kf, to: clip });
-    // A character, place or prop made once and reused in every shot that names it: how the scenes stay consistent.
-    for (const r of [...s.characterIds, ...(s.locationId ? [s.locationId] : []), ...s.propIds]) if (refIds.has(r)) edges.push({ from: `ref:${r}`, to: kf });
   });
   const rows = Math.max(1, b.scenes.length);
   const mid = Math.floor((rows - 1) / 2);
@@ -864,7 +888,7 @@ export function briefGraph(b: Brief): LiveGraph {
   const music = b.music === "library";
   nodes.push({ id: "music", kind: "music", status: music ? "draft" : "none", price: price("music"), col: 4, row: rows });
   nodes.push({ id: "assembly", kind: "assembly", status: "draft", price: price("assembly"), col: 5, row: mid });
-  for (const s of b.scenes) edges.push({ from: `scene:${s.id}:clip`, to: "assembly" });
+  b.scenes.forEach((_, i) => edges.push({ from: sceneNodeId(i + 1, "clip"), to: "assembly" }));
   if (voiced) edges.push({ from: "voice", to: "assembly" });
   if (music) edges.push({ from: "music", to: "assembly" });
   nodes.push({ id: "final", kind: "final", status: "draft", col: 6, row: mid });

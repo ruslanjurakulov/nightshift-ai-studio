@@ -41,6 +41,9 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
   // "All sections" is a bottom-bar tab, not a panel opened from the Command Center: on a phone its back arrow,
   // trail and ✕ only repeat the tab bar, so that row is left out there. Only this page; every other keeps it.
   const tabPage = pathname === path(ALL_SECTIONS);
+  // The Studio's workspace (/studio with no ?shelf=): Escape there closes what the Studio opened (a step's details, a menu), never the
+  // page. Its list views (?shelf=) and its other pages (/studio/look) are pages like any other and keep the old behaviour.
+  const studio = pathname === path("/studio");
 
   useEffect(() => {
     // A customer's screens are pages, not panels over a dashboard: Escape
@@ -48,6 +51,8 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
     if (isHome || !operator) return;
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
+      // Read at the key press, not as a hook: the query is not a reason to re-render every section page.
+      if (studio && !new URLSearchParams(window.location.search).has("shelf")) return;
       // Don't hijack Escape from a control that handles it itself — closing a
       // <select> dropdown, clearing an <input>, dismissing an open menu. On the
       // form-heavy panels (approvals, members, alerts) pressing Escape there
@@ -63,7 +68,7 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [isHome, home, router, operator]);
+  }, [isHome, home, router, operator, studio]);
 
   // Nightshift Studio is a workspace, not a panel: it fills the window beside the rail, for everyone, with no card, scrim or ✕
   // around it (the canvas has its own bar). Its list views (?shelf=) draw their own inset.

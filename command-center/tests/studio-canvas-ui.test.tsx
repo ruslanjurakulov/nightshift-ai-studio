@@ -161,8 +161,8 @@ function mockFetch() {
   }) as typeof fetch;
 }
 
-function mount({ tools = UNKNOWN_TOOLS, filmStudio = false, operator = false }: { tools?: ToolAvailability; filmStudio?: boolean; operator?: boolean } = {}) {
-  return render(
+function canvasTree({ tools = UNKNOWN_TOOLS, filmStudio = false, operator = false, active }: { tools?: ToolAvailability; filmStudio?: boolean; operator?: boolean; active?: boolean } = {}) {
+  return (
     <I18nProvider locale="en">
       <ShellProvider operator={operator} tools={tools}>
         <StudioCanvas
@@ -170,10 +170,14 @@ function mount({ tools = UNKNOWN_TOOLS, filmStudio = false, operator = false }: 
           userId="u1"
           channel="chronos"
           filmStudio={filmStudio}
+          active={active}
         />
       </ShellProvider>
-    </I18nProvider>,
+    </I18nProvider>
   );
+}
+function mount(o: { tools?: ToolAvailability; filmStudio?: boolean; operator?: boolean; active?: boolean } = {}) {
+  return render(canvasTree(o));
 }
 
 const store = (layout: unknown) => window.localStorage.setItem(KEY, JSON.stringify(layout));
@@ -1011,5 +1015,105 @@ describe("Lens mediums", () => {
     const after = JSON.parse(window.localStorage.getItem(KEY)!);
     expect(after.nodes).toEqual(before.nodes);
     expect(screen.queryByTestId("canvas-palette")).toBeNull();
+  });
+});
+
+describe("hidden behind the Studio's Plan column: each guard pinned (Lens M2)", () => {
+  const press = (init: KeyboardEventInit) =>
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, ...init }));
+    });
+  const stored = () => JSON.parse(window.localStorage.getItem(KEY) ?? "{}") as { nodes?: { id: string; x: number }[] };
+  const selectClip = async () => {
+    store({ nodes: [node("p", "prompt", -400, { draft: "a fox" }), node("clip", "video", 0)], wires: [{ id: "w1", from: "p", to: "clip" }] });
+    const r = mount();
+    await screen.findByTestId("canvas-board");
+    fireEvent.click(await screen.findByTestId("lane-seg-clip"));
+    await waitFor(() => expect(document.querySelector('[data-node-id="clip"]')!.className).toContain("is-sel"));
+    return r;
+  };
+
+  it("a selected card survives Backspace, Delete and the arrows while hidden; shown, Delete removes it", async () => {
+    const { rerender } = await selectClip();
+    rerender(canvasTree({ active: false }));
+    for (const key of ["Backspace", "Delete", "ArrowRight", "ArrowDown"]) press({ key });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    expect(document.querySelector('[data-node-id="clip"]')).not.toBeNull();
+    expect(stored().nodes?.find((n) => n.id === "clip")?.x).toBe(0);
+    rerender(canvasTree({ active: true }));
+    press({ key: "Delete" });
+    expect(document.querySelector('[data-node-id="clip"]')).toBeNull();
+  });
+
+  it("⌘K reaches the app's own listener, with its metaKey, untouched", async () => {
+    const heard: KeyboardEvent[] = [];
+    const app = (e: KeyboardEvent) => heard.push(e);
+    window.addEventListener("keydown", app);
+    mount({ active: false });
+    await screen.findByTestId("canvas-first-run");
+    press({ key: "k", metaKey: true });
+    window.removeEventListener("keydown", app);
+    expect(heard.some((e) => e.key === "k" && e.metaKey && !e.defaultPrevented)).toBe(true);
+    expect(screen.queryByTestId("canvas-palette")).toBeNull();
+  });
+
+  it("a file dropped on the hidden board adds nothing (the add path outside the overlays)", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    const { rerender } = mount();
+    const board = await screen.findByTestId("canvas-board");
+    rerender(canvasTree({ active: false }));
+    const asset = JSON.stringify({ id: PIC, kind: "image", name: "a.png" });
+    const dataTransfer = { types: ["application/x-nightshift-asset"], getData: () => asset, dropEffect: "" };
+    fireEvent.drop(board, { dataTransfer, clientX: 10, clientY: 10 });
+    expect(document.querySelectorAll('[data-kind="asset"]')).toHaveLength(0);
+    rerender(canvasTree({ active: true }));
+    fireEvent.drop(board, { dataTransfer, clientX: 10, clientY: 10 });
+    expect(document.querySelectorAll('[data-kind="asset"]')).toHaveLength(1);
+  });
+
+  it("the project bar stays in the header with Canvas / Timeline; only its search is gone while hidden (Lens M3)", async () => {
+    const slot = document.createElement("div");
+    slot.id = "studio-bar-slot";
+    document.body.appendChild(slot);
+    try {
+      const { rerender } = mount({ filmStudio: true });
+      await waitFor(() => expect(slot.querySelector("[data-testid=canvas-search]")).not.toBeNull());
+      rerender(canvasTree({ filmStudio: true, active: false }));
+      expect(slot.querySelector("[data-testid=view-timeline]")).not.toBeNull();
+      expect(slot.querySelector("[data-testid=canvas-search]")).toBeNull();
+    } finally {
+      slot.remove();
+    }
+  });
+});
+
+describe("hidden behind the Studio's Plan column (active false)", () => {
+  const press = (init: KeyboardEventInit) =>
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, ...init }));
+    });
+  it("what it had open closes, ⌘K and N open nothing (the app keeps ⌘K), and nothing can be added; shown again, it works", async () => {
+    const appPalette = vi.fn();
+    window.addEventListener("keydown", appPalette);
+    const { rerender } = mount();
+    await screen.findByTestId("canvas-first-run");
+    fireEvent.click(screen.getByTestId("recipe-blank"));
+    press({ key: "n" });
+    expect(await screen.findByTestId("canvas-palette")).toBeTruthy();
+    rerender(canvasTree({ active: false }));
+    expect(screen.queryByTestId("canvas-palette")).toBeNull();
+    press({ key: "k", metaKey: true });
+    press({ key: "n" });
+    expect(screen.queryByTestId("canvas-palette")).toBeNull();
+    expect(appPalette).toHaveBeenCalled();
+    expect(document.querySelector("[data-kind]")).toBeNull();
+    rerender(canvasTree({ active: true }));
+    press({ key: "n" });
+    const pal = await screen.findByTestId("canvas-palette");
+    fireEvent.click(within(pal).getByTestId("add:voice"));
+    expect(document.querySelector('[data-kind="voice"]')).toBeTruthy();
+    window.removeEventListener("keydown", appPalette);
   });
 });
