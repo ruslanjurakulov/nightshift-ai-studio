@@ -425,7 +425,7 @@ class AdapterSeam(unittest.TestCase):
         ra = ca.RegistryAdapter(entry, build_adapter(entry.adapter, env={"GEMINI_API_KEY": "g" * 30}, session=sess),
                                 sync_store={})
         guided = "@hero on a cliff\n\n[Style guide]\n@hero: red scarf\n[End of style guide]"
-        ra.submit(self.request("t2i", {"prompt": "@hero on a cliff"}, refs=self.refs[:2], prompt=guided))
+        ra.submit(self.request("t2i", {"prompt": "@hero on a cliff", "image_size": "1K"}, refs=self.refs[:2], prompt=guided))
         parts = sess.sent[0]["json"]["contents"][0]["parts"]
         self.assertEqual(parts[0], {"text": guided})
         self.assertEqual([p["inlineData"]["data"] for p in parts[1:]],
