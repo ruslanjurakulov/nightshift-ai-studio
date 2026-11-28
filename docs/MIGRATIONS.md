@@ -3235,7 +3235,9 @@ database doors it used.
   four invite functions): that message says "apply 0091 again, then this file". It refuses to apply without 0007 or 0107.
 - **Owner step.** None in the app. The operator's roster is changed in the SQL editor from now on
   (`insert into public.app_members (email, role) values (...)`; keep at least one bound owner with a confirmed address). A fresh
-  project's first owner inserts their row the same way.
+  project's first owner inserts their own row as `'owner'`, bound to their auth user:
+  `insert into public.app_members (user_id, email, role) select id, email, 'owner' from auth.users where lower(email) = lower('<address>');`
+  (an email-only row binds only once the address is confirmed, 0043; the first row ends the empty-roster owner fallback).
 - **Replay.** Revokes and a read-only check: replay-twice safe. Re-applying 0007, 0018 or 0107 alone re-grants what it revokes;
   apply 0233 again after them (the lab's `put_back_0233`).
 - **Number.** 0233, assigned for this PR. Needs 0007, 0091 and 0107. Independent of 0224, 0226, 0227, 0230, 0231 and 0232.

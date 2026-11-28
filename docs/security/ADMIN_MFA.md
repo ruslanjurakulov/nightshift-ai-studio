@@ -522,8 +522,8 @@ update public.owner_security_settings set grant_max_per_call = 20000, grant_max_
 
 ### What 0107 does NOT do
 
-* It does not close the old paths. The Team and Credits pages still write `app_members`,
-  `credit_prices` and call `grant_credits` straight from the browser, uncapped; they are only
+* It does not close the old paths. The Credits page still writes `credit_prices`
+  (the Team page and its `app_members` writes were removed and closed by 0233) and call `grant_credits` straight from the browser, uncapped; they are only
   observed (`security_events`, and the ledger's `created_by`). Closing them (flag-governed
   restrictive policies, `revoke execute on grant_credits from authenticated`) is a later migration,
   after the screens use the owner functions and have been used for a while.
@@ -555,12 +555,12 @@ When it is `on`, a platform owner/admin sees:
 | Credits, recent grants | Each grant inside the reversal window has a Reverse action: reason field, then a confirm sheet; the answer says how much was taken back and the shortfall | `owner_reverse_grant` |
 | Credits, prices | Save and delete go through the server with an optional reason. A rate of zero, a price that was zero, or a swing past the limit (default 3x, either way, on the rate or on what the customer pays) is shown as an explicit big-change sheet with before, after and the ratio, and the figure (or the word CONFIRM) must be typed; if the server disagrees with the screen (a stale page) it answers `confirm_required`, the sheet closes and the same big-change sheet opens, with the same typing, so one extra tap never confirms it. Delete always sends the confirm from its sheet and sends no reason | `owner_set_credit_price`, `owner_delete_credit_price` |
 | Credits, price history | The newest 40 changes with old and new figures; Restore on the newest change of each service puts it back (a price that change created is removed), through the same sheet and guard. The route refuses with 409 `price_changed` if that row is no longer the newest change of its service (the page is stale), so a Restore cannot silently undo a newer change | `owner_restore_credit_price` |
-| Team | Add, change role and remove go through the server (last-owner guard, no change to yourself, only an owner touches an admin or an owner). Claiming an empty roster stays a direct write: with no owner there is no one to check | `owner_add_member`, `owner_set_member_role`, `owner_remove_member` |
+| Team | Removed by 0233 (28 Nov 2026): the operator's roster is changed in the SQL editor | none |
 | Billing | A new panel, "Estimated spend by provider (from our cost ledger)", from the database's own sum of the cost ledger for 30 days. The figures are rate-card estimates recorded in the ledger (`video_costs.estimated_usd`, `creative_job_costs.usd_estimate`), not invoices. A provider with any unpriced row has no total ("unknown", with "at least" the priced part); rendering, stock footage and other non-provider names are listed apart as our own estimates, never added to the provider figures | `owner_provider_spend(30)` |
 | Security | A read-only panel: gate on or off, whether this session would pass, the limits, each owner and admin with their verified-authenticator count, whether the gate could be switched on, and the newest security events | `owner_security_get`, `owner_security_events` |
 
 How a call is made: the browser posts JSON to `/api/owner/credits/grant`, `/api/owner/credits/reverse`,
-`/api/owner/prices` or `/api/owner/team`. Each route checks, in order, that our own page sent it
+or `/api/owner/prices` (`/api/owner/team` was removed with 0233). Each route checks, in order, that our own page sent it
 (403), that the flag is on (a same-origin POST gets 404 otherwise; a cross-origin POST is refused 403 first, a GET is 405, and a signed-out caller is stopped by the middleware with 401), that the caller is signed in (401) and an owner or admin
 (403), the application second-factor gate (`NIGHTSHIFT_ADMIN_MFA`, 401 `mfa_required`), a small JSON
 body, and then makes **one** rpc **as the signed-in user** (their cookie session and the anon key; no
@@ -575,7 +575,7 @@ two switches are independent. Because approving a post makes it public, re-arm t
 only after the database gate (`enable_admin_mfa()`) is on.
 
 What it deliberately does **not** do: there is no button that switches the database gate
-(`enable_admin_mfa`); the browser can still write `credit_prices`, `app_members` and call
+(`enable_admin_mfa`); the browser can still write `credit_prices` (no longer `app_members`: 0233) and call
 `grant_credits` directly (the 0107 triggers observe those writes, they do not block them); and with
 the flag on, the Billing page still reads the raw cost rows for what the aggregate has no room for
 (unit economics per video, the ElevenLabs per-video runway, the top-up ledger balance).

@@ -27,10 +27,14 @@
 --   publishing are untouched. Friend invites (0092) and referrals are a credits program, not membership: untouched.
 -- THE OPERATOR'S ROSTER from now on is changed in the SQL editor, where auth.uid() is null:
 --     insert into public.app_members (email, role) values ('<address>', 'admin');
+--     insert into public.app_members (user_id, email, role)
+--       select id, email, 'owner' from auth.users where lower(email) = lower('<address>');   -- the first owner
 --     delete from public.app_members where lower(email) = lower('<address>') and role <> 'owner';
 --   (Keep at least one bound owner with a confirmed address; 0107's functions checked that for a caller, the editor does not.)
 --   A fresh project with an empty roster no longer lets the first signed-in person claim it from a page (0018's bootstrap
---   policy needed INSERT): the operator inserts their own row the same way.
+--   policy needed INSERT): the operator inserts their own row as 'owner', bound to their auth user (the line above
+--   marked "the first owner"); an email-only row binds only once that address is confirmed (0043), and the first row ends
+--   the empty-roster owner fallback.
 -- REQUIRES 0007 (app_members), 0091 (org_members closed; checked below) and 0107 (the three functions). The file refuses to apply,
 --   naming the missing one, rather than revoking half.
 -- Re-applying 0007, 0018 or 0107 alone after this file re-grants what it revokes (Supabase default privileges, 0107's explicit
