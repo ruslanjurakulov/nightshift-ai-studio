@@ -27,4 +27,6 @@ def extend(tables: dict, functions: dict) -> None:
         "ai_chat_sheet_problem": SERVICE,
         # A stored sheet read the way the app's readSheets reads it: internal, read by ai_chat_save_sheets only.
         "ai_chat_sheet_repair": SERVICE,
+        # What a sheet holds that a merge must never drop (pictures, jobs, keys, approvals): internal, read by the writer only.
+        "ai_chat_sheet_holds": SERVICE,
     })

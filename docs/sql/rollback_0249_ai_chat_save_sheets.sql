@@ -1,31 +1,27 @@
 -- Owner-applied rollback of 0249_ai_chat_save_sheets.sql.
 -- Drops what 0249 added: the keep-sheets trigger on ai_chat_sessions, its trigger function, ai_chat_save_sheets and the internal
--- ai_chat_sheet_problem and ai_chat_sheet_repair; and puts 0199's CHECK on brief back exactly (the whole BRIEF, sheets included,
--- at most 262144 bytes) in place of 0249's (the sheets counted apart), 0199's ai_chat_finish_turn back verbatim and the call outcomes
--- as 0199 had them (a call ended brief_too_large is recorded output_too_long, the closest paid outcome 0199 has).
--- The sheets and film links already stored stay in each conversation's BRIEF (they are the person's: approvals and paid pictures'
--- job ids). If a conversation holds more than 262144 bytes with its sheets, 0199's CHECK cannot come back: this file refuses with
--- the count and the remedy, and changes nothing.
+-- ai_chat_sheet_problem, ai_chat_sheet_repair and ai_chat_sheet_holds; puts 0199's ai_chat_finish_turn back verbatim; and puts
+-- 0199's CHECK on brief back exactly (the whole BRIEF, sheets included, at most 262144 bytes) in place of 0249's (the sheets
+-- counted apart) when every conversation fits it.
+-- KEPT, on purpose:
+--   * The sheets and film links already stored stay in each conversation's BRIEF (they are the person's: approvals and paid
+--     pictures' job ids).
+--   * When a conversation holds more than 262144 bytes with its sheets, 0249's split CHECK stays in place (a NOTICE says how many),
+--     because the only way to fit 0199's would be to delete approvals and paid job ids by hand (DB M2). 0199's finish_turn and
+--     save_brief work unchanged under it: it holds their BRIEF to the same 262144 bytes and only counts the sheets apart. Run this
+--     file again later and it restores 0199's CHECK once every conversation fits.
+--   * The call outcomes keep 'brief_too_large', and the calls 0249 ended that way keep it (rule 5: a paid call whose plan could not
+--     be stored is not relabelled as something it was not; DB L3, Lens 8). 0199's finish_turn never writes it again.
 -- After this the Command Center finds the function missing (PGRST202) and goes back to #980's behaviour at once: the sheets route
 -- re-reads and merges before ai_chat_save_brief, and the turn route carries the stored sheets into every BRIEF it writes (the race
 -- 0249 closed reopens).
 -- No backslash anywhere in this file.
 begin;
 set local lock_timeout = '5s';
+-- The count below and the CHECK it decides on see the same rows (DB L5).
+lock table public.ai_chat_sessions in share row exclusive mode;
 
-do $$
-declare
-  n bigint;
-begin
-  select count(*) into n from public.ai_chat_sessions where octet_length(brief::text) > 262144;
-  if n > 0 then
-    raise exception 'rollback 0249: % conversation(s) hold more than 262144 bytes with their sheets, which 0199''s CHECK refuses; trim their ref_sheets by hand (or keep 0249), then run this again', n;
-  end if;
-end
-$$;
-
--- 0199's ai_chat_finish_turn back verbatim, and the call outcomes as 0199 had them. A call 0249 ended brief_too_large (paid,
--- answered, its plan not stored) is recorded output_too_long, the closest outcome 0199 has (also paid, also counted).
+-- 0199's ai_chat_finish_turn back verbatim, with 0199's grants.
 create or replace function public.ai_chat_finish_turn(p_call uuid, p_outcome text, p_tokens_in integer, p_tokens_out integer,
                                                      p_text text, p_payload jsonb, p_slots jsonb, p_step text,
                                                      p_brief jsonb, p_card jsonb) returns void
@@ -78,44 +74,55 @@ $$;
 
 revoke all on function public.ai_chat_finish_turn(uuid, text, integer, integer, text, jsonb, jsonb, text, jsonb, jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.ai_chat_finish_turn(uuid, text, integer, integer, text, jsonb, jsonb, text, jsonb, jsonb) to authenticated;
-update public.ai_chat_calls set outcome = 'output_too_long' where outcome = 'brief_too_large';
-alter table public.ai_chat_calls drop constraint if exists ai_chat_calls_outcome_check;
-alter table public.ai_chat_calls add constraint ai_chat_calls_outcome_check
-  check (outcome in ('pending', 'ok', 'vendor_error', 'invalid_output', 'not_configured', 'not_sent', 'vendor_refused', 'refused', 'output_too_long'));
 
 drop trigger if exists ai_chat_sessions_keep_sheets on public.ai_chat_sessions;
 drop function if exists public.ai_chat_sessions_keep_sheets();
 drop function if exists public.ai_chat_save_sheets(uuid, jsonb, jsonb, jsonb);
 drop function if exists public.ai_chat_sheet_problem(jsonb);
 drop function if exists public.ai_chat_sheet_repair(jsonb);
-alter table public.ai_chat_sessions drop constraint if exists ai_chat_sessions_brief_0249;
-alter table public.ai_chat_sessions drop constraint if exists ai_chat_sessions_brief_check;
-alter table public.ai_chat_sessions add constraint ai_chat_sessions_brief_check
-  check (jsonb_typeof(brief) = 'object' and octet_length(brief::text) <= 262144);
+drop function if exists public.ai_chat_sheet_holds(jsonb);
+
+-- 0199's CHECK back where every conversation fits it; otherwise 0249's stays, said by a NOTICE.
+do $$
+declare
+  n bigint;
+begin
+  select count(*) into n from public.ai_chat_sessions where octet_length(brief::text) > 262144;
+  if n > 0 then
+    raise notice 'rollback 0249: % conversation(s) hold more than 262144 bytes with their sheets; 0249''s CHECK (ai_chat_sessions_brief_0249, the sheets counted apart) stays so that no approval or paid job id is deleted. 0199''s functions work under it. Run this file again once they fit to restore 0199''s CHECK.', n;
+  else
+    alter table public.ai_chat_sessions drop constraint if exists ai_chat_sessions_brief_0249;
+    alter table public.ai_chat_sessions drop constraint if exists ai_chat_sessions_brief_check;
+    alter table public.ai_chat_sessions add constraint ai_chat_sessions_brief_check
+      check (jsonb_typeof(brief) = 'object' and octet_length(brief::text) <= 262144);
+  end if;
+end
+$$;
 
 do $$
 begin
   if to_regprocedure('public.ai_chat_save_sheets(uuid, jsonb, jsonb, jsonb)') is not null
      or to_regprocedure('public.ai_chat_sheet_problem(jsonb)') is not null
      or to_regprocedure('public.ai_chat_sheet_repair(jsonb)') is not null
+     or to_regprocedure('public.ai_chat_sheet_holds(jsonb)') is not null
      or to_regprocedure('public.ai_chat_sessions_keep_sheets()') is not null
-     or exists (select 1 from pg_trigger where tgname = 'ai_chat_sessions_keep_sheets')
-     or exists (select 1 from pg_constraint where conname = 'ai_chat_sessions_brief_0249') then
+     or exists (select 1 from pg_trigger where tgname = 'ai_chat_sessions_keep_sheets') then
     raise exception 'rollback 0249: something of 0249 is still there';
   end if;
-  if (select pg_get_constraintdef(c.oid) from pg_constraint c
-       where c.conrelid = 'public.ai_chat_sessions'::regclass and c.conname = 'ai_chat_sessions_brief_check')
-     is distinct from 'CHECK (((jsonb_typeof(brief) = ''object''::text) AND (octet_length((brief)::text) <= 262144)))' then
-    raise exception 'rollback 0249: ai_chat_sessions_brief_check is not 0199''s';
+  -- Exactly one CHECK on brief: 0199's, or 0249's kept for the conversations over 262144 bytes.
+  if (select count(*) from pg_constraint where conrelid = 'public.ai_chat_sessions'::regclass
+       and conname in ('ai_chat_sessions_brief_check', 'ai_chat_sessions_brief_0249')) <> 1
+     or ((select pg_get_constraintdef(c.oid) from pg_constraint c
+           where c.conrelid = 'public.ai_chat_sessions'::regclass and c.conname = 'ai_chat_sessions_brief_check')
+         is distinct from 'CHECK (((jsonb_typeof(brief) = ''object''::text) AND (octet_length((brief)::text) <= 262144)))'
+         and not exists (select 1 from pg_constraint where conrelid = 'public.ai_chat_sessions'::regclass
+                            and conname = 'ai_chat_sessions_brief_0249')) then
+    raise exception 'rollback 0249: the CHECK on brief is neither 0199''s nor 0249''s kept one';
   end if;
   if (select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc p
        where p.oid = to_regprocedure('public.ai_chat_finish_turn(uuid, text, integer, integer, text, jsonb, jsonb, text, jsonb, jsonb)'))
      is distinct from 'b0420b460b7717b7d084f7a9bdc3e809' then
     raise exception 'rollback 0249: ai_chat_finish_turn is not 0199''s body';
-  end if;
-  if exists (select 1 from pg_constraint where conname = 'ai_chat_calls_outcome_check'
-               and pg_get_constraintdef(oid) like '%brief_too_large%') then
-    raise exception 'rollback 0249: the call outcomes still name brief_too_large';
   end if;
   if to_regprocedure('public.ai_chat_save_brief(uuid, jsonb, text)') is null then
     raise exception 'rollback 0249: 0199''s ai_chat_save_brief is missing (it was never 0249''s to drop)';

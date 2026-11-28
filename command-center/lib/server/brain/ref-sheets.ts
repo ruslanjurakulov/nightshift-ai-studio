@@ -253,7 +253,7 @@ export async function quoteSheets(c: SheetCtx, model: SheetModel, sheets: readon
 }
 
 /** 0249's refusals of a list out of shape: an app bug, said by its name rather than as "unavailable". */
-const SHEET_SHAPE = new Set(["too_many_sheets", "sheets_too_large", "too_many_views", "sheet_prompt_too_long", "invalid_sheet", "invalid_film_link", "brief_too_large"]);
+const SHEET_SHAPE = new Set(["too_many_sheets", "invalid_stored_sheets", "sheets_too_large", "too_many_views", "sheet_prompt_too_long", "invalid_sheet", "invalid_film_link", "brief_too_large"]);
 const notApplied = (e: { code?: string } | null) => e?.code === "PGRST202" || e?.code === "42883";
 
 /** A refusal of 0249's ai_chat_save_sheets, by name; anything else as 0199's refusals are read (dbRefusal). */

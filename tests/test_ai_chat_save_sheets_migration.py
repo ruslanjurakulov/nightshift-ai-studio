@@ -106,21 +106,27 @@ class AiChatSaveSheetsMigration(unittest.TestCase):
         sql = code(ROLLBACK_TEXT)
         self.assertEqual(sorted(re.findall(r"drop (?:function|trigger) if exists ([^;( ]+)", sql)),
                          ["ai_chat_sessions_keep_sheets", "public.ai_chat_save_sheets", "public.ai_chat_sessions_keep_sheets",
-                          "public.ai_chat_sheet_problem", "public.ai_chat_sheet_repair"])
-        # Besides 0199's CHECK, it puts back exactly 0199's finish_turn (and its grant) and 0199's call outcomes, recording a
-        # brief_too_large call as output_too_long first.
+                          "public.ai_chat_sheet_holds", "public.ai_chat_sheet_problem", "public.ai_chat_sheet_repair"])
+        # Besides the CHECK, it puts back exactly 0199's finish_turn (and its grant). The call outcomes keep brief_too_large and no
+        # call is relabelled (rule 5; DB L3, Lens 8): no UPDATE and no ALTER of ai_chat_calls at all.
         self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", sql), ["ai_chat_finish_turn"])
-        self.assertEqual(re.findall(r"(?m)^update public\.(\w+)", sql), ["ai_chat_calls"])  # outside the restored body
+        self.assertEqual(re.findall(r"(?m)^update public\.(\w+)", sql), [])
+        self.assertNotIn("ai_chat_calls_outcome_check", sql)
+        self.assertNotRegex(sql, r"alter table public\.ai_chat_calls")
         for word in ("delete ", "create table", "create trigger"):
             self.assertNotIn(word, sql, word)
         old = (REPO / "supabase" / "migrations" / "0199_studio_ai_chat.sql").read_text(encoding="utf-8")
         i = old.index("create or replace function public.ai_chat_finish_turn(")
         self.assertIn(old[i:old.index("$$;", i) + 3], ROLLBACK_TEXT)
-        # The only ALTERs put 0199's CHECK back exactly in place of 0249's.
+        # The only ALTERs put 0199's CHECK back exactly in place of 0249's, and only where every conversation fits it (DB M2: else
+        # 0249's stays, with a NOTICE); the count and the swap are under one lock (DB L5).
         self.assertEqual(re.findall(r"alter table public\.ai_chat_sessions ([^;]*);", sql), [
             "drop constraint if exists ai_chat_sessions_brief_0249",
             "drop constraint if exists ai_chat_sessions_brief_check",
-            "add constraint ai_chat_sessions_brief_check\n  check (jsonb_typeof(brief) = 'object' and octet_length(brief::text) <= 262144)"])
+            "add constraint ai_chat_sessions_brief_check\n      check (jsonb_typeof(brief) = 'object' and octet_length(brief::text) <= 262144)"])
+        self.assertIn("raise notice 'rollback 0249: % conversation(s) hold more than 262144 bytes", sql)
+        self.assertLess(sql.index("lock table public.ai_chat_sessions in share row exclusive mode;"), sql.index("select count(*) into n"))
+        self.assertNotIn("trim their ref_sheets by hand", sql)
 
     def test_the_sheets_have_their_own_budget_and_the_turn_keeps_0199s(self):
         sql = code(TEXT)

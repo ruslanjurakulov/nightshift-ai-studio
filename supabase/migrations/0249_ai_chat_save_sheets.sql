@@ -42,7 +42,11 @@
 --                                                      an approval, a redo);
 --       otherwise                                   -> the later attempt, and within one attempt the further state
 --                                                      (planned < failed < making < ready < approved), the caller's on a tie.
---     A stored sheet the caller did not send is kept; a sent sheet the row does not have is added; at most 40 sheets.
+--     A sent sheet the row does not have is added. A stored sheet the caller did not send is an earlier plan's (character and stage
+--     ids are the model's, so a re-chosen cast has new keys): it is kept when it holds a picture, a job, a job's key or an approval
+--     (ai_chat_sheet_holds, the app's holdsPaid); when the stored and the sent together would pass 40 sheets or 196608 bytes, the
+--     ones that hold nothing are dropped before counting, or such leftovers would lock the conversation for good (DB M1, Breach
+--     BRK-02). What is kept alone over 40 sheets or 196608 bytes is refused by name, never cut.
 --   Why not a compare-and-swap on a per-view version: a CAS refuses the loser, and the loser is often the write that must not fail
 --   (makeSheets' phase 3, which saves the job ids of pictures that were just paid for). Refusing it means a retry loop in the app
 --   with a re-read and a re-merge, which is the same merge run in the app again. Merging here never refuses on contention, keeps
@@ -54,7 +58,10 @@
 --   keep them would touch two guarded functions every later file pins. The trigger needs neither: it holds for every writer of the
 --   row, present and future, and leaves 0199's save_brief byte for byte. The flag is not a security boundary against the author (they
 --   can only ever write their own conversation, and every shape rule is enforced by this function); it is how the one writer is
---   told apart from the rest. No API role can set it: PostgREST runs no SQL of a caller's, and no function takes a setting name.
+--   told apart from the rest. No PostgREST call can set it: PostgREST runs no SQL of a caller's, and no API-callable function
+--   takes a setting name (Breach BR-SW-01 pins it). Direct SQL can (the owner, the service key's own SQL): a session's set_config
+--   lasts one transaction and names one row, so it opens only that row's two keys to that transaction's own updates (the lab's
+--   test_the_flag_set_by_direct_sql_opens_only_that_transactions_own_row documents the limit).
 --
 -- CAPS (refused by name, NS400, before anything is written): p_sheets an array of at most 40 sheets (CAP.characters 8 x (4 stages +
 --   the own look), lib/brain/ref-sheets SHEETS_MAX) and at most 196608 bytes -> too_many_sheets / sheets_too_large; each sheet an
@@ -68,7 +75,10 @@
 --   id); over 196608 bytes -> sheets_too_large. A stored sheet written through 0199 before this file is read the way the app's
 --   readSheets reads it (ai_chat_sheet_repair): a sheet without a valid character_id, stage or views list is dropped; within a sheet
 --   only a view without a valid view name or prompt is dropped, and a bad field of a kept view reads as its default (status planned,
---   ids, error and key null, attempt 0). Pre-apply count of stored lists this would touch (expect 0):
+--   ids, error and key null, attempt 0); of two stored sheets with one key the LAST is kept, as the app's merge keeps it. All of
+--   that only where it drops nothing paid or decided: a repair or a duplicate that would lose a picture, a job, a job's key or an
+--   approval is refused by name (invalid_stored_sheets, DB L4), never dropped. Pre-apply count of stored lists this would touch
+--   (expect 0):
 --     select count(*) from public.ai_chat_sessions where brief ? 'ref_sheets' and (jsonb_typeof(brief -> 'ref_sheets') <> 'array'
 --       or jsonb_array_length(brief -> 'ref_sheets') > 40 or exists (select 1 from jsonb_array_elements(brief -> 'ref_sheets') e
 --       where jsonb_typeof(e) <> 'object' or jsonb_typeof(e -> 'views') is distinct from 'array'
@@ -120,9 +130,12 @@
 --   first with its rollback to remove its functions too.
 --
 -- REQUIRES 0199 (ai_chat_sessions, ai_chat_save_brief), 0018 (is_org_member), 0036 (creative_refuse), 0166 (films, film_scenes).
---   Undo: docs/sql/rollback_0249_ai_chat_save_sheets.sql (owner-applied): the trigger and the three functions dropped, and 0199's
---   CHECK put back (it refuses, by name and with the remedy, while a conversation holds more than 262144 bytes with its sheets).
---   The sheets already stored stay in the BRIEF (they are the person's), and both routes go back to #980's behaviour at once.
+--   Undo: docs/sql/rollback_0249_ai_chat_save_sheets.sql (owner-applied): the trigger and the four functions dropped, 0199's
+--   ai_chat_finish_turn back verbatim, and 0199's CHECK on brief back where every conversation fits it. Where one holds more than
+--   262144 bytes with its sheets, 0249's split CHECK stays (a NOTICE says so; 0199's functions work under it) rather than any
+--   approval or paid job id being deleted by hand (DB M2). The call outcomes keep 'brief_too_large', and the calls ended that way
+--   keep it (rule 5; DB L3). The sheets already stored stay in the BRIEF (they are the person's), and both routes go back to #980's
+--   behaviour at once.
 --
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
 
@@ -135,6 +148,8 @@ begin
   if to_regclass('public.ai_chat_sessions') is null then
     raise exception '0249 needs 0199 (ai_chat_sessions): apply 0199_studio_ai_chat.sql first';
   end if;
+  -- The counts below and the ALTERs after them see the same rows (DB L5): no conversation is written in between.
+  lock table public.ai_chat_sessions in share row exclusive mode;
   if to_regprocedure('public.is_org_member(uuid, text)') is null or to_regprocedure('public.creative_refuse(text, text, text)') is null then
     raise exception '0249 needs is_org_member (0018) and creative_refuse (0036)';
   end if;
@@ -160,7 +175,9 @@ begin
   end if;
   select pg_get_constraintdef(c.oid) into h from pg_constraint c
    where c.conrelid = 'public.ai_chat_calls'::regclass and c.conname = 'ai_chat_calls_outcome_check';
-  if h is null or (h not like '%''output_too_long''::text])))' and h not like '%''output_too_long''::text, ''brief_too_large''::text])))') then
+  -- Exactly 0199's definition, or this file's (0199's plus brief_too_large) on a replay (DB L2: never a suffix match).
+  if h is distinct from 'CHECK ((outcome = ANY (ARRAY[''pending''::text, ''ok''::text, ''vendor_error''::text, ''invalid_output''::text, ''not_configured''::text, ''not_sent''::text, ''vendor_refused''::text, ''refused''::text, ''output_too_long''::text])))'
+     and h is distinct from 'CHECK ((outcome = ANY (ARRAY[''pending''::text, ''ok''::text, ''vendor_error''::text, ''invalid_output''::text, ''not_configured''::text, ''not_sent''::text, ''vendor_refused''::text, ''refused''::text, ''output_too_long''::text, ''brief_too_large''::text])))' then
     raise exception '0249 found ai_chat_calls_outcome_check with an unknown definition (%): compare with 0199 before applying', h;
   end if;
   -- The BRIEF's CHECK this file replaces: 0199's, or this file's own on a replay. Anything else was changed by hand.
@@ -283,6 +300,18 @@ begin
 end
 $$;
 
+-- How much a sheet holds that a merge or a repair must never lose: each picture (asset_id), job (job_id) and job key that is in
+-- its readable shape, and each approval (the app's holdsPaid). Counted on the jsonb text, where a value's own quotes are always
+-- escaped, so a prompt can never spell one; 0 = nothing paid or decided. A count, not a yes/no, so that a repair that drops one
+-- view of several is caught too. regexp_count needs PostgreSQL 15 or later (Supabase runs 15 and up).
+create or replace function public.ai_chat_sheet_holds(p jsonb) returns integer
+  language sql immutable set search_path = public, pg_temp as $$
+  select case when p is null then 0 else
+    regexp_count(p::text, '"(job_id|asset_id)": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"')
+    + regexp_count(p::text, '"key": "sheet:[0-9a-f]{48}"')
+    + regexp_count(p::text, '"status": "approved"') end
+$$;
+
 -- One STORED sheet as the app's readSheets reads it (lib/brain/ref-sheets.ts): null when the sheet itself is unreadable (no valid
 -- character_id, stage or views list); otherwise the sheet rebuilt with its readable views only (a valid view name and a string
 -- prompt, the first of each name, at most 3), each field that is not in its shape read as its default. A list written through 0199
@@ -340,6 +369,8 @@ declare
   v_keys text[];
   v_k text;
   v_stored jsonb := '[]'::jsonb;
+  v_raw jsonb;
+  v_sent text[];
   v_base jsonb := '[]'::jsonb;
   v_out jsonb;
   v_idx integer;
@@ -430,17 +461,42 @@ begin
 
   v_brief := s.brief;
   if p_sheets is not null then
-    -- What is stored now, read as the app's readSheets reads it (ai_chat_sheet_repair), one per key (the first).
+    -- What is stored now, read as the app's readSheets reads it (ai_chat_sheet_repair), one per key: the LAST of a key, at the
+    -- first one's place, as the app's merge keeps it. Repair may drop only what holds nothing: a stored sheet, view or duplicate
+    -- whose repair would lose a picture, a job, a job's key or an approval is refused by name, never dropped (DB L4).
     v_keys := '{}';
     if jsonb_typeof(s.brief -> 'ref_sheets') = 'array' then
-      for v_e in select public.ai_chat_sheet_repair(e) from jsonb_array_elements(s.brief -> 'ref_sheets') e loop
+      for v_raw in select e from jsonb_array_elements(s.brief -> 'ref_sheets') e loop
+        v_e := public.ai_chat_sheet_repair(v_raw);
+        if public.ai_chat_sheet_holds(v_raw) > coalesce(public.ai_chat_sheet_holds(v_e), 0) then
+          perform public.creative_refuse('invalid_stored_sheets', 'a stored sheet that cannot be read whole holds a picture, a job or an approval');
+        end if;
         continue when v_e is null;
         v_k := (v_e ->> 'character_id') || ':' || coalesce(v_e ->> 'stage', '');
-        continue when v_k = any (v_keys);
-        v_keys := v_keys || v_k;
-        v_stored := v_stored || jsonb_build_array(v_e);
+        v_idx := array_position(v_keys, v_k);
+        if v_idx is null then
+          v_keys := v_keys || v_k;
+          v_stored := v_stored || jsonb_build_array(v_e);
+        else
+          if public.ai_chat_sheet_holds(v_stored -> (v_idx - 1)) > 0 then
+            perform public.creative_refuse('invalid_stored_sheets', 'two stored sheets of one character and stage, the earlier holding a picture, a job or an approval');
+          end if;
+          v_stored := jsonb_set(v_stored, array[(v_idx - 1)::text], v_e);
+        end if;
       end loop;
     end if;
+    -- A stored sheet this write does not send is an earlier plan's (character and stage ids are the model's, so a re-chosen cast
+    -- has new keys). When the stored and the sent together would not fit (more than 40 keys, or more bytes than the budget: the
+    -- merge is never larger than the two together), the ones holding nothing are dropped before counting, or such leftovers would
+    -- lock the conversation for good (DB M1, Breach BRK-02); one holding a picture, a job, a job's key or an approval is kept.
+    v_sent := array(select (e ->> 'character_id') || ':' || coalesce(e ->> 'stage', '') from jsonb_array_elements(p_sheets) e);
+    if (select count(distinct k) from unnest(v_keys || v_sent) k) > 40
+       or octet_length(v_stored::text) + octet_length(p_sheets::text) > 196608 then
+      v_stored := coalesce((select jsonb_agg(o.x order by o.n) from jsonb_array_elements(v_stored) with ordinality o(x, n)
+                             where (o.x ->> 'character_id') || ':' || coalesce(o.x ->> 'stage', '') = any (v_sent)
+                                or public.ai_chat_sheet_holds(o.x) > 0), '[]'::jsonb);
+    end if;
+    v_idx := null;
     v_base := coalesce(p_base, '[]'::jsonb);
     v_out := v_stored;
     for v_e in select e from jsonb_array_elements(p_sheets) e loop
@@ -618,6 +674,7 @@ create trigger ai_chat_sessions_keep_sheets
 
 revoke all on function public.ai_chat_sheet_problem(jsonb) from public, anon, authenticated, service_role;
 revoke all on function public.ai_chat_sheet_repair(jsonb) from public, anon, authenticated, service_role;
+revoke all on function public.ai_chat_sheet_holds(jsonb) from public, anon, authenticated, service_role;
 revoke all on function public.ai_chat_sessions_keep_sheets() from public, anon, authenticated, service_role;
 revoke all on function public.ai_chat_save_sheets(uuid, jsonb, jsonb, jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.ai_chat_save_sheets(uuid, jsonb, jsonb, jsonb) to authenticated;
@@ -651,6 +708,11 @@ begin
                     and t.tgname = 'ai_chat_sessions_keep_sheets' and t.tgenabled = 'O' and not t.tgisinternal
                     and t.tgfoid = 'public.ai_chat_sessions_keep_sheets()'::regprocedure) then
     raise exception '0249 end state: the keep-sheets trigger is not on ai_chat_sessions';
+  end if;
+  if has_function_privilege('authenticated', 'public.ai_chat_sheet_holds(jsonb)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.ai_chat_sheet_holds(jsonb)', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.ai_chat_sheet_holds(jsonb)', 'EXECUTE') then
+    raise exception '0249 end state: ai_chat_sheet_holds is callable by an API role';
   end if;
   if has_function_privilege('authenticated', 'public.ai_chat_sheet_repair(jsonb)', 'EXECUTE')
      or has_function_privilege('anon', 'public.ai_chat_sheet_repair(jsonb)', 'EXECUTE')

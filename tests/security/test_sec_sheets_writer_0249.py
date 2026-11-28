@@ -73,6 +73,11 @@ def key(n: int) -> str:
     return "sheet:" + format(n, "048x")
 
 
+def paid(cid="c1", stage=None):
+    """A sheet that holds a picture: a merge never drops it."""
+    return sheet(cid, stage, views=[view("front", "ready", asset_id=str(uuid.uuid4()), job_id=str(uuid.uuid4())), view("side"), view("back")])
+
+
 def view(name, status="planned", attempt=0, **kw):
     v = {"view": name, "prompt": f"a {name} portrait", "asset_id": None, "status": status, "job_id": None, "attempt": attempt,
          "error": None, "key": None}
@@ -174,7 +179,7 @@ def test_the_merge_is_the_apps_the_callers_change_wins_otherwise_the_later_attem
 
 
 def test_a_sheet_only_one_side_has_is_kept_and_a_new_one_is_added(w):
-    put_sheets(w.su, w.sid, [sheet(), sheet("c2")])
+    put_sheets(w.su, w.sid, [paid(), paid("c2")])
     out = as_(w.su, w.alice, SAVE, [w.sid, j([sheet("c3")]), j([]), None])
     assert out.ok, out
     assert [s["character_id"] for s in stored(w.su, w.sid)["ref_sheets"]] == ["c1", "c2", "c3"]
@@ -345,7 +350,7 @@ def test_forty_full_sheets_fit(w):
 
 
 def test_a_malformed_stored_sheet_is_dropped_from_the_merge_not_kept(w):
-    put_sheets(w.su, w.sid, [{"character_id": "bad id", "views": "x"}, sheet()])
+    put_sheets(w.su, w.sid, [{"character_id": "bad id", "views": "x"}, paid()])
     assert as_(w.su, w.alice, SAVE, [w.sid, j([sheet("c2")]), j([]), None]).ok
     assert [s["character_id"] for s in stored(w.su, w.sid)["ref_sheets"]] == ["c1", "c2"]
 
@@ -370,8 +375,8 @@ def test_one_bad_stored_view_drops_only_that_view_and_bad_fields_read_as_their_d
 
 
 def test_a_merge_past_forty_sheets_is_refused_never_cut(w):
-    """Both reviewers on 0249: 40 stored plus one new is refused by name; the 40 stay, none is dropped."""
-    forty = [sheet(f"c{i}") for i in range(40)]
+    """Both reviewers on 0249: 40 stored sheets holding pictures plus one new is refused by name; the 40 stay, none is dropped."""
+    forty = [paid(f"c{i}") for i in range(40)]
     put_sheets(w.su, w.sid, forty)
     assert refused(w.su, w.alice, SAVE, [w.sid, j([sheet("c99")]), j([]), None]) == "too_many_sheets"
     assert len(stored(w.su, w.sid)["ref_sheets"]) == 40
@@ -379,7 +384,9 @@ def test_a_merge_past_forty_sheets_is_refused_never_cut(w):
 
 def test_a_merge_over_the_sheets_budget_is_refused_by_name(w):
     """Each list under 196608 bytes, the two together over it: sheets_too_large, never the CHECK's raw 23514."""
-    big = lambda pre: [sheet(f"{pre}{i}", views=[view(n, prompt="p" * 1450) for n in ("front", "side", "back")]) for i in range(20)]  # noqa: E731
+    # Pictures on every sheet: the second save does not send the first's, and they are kept (they hold something).
+    big = lambda pre: [sheet(f"{pre}{i}", views=[view(n, prompt="p" * 1450, asset_id=f"{i:08x}-0000-4000-8000-{ord(pre):012x}")  # noqa: E731
+                                                  for n in ("front", "side", "back")]) for i in range(20)]
     put_sheets(w.su, w.sid, [])
     assert as_(w.su, w.alice, SAVE, [w.sid, j(big("a")), j([]), None]).ok
     assert as_(w.su, w.alice, SAVE, [w.sid, j(big("b")), j([]), None]).ok        # 40 sheets, ~191 KB: fits
@@ -454,6 +461,81 @@ def test_the_brief_check_counts_the_sheets_apart_and_still_holds_the_turn_to_262
     d = defs["ai_chat_sessions_brief_0249"]
     for part in ("262144", "196608", "8192", "'ref_sheets'", "'film_link'"):
         assert part in d, d
+
+
+def test_an_earlier_plans_unpaid_sheets_make_room_for_forty_new_ones(w):
+    """DB M1 / BRK-02: a re-chosen cast has new keys. 30 unpaid sheets of plan A plus 40 of plan B: plan B saves, A's unpaid ones
+    are gone, nothing else."""
+    put_sheets(w.su, w.sid, [sheet(f"a{i}") for i in range(30)])
+    b = [sheet(f"b{i}") for i in range(40)]
+    out = as_(w.su, w.alice, SAVE, [w.sid, j(b), j(b), None])
+    assert out.ok, out
+    assert [s["character_id"] for s in stored(w.su, w.sid)["ref_sheets"]] == [f"b{i}" for i in range(40)]
+
+
+def test_an_earlier_plans_paid_sheet_is_kept_and_counted(w):
+    """A plan-A sheet with a picture is kept beside plan B (39 + 1 = 40 saves); with 40 of plan B it is 41, refused by name, and
+    the picture is still there."""
+    a = paid("a0")
+    put_sheets(w.su, w.sid, [a, *[sheet(f"a{i}") for i in range(1, 30)]])
+    b39 = [sheet(f"b{i}") for i in range(39)]
+    assert as_(w.su, w.alice, SAVE, [w.sid, j(b39), j(b39), None]).ok
+    ids = [s["character_id"] for s in stored(w.su, w.sid)["ref_sheets"]]
+    assert ids[0] == "a0" and len(ids) == 40 and all(x.startswith("b") for x in ids[1:])
+    b40 = [sheet(f"b{i}") for i in range(40)]
+    assert refused(w.su, w.alice, SAVE, [w.sid, j(b40), j(b39), None]) == "too_many_sheets"
+    assert stored(w.su, w.sid)["ref_sheets"][0] == a
+
+
+@pytest.mark.parametrize("held", ["asset_id", "job_id", "key", "approved"])
+def test_each_thing_a_sheet_can_hold_keeps_it(w, held):
+    v = {"asset_id": view("front", "ready", asset_id=str(uuid.uuid4())), "job_id": view("front", "making", job_id=str(uuid.uuid4())),
+         "key": view("front", "making", key=key(9)), "approved": view("front", "approved")}[held]
+    put_sheets(w.su, w.sid, [sheet("old", views=[v])])
+    assert as_(w.su, w.alice, SAVE, [w.sid, j([sheet("new")]), j([]), None]).ok
+    assert [s["character_id"] for s in stored(w.su, w.sid)["ref_sheets"]] == ["old", "new"]
+
+
+def test_a_stored_duplicate_keeps_the_last_and_an_earlier_paid_one_is_refused_never_dropped(w):
+    """DB L4: as the app's merge (a Map), the LAST of two stored sheets with one key wins, at the first one's place. Where the one
+    that would go holds a picture, the write is refused (invalid_stored_sheets) and the row is left as it was."""
+    first, last = sheet("c1", views=[view("front", "ready")]), sheet("c1", views=[view("front", "failed", attempt=1)])
+    put_sheets(w.su, w.sid, [first, sheet("c2", views=[view("front", "approved")]), last])
+    assert as_(w.su, w.alice, SAVE, [w.sid, j([sheet("c1", views=[view("front", "failed", attempt=1)])]), j([]), None]).ok
+    s = stored(w.su, w.sid)["ref_sheets"]
+    assert [x["character_id"] for x in s] == ["c1", "c2"] and s[0]["views"][0]["attempt"] == 1
+    held = [paid("c1"), sheet("c1")]
+    put_sheets(w.su, w.sid, held)
+    assert refused(w.su, w.alice, SAVE, [w.sid, j([sheet("c3")]), j([]), None]) == "invalid_stored_sheets"
+    assert stored(w.su, w.sid)["ref_sheets"] == held
+
+
+def test_an_unreadable_stored_sheet_or_view_holding_a_picture_is_refused_never_dropped(w):
+    asset = str(uuid.uuid4())
+    for bad in ({"character_id": "bad id", "stage": None, "views": [{"view": "front", "prompt": "p", "status": "ready", "asset_id": asset}]},
+                {"character_id": "c1", "stage": None, "views": [{"view": "front", "prompt": 7, "status": "ready", "asset_id": asset}]}):
+        put_sheets(w.su, w.sid, [bad])
+        assert refused(w.su, w.alice, SAVE, [w.sid, j([sheet("c3")]), j([]), None]) == "invalid_stored_sheets"
+        assert stored(w.su, w.sid)["ref_sheets"] == [bad]
+
+
+def test_the_flag_set_by_direct_sql_opens_only_that_transactions_own_row(conn, sc):
+    """DB L1: no PostgREST call can set the flag (BR-SW-01), but direct SQL can. Its reach: one transaction, the row it names. A
+    second connection's whole-BRIEF write meanwhile is still overruled."""
+    race = Committed(conn, sc, [paid()])
+    try:
+        with psycopg.connect(st._dsn(conn), autocommit=False) as a, psycopg.connect(st._dsn(conn), autocommit=False) as b:
+            a.execute("select set_config('nightshift.ai_chat_sheets', %s, true)", [race.sid])
+            _as_alice(b, race.alice)
+            b.execute(BRIEF, [race.sid, json.dumps({**BASE_BRIEF, "ref_sheets": []})])
+            b.commit()
+            assert len(race.brief()["ref_sheets"]) == 1      # b had no flag: overruled
+            a.rollback()
+            # After its transaction the flag is gone for that connection too.
+            assert a.execute("select coalesce(current_setting('nightshift.ai_chat_sheets', true), '')").fetchone()[0] == ""
+            a.rollback()
+    finally:
+        race.purge()
 
 
 # ── two connections at once ──────────────────────────────────────────────────────
@@ -658,6 +740,10 @@ def test_the_rollback_removes_it_keeps_the_stored_sheets_and_0199_writes_as_befo
         assert c.execute("select count(*) from pg_trigger where tgname = 'ai_chat_sessions_keep_sheets'").fetchone()[0] == 0
         assert c.execute("select to_regprocedure('public.ai_chat_sheet_problem(jsonb)') is null").fetchone()[0]
         assert c.execute("select to_regprocedure('public.ai_chat_sheet_repair(jsonb)') is null").fetchone()[0]
+        assert c.execute("select to_regprocedure('public.ai_chat_sheet_holds(jsonb)') is null").fetchone()[0]
+        # The call outcomes keep brief_too_large (rule 5: a call ended that way is never relabelled).
+        assert "brief_too_large" in c.execute("select pg_get_constraintdef(oid) from pg_constraint "
+                                              "where conname = 'ai_chat_calls_outcome_check'").fetchone()[0]
         assert md5_of(c, writer.GUARD[1][0]) == writer.GUARD[1][1]          # 0199's finish_turn back verbatim
         assert c.execute("select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'public.ai_chat_sessions'::regclass "
                          "and conname = 'ai_chat_sessions_brief_check'").fetchone()[0] == \
@@ -674,19 +760,37 @@ def test_the_rollback_removes_it_keeps_the_stored_sheets_and_0199_writes_as_befo
         c.rollback()
 
 
-def test_the_rollback_refuses_by_name_while_a_conversation_holds_more_than_0199s_check_and_changes_nothing(conn, sc):
+def test_the_rollback_keeps_0249s_check_with_a_notice_while_a_conversation_holds_more_than_0199s(conn, sc):
+    """DB M2: never a hand trim (it would delete approvals and paid job ids). Everything else is restored; 0249's split CHECK stays,
+    the NOTICE says how many and why, the sheets stay whole, and 0199's finish_turn stores a turn under it."""
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
+        notices = []
+        c.add_notice_handler(lambda d: notices.append(d.message_primary))
         sid = sc.alice.ai_chat_session
         full = [sheet(f"c{i}", views=[view(n, prompt="p" * 1450) for n in ("front", "side", "back")]) for i in range(40)]
         c.execute("select set_config('nightshift.ai_chat_sheets', %s, true)", [sid])
-        c.execute("update public.ai_chat_sessions set brief = %s::jsonb where id = %s",
+        c.execute("update public.ai_chat_sessions set step = 'ready', brief = %s::jsonb where id = %s",
                   [json.dumps({**BASE_BRIEF, "notes": "n" * 100000, "ref_sheets": full}), sid])
         c.execute("select set_config('nightshift.ai_chat_sheets', '', true)")
-        c.execute("savepoint rb")
-        with pytest.raises(psycopg.Error) as e:
-            c.execute(_rollback_body())
-        assert "rollback 0249: 1 conversation(s) hold more than 262144 bytes" in str(e.value)
-        c.execute("rollback to savepoint rb")
+        c.execute(_rollback_body())
+        assert not sec_db.has_0249(c)
+        assert any("rollback 0249: 1 conversation(s) hold more than 262144 bytes" in (n or "") for n in notices), notices
+        cons = {r[0] for r in c.execute("select conname from pg_constraint where conrelid = 'public.ai_chat_sessions'::regclass "
+                                        "and conname like 'ai_chat_sessions_brief%%'").fetchall()}
+        assert cons == {"ai_chat_sessions_brief_0249"}
+        assert md5_of(c, writer.GUARD[1][0]) == writer.GUARD[1][1]
+        assert len(c.execute("select brief -> 'ref_sheets' from public.ai_chat_sessions where id = %s", [sid]).fetchone()[0]) == 40
+        # 0199's own finish_turn stores a turn under the kept CHECK.
+        call = c.execute("insert into public.ai_chat_calls (org_id, user_id, session_id, model, outcome) "
+                         "values (%s, %s, %s, 'anthropic-claude-sonnet-5-5', 'pending') returning id",
+                         [sc.alice.org, sc.alice.actor.uid, sid]).fetchone()[0]
+        _as_alice(c, sc.alice.actor)
+        c.execute("select public.ai_chat_finish_turn(%s, 'ok', 1, 1, 'hi', null, null, 'ready', %s::jsonb, null)",
+                  [call, json.dumps({**BASE_BRIEF, "notes": "m" * 120000, "ref_sheets": full})])
+        c.execute("reset role")
+        assert c.execute("select outcome from public.ai_chat_calls where id = %s", [call]).fetchone()[0] == "ok"
+        # And it applies again on top of the kept CHECK.
+        c.execute(MIGRATION.read_text(encoding="utf-8"))
         assert sec_db.has_0249(c)
         c.rollback()
 
@@ -700,6 +804,30 @@ def test_the_guard_refuses_a_hand_changed_brief_check(conn):
         with pytest.raises(psycopg.Error) as e:
             c.execute(MIGRATION.read_text(encoding="utf-8"))
         assert "ai_chat_sessions_brief_check with an unknown definition" in str(e.value)
+        c.rollback()
+
+
+def test_the_rollback_never_relabels_a_brief_too_large_call(conn, sc):
+    with psycopg.connect(st._dsn(conn), autocommit=False) as c:
+        call = c.execute("insert into public.ai_chat_calls (org_id, user_id, session_id, model, outcome, finished_at) "
+                         "values (%s, %s, %s, 'anthropic-claude-sonnet-5-5', 'brief_too_large', now()) returning id",
+                         [sc.alice.org, sc.alice.actor.uid, sc.alice.ai_chat_session]).fetchone()[0]
+        c.execute(_rollback_body())
+        assert c.execute("select outcome from public.ai_chat_calls where id = %s", [call]).fetchone()[0] == "brief_too_large"
+        c.rollback()
+
+
+def test_the_guard_refuses_a_hand_changed_call_outcome_check(conn):
+    """DB L2: the outcome CHECK is compared exactly, never by its ending."""
+    with psycopg.connect(st._dsn(conn), autocommit=False) as c:
+        c.execute(_rollback_body())
+        c.execute("alter table public.ai_chat_calls drop constraint ai_chat_calls_outcome_check")
+        c.execute("alter table public.ai_chat_calls add constraint ai_chat_calls_outcome_check check (outcome in ('anything', "
+                  "'pending', 'ok', 'vendor_error', 'invalid_output', 'not_configured', 'not_sent', 'vendor_refused', 'refused', "
+                  "'output_too_long'))")
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(MIGRATION.read_text(encoding="utf-8"))
+        assert "ai_chat_calls_outcome_check with an unknown definition" in str(e.value)
         c.rollback()
 
 

@@ -512,6 +512,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (e === "content_refused") return c.errors.content_refused;
     if (e === "output_too_long") return c.errors.output_too_long;
     if (e === "brief_too_large") return c.errors.brief_too_large;
+    if (e === "invalid_film_link") return c.errors.invalid_film_link;
     if (e === "nothing_to_choose") return c.errors.nothing_to_choose;
     if (e === "film_refused") return c.errors.film_refused;
     if (e === "not_enabled") return c.errors.not_enabled;

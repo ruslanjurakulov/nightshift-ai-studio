@@ -3532,13 +3532,20 @@ the older list. A lost approval cannot be recovered.
   conversation (`film_plan`) is `film_conversation` (all NS409).
 - **Merge, not compare-and-swap.** The database merges view by view with the app's rule (`mergeConcurrent`): a view the caller
   changed (differs from `base`) is the caller's; otherwise the later attempt, then the further state (planned < failed < making <
-  ready < approved). A stored sheet the caller did not send is kept, a new one added. More than 40 after the merge is refused
-  `too_many_sheets`, never cut (a sheet may hold a paid job's id), in the database and in the app's fallback alike
-  (`mergeConcurrent` no longer slices). A compare-and-swap would refuse the loser, and the loser is often the write that must not
+  ready < approved). A new sheet is added. A stored sheet the caller did not send is an earlier plan's (character and stage ids are
+  the model's, so a re-chosen cast has new keys): it is kept while everything fits, and when the stored and the sent together
+  would pass 40 sheets or 196608 bytes the ones holding nothing are dropped before counting (DB M1, Breach BRK-02: such leftovers
+  locked the conversation for good). One holding a picture, a job, a job's key or an approval (`ai_chat_sheet_holds`, internal;
+  the app's `holdsPaid`) is never dropped; if those alone pass the caps, `too_many_sheets` / `sheets_too_large`, never cut, in the
+  database and in the app's fallback alike (`mergeConcurrent` no longer slices). The panel says the remedy, "start a new
+  conversation for this story" (en / ru / uz). A compare-and-swap would refuse the loser, and the loser is often the write that must not
   fail (the job ids saved right after paid creates); retrying it is this merge again in the app. A stored sheet written through 0199
   before is read the way `readSheets` reads it (`ai_chat_sheet_repair`, internal): a sheet without a valid character, stage or
-  views list is dropped, otherwise only its unreadable views are, and a bad field reads as its default. Pre-apply count of stored
-  lists this would touch (expect 0) is in the file's header.
+  views list is dropped, otherwise only its unreadable views are, and a bad field reads as its default; of two stored sheets with
+  one key the LAST is kept, as the app's merge keeps it. Only where that drops nothing held: a repair or a duplicate that would lose
+  a picture, a job, a job's key or an approval is refused `invalid_stored_sheets` (DB L4), never dropped. Pre-apply count of stored
+  lists this would touch (expect 0) is in the file's header; the file locks `ai_chat_sessions` (share row exclusive) before its
+  counts (DB L5).
 - **The sheets have their own size budget** (Breach BR-SW-08). 0199's CHECK counted the whole BRIEF against 262144 bytes; with the
   trigger putting the stored sheets back, a 75 KB turn plus 191 KB of accepted sheets broke it inside `ai_chat_finish_turn` (raw
   23514, the turn rolled back, the vendor-paid call left `pending`, every later turn failing). 0249 replaces
@@ -3571,10 +3578,12 @@ the older list. A lost approval cannot be recovered.
 - **Replay.** Replays onto itself (create or replace; the trigger dropped and created). Re-running 0199 leaves it on. 0199's rollback
   drops the table and the trigger with it.
 - **Requires** 0018 (`is_org_member`), 0036 (`creative_refuse`), 0166 (`films`, `film_scenes`), 0199.
-- **Undo.** `docs/sql/rollback_0249_ai_chat_save_sheets.sql` (owner-applied): the trigger and the four functions dropped and 0199's
-  CHECK put back exactly; it refuses by name, changing nothing, while a conversation holds more than 262144 bytes with its sheets
-  (trim its `ref_sheets` by hand first). The stored sheets stay in each BRIEF; the app goes back to #980's path at once (the race
-  reopens).
+- **Undo.** `docs/sql/rollback_0249_ai_chat_save_sheets.sql` (owner-applied): the trigger and the four functions dropped, 0199's
+  `ai_chat_finish_turn` back verbatim with its grants, and 0199's CHECK back where every conversation fits it. Where one holds more
+  than 262144 bytes with its sheets, 0249's split CHECK stays and a NOTICE says how many (DB M2): fitting 0199's would mean deleting
+  approvals and paid job ids by hand, and 0199's functions work under the split CHECK unchanged (run the file again later to restore
+  0199's). The call outcomes keep `brief_too_large`, and the calls ended that way keep it (rule 5; DB L3, Lens 8). The stored
+  sheets stay in each BRIEF; the app goes back to #980's path at once (the race reopens).
 - **A turn too large to store keeps its paid call's record** (Atlas on BR-SW-08). 0199's `ai_chat_finish_turn`
   (b0420b460b7717b7d084f7a9bdc3e809; neither 0226 nor 0232 replaced it) is replaced by 0199's text verbatim plus ONE marked 0249
   hunk (ab9e0cf7f4ee370991fd208128019db5): a turn asked as `brief_too_large`, or arriving as `ok` with its own BRIEF (sheets not
@@ -3584,8 +3593,10 @@ the older list. A lost approval cannot be recovered.
   as jsonb does (`lib/brain/brief-size.ts`) and ends such a turn by name before writing anything, answering 422
   `brief_too_large`; the panel says "shorten the story or split it into chapters" (en / ru / uz). Before 0249 the route ends it
   `output_too_long` instead (also paid). The choose path's whole-BRIEF save (no call) is refused `brief_too_large` by the trigger
-  and answered the same way. The rollback puts 0199's body back verbatim and records any `brief_too_large` call as
-  `output_too_long` before restoring 0199's outcome list. Re-running 0199 puts its own `ai_chat_finish_turn` back: apply 0249 again.
+  and answered the same way. A turn whose `ok` the database refuses anyway (a database without 0249: the CHECK's 23514) is ended
+  `output_too_long`, any other refusal `vendor_error`, with its tokens, and a fallback that fails is logged by its codes (Lens 1,
+  Lens 6). The rollback puts 0199's body back verbatim and leaves every `brief_too_large` call as it is (never relabelled) and the
+  outcome list with it. Re-running 0199 puts its own `ai_chat_finish_turn` back: apply 0249 again.
 - **Responses do not carry the sheets.** `/api/brain` (the latest conversation), `/api/brain/session/<id>` and
   `/api/brain/history?session=` send the BRIEF without `ref_sheets` and `film_link` (`briefForView`): none of those views draws
   them; the sheets panel reads `/api/brain/sheets`. The history list never read the BRIEF. Pinned: the history answer is the same

@@ -22,7 +22,7 @@ vi.mock("@/lib/server/geo-claim", () => ({ geoClaimHeaders: () => undefined }));
 vi.mock("@/lib/server/films", () => ({ filmGateFor: async () => ({ ok: true }) }));
 
 import { GET, POST } from "@/app/api/brain/sheets/route";
-import type { RefSheet } from "@/lib/brain/ref-sheets";
+import { holdsPaid, mergeConcurrent, type RefSheet } from "@/lib/brain/ref-sheets";
 
 const get = async () => {
   const res = await GET(new Request(`http://x/api/brain/sheets?session=${SESSION}`));
@@ -186,7 +186,9 @@ describe("choose's two writes: the storyboard saved, its film link refused, then
 
 describe("without 0249 (the function missing)", () => {
   it("more than 40 sheets after the merge is refused by name, never cut", async () => {
-    const many = Array.from({ length: 40 }, (_, i) => ({ character_id: `x${i}`, stage: null, views: [] }));
+    // 40 stored sheets of an earlier plan, each holding a picture: kept, so the current plan does not fit.
+    const many = Array.from({ length: 40 }, (_, i) => ({ character_id: `x${i}`, stage: null, views: [{ view: "front", prompt: "p",
+      asset_id: `eeeeeeee-0000-4000-8000-${String(i).padStart(12, "0")}`, status: "ready", job_id: null, attempt: 0, error: null, key: null }] }));
     fake.state.session = { ...fake.state.session!, brief: { ...(fake.state.session!.brief as object), ref_sheets: many } };
     const r = await make();
     expect(r.status).toBe(422);
@@ -211,5 +213,40 @@ describe("without 0249 (the function missing)", () => {
     const r = await post({ action: "approve", character_id: "c2", stage: null, view: "front" });
     expect(r.status).toBe(200);
     expect(at(storedSheets(), "c2", null, "front").status).toBe("approved");
+  });
+});
+
+describe("the app's merge drops an earlier plan's unpaid sheets only to make room, never a paid one (DB M1, BRK-02)", () => {
+  const sh = (id: string, v: Partial<RefSheet["views"][number]> = {}): RefSheet =>
+    ({ character_id: id, stage: null, views: [{ view: "front", prompt: "p", asset_id: null, status: "planned", job_id: null, attempt: 0, error: null, key: null, ...v }] });
+  const ids = (l: RefSheet[]) => l.map((s) => s.character_id);
+
+  it("keeps an unsent stored sheet while everything fits (40 or fewer together)", () => {
+    expect(ids(mergeConcurrent([sh("a")], [sh("b")], []))).toEqual(["a", "b"]);
+  });
+
+  it("drops unpaid unsent stored sheets when together they would pass 40, and keeps every paid one", () => {
+    const paid = sh("a0", { asset_id: "eeeeeeee-0000-4000-8000-000000000001", status: "ready" });
+    const stored = [paid, ...Array.from({ length: 29 }, (_, i) => sh(`a${i + 1}`))];
+    const plan = Array.from({ length: 39 }, (_, i) => sh(`b${i}`));
+    const out = mergeConcurrent(stored, plan, plan);
+    expect(out).toHaveLength(40);
+    expect(out[0]).toEqual(paid);
+    expect(ids(out).slice(1)).toEqual(ids(plan));
+  });
+
+  it("never cuts: a paid sheet plus a full 40 is 41, for the writer to refuse by name", () => {
+    const paid = sh("a0", { job_id: "dddddddd-0000-4000-8000-000000000001", status: "making" });
+    const plan = Array.from({ length: 40 }, (_, i) => sh(`b${i}`));
+    expect(mergeConcurrent([paid], plan, plan)).toHaveLength(41);
+  });
+
+  it("counts a picture, a job, a job's key and an approval as held, and nothing else", () => {
+    expect(holdsPaid(sh("x"))).toBe(false);
+    expect(holdsPaid(sh("x", { status: "failed", error: "boom", attempt: 2 }))).toBe(false);
+    expect(holdsPaid(sh("x", { asset_id: "eeeeeeee-0000-4000-8000-000000000001" }))).toBe(true);
+    expect(holdsPaid(sh("x", { job_id: "dddddddd-0000-4000-8000-000000000001" }))).toBe(true);
+    expect(holdsPaid(sh("x", { key: `sheet:${"a".repeat(48)}` }))).toBe(true);
+    expect(holdsPaid(sh("x", { status: "approved" }))).toBe(true);
   });
 });

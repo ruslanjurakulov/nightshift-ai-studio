@@ -399,6 +399,14 @@ export function readSheetBrief(raw: unknown): SheetBrief {
 }
 
 const STATUS_RANK: Record<ViewStatus, number> = { planned: 0, failed: 1, making: 2, ready: 3, approved: 4 };
+/**
+ * A sheet that may hold something paid or decided: a picture (asset_id), a job (job_id), the key a job was or is being created with
+ * (a create whose id was not saved yet is found by it), or the person's approval. Never dropped by a merge (0249's
+ * ai_chat_sheet_holds is the same rule).
+ */
+export function holdsPaid(s: RefSheet): boolean {
+  return s.views.some((v) => !!v.asset_id || !!v.job_id || !!v.key || v.status === "approved");
+}
 const sameView = (x: RefView | undefined, y: RefView | undefined) => JSON.stringify(x ?? null) === JSON.stringify(y ?? null);
 /**
  * Two writers of the same sheets (two tabs, or a chat turn and a press): the fresher BRIEF's list merged with ours view by view.
@@ -410,7 +418,14 @@ const sameView = (x: RefView | undefined, y: RefView | undefined) => JSON.string
 export function mergeConcurrent(fresh: readonly RefSheet[], ours: readonly RefSheet[], base: readonly RefSheet[] = []): RefSheet[] {
   const key = (s: Pick<RefSheet, "character_id" | "stage">) => `${s.character_id}:${s.stage ?? ""}`;
   const was = new Map(base.map((s) => [key(s), s]));
-  const out = new Map<string, RefSheet>(fresh.map((s) => [key(s), s]));
+  const sent = new Set(ours.map(key));
+  // A stored sheet this write does not send is an earlier plan's (character and stage ids are the model's, so a re-chosen cast
+  // has new keys). When the stored and the sent together would pass 40, the ones that hold nothing are dropped before counting,
+  // or such leftovers would lock the conversation (BRK-02); one that holds a picture, a job or an approval is kept whatever it
+  // costs. 0249's writer does the same (it also counts the bytes).
+  const union = new Set([...fresh.map(key), ...sent]);
+  const kept = union.size > SHEETS_MAX ? fresh.filter((s) => sent.has(key(s)) || holdsPaid(s)) : fresh;
+  const out = new Map<string, RefSheet>(kept.map((s) => [key(s), s]));
   for (const s of ours) {
     const f = out.get(key(s));
     if (!f) { out.set(key(s), s); continue; }

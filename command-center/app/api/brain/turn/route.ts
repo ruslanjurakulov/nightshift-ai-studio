@@ -169,6 +169,12 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
     const r = await finish("not_sent", null, null);
     if (r.error) await finish("vendor_error", null, null);
   };
+  // A paid call's fallback end (Lens 1, Lens 6): its own result is checked, and a failure is logged by its code (no text of the
+  // turn), so a call that stays pending is at least seen; nothing else can end it from here.
+  const endPaid = async (outcome: "output_too_long" | "vendor_error", why: { code?: string; message?: string }, tokensIn: number | null, tokensOut: number | null) => {
+    const r = await finish(outcome, tokensIn, tokensOut);
+    if (r.error) console.error("brain: a paid call could not be ended (%s after %s): %s", outcome, why.code ?? why.message ?? "unknown", r.error.code ?? r.error.message ?? "unknown");
+  };
   try {
   const [ch, hist] = await Promise.all([
     s.channel_id ? channelOrg(supabase, s.channel_id) : Promise.resolve({ state: "none" as const }),
@@ -258,7 +264,7 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
   // split it into chapters (Atlas on BR-SW-08). Before 0249 that outcome does not exist: output_too_long, also a paid one.
   if (briefBytes(brief) > BRIEF_MAX_BYTES) {
     const ended = await finish("brief_too_large", llm.tokensIn, llm.tokensOut);
-    if (ended.error) await finish("output_too_long", llm.tokensIn, llm.tokensOut);
+    if (ended.error) await endPaid("output_too_long", ended.error, llm.tokensIn, llm.tokensOut);
     return brainJson({ error: "brief_too_large", quota }, 422);
   }
   const done = await finish("ok", llm.tokensIn, llm.tokensOut, {
@@ -266,7 +272,16 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
     // meanwhile is kept too. Before this, a turn wrote a BRIEF without them and the paid pictures were lost from the sheet.
     text: answer.reply, payload, slots: answer.slots, step: answer.step, brief: { ...brief, ...(await carried(supabase, s)) }, card: answer.card,
   });
-  if (done.error) return dbRefusal(done.error) ?? brainJson({ error: "unavailable" }, 503);
+  if (done.error) {
+    // The refused finish rolled back whole, so the vendor-paid call is still pending (Lens 1): ended here with its tokens, as the
+    // BRIEF's CHECK refusing it (23514, a database without 0249's measure) or anything else. Nothing of the turn was stored.
+    await endPaid(done.error.code === "23514" ? "output_too_long" : "vendor_error", done.error, llm.tokensIn, llm.tokensOut);
+    if (done.error.code === "23514") return brainJson({ error: "brief_too_large", quota }, 422);
+    return dbRefusal(done.error) ?? brainJson({ error: "unavailable" }, 503);
+  }
+  // A 200 here relies on briefBytes and the database's octet_length(brief::text) agreeing (Lens 5): were the database to end this
+  // call as brief_too_large on its own, nothing would say so to this route. tests/security/test_sec_breach_0249.py (BRK-01) and
+  // brief-size.test.ts pin that they agree, and briefBytes never counts low.
   return brainJson({
     // With the server's count of the messages planning each outline takes (computed, never stored: the payload above has none).
     reply: answer.reply, slots: answer.slots, step: answer.step, card: answer.card, scenarios: withPlanTurns(answer.scenarios, answer.slots.kind),

@@ -68,6 +68,8 @@ const client = {
     if (fn === "ai_chat_finish_turn" && size.finishError && (args as { p_outcome?: string }).p_outcome === "brief_too_large") {
       return { data: null, error: { code: "NS400", message: "invalid_params" } };
     }
+    if (fn === "ai_chat_finish_turn" && size.okError && (args as { p_outcome?: string }).p_outcome === "ok") return { data: null, error: size.okError };
+    if (fn === "ai_chat_finish_turn" && size.restError && (args as { p_outcome?: string }).p_outcome !== "ok") return { data: null, error: size.restError };
     return { data: null, error: null };
   },
 };
@@ -88,7 +90,11 @@ vi.mock("@/lib/server/brain/quote", () => ({
   chatPricing: async () => ({ ok: true, spendable: 100, quote: async (l: number) => ({ ok: true, credits: ({ 60: 30, 180: 80, 300: 130 } as Record<number, number>)[l] ?? 999 }) }),
 }));
 /** When set, the turn's BRIEF measures over the database's 262144 bytes (lib/brain/brief-size), whatever it holds. */
-const size = vi.hoisted(() => ({ over: false, finishError: false }));
+const size = vi.hoisted(() => ({ over: false, finishError: false,
+  /** The database's answer to finish_turn's "ok" (a refusal rolls the whole call back: it stays pending). */
+  okError: null as { code: string; message: string } | null,
+  /** The answer to every other finish_turn, to see a fallback that fails. */
+  restError: null as { code: string; message: string } | null }));
 vi.mock("@/lib/brain/brief-size", async () => {
   const real = await vi.importActual<typeof import("@/lib/brain/brief-size")>("@/lib/brain/brief-size");
   return { ...real, briefBytes: (b: unknown) => (size.over ? real.BRIEF_MAX_BYTES + 1 : real.briefBytes(b)) };
@@ -119,6 +125,8 @@ beforeEach(() => {
   state.sheetsAnswer = null;
   size.over = false;
   size.finishError = false;
+  size.okError = null;
+  size.restError = null;
   state.llm = { ok: true, text: JSON.stringify({ reply: "Which kind?", slots: {}, card: { thread_title: "New video", question: "Long or short?", options: ["Long", "Short", "Not sure"] } }), tokensIn: 10, tokensOut: 20 };
 });
 
@@ -360,5 +368,36 @@ describe("a turn whose own BRIEF is too large to store (Atlas on BR-SW-08)", () 
     const { readFileSync } = await import("node:fs");
     const panel = readFileSync(new URL("../components/brain/NightshiftAiPanel.tsx", import.meta.url), "utf8");
     expect(panel).toContain('if (e === "brief_too_large") return c.errors.brief_too_large;');
+  });
+});
+
+describe("a turn whose 'ok' the database refuses is never left pending (Lens 1, Lens 6)", () => {
+  const finishes = () => called("ai_chat_finish_turn").map((c) => c[1] as Record<string, unknown>);
+
+  it("the BRIEF's CHECK (23514, a database without 0249): the paid call is ended output_too_long with its tokens; the remedy is said", async () => {
+    size.okError = { code: "23514", message: "new row for relation violates check constraint" };
+    const res = await turn();
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toBe("brief_too_large");
+    expect(finishes().map((f) => [f.p_outcome, f.p_tokens_in, f.p_tokens_out])).toEqual([["ok", 10, 20], ["output_too_long", 10, 20]]);
+  });
+
+  it("any other refusal: the call is ended vendor_error with its tokens, and the refusal is answered as before", async () => {
+    size.okError = { code: "XX000", message: "boom" };
+    const res = await turn();
+    expect(res.status).toBe(503);
+    expect(finishes().map((f) => f.p_outcome)).toEqual(["ok", "vendor_error"]);
+  });
+
+  it("a fallback end that fails is logged by its codes, never silently", async () => {
+    size.okError = { code: "23514", message: "check" };
+    size.restError = { code: "NS404", message: "call_not_found" };
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await turn();
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining("a paid call could not be ended"), "output_too_long", "23514", "NS404");
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
