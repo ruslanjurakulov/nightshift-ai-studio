@@ -445,6 +445,23 @@ No live job or database was read for this section: Atlas does the live check. Fr
 5. Until a vendor documents "ambience, no speech", should a non-dialogue scene on a speaking model be
    muted by default, or kept and listened to before approval?
 
+### 9.1 Atlas decisions (28 Nov 2026, delegated by the owner)
+
+These answer the questions above and are what the fix PR builds.
+
+1. **Ambience is ducked, not muted**, under the narration and under the dialogue speech spans.
+2. **Don't buy sound we won't use.** The planner requests `audio: false` for a scene that is muted or
+   needs no clip sound, so nothing is charged for it. A scene a person mutes after it was made with
+   sound was already paid for: the editor says so plainly, and there is no refund logic.
+3. **-14 LUFS integrated, -1 dBTP true peak.** If two-pass linear normalisation cannot be applied, the
+   film ships with loudnorm's dynamic mode, and its QC record says `loudness: dynamic (linear not possible)`
+   with the measured values, shown to the person. That is a labelled processing mode, not a substituted
+   provider, so the film does not fail over it (rule 4 is met by the label).
+4. **Uzbek and Russian in-clip speech** are sampled inside the owner-approved $10 test film: 1–2 short
+   shots, on the model the plan picks for dialogue. No separate approval.
+5. **On a model that speaks, a scene without dialogue gets `audio: false`** until a vendor documents an
+   "ambience only" control. Ambience for such scenes comes later from a library bed.
+
 ## 10. Scout questions
 
 - Is there a documented "no speech / ambience only" control on MiniMax H3, Kling v3, Veo 3.1, LTX,
