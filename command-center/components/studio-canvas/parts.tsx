@@ -71,32 +71,40 @@ export function statusLine(t: ReturnType<typeof useI18n>["t"], status: NodeStatu
 export const JUST_FINISHED_MS = 1800;
 
 /**
- * True for a moment after this node's job is seen to finish: its status went from working or queued to done while it was
- * on screen. A board opened on a finished job never celebrates it (nothing finished in front of anyone), and a job read
- * as done after an unknown reading is not a finish either: only a transition the person watched (rule 5: a state shown is
- * a state measured).
+ * True for a moment after this node's job is seen to finish: it was working or queued while on screen, then done, AND its
+ * result is in view (`ready`: the picture is shown, or the result has no picture to show). Not before: a ring beside
+ * "the result is loading" or "the result can't be shown" would celebrate a result the card itself says is not there
+ * (rule 5). A board opened on a finished job never celebrates it, and a job first read as done (a fast job, an unknown
+ * reading) is not a finish either: only a run the person watched end. Missing a ring is the safe failure; a false one is not.
  */
-export function useJustFinished(status: NodeStatus): boolean {
-  const prev = useRef<NodeStatus>(status);
+export function useJustFinished(status: NodeStatus, ready = true): boolean {
+  const sawRun = useRef(status === "working" || status === "queued");
   const [on, setOn] = useState(false);
   useEffect(() => {
-    const was = prev.current;
-    prev.current = status;
-    if (status === "done" && (was === "working" || was === "queued")) {
-      setOn(true);
-      const t = window.setTimeout(() => setOn(false), JUST_FINISHED_MS);
-      return () => window.clearTimeout(t);
+    if (status === "working" || status === "queued") {
+      sawRun.current = true;
+      setOn(false);
+      return;
     }
-    if (status !== "done") setOn(false);
-  }, [status]);
+    if (status !== "done") {
+      sawRun.current = false;
+      setOn(false);
+      return;
+    }
+    if (!ready || !sawRun.current) return;
+    sawRun.current = false;
+    setOn(true);
+    const t = window.setTimeout(() => setOn(false), JUST_FINISHED_MS);
+    return () => window.clearTimeout(t);
+  }, [status, ready]);
   return on;
 }
 
 /**
  * The phone list's card has no room for a class hook per row (rows are drawn in a map), so its "just finished" look is this
- * ring laid over the card: a sibling inside the row, drawn only for the moment useJustFinished allows.
+ * ring drawn inside the card (an inset ring: the card clips), only for the moment useJustFinished allows.
  */
-export function FinishRing({ status }: { status: NodeStatus }) {
-  const on = useJustFinished(status);
+export function FinishRing({ status, ready }: { status: NodeStatus; ready: boolean }) {
+  const on = useJustFinished(status, ready);
   return on ? <span aria-hidden className="cv-finish" data-fx="finish" /> : null;
 }

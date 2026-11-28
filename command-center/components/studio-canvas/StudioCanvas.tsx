@@ -1585,7 +1585,6 @@ function FlowView({
                         <Plus aria-hidden className="size-4" />
                       </button>
                     )}
-                    <FinishRing status={s} />
                     <button
                       type="button"
                       className={`cv-fcard s-${s}${selected === n.id ? " is-sel" : ""}`}
@@ -1595,6 +1594,7 @@ function FlowView({
                       data-flow-id={n.id}
                     >
                       <BorderBeam active={working} size={110} duration={3.5} width={2} />
+                      <FinishRing status={s} ready={rv === "shown" || rv === null} />
                       {/* A prompt's picture is its words. */}
                       {n.kind === "prompt" ? (
                         <span className={n.draft.trim() ? "cv-fwords" : "cv-fwords is-empty"}>{n.draft.trim() || c.node.noWords}</span>

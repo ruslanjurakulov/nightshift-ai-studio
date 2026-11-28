@@ -409,10 +409,10 @@ function NodeCard({
   const input = inputOf(canvas, node, jobs);
   const words = node.kind === "prompt" ? node.draft : node.draft || input?.text || "";
   const working = status === "working" || status === "queued";
-  const justDone = useJustFinished(status);
   // "Made" only with the real result in view (rule 5): a picture or clip result that cannot be shown says so, with a way to
   // load it again; while the library is still being read it says that instead. A voice result has no picture to show.
   const resultState = resultView(node, status, jobs, previews, resultPending);
+  const justDone = useJustFinished(status, resultState === "shown" || resultState === null);
   const showArt = !!thumb || working || (node.kind === "asset" && status !== "missing") || status === "done";
   const cls = ["cv-node", `k-${node.kind}`, `s-${status}`, selected && "is-sel", dragging && "is-dragging", dropTarget && "is-drop", actor && "is-remote", justDone && "is-just-done"]
     .filter(Boolean)
