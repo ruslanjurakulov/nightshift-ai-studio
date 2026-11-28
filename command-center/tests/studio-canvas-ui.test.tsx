@@ -66,6 +66,7 @@ import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";
 import { ShellProvider } from "@/components/shell/ShellContext";
 import { StudioCanvas } from "@/components/studio-canvas/StudioCanvas";
+import { JUST_FINISHED_MS } from "@/components/studio-canvas/parts";
 import { UNKNOWN_TOOLS, type ToolAvailability } from "@/lib/tool-availability";
 import { COMPOSER_W, layoutKey } from "@/lib/studio/canvas";
 import { refreshCredits } from "@/lib/credits-live";
@@ -602,6 +603,47 @@ describe("review fixes", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("the studio effects follow the job: a beam and shimmer only while it runs, a finish ring only for a finish seen here", async () => {
+    // What would break: a beam left running round a finished card, a ring on every result the board merely opened on, or an
+    // effect drawn from a timer instead of the job's status (SYSTEM.md §5: motion must be true).
+    // Only the poll's clock is faked; the ring's own timeout runs on real time.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    try {
+      store({ nodes: [node("v", "image", 0, { jobId: JOB_SEQ }), node("d", "image", 400, { jobId: JOB_DONE })], wires: [] });
+      mount();
+      const card = () => document.querySelector('[data-node-id="v"]')!;
+      await waitFor(() => expect(card().getAttribute("data-status")).toBe("working"));
+      expect(card().querySelector("[data-fx=beam]")).toBeTruthy();
+      expect(card().querySelector("[data-fx=shimmer]")?.textContent).toBeTruthy();
+      // The board opened on a finished job: it is done, with no beam and no celebration.
+      await waitFor(() => expect(document.querySelector('[data-node-id="d"]')!.getAttribute("data-status")).toBe("done"));
+      expect(document.querySelector('[data-node-id="d"]')!.classList.contains("is-just-done")).toBe(false);
+      expect(document.querySelector('[data-node-id="d"] [data-fx]')).toBeNull();
+      // The job finishes in front of the person: the beam and shimmer stop, the ring appears for a moment, then goes.
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+      });
+      await waitFor(() => expect(card().getAttribute("data-status")).toBe("done"));
+      expect(card().querySelector("[data-fx=beam]")).toBeNull();
+      expect(card().querySelector("[data-fx=shimmer]")).toBeNull();
+      expect(card().classList.contains("is-just-done")).toBe(true);
+      await waitFor(() => expect(card().classList.contains("is-just-done")).toBe(false), { timeout: JUST_FINISHED_MS + 1500 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("the empty studio's wash is decoration: hidden from a screen reader, with the question still the page's heading", async () => {
+    mount();
+    const first = await screen.findByTestId("canvas-first-run");
+    const glow = first.querySelector("[data-fx=gradient]")!;
+    expect(glow.getAttribute("aria-hidden")).toBe("true");
+    expect(within(first).getByRole("heading", { level: 2 })).toBeTruthy();
   });
 
   it("two job reads ending in the same tick both land: a new job never stays \"loading\"", async () => {
