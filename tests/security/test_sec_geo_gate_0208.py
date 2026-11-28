@@ -385,6 +385,6 @@ def test_rollback_and_replay(db):
         c.execute(sec_db.rollback_0208_body())                           # twice: harmless
         c.execute(mig)
         assert c.execute(q).fetchone() == (1, sec_db.CREATIVE_PRICE_0208)
-        sec_db.put_back_0218(c)                                          # and 0224 on it, and 0228 on that, as the lab was built
-        assert c.execute(q).fetchone() == (1, sec_db.CREATIVE_PRICE_0228)
+        sec_db.put_back_0218(c)                                          # and 0224, 0228 and 0243 on it, as the lab was built
+        assert c.execute(q).fetchone() == (1, sec_db.CREATIVE_PRICE_0243)
         c.rollback()

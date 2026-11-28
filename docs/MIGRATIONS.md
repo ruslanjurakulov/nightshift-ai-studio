@@ -3378,7 +3378,8 @@ database doors it used.
   in the exempt organization, `image_size` 1K, answered `NS400 unpriced` for both. Marking them would list two dead ends in the
   operator's Studio, which `tests/test_preview_price_by_quality_migration.py` (NoPreviewIsADeadEnd) and
   `tests/test_preview_price_by_resolution_migration.py` refuse. The way forward is a later migration that extends the preview
-  fallback to sizes, as 0149 and 0153 did for resolution and quality, or a per-size price set by the owner; then the mark. Separately, a Film Studio take, a workflow step carried on by another member's page, the API and MCP
+  fallback to sizes, as 0149 and 0153 did for resolution and quality, or a per-size price set by the owner; then the mark. (0243 does
+  exactly that, and sets the mark: see "Operator preview priced by picture size (0243)".) Separately, a Film Studio take, a workflow step carried on by another member's page, the API and MCP
   carry no visitor, so the gate refuses them for these rows (`country_unverified`, 0208): a film's key frames on these models are
   refused even once priced, until a take carries a claim, and Film's own model check needs S2's 0235 (not on main). Opening for
   sale (`beta`/`ga` plus a `credit_prices` row) stays the owner's act.
@@ -3386,3 +3387,37 @@ database doors it used.
   The two rows now have no terms gate, so `--all` in the Probe models workflow includes them: one paid call each.
 - **Tests.** `tests/test_country_sale_allow_list_migration.py`, `tests/test_geoip_build.py` (`RegistryField`),
   `tests/test_google_requires_adult.py`, `tests/security/test_sec_country_sale_0238.py`, `tests/security/test_sec_country_block.py`.
+
+## Operator preview priced by picture size (0243)
+
+0243 (`0243_preview_price_by_image_size.sql`, stream S10, stacked on 0238) replaces ONE function, `creative_price`, on 0228's body,
+with two marked hunks. It writes no row, grants nothing and opens nothing for sale.
+
+- **Evidence.** 0208 sells a model priced by size (`spec.pricing.variants.by = image_size`) only at the size the request names, by
+  the unit `model_<id>_<unit>_<size>`. 0139's preview fallback (the vendor's cost, when that unit has no `credit_prices` row) read
+  one flat figure; 0149 added the quoted resolution's and 0153 the quoted tier's, but none a size's. With `operator_preview` on
+  `gemini-3-pro-image` and `gemini-nano-banana-2.1` in the lab, the operator's quote at `image_size` 1K answered `NS400 unpriced`
+  for both (0238's section, "Why not an operator preview").
+- **Design.** No new registry field: the reviewed per-size figures already live where 0149 and 0153 read theirs,
+  `pricing.variants.prices`, keyed by `image_sizes` (the validator accepts only listed sizes as keys; `--sync` copies both into
+  `model_registry.spec`). The fallback's CASE gets one more WHEN: by `image_size`, with a settled size, `prices -> vsize`. `vsize`
+  is 0208's, the request's own `image_size`, set only after 0208 has refused a quote that names none or a size the model does not
+  list. A listed size with no figure of its own (absent, null, not a JSON number, 0, over 100) is `unpriced`: never another size's
+  figure, never the largest size's, never `provider_usd_per_unit` (CLAUDE.md #4, #5). 0149's cast, bounds and rate (figure x 100,
+  margin 0) are unchanged; a `credit_prices` row for the size still wins; who may preview is still 0139's rule.
+- **Drift guard.** Accepts only 0228's `creative_price` (`33bb0ea77aedd1ffc3df339034adc6d3`) or its own
+  (`9268c201fd930c1f7519cc601118661e`), md5 of `prosrc` with white space folded, and otherwise refuses by name. Backslash-free
+  (0224's and 0228's `@@..._BACKSLASH@@` plus `chr(92)` technique).
+- **Registry.** Both Google rows gain `"operator_preview": true` and a dated `terms_notes` record. `terms_gate` stays null,
+  `api_exposure` stays `web_only`, availability stays `hidden` (the database's), no credit price is added. The repo states no new
+  figure: the per-size figures are the ones the rows already carried.
+- **Owner steps.** Apply 0243 (after 0228), THEN `python tools/probe_models.py --sync` (spends nothing). A sync before 0243 lists two
+  dead ends in the operator's Studio (every preview quote `unpriced`). The rows still need a passing probe (`verified_at`) before
+  `creative_price` quotes them at all, and a preview job still needs the web server's signed country (0208 / 0230). Customer
+  per-size prices (`credit_prices` rows `model_gemini_3_pro_image_image_1k` ...) remain the owner's later act.
+- **Undo.** `docs/sql/rollback_0243_preview_price_by_image_size.sql` (owner-applied): puts 0228's `creative_price` back byte for
+  byte, only from 0243's own body (harmless elsewhere), and asserts it. Take the two `operator_preview` marks off and `--sync` first.
+  0228's rollback leaves a later body alone and then refuses at its end state, so roll back 0243 before 0228.
+- **Tests.** `tests/test_preview_price_by_image_size_migration.py`, `tests/security/test_sec_preview_price_by_image_size_0243.py`
+  (a real PostgreSQL, synthetic figures only); the lab chain (`sec_db.take_off_0243` inside `take_off_0228`, `put_back_0243` after
+  `put_back_0228`, 0243 last in `ON_0156`, `ON_0139` and `ON_0124`).

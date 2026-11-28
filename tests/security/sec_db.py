@@ -396,6 +396,9 @@ ON_0156 = (*(f for f in ON_0156 if f != "0228_music_per_request_price.sql"), "02
 ON_0156 = (*(f for f in ON_0156 if f != "0230_geo_gate_allow_list.sql"), "0230_geo_gate_allow_list.sql")
 #: 0238 (a country-listed row with an allow-list may go on sale) refuses to apply unless 0230's gate is live: after 0230, last.
 ON_0156 = (*ON_0156, "0238_country_list_sale_needs_allow_list.sql")
+#: 0243 (operator preview priced by picture size) sits on 0228's creative_price and refuses any other body: after 0228; listed last
+#: (it names nothing of 0230's or 0238's), wherever 0228 goes.
+ON_0156 = (*ON_0156, "0243_preview_price_by_image_size.sql")
 ON_0155 = (MIGRATION_0156.name, *ON_0156)
 #: Migrations written on 0153's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0153 out
 #: leaves these out too, in this order.
@@ -444,6 +447,8 @@ ON_0139 = (*(f for f in ON_0139 if f != "0230_geo_gate_allow_list.sql"), "0230_g
 ON_0139 = (*ON_0139, "0231_cancel_audit.sql")
 #: 0238 asks for 0230's gate: after 0230, last (ON_0156's copy moved here).
 ON_0139 = (*(f for f in ON_0139 if f != "0238_country_list_sale_needs_allow_list.sql"), "0238_country_list_sale_needs_allow_list.sql")
+#: 0243 sits on 0228's creative_price: after it, last (ON_0156's copy moved here).
+ON_0139 = (*(f for f in ON_0139 if f != "0243_preview_price_by_image_size.sql"), "0243_preview_price_by_image_size.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
@@ -474,8 +479,10 @@ ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164
            "0228_music_per_request_price.sql",
            # 0230 replaces 0208's creative_jobs_geo_gate and refuses to apply without 0208: out and back with it.
            "0230_geo_gate_allow_list.sql",
-           # 0238 refuses to apply unless 0230's gate is live: out and back with it, last.
-           "0238_country_list_sale_needs_allow_list.sql")
+           # 0238 refuses to apply unless 0230's gate is live: out and back with it.
+           "0238_country_list_sale_needs_allow_list.sql",
+           # 0243 sits on 0228's creative_price (and refuses any other body): out and back with it, last.
+           "0243_preview_price_by_image_size.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -662,7 +669,8 @@ def has_0159(conn_or_session) -> bool:
     return bool(conn.execute(
         "select coalesce((select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) = any (%s) from pg_proc "
         "where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')), false)",
-        [[CREATIVE_PRICE_0159, CREATIVE_PRICE_0208, CREATIVE_PRICE_0218, CREATIVE_PRICE_0218_0224, CREATIVE_PRICE_0228]]).fetchone()[0])
+        [[CREATIVE_PRICE_0159, CREATIVE_PRICE_0208, CREATIVE_PRICE_0218, CREATIVE_PRICE_0218_0224, CREATIVE_PRICE_0228,
+          CREATIVE_PRICE_0243]]).fetchone()[0])
 
 
 def has_0208(conn_or_session) -> bool:
@@ -671,7 +679,7 @@ def has_0208(conn_or_session) -> bool:
     return bool(conn.execute(
         "select coalesce((select md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) = any (%s) from pg_proc "
         "where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)')), false)",
-        [[CREATIVE_PRICE_0208, CREATIVE_PRICE_0218, CREATIVE_PRICE_0218_0224, CREATIVE_PRICE_0228]]).fetchone()[0])
+        [[CREATIVE_PRICE_0208, CREATIVE_PRICE_0218, CREATIVE_PRICE_0218_0224, CREATIVE_PRICE_0228, CREATIVE_PRICE_0243]]).fetchone()[0])
 
 
 def has_0224(conn_or_session) -> bool:
@@ -861,7 +869,7 @@ def has_0218(conn_or_session) -> bool:
     """0218 replaces all three in one transaction, so its creative_price body is enough to tell."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
     return _md5_of(conn, "public.creative_price(uuid, text, text, jsonb)") in (CREATIVE_PRICE_0218, CREATIVE_PRICE_0218_0224,
-                                                                               CREATIVE_PRICE_0228)
+                                                                               CREATIVE_PRICE_0228, CREATIVE_PRICE_0243)
 
 
 def rollback_0218_body() -> str:
@@ -913,9 +921,12 @@ CREATIVE_PARAMS_PROBLEM_0228 = "0570bb5a1f749b7e3d556c87443bf17b"
 
 
 def rollback_0228_body() -> str:
-    """0228's rollback without its own begin / commit. Harmless where 0228 is not on (it puts a body back only from 0228's own)."""
+    """0228's rollback without its own begin / commit. Harmless where 0228 is not on (it puts a body back only from 0228's own).
+    0243 sits on 0228's creative_price and 0228's rollback leaves (then refuses at its end state) a later body: 0243's rollback
+    (harmless where it is not on) first, so that every caller of this helper (rollback_0224_body, rollback_0208_body) can take 0228
+    off."""
     text = ROLLBACK_0228.read_text(encoding="utf-8")
-    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+    return rollback_0243_body() + "\n" + "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
 
 
 def has_0228(conn_or_session) -> bool:
@@ -927,6 +938,7 @@ def take_off_0228(conn_or_session) -> None:
     """0228 sits on 0224's creative_price and 0218's creative_params_problem, and their rollbacks refuse (or leave) its bodies: it comes
     off first, with its own rollback."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0243(conn)  # 0243 sits on 0228's creative_price: off first
     if has_0228(conn) or _md5_of(conn, "public.creative_params_problem(text, jsonb)") == CREATIVE_PARAMS_PROBLEM_0228:
         conn.execute(rollback_0228_body())
 
@@ -937,6 +949,41 @@ def put_back_0228(conn_or_session) -> None:
     if (not has_0228(conn) and _md5_of(conn, "public.creative_price(uuid, text, text, jsonb)") == CREATIVE_PRICE_0218_0224
             and _md5_of(conn, "public.creative_params_problem(text, jsonb)") == CREATIVE_PARAMS_PROBLEM_0218):
         conn.execute(MIGRATION_0228.read_text(encoding="utf-8"))
+    # 0243 on it again (it applies only on 0228's creative_price and does nothing where it is on already).
+    put_back_0243(conn)
+
+
+#: 0243 (operator preview priced by picture size, S10): 0228's creative_price plus two marked hunks (one more WHEN in the preview
+#: rate's CASE). Its guard accepts only 0228's creative_price, or its own body.
+MIGRATION_0243 = MIGRATIONS / "0243_preview_price_by_image_size.sql"
+ROLLBACK_0243 = REPO / "docs" / "sql" / "rollback_0243_preview_price_by_image_size.sql"
+CREATIVE_PRICE_0243 = "9268c201fd930c1f7519cc601118661e"
+
+
+def rollback_0243_body() -> str:
+    """0243's rollback without its own begin / commit. Harmless where 0243 is not on (it puts a body back only from 0243's own)."""
+    text = ROLLBACK_0243.read_text(encoding="utf-8")
+    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+
+
+def has_0243(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return _md5_of(conn, "public.creative_price(uuid, text, text, jsonb)") == CREATIVE_PRICE_0243
+
+
+def take_off_0243(conn_or_session) -> None:
+    """0243 sits on 0228's creative_price, and 0228's rollback leaves any other body (and then refuses at its end state): it comes off
+    first, with its own rollback."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0243(conn):
+        conn.execute(rollback_0243_body())
+
+
+def put_back_0243(conn_or_session) -> None:
+    """0243 again, only on 0228's creative_price (its drift guard refuses any other body)."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0243(conn) and _md5_of(conn, "public.creative_price(uuid, text, text, jsonb)") == CREATIVE_PRICE_0228:
+        conn.execute(MIGRATION_0243.read_text(encoding="utf-8"))
 
 
 def migration_0218_lab() -> str:

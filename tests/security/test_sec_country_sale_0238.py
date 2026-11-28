@@ -13,7 +13,7 @@ neither list through (BR-S6-04). What would break, and which test says so:
   a replay drifts                                                                 test_a_replay_changes_nothing
   the rollback leaves another CHECK than 0142's, or takes a row's gate away        test_the_rollback_*
   0230's or 0208's rollback takes the gate away under a model on sale             test_the_gates_rollbacks_refuse_while_a_listed_row_is_on_sale
-  a size-priced operator preview runs (why the cleared rows are not marked one)  test_a_size_priced_operator_preview_is_quoted_unpriced
+  a size-priced operator preview runs without 0243 (why the rows waited for it)  test_a_size_priced_operator_preview_is_quoted_unpriced
 
 Everything runs inside transactions that are rolled back. Nothing calls a provider.
 """
@@ -263,7 +263,8 @@ def test_the_gates_rollbacks_refuse_while_a_listed_row_is_on_sale(conn, sc):
 def test_the_lab_chain_puts_0238_back_after_0230(conn, sc):
     for name in ("ON_0156", "ON_0139", "ON_0125", "ON_0124"):
         seq = list(getattr(sec_db, name))
-        assert seq[-1] == MIGRATION.name, name
+        # Last, but for 0243, which sits on 0228's creative_price and names nothing of 0238's.
+        assert [f for f in seq if f != "0243_preview_price_by_image_size.sql"][-1] == MIGRATION.name, name
         assert seq.index(M0230.name) < seq.index(MIGRATION.name), name
     with as_superuser(conn, commit=False) as s:
         sec_db.take_off_0208(s)                                        # 0238's rollback first, then the gate goes
@@ -275,10 +276,11 @@ def test_the_lab_chain_puts_0238_back_after_0230(conn, sc):
 
 
 def test_a_size_priced_operator_preview_is_quoted_unpriced(conn, sc):
-    # Why the two cleared Google rows are NOT marked operator_preview (docs/MIGRATIONS.md, 0238): both are priced by image_size, and
-    # creative_price quotes a size-priced preview with no per-size credit_prices row as unpriced (0139's vendor-cost fallback reads
-    # no size). Measured on the shipped specs with the mark added: the preview path accepts them (not model_not_sellable) and then
-    # refuses the quote. When a migration teaches the fallback sizes, or the owner prices one, this is the test that changes.
+    # Why the two cleared Google rows were NOT marked operator_preview in 0238 (docs/MIGRATIONS.md, 0238): both are priced by
+    # image_size, and creative_price before 0243 quoted a size-priced preview with no per-size credit_prices row as unpriced (0139's
+    # vendor-cost fallback read no size). 0243 teaches the fallback sizes and the rows now carry the mark: measured on the shipped
+    # specs, the preview path accepts them (not model_not_sellable) and, with 0243 taken off, still refuses the quote. 0243's own
+    # pins are tests/security/test_sec_preview_price_by_image_size_0243.py.
     from modules import model_registry as reg
     from sec_scenario import DEFAULT_ORG
     from test_sec_operator_preview import _quote
@@ -286,9 +288,11 @@ def test_a_size_priced_operator_preview_is_quoted_unpriced(conn, sc):
     rows = {r["id"]: r for r in reg.sync_rows(list(reg.load().values()))}
     with as_superuser(conn, commit=False) as s:
         c = s.conn
+        sec_db.take_off_0243(c)                                        # 0228's creative_price: the fallback that reads no size
+        assert sec_db.has_0228(c)
         for mid in ("gemini-3-pro-image", "gemini-nano-banana-2.1"):
             r = rows[mid]
-            assert r["spec"]["terms_gate"] is None and "operator_preview" not in r["spec"], mid
+            assert r["spec"]["terms_gate"] is None and r["spec"]["operator_preview"] is True, mid
             assert r["spec"]["pricing"]["variants"]["by"] == "image_size", mid
             spec = {**r["spec"], "operator_preview": True}
             c.execute("insert into public.model_registry (id, display_name, provider, adapter, capabilities, spec, credit_unit, "

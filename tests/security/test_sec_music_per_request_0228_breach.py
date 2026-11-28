@@ -346,8 +346,9 @@ def test_0228_refuses_a_tampered_body_and_writes_nothing(db):
         c.execute("rollback to savepoint s")
         c.rollback()
     with psycopg.connect(db.dsn) as c:
+        # Untouched: the live body is still the chain's end (0243, on 0228's).
         assert c.execute(f"select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = '{CP}'::regprocedure"
-                         ).fetchone()[0] == sec_db.CREATIVE_PRICE_0228
+                         ).fetchone()[0] == sec_db.CREATIVE_PRICE_0243
 
 
 def test_the_rollbacks_beneath_refuse_to_strip_0228(db):

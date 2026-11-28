@@ -136,9 +136,9 @@ class TheRegistry(unittest.TestCase):
             m = REGISTRY[mid]
             with self.subTest(mid=mid):
                 self.assertIsNone(m["terms_gate"])
-                # Not an operator preview: priced by image_size, which creative_price's preview fallback cannot price (a dead end,
-                # tests/test_preview_price_by_quality_migration.py NoPreviewIsADeadEnd; the lab measures it).
-                self.assertNotIn("operator_preview", m)
+                # An operator preview since 0243, which teaches creative_price's preview fallback the figure of the requested
+                # size (before it, a dead end: tests/test_preview_price_by_image_size_migration.py; the lab measures both).
+                self.assertIs(m["operator_preview"], True)
                 self.assertEqual(m["pricing"]["variants"]["by"], "image_size")
                 self.assertIs(m["requires_adult"], True)
                 self.assertEqual(m["api_exposure"], "web_only")

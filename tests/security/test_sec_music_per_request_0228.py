@@ -138,8 +138,12 @@ def md5(conn, sig):
 
 
 def test_the_live_bodies_are_0228s(db):
-    with psycopg.connect(db.dsn) as c:
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        # 0243 sits on 0228's creative_price (two hunks in the preview rate): the chain ends there, and under it is 0228's body.
+        assert (md5(c, PP), md5(c, CP)) == (sec_db.CREATIVE_PARAMS_PROBLEM_0228, sec_db.CREATIVE_PRICE_0243)
+        sec_db.take_off_0243(c)
         assert (md5(c, PP), md5(c, CP)) == (sec_db.CREATIVE_PARAMS_PROBLEM_0228, sec_db.CREATIVE_PRICE_0228)
+        c.rollback()
 
 
 def test_a_per_request_music_model_is_quoted_for_one_request_with_no_duration(db):
@@ -209,6 +213,7 @@ def test_the_guard_refuses_a_creative_price_without_0224(bare):
 
 def test_rollback_refuses_while_a_row_names_music(db):
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0243(c)                                          # 0243 sits on 0228's creative_price: off first
         c.execute(sec_db.MIGRATION_0228.read_text(encoding="utf-8"))  # a replay changes nothing
         assert (md5(c, PP), md5(c, CP)) == (sec_db.CREATIVE_PARAMS_PROBLEM_0228, sec_db.CREATIVE_PRICE_0228)
         with pytest.raises(psycopg.Error) as e:                          # nothing is deleted on the owner's behalf
@@ -223,6 +228,7 @@ def test_rollback_and_replay(bare):
     check = ("select position('''music''' in pg_get_constraintdef((select oid from pg_constraint "
              "where conname = 'model_registry_capabilities_check')))")
     with psycopg.connect(bare.dsn, autocommit=False) as c:
+        sec_db.take_off_0243(c)                                          # 0243 sits on 0228's creative_price: off first
         c.execute(mig)                                                   # a replay changes nothing
         assert (md5(c, PP), md5(c, CP)) == (sec_db.CREATIVE_PARAMS_PROBLEM_0228, sec_db.CREATIVE_PRICE_0228)
         c.execute(sec_db.rollback_0228_body())
@@ -230,13 +236,13 @@ def test_rollback_and_replay(bare):
         assert c.execute(check).fetchone()[0] == 0
         c.execute(sec_db.rollback_0228_body())                           # twice: harmless
         assert (md5(c, PP), md5(c, CP)) == (sec_db.CREATIVE_PARAMS_PROBLEM_0218, sec_db.CREATIVE_PRICE_0224)
-        sec_db.put_back_0228(c)
-        assert (md5(c, PP), md5(c, CP)) == (sec_db.CREATIVE_PARAMS_PROBLEM_0228, sec_db.CREATIVE_PRICE_0228)
+        sec_db.put_back_0228(c)                                          # 0228, and 0243 on it again
+        assert (md5(c, PP), md5(c, CP)) == (sec_db.CREATIVE_PARAMS_PROBLEM_0228, sec_db.CREATIVE_PRICE_0243)
         assert c.execute(check).fetchone()[0] > 0
-        sec_db.take_off_0218(c)                                          # the chain: 0228, 0224, then 0218 come off
+        sec_db.take_off_0218(c)                                          # the chain: 0243, 0228, 0224, then 0218 come off
         assert md5(c, CP) == sec_db.CREATIVE_PRICE_0208
-        sec_db.put_back_0218(c)                                          # and back on, 0228 last
-        assert md5(c, CP) == sec_db.CREATIVE_PRICE_0228
+        sec_db.put_back_0218(c)                                          # and back on, 0228 then 0243 last
+        assert md5(c, CP) == sec_db.CREATIVE_PRICE_0243
         c.rollback()
 
 

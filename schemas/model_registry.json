@@ -1120,10 +1120,13 @@
         "Owner decision 2026-11-28 (relayed by Atlas): cleared the Gemini API Additional Terms age clause (18+) and Use Restrictions (not for consumer use), and Google Cloud Service Terms §20.d (not for services likely used by under-18s). terms_gate set to null.",
         "Owner's reasoning, 2026-11-28: the 18+ attestation (migration 0192, requires_adult) is asked of every user, Europe included, so the responsibility for those clauses does not fall on us. The decision covers only those 18+ and consumer-use clauses.",
         "Still OPEN after 2026-11-28: Google Cloud Service Terms §17.a (competing products) and Google APIs ToS §4(a) (sublicensing), hence api_exposure stays web_only. Not on sale: availability stays hidden and no credit price is added; opening for sale is the owner's act.",
-        "operator_preview NOT set (2026-11-28): priced by image_size, and creative_price (0208) quotes such a preview with no per-size credit_prices row as unpriced (lab-measured), so marking it would list a dead end (tests/test_preview_price_by_quality_migration.py)."
+        "(Superseded by 0243.) operator_preview NOT set (2026-11-28): priced by image_size, and creative_price (0208) quotes such a preview with no per-size credit_prices row as unpriced (lab-measured), so marking it would list a dead end (tests/test_preview_price_by_quality_migration.py).",
+        "operator_preview set (2026-11-28, S10 queue, owner confirms; migration 0243): a preview is quoted at exactly the requested size's figure in pricing.variants.prices; a size without one stays unpriced. Operator-only (0139); availability stays hidden, no credit price added.",
+        "Apply 0243 before the --sync that copies the operator_preview mark, or the operator's Studio lists a dead end (every preview quote unpriced)."
       ],
       "attribution": null,
       "api_exposure": "web_only",
+      "operator_preview": true,
       "blocked_countries": [
         "AF",
         "BV",
@@ -8838,10 +8841,13 @@
         "Owner decision 2026-11-28 (relayed by Atlas): cleared the Gemini API Additional Terms age clause (18+) and Use Restrictions (not for consumer use), and Google Cloud Service Terms §20.d (not for services likely used by under-18s). terms_gate set to null.",
         "Owner's reasoning, 2026-11-28: the 18+ attestation (migration 0192, requires_adult) is asked of every user, Europe included, so the responsibility for those clauses does not fall on us. The decision covers only those 18+ and consumer-use clauses.",
         "Still OPEN after 2026-11-28: Google Cloud Service Terms §17.a (competing products) and Google APIs ToS §4(a) (sublicensing), hence api_exposure stays web_only. Not on sale: availability stays hidden and no credit price is added; opening for sale is the owner's act.",
-        "operator_preview NOT set (2026-11-28): priced by image_size, and creative_price (0208) quotes such a preview with no per-size credit_prices row as unpriced (lab-measured), so marking it would list a dead end (tests/test_preview_price_by_quality_migration.py)."
+        "(Superseded by 0243.) operator_preview NOT set (2026-11-28): priced by image_size, and creative_price (0208) quotes such a preview with no per-size credit_prices row as unpriced (lab-measured), so marking it would list a dead end (tests/test_preview_price_by_quality_migration.py).",
+        "operator_preview set (2026-11-28, S10 queue, owner confirms; migration 0243): a preview is quoted at exactly the requested size's figure in pricing.variants.prices; a size without one stays unpriced. Operator-only (0139); availability stays hidden, no credit price added.",
+        "Apply 0243 before the --sync that copies the operator_preview mark, or the operator's Studio lists a dead end (every preview quote unpriced)."
       ],
       "attribution": null,
       "api_exposure": "web_only",
+      "operator_preview": true,
       "blocked_countries": [
         "AF",
         "BV",
