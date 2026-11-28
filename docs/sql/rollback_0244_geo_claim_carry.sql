@@ -5,7 +5,8 @@
 -- WHAT COMES BACK: 0230's creative_jobs_geo_gate, 0215's start_film and start_film_resume, 0198's film_take_job and 0226's
 --   start_workflow_run, verbatim, with their grants. A film take or a later workflow step on a model with a country list is then
 --   refused country_unverified again, and a start no longer refuses by country.
--- WHAT GOES: creative_geo_refusal, creative_geo_carried, creative_geo_carry_frozen and the table creative_geo_carry, with the countries
+-- WHAT GOES: the pg_cron job nightshift-geo-carry-prune (where pg_cron exists), creative_geo_carry_prune, creative_geo_refusal,
+--   creative_geo_carried, creative_geo_carry_frozen and the table creative_geo_carry, with the countries
 --   it recorded (only the gate read them, for runs in flight; after this file nothing reads them, and a visitor's country kept with
 --   no reader is data kept for nothing).
 -- WHAT IT DOES: 0. REFUSES (changes nothing) if any of the five bodies is neither 0244's nor the earlier one (a later file changed it:
@@ -856,6 +857,16 @@ $$;
 revoke all on function public.start_workflow_run(uuid, uuid, integer, jsonb, numeric) from public, anon, service_role;
 grant execute on function public.start_workflow_run(uuid, uuid, integer, jsonb, numeric) to authenticated;
 
+do $$
+begin
+  if to_regprocedure('cron.unschedule(text)') is not null and to_regclass('cron.job') is not null then
+    if exists (select 1 from cron.job where jobname = 'nightshift-geo-carry-prune') then
+      perform cron.unschedule('nightshift-geo-carry-prune');
+    end if;
+  end if;
+end $$;
+
+drop function if exists public.creative_geo_carry_prune();
 drop function if exists public.creative_geo_carried(public.creative_jobs);
 drop function if exists public.creative_geo_refusal(text, text);
 drop table if exists public.creative_geo_carry;
@@ -876,7 +887,8 @@ begin
     end if;
   end loop;
   if to_regprocedure('public.creative_geo_refusal(text, text)') is not null or to_regclass('public.creative_geo_carry') is not null
-     or to_regprocedure('public.creative_geo_carry_frozen()') is not null then
+     or to_regprocedure('public.creative_geo_carry_frozen()') is not null
+     or to_regprocedure('public.creative_geo_carry_prune()') is not null then
     raise exception 'rollback 0244 end state: something of 0244 is still there';
   end if;
 end $$;

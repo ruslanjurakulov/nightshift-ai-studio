@@ -126,6 +126,9 @@ export const studioTimelineEn = {
     limit_reached: "Another project of this workspace is running. Nothing was held.",
     cap_exceeded: "This project costs more than the workspace allows. Nothing was held.",
     acknowledgement_required: "A model of this project asks you to confirm your rights to one of its pictures (an uploaded frame, a reference, a character or the style kit). Confirm it once in the Studio (generate with that picture on a model that asks), or choose another model. Nothing was held.",
+    // 0244: the server could not confirm the visitor's country, or the country may not use a model of this project.
+    country_unverified: "A model of this project can only be used in supported regions, and we could not confirm yours. Nothing was held. Turn off any VPN or proxy and reload the page, or choose another model in the project.",
+    country_blocked: "A model of this project is not available in your region. Nothing was held. Choose another model in the project, then ask for the price again.",
     other: "The server did not start the project. Nothing was held.",
   },
   startNoAnswer: "No answer from the server. The start may have gone through: pressing again repeats the same start and never charges twice.",

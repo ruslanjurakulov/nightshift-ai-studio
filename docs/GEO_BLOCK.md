@@ -83,9 +83,11 @@ before anything is held, with the gate's own rule (`creative_geo_refusal`). The 
 only (`creative_geo_carry`, closed to every API role, never updated), and the gate accepts it for a new job of that segment's take
 (written by `film_take_job` for that take) until `film_segments.deadline_at`, or of that run's step (made by
 `workflow_advance_locked` under the step's own key, as the starter) within 24 hours of the start. Never for another segment, film or
-run, never extended, never refreshed but by a new start. This is the one place a country is stored, and only while a run may use it;
-`rollback_0244` drops it. The film start route does not send the claim yet, so until it does a film on a gated model is refused
-`country_unverified` at the start (nothing held).
+run, never extended, never refreshed but by a new start. This is the one place a country is stored: a daily pg_cron job
+(`nightshift-geo-carry-prune`) deletes each row 30 days after its segment or run settled, and `rollback_0244` drops the table. The
+film start route (`/api/films/[id]/start`) sends the claim for a project with a gated model, as Run now does; it never takes a country
+from the body. **Known gap:** a resume has no web route yet, so a resume of a project on a gated model is refused
+`country_unverified` (nothing held) until one exists; that fails closed and is accepted.
 
 ## How a request's country is known
 
@@ -122,6 +124,7 @@ run, never extended, never refreshed but by a new start. This is the one place a
 | `POST /api/region-edit/quote`, `/run` | the model is not among the ones it may pick (`loadStudioModels`); `/run` also answers 451 by name before `create_creative_job`, and sends 0208's signed country |
 | `POST /api/workflows/runs/[id]/advance` | not refused (an advance also settles the finished step); sends 0208's signed country only for a run with a gated step, and the database refuses the gated step's job without a valid one |
 | `POST /api/workflows/[id]/quote`, `/run` | 451 `country_blocked` if ANY step names such a model, before the database prices or holds anything. `/run` checks the steps of the version the body names: if the workflow reads as another version it answers 409 `workflow_changed` (an edit after the check raises the version, and the database then refuses the run, 0073); one it cannot read is refused, never passed on unchecked |
+| `POST /api/films/[id]/start` | sends 0208's signed country for a project with a gated model (0244); `start_film` refuses `country_blocked` / `country_unverified` by name before anything is held, and records the country its takes carry. A resume has no web route yet (refused without a claim) |
 | API and MCP | never offered: a model with a list must be `web_only` |
 
 **Automatic choice and failover.** The database picks a model (`route_model`, 0075) and keeps a failover list (0088) without

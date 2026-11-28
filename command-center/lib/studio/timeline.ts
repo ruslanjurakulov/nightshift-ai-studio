@@ -474,7 +474,7 @@ export type StartOutcome =
   | { ok: true; replayed: boolean }
   | { ok: false; reason: (typeof START_REASONS)[number] | "other" };
 
-const START_REASONS = ["insufficient_credits", "quote_expired", "price_changed", "film_changed", "film_studio_disabled", "film_not_startable", "reference_missing", "run_slots_full", "limit_reached", "cap_exceeded", "acknowledgement_required"] as const;
+const START_REASONS = ["insufficient_credits", "quote_expired", "price_changed", "film_changed", "film_studio_disabled", "film_not_startable", "reference_missing", "run_slots_full", "limit_reached", "cap_exceeded", "acknowledgement_required", "country_unverified", "country_blocked"] as const;
 
 /** start_film's answer (refusals that counted come back as `ok: false` rows, not errors). */
 export function coerceStart(raw: unknown): StartOutcome {

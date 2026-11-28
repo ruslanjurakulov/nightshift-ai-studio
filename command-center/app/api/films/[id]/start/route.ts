@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { FILM_CREATE_RATE } from "@/lib/server/web-rate";
-import { NO_STORE, filmFail, filmGateFor, filmRate, filmRefusal, readFilmBody } from "@/lib/server/films";
+import { NO_STORE, filmFail, filmGateFor, filmModels, filmRate, filmRefusal, readFilmBody } from "@/lib/server/films";
+import { geoClaimHeaders } from "@/lib/server/geo-claim";
+import { BLOCKED_COUNTRIES } from "@/lib/geo/blocked";
 import { IDEM_RE, parseFilmId } from "@/lib/films";
 
 export const runtime = "nodejs";
@@ -44,7 +46,19 @@ export const POST = requireSameOrigin(async function POST(request: Request, { pa
   }
   const limited = await filmRate(gate.userId, FILM_CREATE_RATE);
   if (limited) return limited;
-  const { data, error } = await gate.supabase.rpc("start_film", { p_film: filmId, p_quote_id: b.quote_id, p_idempotency_key: b.idem });
+  // 0244: a take's job is written later by the worker, with no visitor, so start_film reads the country here, from the claim this
+  // server signs (sent only when a model of the project has a country list, as Run now sends one for a workflow). The country comes
+  // from the visitor's address only, never from the body; start_film refuses a model the country may not use, by name, with nothing
+  // held, and records the country the project's takes carry.
+  let claim: Record<string, string> | undefined;
+  if (Object.keys(BLOCKED_COUNTRIES).length > 0) {
+    const models = await filmModels(gate.supabase, filmId);
+    if (!models) return filmFail("failed", 502);
+    claim = geoClaimHeaders(models, request.headers, gate.userId);
+  }
+  let call = gate.supabase.rpc("start_film", { p_film: filmId, p_quote_id: b.quote_id, p_idempotency_key: b.idem });
+  for (const [k, v] of Object.entries(claim ?? {})) call = call.setHeader(k, v);
+  const { data, error } = await call;
   if (error) {
     // Two of start_film's raised refusals are states the Timeline must name (the switch is off; the film already started), not
     // "failed": 0166's word list does not carry them, so they are answered here as the start's own `ok: false` rows.

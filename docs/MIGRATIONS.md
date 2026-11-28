@@ -3170,13 +3170,23 @@ request. A Film Studio take's job is written by the film worker (`film_take_job`
   loudly; re-running 0198, 0073 or 0208 silently puts one older body back (fails closed: the take or step is refused as before 0244):
   apply 0230 and 0244 again. `rollback_0215`, `rollback_0226` and `rollback_0230` refuse while 0244's bodies are live (the lab's
   `take_off_0226` and `take_off_0208` take 0244 off first; `put_back_0226` and `put_back_0230` put it back).
-- **The app.** The workflow routes already send the claim (Run now, advance). The film start route does not yet: until it does, a film
-  on a gated model is refused `country_unverified` at the start, with nothing held. Follow-up.
+- **The app.** The workflow routes already send the claim (Run now, advance), and the film start route
+  (`app/api/films/[id]/start`) now sends it for a project whose models (the project's and each scene's key-frame and clip model, the
+  voice model) include one with a country list, through the same helper (`geoClaimHeaders`); it never reads a country from the request
+  body, and a project whose models cannot be read is not started (502). The Timeline names `country_unverified` and
+  `country_blocked` in en / ru / uz with their remedy (`tests/film-start-geo-claim.test.ts`, `tests/film-start-country-copy.test.ts`).
+- **Known gap: resume.** There is no web route for `start_film_resume` yet. Without a claim it refuses a gated project
+  `country_unverified`, with nothing held: it fails closed, which is accepted until that route exists (it must send the claim the same way).
+- **The prune.** `creative_geo_carry_prune()` (SECURITY DEFINER, owned by postgres, no API role) deletes a recorded country 30 days
+  after its film segment settled (`settled` or `released`, by `settled_at`) or its workflow run ended (`completed`, `failed` or
+  `cancelled`, by `finished_at`); an open one is kept. The pg_cron job `nightshift-geo-carry-prune` runs it daily at 03:23 UTC, scheduled
+  in 0244 the way 0212 schedules its sweep (unscheduled first, so a replay leaves one job; the end state asserts the job when pg_cron is
+  present; a NOTICE says so when it is not). The rollback unschedules it.
 - **Number.** 0244, S10 (0243 is S10's `creative_price`, a separate PR; 0240 is reserved by S2). Needs 0036, 0073, 0198, 0208, 0215,
   0226, 0230, 0231. Independent of S2's 0235, 0236, 0239 and 0241 (none replaces these bodies) and of 0243.
 - **Undo.** `docs/sql/rollback_0244_geo_claim_carry.sql` (owner-applied): refuses a body that is neither 0244's nor the earlier one,
-  puts the five earlier bodies back verbatim with their grants, drops the three functions and the table (its countries had no other
-  reader), asserts the end state. Idempotent.
+  unschedules the prune job, puts the five earlier bodies back verbatim with their grants, drops the four functions and the table (its
+  countries had no other reader), asserts the end state. Idempotent.
 - **Tests.** `tests/security/test_sec_geo_claim_carry_0244.py` (a real PostgreSQL; contract `tests/security/sec_geo_claim_carry_0244.py`).
 
 ## Only a member spends a workspace's credits, on every path (0226, provisional)

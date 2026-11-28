@@ -656,8 +656,8 @@ def test_rollback_restores_each_body_byte_for_byte_is_harmless_twice_and_0244_ap
         for n in NAMES:
             assert c.execute("select prosrc from pg_proc where oid = %s::regprocedure", [sigs[n]]).fetchone()[0] == want[n], n
         live = {n: c.execute(acl, [sigs[n]]).fetchone()[0] for n in NAMES}
-        assert c.execute("select to_regclass('public.creative_geo_carry'), to_regprocedure('public.creative_geo_refusal(text, text)')"
-                         ).fetchone() == (None, None)
+        assert c.execute("select to_regclass('public.creative_geo_carry'), to_regprocedure('public.creative_geo_refusal(text, text)'), "
+                         "to_regprocedure('public.creative_geo_carry_prune()')").fetchone() == (None, None, None)
         c.execute(sec_db.rollback_0244_body())  # twice: harmless
         assert {n: c.execute("select prosrc from pg_proc where oid = %s::regprocedure", [sigs[n]]).fetchone()[0] for n in NAMES} == want
         assert {n: c.execute(acl, [sigs[n]]).fetchone()[0] for n in NAMES} == live == {n: after[n][1] for n in NAMES}
@@ -683,9 +683,10 @@ def test_the_end_state_holds_definer_owner_search_path_and_grants(db):
                  "where p.oid in (select to_regprocedure(x) from unnest(%s::text[]) x)",
                  [[s for s, _w, _n in sec_db.BODIES_0244] + ["public.creative_geo_refusal(text, text)",
                                                              "public.creative_geo_carried(public.creative_jobs)",
-                                                             "public.creative_geo_carry_frozen()"]])
+                                                             "public.creative_geo_carry_frozen()",
+                                                             "public.creative_geo_carry_prune()"]])
     got = {r[0]: r[1:] for r in rows}
-    assert len(got) == 8
+    assert len(got) == 9
     pinned = (True, ["search_path=public, pg_temp"], "postgres")
     want = {"start_film(uuid,text,text)": (False, True, False), "start_film_resume(uuid,text,text)": (False, True, False),
             "start_workflow_run(uuid,uuid,integer,jsonb,numeric)": (False, True, False),
@@ -700,3 +701,76 @@ def test_neither_the_file_nor_its_rollback_holds_a_backslash():
     for path in (MIGRATION, ROLLBACK):
         assert chr(92) not in path.read_text(encoding="utf-8"), path
     assert re.search(r"(?m)^begin;$", ROLLBACK.read_text(encoding="utf-8"))
+
+
+# ── the prune ───────────────────────────────────────────────────────────────
+
+def test_the_prune_deletes_a_record_30_days_after_its_start_settled_and_keeps_the_rest(db):
+    o = org(db)
+    segs = []
+    for i in range(3):
+        fid = db.film(o, settings=G_SETTINGS)
+        seg = start(db, o, fid, "UZ")
+        assert seg["ok"] is True, seg
+        segs.append(seg["id"])
+        if i < 2:  # settled (one film of an organization runs at a time); the third stays open
+            db.svc("select public.film_cancel_segment(%s, 'cancelled')", [seg["id"]])
+    old, recent, live = segs
+    db.su("update public.film_segments set settled_at = now() - interval '31 days' where id = %s", [old])
+    db.su("update public.film_segments set settled_at = now() - interval '29 days' where id = %s", [recent])
+    db.su("update public.film_segments set created_at = now() - interval '60 days' where id = %s", [live])  # open, however old
+    assert db.su("select status from public.film_segments where id = %s", [live])[0][0] == "queued"
+    runs = []
+    for _ in range(3):
+        run, _out = run_start(db, o, "UZ")
+        runs.append(run)
+    r_old, r_recent, r_live = runs
+    db.su("update public.workflow_runs set status = 'completed', finished_at = now() - interval '31 days' where id = %s", [r_old])
+    db.su("update public.workflow_runs set status = 'failed', finished_at = now() - interval '29 days' where id = %s", [r_recent])
+    db.su("update public.workflow_runs set created_at = now() - interval '60 days' where id = %s", [r_live])  # still running
+    gone = db.su("select public.creative_geo_carry_prune()")[0][0]
+    assert gone >= 2
+    assert carried(db, seg=old) == [] and carried(db, run=r_old) == []
+    for seg in (recent, live):
+        assert carried(db, seg=seg) == [("UZ", o.admin)], seg
+    for run in (r_recent, r_live):
+        assert carried(db, run=run) == [("UZ", o.editor)], run
+    db.su("select public.creative_geo_carry_prune()")  # a second pass keeps them too
+    assert carried(db, seg=recent) and carried(db, run=r_live)
+    for role, user in (("anon", None), ("authenticated", o.admin), ("service_role", None)):
+        assert err(lambda: db.act(role, user, "select public.creative_geo_carry_prune()"))[0] == "42501", role
+
+
+def test_with_pg_cron_the_daily_job_is_scheduled_once_and_the_rollback_removes_it(db):
+    from test_sec_film_sweep_0212 import CRON_STUB
+    q = "select jobname, schedule, command from cron.job where jobname = 'nightshift-geo-carry-prune'"
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute(CRON_STUB)
+        c.execute(MIGRATION.read_text(encoding="utf-8"))
+        c.execute(MIGRATION.read_text(encoding="utf-8"))  # a replay leaves one job
+        assert c.execute(q).fetchall() == [("nightshift-geo-carry-prune", "23 3 * * *", "select public.creative_geo_carry_prune()")]
+        c.execute(sec_db.rollback_0244_body())
+        assert c.execute(q).fetchall() == []
+        c.rollback()
+
+
+def test_with_pg_cron_a_schedule_that_did_not_land_fails_the_file(db):
+    from test_sec_film_sweep_0212 import CRON_STUB
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute(CRON_STUB)
+        c.execute("create or replace function cron.schedule(job_name text, schedule text, command text) returns bigint "
+                  "language sql as $f$ select 0::bigint $f$")
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(MIGRATION.read_text(encoding="utf-8"))
+        assert "the job nightshift-geo-carry-prune is not this file's, once" in str(e.value), str(e.value)
+        c.rollback()
+
+
+def test_without_pg_cron_it_applies_and_says_so(db):
+    notices = []
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.add_notice_handler(lambda d: notices.append(d.message_primary))
+        assert c.execute("select to_regclass('cron.job')").fetchone()[0] is None
+        c.execute(MIGRATION.read_text(encoding="utf-8"))
+        c.rollback()
+    assert any("pg_cron is not enabled, so the daily prune" in n for n in notices), notices

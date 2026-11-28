@@ -119,6 +119,9 @@ export const studioTimelineUz: StudioTimelineDictionary = {
     limit_reached: "Ish maydonining boshqa loyihasi ishlayapti. Hech narsa band qilinmadi.",
     cap_exceeded: "Loyiha ish maydoni ruxsatidan qimmat. Hech narsa band qilinmadi.",
     acknowledgement_required: "Bu loyihaning modeli rasmlardan biriga (yuklangan kadr, namuna, personaj yoki uslub toʻplami) huquqingizni tasdiqlashni soʻraydi. Buni Studiyada bir marta tasdiqlang (shu rasm bilan soʻraydigan modelda yarating) yoki boshqa model tanlang. Hech narsa band qilinmadi.",
+    // 0244: server tashrif buyuruvchining hududini tasdiqlay olmadi yoki loyiha modeli bu hududda mavjud emas.
+    country_unverified: "Bu loyihaning modeli faqat qoʻllab-quvvatlanadigan hududlarda ishlaydi, sizning hududingizni aniqlab boʻlmadi. Hech narsa band qilinmadi. VPN yoki proksini oʻchirib, sahifani yangilang yoki loyihada boshqa modelni tanlang.",
+    country_blocked: "Bu loyihaning modeli sizning hududingizda mavjud emas. Hech narsa band qilinmadi. Loyihada boshqa modelni tanlang va narxni qayta soʻrang.",
     other: "Server loyihani boshlamadi. Hech narsa band qilinmadi.",
   },
   startNoAnswer: "Serverdan javob kelmadi. Boshlash amalga oshgan boʻlishi mumkin: qayta bosish xuddi shu boshlashni takrorlaydi va ikki marta yechmaydi.",

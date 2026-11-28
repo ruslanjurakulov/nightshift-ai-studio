@@ -46,6 +46,10 @@
 --   start_workflow_run (0226's body)   reads the claim once after the adult gate, asks every step's model, and RAISES the refusal
 --     (NS400, the step named) before the account is read or anything held; the run's country is recorded right after it is written.
 --   film_take_job (0198's body)        names the take in nightshift.geo_carry_take around its one insert.
+--   creative_geo_carry_prune()          NEW, internal: deletes a recorded country 30 days after its film segment settled (settled or
+--     released, by settled_at) or its workflow run ended (completed, failed or cancelled, by finished_at); an open one is kept. Run
+--     daily by the pg_cron job nightshift-geo-carry-prune (03:23 UTC), scheduled here where pg_cron is enabled (unscheduled first, so a
+--     replay leaves one job; the end state asserts it). Where pg_cron is not enabled the file says so in a NOTICE.
 --
 -- NOT CHANGED: geo_claim_country (0208's body, checked), the trigger itself, workflow_advance_locked and create_creative_job (0231's,
 --   whose step key this file relies on; checked to carry it), film_fail_locked (a take the gate refuses ends through it as before),
@@ -74,14 +78,15 @@
 --   step is refused country_unverified, as before this file). rollback_0215, rollback_0226 and rollback_0230 refuse while this file's
 --   bodies are live; rollback_0171 and rollback_0073 cannot drop a table creative_geo_carry references: take this file out first.
 --
--- APP. The workflow routes already send the signed claim for a run with a gated step (Run now, advance). The film start route
---   (app/api/films/[id]/start) does NOT send one yet: until it does, a film on a gated model is refused country_unverified at the
---   start, with nothing held, instead of failing at its first take. Follow-up, not in this file.
+-- APP. The workflow routes already send the signed claim for a run with a gated step (Run now, advance), and the film start route
+--   (app/api/films/[id]/start) sends it for a project with a gated model (the same helper, lib/server/geo-claim.ts). A resume has no
+--   web route yet: start_film_resume reads the claim the same way, and without one it refuses a gated project country_unverified,
+--   with nothing held (fails closed; accepted as a known gap until that route exists).
 --
 -- NUMBER. 0244, assigned to stream S10 (0243 is S10's creative_price, a separate PR; 0240 is reserved by S2). Needs 0036, 0073, 0198,
 --   0208, 0215, 0226, 0230, 0231. Independent of S2's 0235, 0236, 0239 and 0241 (none of them replaces these bodies) and of 0243.
 -- Rollback: docs/sql/rollback_0244_geo_claim_carry.sql (owner-applied): the five earlier bodies back verbatim, the three functions and
---   the table dropped.
+--   the table dropped, the pg_cron job unscheduled.
 --
 -- NO BACKSLASH in this file or its rollback (an apply tool can rewrite escape sequences).
 --
@@ -1159,6 +1164,48 @@ revoke all on function public.start_workflow_run(uuid, uuid, integer, jsonb, num
 grant execute on function public.start_workflow_run(uuid, uuid, integer, jsonb, numeric) to authenticated;
 
 -- ───────────────────────────────────────────────────────────────────────────
+-- 6. The prune: a recorded country goes 30 days after its start settled
+-- ───────────────────────────────────────────────────────────────────────────
+
+-- A recorded country is kept only while some start may still use it, and a while after for whoever reads why a take was refused:
+-- 30 days after its film segment settled (settled or released, by settled_at) or its workflow run ended (completed, failed or
+-- cancelled, by finished_at). A row whose segment or run is still open, or has no settle time, is kept. Daily, by pg_cron (below).
+create or replace function public.creative_geo_carry_prune() returns integer
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  n integer;
+begin
+  delete from public.creative_geo_carry g
+   where exists (select 1 from public.film_segments s
+                  where s.id = g.film_segment_id and s.status in ('settled', 'released') and s.settled_at < now() - interval '30 days')
+      or exists (select 1 from public.workflow_runs r
+                  where r.id = g.workflow_run_id and r.status in ('completed', 'failed', 'cancelled')
+                    and r.finished_at < now() - interval '30 days');
+  get diagnostics n = row_count;
+  return n;
+end
+$$;
+revoke all on function public.creative_geo_carry_prune() from public, anon, authenticated, service_role;
+
+-- Daily at 03:23 UTC, when pg_cron is enabled (as 0111, 0164 and 0212 schedule theirs; unscheduled first, so a replay leaves one job).
+-- Where pg_cron exists a failed schedule fails the file (the end state asserts the job); where it does not, a NOTICE says so.
+do $$
+begin
+  if to_regprocedure('cron.schedule(text, text, text)') is not null
+     and to_regprocedure('cron.unschedule(text)') is not null
+     and to_regclass('cron.job') is not null then
+    if exists (select 1 from cron.job where jobname = 'nightshift-geo-carry-prune') then
+      perform cron.unschedule('nightshift-geo-carry-prune');
+    end if;
+    perform cron.schedule('nightshift-geo-carry-prune', '23 3 * * *', 'select public.creative_geo_carry_prune()');
+  else
+    raise notice '%', '0244: pg_cron is not enabled, so the daily prune of creative_geo_carry was NOT scheduled. To schedule it: enable '
+      || 'pg_cron in the Supabase dashboard (Database -> Extensions -> pg_cron), then apply 0244 again. Until then nothing deletes a '
+      || 'recorded country (select public.creative_geo_carry_prune() in the SQL editor does it by hand)';
+  end if;
+end $$;
+
+-- ───────────────────────────────────────────────────────────────────────────
 -- End state (refuses the whole transaction if any of it is not so)
 -- ───────────────────────────────────────────────────────────────────────────
 
@@ -1166,6 +1213,7 @@ do $$
 declare
   r record;
   g record;
+  n bigint;
 begin
   for r in select * from (values
       ('public.start_film(uuid, text, text)', 'c74f5b0b9801a28bd12880daf9aee0a2', 'authenticated'),
@@ -1175,7 +1223,8 @@ begin
       ('public.creative_jobs_geo_gate()', '9168636478a1cbeb1a4de2ff50afaae0', null),
       ('public.creative_geo_refusal(text, text)', 'd896cd83b199454f5f37787a6af400f6', null),
       ('public.creative_geo_carried(public.creative_jobs)', '79baa87e012afeebcbbf53ad21022a2f', null),
-      ('public.creative_geo_carry_frozen()', 'c72db59fcc595adb4b2921ceb587d50e', null)) v(sig, want, who) loop
+      ('public.creative_geo_carry_frozen()', 'c72db59fcc595adb4b2921ceb587d50e', null),
+      ('public.creative_geo_carry_prune()', '5beece74ec3a197212ad07057396951d', null)) v(sig, want, who) loop
     if (select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) from pg_proc p where p.oid = to_regprocedure(r.sig)) is distinct from r.want then
       raise exception '0244 end state: % is not 0244''s body', r.sig;
     end if;
@@ -1207,6 +1256,16 @@ begin
       raise exception '0244 end state: % holds a privilege on creative_geo_carry', g.role_;
     end if;
   end loop;
+  -- Dynamic, because cron.job is not there to be planned against where pg_cron is not installed. Never silent live: present, the job
+  -- must be this file's, once.
+  if to_regprocedure('cron.schedule(text, text, text)') is not null and to_regprocedure('cron.unschedule(text)') is not null
+     and to_regclass('cron.job') is not null then
+    execute 'select count(*) from cron.job where jobname = ''nightshift-geo-carry-prune'' and schedule = ''23 3 * * *'' '
+            'and command = ''select public.creative_geo_carry_prune()''' into n;
+    if n <> 1 then
+      raise exception '0244 end state: pg_cron is installed but the job nightshift-geo-carry-prune is not this file''s, once';
+    end if;
+  end if;
 end $$;
 
 notify pgrst, 'reload schema';

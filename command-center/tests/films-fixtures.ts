@@ -73,6 +73,7 @@ export function withOrgSwitch(
   rest: (table: string) => unknown,
   answer: () => OrgSwitchAnswer = () => ({ data: [{ org_id: ORG, film_studio_enabled: true }], error: null }),
   filmOrg: () => OrgSwitchAnswer = () => ({ data: { org_id: ORG }, error: null }),
+  models: FilmModelsAnswer = FILM_MODELS_UNLISTED,
 ) {
   const settle = async (a: OrgSwitchAnswer) => {
     if (a instanceof Error) throw a;
@@ -80,15 +81,36 @@ export function withOrgSwitch(
   };
   return (table: string) => {
     if (table === "org_film_settings") return { select: () => ({ in: async () => settle(answer()) }) };
+    // 0244: the start route reads the project's models, to send the server-signed country only when one has a country list.
+    if (table === "film_scenes") {
+      return {
+        select: (cols: string) =>
+          cols === FILM_SCENE_MODEL_COLUMNS
+            ? { eq: async () => settle(models.scenes()) }
+            : (rest(table) as { select: (c: string) => unknown }).select(cols),
+      };
+    }
     if (table !== "films") return rest(table);
     return {
       select: (cols: string) =>
         cols === "org_id"
           ? { eq: () => ({ maybeSingle: async () => settle(filmOrg()) }) }
-          : (rest(table) as { select: (c: string) => unknown }).select(cols),
+          : cols === FILM_MODEL_COLUMNS
+            ? { eq: () => ({ maybeSingle: async () => settle(models.film()) }) }
+            : (rest(table) as { select: (c: string) => unknown }).select(cols),
     };
   };
 }
+
+/** The columns the start route reads (lib/server/filmModels): the project's and each scene's models. */
+export const FILM_MODEL_COLUMNS = "keyframe_model, clip_model, voice";
+export const FILM_SCENE_MODEL_COLUMNS = "keyframe_model, clip_model";
+export type FilmModelsAnswer = { film: () => OrgSwitchAnswer; scenes: () => OrgSwitchAnswer };
+/** A project on models with no country list: the start sends no country. */
+export const FILM_MODELS_UNLISTED: FilmModelsAnswer = {
+  film: () => ({ data: { keyframe_model: "img-a", clip_model: "vid-a", voice: { model: "tts-a" } }, error: null }),
+  scenes: () => ({ data: [{ keyframe_model: null, clip_model: null }], error: null }),
+};
 
 /** The open workspace as getOrgContext gives it (ORG, an editor). */
 export const ORG_CONTEXT = { supported: true, orgs: [], switchable: [], current: { id: ORG, role: "editor" } };

@@ -263,6 +263,29 @@ export async function listFilms(supabase: Client, orgId: string, archived: boole
 export type FilmRead = { ok: true; view: FilmView; raw: unknown } | { ok: false; error: FilmError; status: number };
 
 /** One project through film_json (viewer and up; another workspace's project reads exactly like a missing one). */
+/**
+ * Every model a project's start can price (migration 0244): the project's key-frame and clip models and its narration voice model,
+ * and each scene's own key-frame and clip models. The start route sends the server-signed country (lib/server/geo-claim.ts) only
+ * when one of them has a country list, exactly as Run now does for a workflow's steps; start_film reads that claim, refuses a model
+ * the country may not use, and records the country the project's takes carry. `null` when the project could not be read: the
+ * route answers 502 rather than start a project it did not check (the database would refuse a gated one anyway).
+ */
+export async function filmModels(supabase: Client, filmId: string): Promise<string[] | null> {
+  try {
+    const film = await supabase.from("films").select("keyframe_model, clip_model, voice").eq("id", filmId).maybeSingle();
+    if (film.error || !film.data) return null;
+    const scenes = await supabase.from("film_scenes").select("keyframe_model, clip_model").eq("film_id", filmId);
+    if (scenes.error || !Array.isArray(scenes.data)) return null;
+    const f = film.data as { keyframe_model?: unknown; clip_model?: unknown; voice?: unknown };
+    const voice = f.voice && typeof f.voice === "object" ? (f.voice as { model?: unknown }).model : undefined;
+    const all = [f.keyframe_model, f.clip_model, voice,
+      ...(scenes.data as { keyframe_model?: unknown; clip_model?: unknown }[]).flatMap((s) => [s.keyframe_model, s.clip_model])];
+    return [...new Set(all.filter((m): m is string => typeof m === "string" && m.length > 0))];
+  } catch {
+    return null;
+  }
+}
+
 export async function readFilm(supabase: Client, id: string): Promise<FilmRead> {
   const filmId = parseFilmId(id);
   if (!filmId) return { ok: false, error: "not_found", status: 404 };

@@ -93,6 +93,10 @@ export const START_REMEDIES: Readonly<Record<string, StartRemedy>> = {
   // 0236 (BR-SG-01): film_price refuses a scene that asks for its clip's own sound while the cut does not keep it yet. The person turns
   // the scene's sound option off; nothing is bought that the film would drop.
   clip_sound_not_kept: "fix_and_requote",
+  // 0244: start_film refuses a model this visitor's country may not use, or one it could not confirm. The person turns off a VPN or
+  // proxy and reloads, or chooses another model in the project; nothing is swapped (rule 4).
+  country_unverified: "fix_and_requote",
+  country_blocked: "fix_and_requote",
   limit_reached: "wait",
   rate_limited: "wait",
   rate_limit_unavailable: "wait",
