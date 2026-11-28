@@ -21,6 +21,22 @@ that dies between ``submitting`` and ``submitted`` leaves the provider's state
 unknown; the database fails that job (``submit_interrupted``) and releases the
 customer's hold rather than risk a second paid submit.
 
+Cost rows
+---------
+Every call that reached a vendor (a task id came back) gets exactly one
+``creative_job_costs`` row (0037), whatever the job's outcome: the failed
+ones are spend the platform absorbs. A delivered file writes the vendor's
+usage after the job is settled; a failed task, a timeout, an answer without a
+file, a refusal after the poll, or a task id that could not be stored writes
+the adapter's usage for what was asked, ``price_source`` 'failed_call' with no
+USD (a picture count NULL): an estimate, never a measurement. A job left with
+its task id stored (the database out of reach, the worker stopping, the job no
+longer ours) writes nothing: the claim that polls the task next writes it,
+after asking the database whether the call has a row already
+(``resumed_call``). Recording is reporting only: it never raises and never
+changes the outcome. Not covered: a submit that raised (nothing says whether
+the vendor took it).
+
 No silent substitution
 ----------------------
 EXACT mode (the model the person picked, CLAUDE.md #4): the job's adapter is
@@ -401,22 +417,42 @@ FAILED_CALL_PRICE_SOURCE = "failed_call"
 
 class VendorCall:
     """One call that reached a vendor (a task id came back, or a synchronous answer did), so that it gets exactly one cost row
-    whatever happens next. ``recorded``: its row was written (or attempted: a record that raised is not retried as a second row,
-    and a success that reported no usage still owns the call). ``delivered``: the vendor's own usage for an answer that carried a
-    usable file, kept until the result is settled; a later failure records it, never a failed_call estimate in its place."""
+    whatever happens next. ``recorded``: its row was written (or attempted: a record that raised is not retried as a second row).
+    ``delivered``: the vendor answered with a usable file; ``usage`` is what it reported for it (None when it reported nothing).
+    A delivered call's row is the vendor's usage, or no row at all, never a failed_call estimate in its place."""
 
-    __slots__ = ("recorded", "delivered")
+    __slots__ = ("recorded", "delivered", "usage")
 
     def __init__(self, *, recorded: bool = False):
         self.recorded = recorded
-        self.delivered: Optional[ProviderUsage] = None
+        self.delivered = False
+        self.usage: Optional[ProviderUsage] = None
+
+    def deliver(self, usage: Optional[ProviderUsage]) -> None:
+        self.delivered, self.usage = True, usage
+
+
+def resumed_call(sink: Any, job_id: str) -> VendorCall:
+    """The call of a job this claim resumes (its task id stored by a worker that left). That worker may have written the call's
+    row before it left (its delivered answer, or a failure just before it died), so the database is asked; a call that already
+    has a row, or whose row cannot be checked, is never written again here: a missing row reads as unknown, a second one as
+    spend that never happened."""
+    ask = getattr(sink, "has_cost", None)
+    if not callable(ask):
+        return VendorCall(recorded=True)
+    try:
+        return VendorCall(recorded=bool(ask(job_id)))
+    except Exception as e:  # noqa: BLE001 — reporting only
+        logger.warning("job %s: whether its call has a cost row could not be read (%s); none is written", job_id, type(e).__name__)
+        return VendorCall(recorded=True)
 
 
 def failed_call_usage(adapter: Any, request: GenerationRequest,
                       reported: Optional[ProviderUsage] = None) -> Optional[ProviderUsage]:
     """The usage row for a call that delivered nothing: the adapter's own ``usage(request, 0)`` (the requested seconds, the
-    prompt's characters, 0 pictures), else what the vendor's answer reported, marked failed_call with no USD. None when neither
-    exists; nothing is made up."""
+    prompt's characters), else what the vendor's answer reported, marked failed_call with no USD. A picture's count is not
+    known for a call that returned none (the vendor may bill the pictures it began, or none), so it is NULL, never 0. None when
+    there is no usage at all; nothing is made up."""
     usage = None
     fn = getattr(adapter, "usage", None)
     if callable(fn):
@@ -429,7 +465,8 @@ def failed_call_usage(adapter: Any, request: GenerationRequest,
         usage = reported if isinstance(reported, ProviderUsage) else None
     if usage is None:
         return None
-    return replace(usage, usd=None, price_source=FAILED_CALL_PRICE_SOURCE)
+    quantity = None if usage.unit == "image" else usage.quantity
+    return replace(usage, quantity=quantity, usd=None, price_source=FAILED_CALL_PRICE_SOURCE)
 
 
 def record_call_cost(sink: Any, job_id: str, usage: Optional[ProviderUsage], call: VendorCall) -> None:
@@ -448,10 +485,11 @@ def record_call_cost(sink: Any, job_id: str, usage: Optional[ProviderUsage], cal
 
 def record_unfinished_call(sink: Any, adapter: Any, request: GenerationRequest, call: VendorCall,
                            reported: Optional[ProviderUsage] = None) -> None:
-    """The call ended here without its row: the vendor's own usage if it delivered a file, else a failed_call estimate."""
+    """The call ended here without its row: the vendor's own usage if it delivered a file (or nothing, if it reported none),
+    else a failed_call estimate."""
     if call.recorded:
         return
-    usage = call.delivered if call.delivered is not None else failed_call_usage(adapter, request, reported)
+    usage = call.usage if call.delivered else failed_call_usage(adapter, request, reported)
     record_call_cost(sink, request.job_id, usage, call)
 
 
@@ -606,6 +644,24 @@ class CreativeRest:
             "p_job": job_id, "p_provider": usage.provider, "p_route": usage.route,
             "p_vendor_model": usage.vendor_model, "p_unit": usage.unit,
             "p_quantity": usage.quantity, "p_usd": usage.usd, "p_price_source": usage.price_source})
+
+    def has_cost(self, job_id: str) -> bool:
+        """Whether the job already has a cost row (0037 grants the service role select). Asked only when a claim resumes a call
+        another worker made, so that call is never written twice. Raises CreativeUnavailable when it cannot be read."""
+        try:
+            with self._lock:
+                r = self._http.get(f"{self.url}/rest/v1/creative_job_costs",
+                                   params={"select": "id", "job_id": f"eq.{job_id}", "limit": "1"}, timeout=self._timeout,
+                                   headers={"apikey": self._key, "Authorization": f"Bearer {self._key}"})
+        except Exception as e:
+            raise CreativeUnavailable(f"creative_job_costs: {type(e).__name__}") from None
+        if r.status_code >= 300:
+            raise CreativeUnavailable(f"creative_job_costs: HTTP {r.status_code}")
+        try:
+            rows = r.json()
+        except ValueError:
+            raise CreativeUnavailable("creative_job_costs: unreadable answer") from None
+        return isinstance(rows, list) and len(rows) > 0
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────
@@ -871,9 +927,9 @@ class CreativeWorker:
             adapter = self.resolve_adapter(model)
             if adapter is None:
                 raise _Refused("adapter_missing", f"this worker has no adapter for {model}")
-            # The worker that submitted it left without the call's row (it leaves a stored task for the next claim to poll): this
-            # claim's outcome is the call's one row.
-            return self._poll(job, request, adapter, str(task_id), beat, VendorCall())
+            # The worker that submitted it left the task stored for this claim to poll, normally without the call's row; this
+            # claim's outcome is that row, unless the database already holds one (resumed_call).
+            return self._poll(job, request, adapter, str(task_id), beat, resumed_call(self.queue, job_id))
 
         if request.capability in SOURCE_CAPABILITIES:
             # Before 'submitting': a refusal here costs nobody anything.
@@ -923,7 +979,9 @@ class CreativeWorker:
         try:
             stored = self.queue.advance(job_id, self.worker_id, "submitted", task_id, {"model": model})
         except BaseException:
-            # No task id stored: no later claim polls this call (the stale sweep fails the job), so its row is written here.
+            # Most likely not stored, and then no later claim polls this call (the stale sweep fails the job), so its row is
+            # written here. If the database did store it before the answer was lost, the claim that polls it finds this row
+            # (resumed_call) and writes none.
             record_unfinished_call(self.queue, adapter, request, call)
             raise
         if not stored:
@@ -1321,7 +1379,7 @@ class CreativeWorker:
             # (a failed_call row, written by _poll).
             raise _Refused("bad_response", "the provider reported success without an output file")
         # A file came back: the vendor's own usage is this call's row, even if storing or settling it fails below.
-        call.delivered = result.usage
+        call.deliver(result.usage)
         if request.capability in TEXT_CAPABILITIES:
             return self._store_text(request, files, result, call)
         if request.capability in CAPTION_CAPABILITIES:

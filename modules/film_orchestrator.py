@@ -32,10 +32,12 @@ and fails as no_output. Both are charged 0 (0171), and 0171 plans the retry.
 Cost rows (0037, reporting only): every call that reached a vendor (a task id or a synchronous answer came back) gets exactly one
 creative_job_costs row, whatever the take's outcome, because the takes that fail are the ones whose vendor spend the platform absorbs.
 A delivered answer writes the vendor's usage; a failed one, a timeout, an answer without a file, or a call abandoned with nobody left
-to poll it writes the adapter's usage for what was asked (``price_source`` failed_call, usd None: an estimate, never a measurement). A
-take left with its task id stored writes nothing: the claim that polls it next writes its row. A retry is a second call and a second
-row; each narration scene is one call and one row. Not covered: a submit that raised (nothing says whether the vendor took it), and a
-worker that died between storing a ``sync:`` key and polling it.
+to poll it writes the adapter's usage for what was asked (``price_source`` failed_call, usd None, a picture count NULL: an estimate,
+never a measurement). A take's delivered row is written once its job records 'processing'; before that, a take left with its task id
+stored writes nothing, and the claim that polls it next writes its row, after asking the database whether the call has one already
+(cw.resumed_call). A take 0171 ended as worker_lost with a task id stored gets its failed_call estimate from the claim that finds it.
+A retry is a second call and a second row; each narration scene is one call and one row. Not covered: a submit that raised (nothing
+says whether the vendor took it), and a worker that died between storing a ``sync:`` key and polling it.
 
 The narration is voiced one scene at a time and laid out on the film's clock (docs/FILM_STUDIO.md, P4a): each scene's words start
 NARRATION_LEAD_S into the scene. The file's provenance carries the per-scene ``segments`` and the measured ``loudness_lufs`` /
@@ -682,29 +684,31 @@ class FilmOrchestrator:
         tid, kind = str(take["id"]), str(take["kind"])
         status, task = str(tj.get("job_status") or ""), tj.get("provider_task_id")
         if status in ("completed", "failed", "cancelled", "expired"):
+            self._abandoned_call(seg, take, tj, job)
             raise _TakeFailed("worker_lost", "the take's job ended while no worker held it")
         if tj.get("job_worker") != self.worker_id:
-            # film_take_job hands a live job to the lease holder; one it could not (the creative queue took it back) is lost.
+            # film_take_job hands a live job to the lease holder; one it could not is lost (since 0198 no credit worker claims a
+            # film job, so nobody else polls its task either).
+            self._abandoned_call(seg, take, tj, job)
             raise _TakeFailed("worker_lost", "the take's job is no longer this worker's")
         model = str(take.get("model") or "")
         adapter = self.resolve_adapter(model)
         if adapter is None:
             raise _TakeFailed("auth", f"this worker has no adapter for {model}")
         work = self.out_dir / str(seg["id"]) / tid
-        request = cw.GenerationRequest(job_id=job, org_id=str(seg["org_id"]), capability=str(tj["capability"]), model=model,
-                                       params=dict(tj.get("params") or {}),
-                                       quantity=float(take["quantity"]) if take.get("quantity") is not None else None)
+        request = self._request(seg, take, tj, job)
         if task:
             if str(task).startswith(("sync:", "film-tts:")):
                 # No row here: the worker that made the call polled a synchronous answer (and each narration scene) right after it,
                 # and wrote its row then; what was lost is the storing (module doc, "Cost rows", for the one window not covered).
                 raise _TakeFailed("no_output", "the worker stopped after the provider answered and before the result was stored")
-            # The worker that submitted this task left it stored, without its row, for this claim to poll. A job already
-            # 'processing' had its poll answered and its row written before the storing began: never a second row.
-            call = cw.VendorCall(recorded=status == "processing")
+            # The worker that submitted this task left it stored for this claim to poll, normally without its row. One that got as
+            # far as 'processing' (or died just after writing a failure's row) did write it: the database is asked (resumed_call).
+            call = cw.resumed_call(self.db, job)
             try:
                 files = self._poll(adapter, str(task), request, work / "out", lease, call)
-                return self._deliver(seg, take, tj, job, request, files, str(task), work, None, processing=status == "processing")
+                return self._deliver(seg, take, tj, job, request, files, str(task), work, None, processing=status == "processing",
+                                     call=call)
             except _TakeFailed:
                 cw.record_unfinished_call(self.db, adapter, request, call)
                 raise
@@ -732,7 +736,7 @@ class FilmOrchestrator:
                 raise _Stop("job_lost")
             stored = True
             files = self._poll(adapter, task, request, work / "out", lease, call)
-            return self._deliver(seg, take, tj, job, request, files, task, work, None)
+            return self._deliver(seg, take, tj, job, request, files, task, work, None, call=call)
         except _TakeFailed:
             cw.record_unfinished_call(self.db, adapter, request, call)
             raise
@@ -742,6 +746,30 @@ class FilmOrchestrator:
             if not stored:
                 cw.record_unfinished_call(self.db, adapter, request, call)
             raise
+
+    @staticmethod
+    def _request(seg, take, tj: Mapping[str, Any], job: str) -> cw.GenerationRequest:
+        return cw.GenerationRequest(job_id=job, org_id=str(seg["org_id"]), capability=str(tj["capability"]),
+                                    model=str(take.get("model") or ""), params=dict(tj.get("params") or {}),
+                                    quantity=float(take["quantity"]) if take.get("quantity") is not None else None)
+
+    def _abandoned_call(self, seg, take, tj: Mapping[str, Any], job: str) -> None:
+        """A take that ends as worker_lost with a task id stored: its call reached the vendor, and the worker that left it wrote no
+        row (it left the task for a claim to poll, and none will now: 0171 failed the job after its last lease, or the job cannot
+        be handed to this worker). Its failed_call estimate is written here, unless the database already holds the call's row.
+        A completed job delivered, and its row is the delivered one's; a ``sync:``/``film-tts:`` key was polled, and its row
+        written, by the worker that made the call. Reporting only: never raises, never changes the take's outcome."""
+        task = tj.get("provider_task_id")
+        if not task or not isinstance(task, str) or task.startswith(("sync:", "film-tts:")) or tj.get("job_status") == "completed":
+            return
+        try:
+            call = cw.resumed_call(self.db, job)
+            if call.recorded:
+                return
+            request = self._request(seg, take, tj, job)
+            cw.record_unfinished_call(self.db, self.resolve_adapter(request.model), request, call)
+        except Exception as e:  # noqa: BLE001 — reporting only
+            logger.warning("job %s: the abandoned call's cost was not recorded (%s)", job, type(e).__name__)
 
     def _still_on_sale(self, request: cw.GenerationRequest) -> None:
         """The take's model must still be on sale for the take's capability right before the paid call (the creative worker's rule,
@@ -805,8 +833,10 @@ class FilmOrchestrator:
                 if not files:
                     cw.record_unfinished_call(self.db, adapter, request, call, res.usage)
                     raise _TakeFailed("no_output", "the provider reported success without an output file")
-                # Written here, before the result is stored: a storing that fails later still paid for this answer.
-                cw.record_call_cost(self.db, request.job_id, res.usage, call)
+                # Kept, not written: a take's row is written once its job records 'processing' (_deliver), so a worker that dies
+                # before then leaves a 'submitted' job whose next claim polls again and writes the one row. Any failure after
+                # this writes the vendor's usage, never an estimate (record_unfinished_call).
+                call.deliver(res.usage)
                 return files
             if res.state == cw.FAILED:
                 cw.record_unfinished_call(self.db, adapter, request, call, res.usage)
@@ -850,6 +880,7 @@ class FilmOrchestrator:
             except BaseException:
                 cw.record_unfinished_call(self.db, adapter, req, call)
                 raise
+            cw.record_call_cost(self.db, job, call.usage, call)
             seconds = self.media.duration(files[0])
             if seconds is None:
                 raise _TakeFailed("no_output", "a scene's narration could not be measured", voiced + len(text))
@@ -873,12 +904,16 @@ class FilmOrchestrator:
         return self._deliver(seg, take, tj, job, request, [mixed], task_id, work, extra)
 
     def _deliver(self, seg, take, tj, job: str, request: cw.GenerationRequest, files: Sequence[Path], task: str, work: Path,
-                 narration: Optional[Mapping[str, Any]], *, processing: bool = False) -> str:
+                 narration: Optional[Mapping[str, Any]], *, processing: bool = False, call: Optional[cw.VendorCall] = None) -> str:
         """Register the result (and a clip's last frame) through the job, then hand it to film_take_succeeded. ``processing``: a
         resumed job that was already storing (0036 moves it there once); the same asset ids make a second store the same rows."""
         tid, kind, org = str(take["id"]), str(take["kind"]), str(seg["org_id"])
         if not processing and not self.db.advance_job(job, self.worker_id, "processing"):
             raise _Stop("job_lost")
+        if call is not None:
+            # 'processing' is recorded: from here no claim polls this task again (a resumed 'processing' job asks the database
+            # whether this row exists), so the delivered answer's row is written now, once.
+            cw.record_call_cost(self.db, job, call.usage, call)
         provenance = narration_provenance(job, tid, narration) if kind == "narration" else {
             "job_id": job, "film_take_id": tid, "capability": request.capability, "model": request.model,
             "rights": "generated_for_org"}
@@ -1075,6 +1110,9 @@ class FilmRest:
 
     def record_cost(self, job, usage):
         return self.creative.record_cost(job, usage)
+
+    def has_cost(self, job) -> bool:
+        return self.creative.has_cost(job)
 
     # still on sale, right before a take's paid call (cw.not_on_sale)
     def on_sale(self, capability):

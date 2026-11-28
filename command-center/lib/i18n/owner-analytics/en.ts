@@ -352,6 +352,7 @@ export const ownerAnalyticsEn = {
   runwayJobs7d: "Jobs, 7 days",
   runwayUnits7d: "Units, 7 days",
   runwayProbes7d: "Probes, 7 days",
+  runwayFailedCalls7d: "Failed calls, 7 days (billing unknown)",
   runwayLastAt: "Last job",
   runwayLastOutcome: "Last outcome",
   runwayAtLeast: "at least",

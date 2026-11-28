@@ -549,6 +549,7 @@ TABLE = {
     "film.spend_estimated": "estimated (registry figure)",
     "film.spend_estimated_highest": "estimated (highest variant)",
     "film.spend_estimated_mixed": "estimated (registry figure; highest variant where priced in variants)",
+    "film.spend_estimated_failed_call": "estimated (failed call; the vendor may not bill it)",
     "film.spend_recorded": "recorded",
     "film.spend_nothing_known": "no dollar figure known yet",
     "film.spend_unknown_lines": ", plus {n} unknown line(s), not counted",

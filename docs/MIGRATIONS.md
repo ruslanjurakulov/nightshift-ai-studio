@@ -3383,3 +3383,30 @@ database doors it used.
   The two rows now have no terms gate, so `--all` in the Probe models workflow includes them: one paid call each.
 - **Tests.** `tests/test_country_sale_allow_list_migration.py`, `tests/test_geoip_build.py` (`RegistryField`),
   `tests/test_google_requires_adult.py`, `tests/security/test_sec_country_sale_0238.py`, `tests/security/test_sec_country_block.py`.
+
+## A failed vendor call is not counted as units used in the owner's provider spend (0240)
+
+- **Why.** Since PR #964 every call that reached a vendor writes one `creative_job_costs` row, including the calls that failed,
+  timed out, answered without a file or were abandoned: `price_source = 'failed_call'`, `usd_estimate` NULL, `quantity` = what was
+  asked (seconds, characters; NULL for pictures). 0106's `owner_provider_spend` summed every row's quantity into `units`, so a
+  failed 10 s clip read as 10 s used on the Billing page's provider panel. Its usd was already NULL (an unpriced row).
+- **Change.** One function, 0106's `owner_provider_spend`: a failed call's quantity is left out of `units`, and a day of failed
+  calls only has `units` NULL (unknown, never 0). The row still counts in `unpriced_rows`, so the day's usd stays unknown.
+  Columns, security definer, search_path and grants are 0106's. 0184's `owner_analytics_provider_spend` and 0037's
+  `creative_economics` count such a row as unpriced already and are not changed.
+- **The app** keeps `failed_call` rows out of every rate-card estimate (`lib/billing.ts` studioUse, `lib/owner-analytics/runway.ts`)
+  and shows them as "failed calls, billing unknown" (en / ru / uz); they keep the spend total unknown.
+- **Guard.** md5 of the body with comments cut and white space folded (0230's fold): 0106's `dc5aaeb7ce9899dee21104238a0fada5` ->
+  0240's `893a14eadc947b7065556c2d67b07530`; any other body is refused. A Verify block raises when the body, the security definer,
+  the search_path or the grants are not as written. No backslash in the file or its rollback.
+- **Lab.** `tests/security/test_sec_provider_spend_failed_calls_0240.py` (the finding reproduced under 0106 and gone under 0240,
+  the rollback and the re-apply, the guard, the grants).
+- **Replay.** Re-running 0106 puts its body back (it has no guard); apply 0240 again after.
+- **Requires** 0106, 0037 and 0018.
+- **Undo.** `docs/sql/rollback_0240_provider_spend_failed_calls.sql` (owner-applied): 0106's body back, asserted by its md5.
+- **Rows already written.** Every reader keys on `price_source = 'failed_call'`, so the rows #964 wrote before this change
+  read the same way (a failed picture written with quantity 0 is unknown, never a measured $0). A delivered row written twice
+  for one film call (#964's resume window) is not dropped by any reader: the only safe key needs `creative_jobs.payer` and
+  `capability`, which the dashboards do not read. The owner's one-off, read-first cleanup is
+  `docs/sql/oneoff_duplicate_film_cost_rows.sql` (a SELECT of the candidates, then a commented DELETE under the same predicate;
+  the lab runs both, `tests/security/test_sec_operator_film_spend.py`).

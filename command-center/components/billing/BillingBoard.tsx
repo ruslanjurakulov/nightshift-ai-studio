@@ -292,6 +292,7 @@ export function sourceText(src: SourceUse, usdPerCredit: number | null, tl: Bill
     );
   }
   if (src.billingUnknown > 0) bits.push(fmt(tl.billingUnknown, { n: src.billingUnknown }));
+  if (src.failedCalls > 0) bits.push(fmt(tl.failedCalls, { n: src.failedCalls }));
   if (src.state === "partial") bits.push(tl.state.partial);
   return bits.join(" · ");
 }

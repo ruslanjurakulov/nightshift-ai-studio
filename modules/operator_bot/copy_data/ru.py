@@ -543,6 +543,7 @@ TABLE = {
     "film.spend_estimated": "оценка (цифра из реестра)",
     "film.spend_estimated_highest": "оценка (самый дорогой вариант)",
     "film.spend_estimated_mixed": "оценка (цифра из реестра; самый дорогой вариант там, где цена зависит от варианта)",
+    "film.spend_estimated_failed_call": "оценка (неудачный вызов; провайдер может не выставить за него счёт)",
     "film.spend_recorded": "записано",
     "film.spend_nothing_known": "ни одной суммы в долларах пока нет",
     "film.spend_unknown_lines": ", и ещё {n} неизвестных строк(и), не учтены",

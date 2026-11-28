@@ -183,8 +183,14 @@ def film_job_model(job) -> str:
 
 #: How a dollar figure was arrived at, worst first: a line with any estimate is an estimate. ``estimated_highest``: a
 #: model priced in variants (resolution, image size, quality, audio, ...), estimated at its dearest stated variant, because
-#: which variant the vendor billed is not read here and a cap watcher must not guess low.
-SPEND_BASES = ("estimated_highest", "estimated", "recorded")
+#: which variant the vendor billed is not read here and a cap watcher must not guess low. ``estimated_failed_call``: a call
+#: that delivered nothing (its cost row's price_source is FAILED_CALL, modules/creative_worker.py), estimated at what was
+#: ASKED for at the registry figure; the vendor may not bill it at all, so it is the least certain figure of all.
+SPEND_BASES = ("estimated_failed_call", "estimated_highest", "estimated", "recorded")
+
+#: creative_worker.FAILED_CALL_PRICE_SOURCE, by value: this module must not import the worker.
+FAILED_CALL = "failed_call"
+FILM_FAILED_BASIS = "estimated_failed_call"
 
 
 def film_unit_price(figure: Optional[dict]) -> tuple[str, Optional[Decimal]]:
@@ -203,7 +209,18 @@ def film_unit_price(figure: Optional[dict]) -> tuple[str, Optional[Decimal]]:
 def _cost_line(row, figure: Optional[dict]) -> tuple[str, Optional[Decimal]]:
     """One creative_job_costs row: ("recorded", usd) when the worker stored dollars; an estimate, quantity x the
     registry's price (film_unit_price), when it stored only a quantity in the price's unit; ("unknown", None)
-    otherwise: no quantity, no figure for the model (openai-gpt-image-2.6-* has none), or another unit."""
+    otherwise: no quantity, no figure for the model (openai-gpt-image-2.6-* has none), or another unit.
+
+    A failed call (price_source FAILED_CALL, whenever it was written) is never "recorded" and never a measured $0: its
+    quantity is what was asked, so it is ("estimated_failed_call", quantity x figure) when that quantity is above 0, and
+    unknown otherwise (a failed picture call says none, or 0 when written before the count became NULL)."""
+    if row.get("price_source") == FAILED_CALL:
+        qty = _usd(row.get("quantity"))
+        basis, per = film_unit_price(figure)
+        unit, price_unit = row.get("unit"), (figure or {}).get("price_unit")
+        if qty is None or qty <= 0 or per is None or not unit or unit != price_unit:
+            return "unknown", None
+        return "estimated_failed_call", qty * per
     usd = _usd(row.get("usd_estimate"))
     if usd is not None:
         return "recorded", usd
@@ -220,7 +237,8 @@ def film_spend_rollup(films: dict, takes, jobs, costs, figures=()) -> list[dict]
     """Each film's vendor cost so far, from its takes' jobs' cost rows. Pure.
 
     ``films`` maps film id -> org id. Returns, per film, ``{"film_id", "org_id", "usd" (Decimal, the KNOWN sum: recorded
-    plus estimated), "basis" ("recorded" | "estimated" | "estimated_highest" | "estimated_mixed" | None when nothing
+    plus estimated), "basis" ("recorded" | "estimated" | "estimated_highest" | "estimated_mixed" |
+    "estimated_failed_call" | None when nothing
     is known), "unknown" (lines with no dollar
     figure: a finished take whose job has no cost row, or a cost row that can be neither read nor estimated), "takes"}``,
     and per take ``{"id", "kind", "attempt", "status", "usd", "basis", "unknown", "state"}`` where state is
@@ -272,6 +290,8 @@ def film_spend_rollup(films: dict, takes, jobs, costs, figures=()) -> list[dict]
 
 def _basis_of(bases: set) -> Optional[str]:
     """One word for a set of line bases: the worst, except that both kinds of estimate together say so."""
+    if FILM_FAILED_BASIS in bases:
+        return FILM_FAILED_BASIS
     if {"estimated_highest", "estimated"} <= bases:
         return "estimated_mixed"
     return next((b for b in SPEND_BASES if b in bases), None)

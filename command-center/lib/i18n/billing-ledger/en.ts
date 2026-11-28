@@ -25,6 +25,7 @@ export const billingLedgerEn = {
     used_untracked: "unknown: the pipeline's spend at this provider is not recorded",
     used_no_rows: "unknown: the pipeline ledger has no rows yet",
     used_unpriced: "unknown: part of what was used has no price",
+    used_failed_calls: "unknown: Studio calls failed, and whether the vendor billed them is not known",
     used_may_have_billed: "unknown: failed probes may have been billed",
     negative: "unknown: more was used than the top-ups recorded",
   },
@@ -42,6 +43,7 @@ export const billingLedgerEn = {
   usdUnknown: "{qty} {unit}, USD unknown",
   rowsUsdUnknown: "{unit}: {n} rows, USD unknown",
   billingUnknown: "failed probes that may have been billed: {n}",
+  failedCalls: "failed calls, billing unknown: {n}",
   // The vendor-named units (gemini_*, pexels_*) are in lib/server/ledger-unit-labels.ts: this dictionary ships to the browser.
   units: {
     second: "s",

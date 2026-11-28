@@ -339,6 +339,7 @@ export const ownerAnalyticsRu: OwnerAnalyticsDictionary = {
   runwayJobs7d: "Задачи, 7 дней",
   runwayUnits7d: "Единицы, 7 дней",
   runwayProbes7d: "Пробы, 7 дней",
+  runwayFailedCalls7d: "Неудачные вызовы, 7 дней (оплата неизвестна)",
   runwayLastAt: "Последняя задача",
   runwayLastOutcome: "Последний итог",
   runwayAtLeast: "не менее",

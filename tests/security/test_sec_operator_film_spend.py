@@ -14,8 +14,9 @@ is), against rows the real functions wrote: 0171's start, claim, begin, succeed,
     clip on a model whose variant table states no figure (unknown, never 0 and never its base figure).
 
 What would break: a renamed column or a missing grant (the watch goes blind), a path select that returns something other
-than the text the Python parses, a sum that differs from the one the runbook's SQL computes, or a prompt or a price source
-reaching the bot. A translation the helper does not know fails the test rather than being guessed.
+than the text the Python parses, a sum that differs from the one the runbook's SQL computes, a prompt or a price source's
+text reaching the bot, or a failed call (price_source failed_call, written through the workers' own record path) priced as
+a delivered one, read as recorded, or read as USD 0. A translation the helper does not know fails the test rather than being guessed.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import psycopg
+import pytest
 from psycopg.rows import dict_row
 
 from modules.operator_bot import alerts
@@ -142,6 +144,161 @@ def test_the_columns_the_watch_reads_are_the_ones_0037_0166_and_0171_made(db):
         assert not db.su("select has_table_privilege('service_role', %s, 'UPDATE')", ["public.creative_job_costs"])[0][0]
 
 
+class _CapturingSession:
+    """The HTTP session under CreativeRest: keeps the body record_cost posts, so the lab writes exactly what the worker sends."""
+
+    def __init__(self):
+        self.bodies = []
+
+    def post(self, url, json=None, timeout=None, headers=None):
+        assert url.endswith("/rest/v1/rpc/record_creative_job_cost"), url
+        self.bodies.append(dict(json))
+
+        class _R:
+            status_code = 204
+
+            @staticmethod
+            def json():
+                return None
+
+        return _R()
+
+
+def record_failed_call(db, job, capability, params, unit):
+    """A failed call's row through the workers' own path: the registry adapter's usage for what was asked
+    (creative_worker.failed_call_usage), sent by CreativeRest.record_cost, executed as the service role by 0037's function."""
+    from types import SimpleNamespace
+
+    from modules import creative_adapters as ca
+    from modules import creative_worker as cw
+
+    entry = SimpleNamespace(raw={"pricing": {"unit": unit}}, provider="acme", vendor_model_for=lambda cap: "acme-lab")
+    request = cw.GenerationRequest(job_id=str(job), org_id="", capability=capability, model="m", params=params)
+    usage = cw.failed_call_usage(ca.RegistryAdapter(entry, adapter=object(), sync_store={}), request)
+    session = _CapturingSession()
+    cw.CreativeRest("https://lab.example", "lab-key", session=session).record_cost(str(job), usage)
+    (body,) = session.bodies
+    db.svc("select public.record_creative_job_cost(%s, %s, %s, %s, %s, %s::numeric, %s::numeric, %s)",
+           [body["p_job"], body["p_provider"], body["p_route"], body["p_vendor_model"], body["p_unit"], body["p_quantity"],
+            body["p_usd"], body["p_price_source"]])
+    return body
+
+
+def test_a_failed_call_written_by_the_worker_is_estimated_as_one_and_a_failed_picture_is_unknown(db, a):
+    film = db.film(a)
+    s = db.quoted_start(a, film)
+    assert db.claim()["id"] == s["id"]
+    takes = db.takes(s["id"])
+    kf, clip = takes[0][0], takes[1][0]
+    db.begin(kf)
+    body_kf = record_failed_call(db, take_job(db, kf), "t2i", {"prompt": "a lighthouse"}, "image")
+    db.fail(kf, "provider_error")
+    # 0171's retry of the key frame delivers (its own row is not this test's), so the clip has a picture to start from.
+    retry = next(r[0] for r in db.takes(s["id"]) if r[1] == "keyframe" and r[9] == 2)
+    db.begin(retry)
+    take_job(db, retry)
+    db.succeed(retry, None, db.output(a.org, retry, "image", "image/png"))
+    db.begin(clip)
+    body_clip = record_failed_call(db, take_job(db, clip), "i2v", {"duration_s": 10, "prompt": "a lighthouse"}, "second")
+    db.fail(clip, "provider_error")
+    db.cancel(s["id"])
+    assert (body_kf["p_price_source"], body_kf["p_quantity"], body_kf["p_usd"]) == ("failed_call", None, None)
+    assert (body_clip["p_price_source"], body_clip["p_quantity"]) == ("failed_call", 10.0)
+    stored = db.su("select c.unit, c.quantity, c.usd_estimate, c.price_source from public.creative_job_costs c "
+                   "join public.creative_jobs j on j.id = c.job_id join public.film_takes t on t.id = j.film_take_id "
+                   "where t.film_id = %s order by c.unit", [film])
+    assert [tuple(r) for r in stored] == [("image", None, None, "failed_call"), ("second", Decimal("10.0000"), None, "failed_call")]
+
+    saved = db.su("select id, spec from public.model_registry where id in ('img-key', 'vid-clip')")
+    try:
+        _watch_the_failed_calls(db, film, kf, clip)
+    finally:
+        # The registry is shared with the next test of this module, which starts its films on these models.
+        for model_id, spec in saved:
+            db.su("update public.model_registry set spec = %s::jsonb where id = %s", [json.dumps(spec), model_id])
+
+
+def _watch_the_failed_calls(db, film, kf, clip):
+    db.su("update public.model_registry set spec = spec || jsonb_build_object('pricing', jsonb_build_object("
+          "'unit', 'image', 'provider_usd_per_unit', 0.04, 'source_url', 'https://lab.example', 'as_of', '2026-11-01', "
+          "'confirmed', false)) where id = 'img-key'")
+    db.su("update public.model_registry set spec = spec || jsonb_build_object('pricing', jsonb_build_object("
+          "'unit', 'second', 'provider_usd_per_unit', 0.05, 'source_url', 'https://lab.example', 'as_of', '2026-11-01', "
+          "'confirmed', false)) where id = 'vid-clip'")
+
+    sync = LabSync(db.dsn)
+    cfg = OperatorConfig(app_url="https://app.example.test", github_repo="owner/repo")
+    ops = OperatorSources(sync, lambda *_args: (None, None), cfg, now=lambda: datetime.now(timezone.utc))
+    one = ops.film_spend_for(str(film))
+    assert one.ok, one.note
+    f = one.data[0]
+    # The clip: 10 s asked x 0.05 = 0.50, an estimate of a failed call. The failed picture: no count, so unknown, never
+    # USD 0; the retry that delivered wrote no row here, so it is the second unknown line (not recorded).
+    assert (f["usd"], f["basis"], f["unknown"]) == (Decimal("0.5"), "estimated_failed_call", 2)
+    by_take = {t["id"]: t for t in f["takes"]}
+    assert (by_take[str(clip)]["basis"], by_take[str(clip)]["usd"]) == ("estimated_failed_call", Decimal("0.5"))
+    assert (by_take[str(kf)]["state"], by_take[str(kf)]["usd"]) == ("unknown", None)
+    assert "failed_call" not in json.dumps(one.data, default=str).replace("estimated_failed_call", "")
+
+
+def _cleanup_sql():
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[2] / "docs" / "sql" / "oneoff_duplicate_film_cost_rows.sql").read_text(encoding="utf-8")
+    read = text.split("-- 1. READ FIRST", 1)[1].split("-- 2. ONLY IF", 1)[0]
+    read = "\n".join(ln for ln in read.splitlines()[1:] if not ln.lstrip().startswith("--"))
+    block = text.split("-- begin;", 1)[1].split("-- commit;", 1)[0]
+    delete = "\n".join(ln[3:] if ln.startswith("-- ") else ln.lstrip("-") for ln in block.splitlines())
+    return read, delete
+
+
+def test_the_owners_one_off_cleanup_lists_and_removes_only_a_second_delivered_row_of_one_call(db, a):
+    film = db.film(a)
+    s = db.quoted_start(a, film)
+    assert db.claim()["id"] == s["id"]
+    takes = db.takes(s["id"])
+    kf, clip = takes[0][0], takes[1][0]
+    db.begin(kf)
+    job_kf = take_job(db, kf)
+    record_cost(db, job_kf, "image", 1)          # the call's row ...
+    record_cost(db, job_kf, "image", 1)          # ... written again by the claim that resumed it (the #964 window)
+    db.succeed(kf, None, db.output(a.org, kf, "image", "image/png"))
+    db.begin(clip)
+    job_clip = take_job(db, clip)
+    record_cost(db, job_clip, "second", 10, Decimal("0.5"))          # priced rows are never candidates
+    record_cost(db, job_clip, "second", 10, Decimal("0.5"))
+    record_failed_call(db, job_clip, "i2v", {"duration_s": 10}, "second")
+    record_failed_call(db, job_clip, "i2v", {"duration_s": 10}, "second")  # nor are failed calls
+    narration = next(r[0] for r in takes if r[1] == "narration")
+    db.begin(narration)
+    job_narr = take_job(db, narration)
+    record_cost(db, job_narr, "character", 12)   # two scenes of twelve characters: two calls, never a duplicate
+    record_cost(db, job_narr, "character", 12)
+    db.cancel(s["id"])
+    ours = [str(job_kf), str(job_clip), str(job_narr)]
+
+    read, delete = _cleanup_sql()
+    found = [r for r in db.su(read) if str(r[2]) in ours]
+    assert len(found) == 1, found
+    dup_id, kept_id, job = found[0][0], found[0][1], str(found[0][2])
+    assert job == str(job_kf) and dup_id != kept_id
+    before = dict(db.su("select job_id::text, count(*) from public.creative_job_costs where job_id::text = any(%s) group by 1", [ours]))
+
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute(delete)
+        c.commit()
+    after = dict(db.su("select job_id::text, count(*) from public.creative_job_costs where job_id::text = any(%s) group by 1", [ours]))
+    assert after[str(job_kf)] == before[str(job_kf)] - 1 == 1
+    assert after[str(job_clip)] == before[str(job_clip)] == 4
+    assert after[str(job_narr)] == 2
+    assert db.su("select id from public.creative_job_costs where id = %s", [kept_id]) == [(kept_id,)]
+    # The table is append-only again for everyone else.
+    with psycopg.connect(db.dsn, autocommit=True) as c:
+        with pytest.raises(psycopg.Error, match="append-only"):
+            c.execute("delete from public.creative_job_costs where id = %s", [kept_id])
+
+# Last: it prices the lab models in variant tables that leave them off sale for a film started after it.
+
 def test_the_bots_spend_reads_run_as_the_service_role_and_sum_what_the_runbook_sql_sums(db, a):
     # Film 1: an estimated key frame, then a clip that fails at its vendor with no cost row (as the worker leaves it today).
     film1 = db.film(a)
@@ -225,8 +382,10 @@ def test_the_bots_spend_reads_run_as_the_service_role_and_sum_what_the_runbook_s
     tables = {t for t, _q in sync.ran}
     assert tables == {"film_segments", "film_takes", "creative_jobs", "creative_job_costs", "model_registry", "films"}
     for _t, q in sync.ran:
-        for word in ("prompt", "params", "error", "price_source", "*"):
+        for word in ("prompt", "params", "error", "*"):
             assert word not in q, q
+    # price_source is read as a column (a failed call is labelled as one), and its text never reaches the bot's output.
+    assert any(t == "creative_job_costs" and '"price_source"' in q for t, q in sync.ran)
 
     # And the engine turns exactly these rows into the three alerts, keyed on the real film ids.
     found = {x.key: x for x in alerts.detect(ops, 15000) if x.key.startswith("film:spend")}

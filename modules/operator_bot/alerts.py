@@ -425,7 +425,8 @@ def usd_line(value) -> str:
 
 
 SPEND_BASIS_KEYS = {"recorded": "film.spend_recorded", "estimated": "film.spend_estimated",
-                    "estimated_highest": "film.spend_estimated_highest", "estimated_mixed": "film.spend_estimated_mixed"}
+                    "estimated_highest": "film.spend_estimated_highest", "estimated_mixed": "film.spend_estimated_mixed",
+                    "estimated_failed_call": "film.spend_estimated_failed_call"}
 
 
 def spend_basis(lang: str, film: dict) -> views.Raw:

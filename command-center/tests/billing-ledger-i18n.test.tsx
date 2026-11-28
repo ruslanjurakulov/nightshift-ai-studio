@@ -47,6 +47,7 @@ describe("sourceText", () => {
     estimate: false,
     unpriced: [],
     billingUnknown: 0,
+    failedCalls: 0,
     ...over,
   });
   const tl = en.billingLedger;
@@ -69,6 +70,16 @@ describe("sourceText", () => {
   it("probes that may have billed and a history read in part are both said", () => {
     expect(sourceText(src({ rows: 1, billingUnknown: 1 }), null, tl, "en")).toBe(tl.billingUnknown.replace("{n}", "1"));
     expect(sourceText(src({ state: "partial", rows: 1, pricedUsd: 2 }), null, tl, "en")).toBe(`at least $2.00 · ${tl.state.partial}`);
+  });
+  it("failed Studio calls are said beside the figure as 'billing unknown', in every language, never as dollars", () => {
+    expect(sourceText(src({ rows: 3, pricedUsd: 0.42, failedCalls: 2 }), null, tl, "en")).toBe(
+      `at least $0.420 · ${tl.failedCalls.replace("{n}", "2")}`,
+    );
+    for (const d of [ru.billingLedger, uz.billingLedger]) {
+      expect(d.failedCalls).not.toBe(tl.failedCalls);
+      expect(d.failedCalls).toContain("{n}");
+      expect(d.leftUnknown.used_failed_calls).not.toBe(tl.leftUnknown.used_failed_calls);
+    }
   });
   it("renders in Russian and Uzbek with their own words", () => {
     expect(sourceText(src({ state: "unread", rows: 0 }), null, ru.billingLedger, "ru")).toBe(ru.billingLedger.state.unread);

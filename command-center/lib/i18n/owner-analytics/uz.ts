@@ -339,6 +339,7 @@ export const ownerAnalyticsUz: OwnerAnalyticsDictionary = {
   runwayJobs7d: "Vazifalar, 7 kun",
   runwayUnits7d: "Birliklar, 7 kun",
   runwayProbes7d: "Sinovlar, 7 kun",
+  runwayFailedCalls7d: "Muvaffaqiyatsiz chaqiruvlar, 7 kun (toʻlov nomaʼlum)",
   runwayLastAt: "Oxirgi vazifa",
   runwayLastOutcome: "Oxirgi natija",
   runwayAtLeast: "kamida",

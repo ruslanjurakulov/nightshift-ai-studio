@@ -433,6 +433,24 @@ describe("providerLedger", () => {
     expect(l.runsOut).toBeNull();
   });
 
+  it("a failed Studio call is never priced at the rate card, never a $0: it is counted apart and the total stays unknown", () => {
+    const studio: StudioCostRow[] = [
+      { provider: "kling", vendor_model: "kling-v2-6", unit: "second", quantity: 10, usd_estimate: null, recorded_at: at(12) },
+      { provider: "kling", vendor_model: "kling-v2-6", unit: "second", quantity: 10, usd_estimate: null, price_source: "failed_call", recorded_at: at(12) },
+      { provider: "kling", vendor_model: "kling-v2-6", unit: "second", quantity: null, usd_estimate: null, price_source: "failed_call", recorded_at: at(13) },
+    ];
+    const l = providerLedger(base("kling", { topups: [{ provider: "kling", amount_usd: 20, paid_at: at(1) }], studioRows: studio }));
+    // Only the delivered clip is priced (10 s at kling-v2.6's per-second figure, as in the test above): the failed ones add nothing.
+    expect(l.sources.studio.pricedUsd).toBeCloseTo(0.42);
+    expect(l.sources.studio).toMatchObject({ usd: null, failedCalls: 2, rows: 3, unpriced: [] });
+    expect(l.used.usd).toBeNull();
+    expect(l.remaining).toEqual({ kind: "unknown", why: "used_failed_calls" });
+    expect(l.runsOut).toBeNull();
+    const delivered = providerLedger(base("kling", { topups: [{ provider: "kling", amount_usd: 20, paid_at: at(1) }], studioRows: studio.slice(0, 1) }));
+    expect(delivered.sources.studio).toMatchObject({ failedCalls: 0 });
+    expect(delivered.sources.studio.usd).toBeCloseTo(0.42);
+  });
+
   it("a probe that failed after the vendor may have run it is 'billing unknown'; one refused at the door costs nothing", () => {
     const rows: ProbeRunRow[] = [
       { model_id: "runway-gen4.5", ok: false, error_code: "auth", created_at: at(8) },
@@ -494,13 +512,14 @@ describe("providerLedger", () => {
 
   it("'left' says the first real cause of an unknown use: unread, then partial, untracked, no rows, unpriced, may have billed", async () => {
     const { usedUnknownWhy } = await import("@/lib/billing");
-    const ok = { state: "ok" as const, rows: 1, usd: 1, pricedUsd: 1, estimate: false, unpriced: [], billingUnknown: 0 };
+    const ok = { state: "ok" as const, rows: 1, usd: 1, pricedUsd: 1, estimate: false, unpriced: [], billingUnknown: 0, failedCalls: 0 };
     expect(usedUnknownWhy([ok, ok])).toBeNull();
     expect(usedUnknownWhy([{ ...ok, state: "partial", usd: null }, { ...ok, state: "unread", usd: null }])).toBe("used_unread");
     expect(usedUnknownWhy([{ ...ok, state: "partial", usd: null }, { ...ok, state: "untracked", usd: null }])).toBe("used_partial");
     expect(usedUnknownWhy([{ ...ok, state: "untracked", usd: null }])).toBe("used_untracked");
     expect(usedUnknownWhy([{ ...ok, usd: null, unpriced: [{ unit: "second", quantity: 5, rows: 1 }] }])).toBe("used_unpriced");
     expect(usedUnknownWhy([{ ...ok, usd: null, billingUnknown: 1 }])).toBe("used_may_have_billed");
+    expect(usedUnknownWhy([{ ...ok, usd: null, failedCalls: 1 }, { ...ok, usd: null, billingUnknown: 1 }])).toBe("used_failed_calls");
     const unread = providerLedger(base("runway", { topups: [topup], studioUnread: true }));
     expect(unread.remaining).toEqual({ kind: "unknown", why: "used_unread" });
   });
