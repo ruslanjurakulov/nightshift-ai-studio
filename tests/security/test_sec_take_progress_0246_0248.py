@@ -195,7 +195,8 @@ _OPERATOR = {}
 
 def operator(db):
     """The operator's organization (credits_exempt), with four people of its own, as an Org the money lab's helpers take."""
-    if "o" not in _OPERATOR:
+    # Keyed by the database: every module has a scratch database of its own, and an Org made in one does not exist in another.
+    if db.dsn not in _OPERATOR:
         import uuid as _uuid
 
         from test_sec_films_money import Org
@@ -209,8 +210,8 @@ def operator(db):
             db.su("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, %s, %s)",
                   [OPERATOR_ORG, u, f"{role}-{u[:8]}@operator.lab", role])
         db.film_org_on(OPERATOR_ORG)
-        _OPERATOR["o"] = Org(OPERATOR_ORG, *people)
-    return _OPERATOR["o"]
+        _OPERATOR[db.dsn] = Org(OPERATOR_ORG, *people)
+    return _OPERATOR[db.dsn]
 
 
 def test_two_of_yours_and_the_operators_three_give_nightshifts_figure_with_no_n(db, a):

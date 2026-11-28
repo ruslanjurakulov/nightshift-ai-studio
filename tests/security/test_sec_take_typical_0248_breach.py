@@ -6,7 +6,7 @@ Ledger (Breach, 2026-11-28, 84ee95d45). FIXED by Atlas's decision: the cross-cus
 operator organization's own takes only (basis 'nightshift'), so no customer's takes are in another customer's answer. The three
 holes below are kept as permanent pins and pass.
 
-* B-0248-1 (MEDIUM against the header's promise, LOW in data value; confirmed, FAILING until fixed). The 5-organization /
+* B-0248-1 (MEDIUM against the header's promise, LOW in data value; fixed, now a pin). The 5-organization /
   20-take floor counts organizations, and organizations are cheap to the attacker: create_organization (0018) lets one account
   make 10, every account gets one more. The platform figure is the median of per-organization medians, an order statistic that
   an attacker holding all but one vote places exactly on the victim's vote: two of their organizations fast, two slow, the
@@ -15,12 +15,12 @@ holes below are kept as permanent pins and pass.
   the 3rd and 4th, and the attacker solves for the victim's from their own known one). Mitigation in the lab and in production
   today: Film Studio is a per-organization switch the owner turns on (0198), so the attacker needs four enabled organizations.
   Test: test_organizations_the_attacker_controls_cannot_place_the_platform_figure_on_one_victims_median.
-* B-0248-2 (LOW; confirmed, FAILING until fixed). The floor counts the caller's own organization: a caller with one or two takes
+* B-0248-2 (LOW; fixed, now a pin). The floor counts the caller's own organization: a caller with one or two takes
   of a model plus FOUR other organizations gets the platform figure, so k is 4 others, not 5, and the caller's own vote, which
   it knows, is one of the five it is solving with. The 0248/0246 file pins this as intended
   (test_fewer_than_three_of_yours_and_five_workspaces_of_four_...); this test says it should not be.
   Test: test_the_floor_is_five_organizations_other_than_the_callers.
-* B-0248-3 (LOW; confirmed, FAILING until fixed). Activity: with the attacker's organizations at four votes and 20 takes, the
+* B-0248-3 (LOW; fixed, now a pin). Activity: with the attacker's organizations at four votes and 20 takes, the
   answer is basis null until any one other organization completes its FIRST take of that model, then 'platform', and every
   further take of the victim moves the figure. Polling the live route therefore reports when the victim works and with which
   model. Same root cause as B-0248-1 (a count of organizations is not a count of independent parties).
