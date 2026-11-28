@@ -556,6 +556,11 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             # session only (0072): an API key that bought captions could never
             # fetch the result, so the registry never offers them to the API.
             errors.append(_err(mid, "captions are a web tool: api_exposure must be web_only"))
+        if music_exposure_refused(m):
+            # BR-S6-06: music is a web tool. 0250's sellable_models lists music on the web only, whatever this field says; the
+            # registry says the same. Exactly web_only: read with .get, so a missing key is refused here too and no default
+            # (the database reads an absent api_exposure as 'any') can ever widen music, even if the schema stops requiring it.
+            errors.append(_err(mid, "music is a web tool: api_exposure must be web_only"))
         if any(c in VIDEO_INPUT for c in caps) and any(c not in VIDEO_INPUT for c in caps):
             errors.append(_err(mid, "a video tool model lists only video tools"))
         if VIDEO_MUSIC in caps and not m["limits"].get("max_source_seconds"):
@@ -750,6 +755,12 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             if problems:
                 errors.append(_err(mid, "probe request is not servable: " + "; ".join(problems)))
     return errors
+
+
+def music_exposure_refused(m: Mapping[str, Any]) -> bool:
+    """A registry entry that lists music and is not exactly web_only (BR-S6-06). A missing key is refused like any other value: the
+    database reads an absent api_exposure as 'any', so no default may ever stand for music."""
+    return MUSIC in (m.get("capabilities") or ()) and m.get("api_exposure") != "web_only"
 
 
 def validate(doc: Any, schema: Optional[Mapping] = None) -> List[str]:

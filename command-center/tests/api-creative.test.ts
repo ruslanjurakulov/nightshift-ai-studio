@@ -243,3 +243,30 @@ describe("the routes and the OpenAPI document", () => {
     }
   });
 });
+
+describe("capabilities the API does not sell (BR-S6-06)", () => {
+  it("refuses music and captions with 400 for quote and create before the database is asked", async () => {
+    const PARAMS: Record<string, Record<string, unknown>> = {
+      music: { prompt: "a calm solo piano piece" },
+      captions: { source_asset_id: "0a1b2c3d-0000-4000-8000-00000000beef" },
+    };
+    for (const capability of ["music", "captions"]) {
+      const { c, calls } = caller();
+      const body = { ...BODY, capability, params: PARAMS[capability] };
+      for (const r of [await quoteCreative(c, body), await quoteCreative(c, { ...body, model: undefined, mode: "cheap" }),
+                       await createCreative(c, body, "k-1"), await createCreative(c, { ...body, mode: "cheap" }, "k-2")]) {
+        expect(r).toMatchObject({ ok: false, status: 400, code: "capability_not_supported" });
+        expect(r.ok ? "" : r.message).toContain("capability must be one of:");
+        expect(r.ok ? "" : r.message).not.toContain("music,");
+      }
+      expect(calls).toEqual([]);
+    }
+  });
+
+  it("still sends an API capability to the database", async () => {
+    const { c, calls } = caller();
+    await quoteCreative(c, BODY);
+    expect(calls.map((x) => x.fn)).toEqual(["api_creative_quote"]);
+  });
+});
+

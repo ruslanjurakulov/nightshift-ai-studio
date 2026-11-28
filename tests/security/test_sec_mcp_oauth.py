@@ -1261,7 +1261,8 @@ def test_replaying_the_migration_twice_changes_nothing(db):
         # and 0228 on 0224's: off before 0224, on after it.
         # 0226 sits on 0093's api_begin, 0094's reserve_credits and request_download, 0147's oauth_ctx and 0192's bodies, and calls
         # 0215's is_org_spender: off first of all, on again last.
-        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0232, sec_db.ROLLBACK_0231, sec_db.ROLLBACK_0226, sec_db.ROLLBACK_0228, sec_db.ROLLBACK_0224, sec_db.ROLLBACK_0219, sec_db.ROLLBACK_0218,
+        # 0250 sits on 0192's sellable_models, which 0192's rollback refuses: off first of all, on again last.
+        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0250, sec_db.ROLLBACK_0232, sec_db.ROLLBACK_0231, sec_db.ROLLBACK_0226, sec_db.ROLLBACK_0228, sec_db.ROLLBACK_0224, sec_db.ROLLBACK_0219, sec_db.ROLLBACK_0218,
                                     sec_db.ROLLBACK_0215, sec_db.ROLLBACK_0208, sec_db.ROLLBACK_0198, sec_db.ROLLBACK_0196,
                                     sec_db.ROLLBACK_0192])
     sec_db.apply_files(db.dsn, [path, path])
@@ -1294,7 +1295,7 @@ def test_replaying_the_migration_twice_changes_nothing(db):
         sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql", sec_db.MIGRATION_0192,
                                     sec_db.MIGRATION_0196, sec_db.MIGRATION_0198, sec_db.MIGRATION_0208,
                                     sec_db.MIGRATION_0215, sec_db.MIGRATION_0218, sec_db.MIGRATION_0219, sec_db.MIGRATION_0224, sec_db.MIGRATION_0228,
-                                    sec_db.MIGRATION_0226, sec_db.MIGRATION_0231])
+                                    sec_db.MIGRATION_0226, sec_db.MIGRATION_0231, sec_db.MIGRATION_0250])
         assert db.su("select to_regprocedure('public.film_adult_refusals(uuid, uuid)') is not null")[0][0] is True
 
 

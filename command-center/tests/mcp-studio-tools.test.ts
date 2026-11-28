@@ -141,6 +141,20 @@ describe("list_models", () => {
     expect(dbCalls()).toEqual([]);
   });
 
+  it("music is refused by the public API with 400 before the database is asked, even though SQL now knows it (0250)", async () => {
+    // Pinned apart from tests/security/test_sec_breach_mcp_studio_0162.py, where api_creative_models('music') called in SQL answers
+    // an empty list since 0250: music is web_only. Neither answer may change without the other test noticing.
+    let asked = false;
+    const caller = {
+      keyHash: KEY_HASH, requestId: "req_x", backend: "queue", downloads: true,
+      rpc: async () => { asked = true; return { data: [], error: null }; },
+    } as unknown as ApiCaller;
+    const { listCreativeModels } = await import("@/lib/api/operations");
+    const r = await listCreativeModels(caller, "music");
+    expect(r).toMatchObject({ ok: false, status: 400, code: "invalid_params" });
+    expect(asked).toBe(false);
+  });
+
   it("a database without 0162 is a 503 that names the migration, not an empty list", async () => {
     const res = await POST(rpcRequest({ jsonrpc: "2.0", id: 1, method: "tools/list" }));
     expect(res.status).toBe(200);

@@ -7,7 +7,8 @@
 
 import { API_TIERS, TOPUP_MAX_CENTS, TOPUP_MIN_CENTS } from "@/lib/api/pricing";
 import { API_SCOPES, KEY_RPM_MAX, LEGACY_SCOPES } from "@/lib/api/scopes";
-import { CREATIVE_CAPABILITIES, PARAM_KEYS } from "@/lib/creative/operations";
+import { API_CREATIVE_CAPABILITIES } from "@/lib/api/operations";
+import { PARAM_KEYS } from "@/lib/creative/operations";
 import { JOB_ERROR_CODES } from "@/lib/runBackend";
 
 const ERROR_CODES = [
@@ -285,7 +286,7 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
           required: ["capability", "params"],
           additionalProperties: false,
           properties: {
-            capability: { type: "string", enum: [...CREATIVE_CAPABILITIES] },
+            capability: { type: "string", enum: [...API_CREATIVE_CAPABILITIES] },
             model: {
               type: "string",
               description:
@@ -316,7 +317,7 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
           required: ["capability", "model", "params", "max_credits"],
           additionalProperties: false,
           properties: {
-            capability: { type: "string", enum: [...CREATIVE_CAPABILITIES] },
+            capability: { type: "string", enum: [...API_CREATIVE_CAPABILITIES] },
             model: { type: "string", description: "For mode exact, the model; for the other modes, the routed_model the quote named." },
             params: { type: "object", description: "As in the quote." },
             mode: { type: "string", enum: ["exact", "auto", "cheap", "fast", "quality"], default: "exact" },

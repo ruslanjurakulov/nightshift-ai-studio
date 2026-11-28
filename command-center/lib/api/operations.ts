@@ -470,11 +470,23 @@ export function parseCreativeBody(
   return { ok: true, request: { capability: i.capability, model: i.model, params: i.params, mode: i.mode, maxCredits: i.maxCredits } };
 }
 
+/**
+ * A capability the Studio knows and the API does not sell (captions, music), refused before the database is asked. The parse above
+ * accepts the Studio's whole list; the database refuses these too (0072 for captions, 0250 for music, BR-S6-06), but a 400 here
+ * names the API's own list instead of a model that "is not available".
+ */
+function refuseOffApiCapability(capability: string): ApiResult | null {
+  if ((API_CREATIVE_CAPABILITIES as readonly string[]).includes(capability)) return null;
+  return bad("capability_not_supported", `capability must be one of: ${API_CREATIVE_CAPABILITIES.join(", ")}.`);
+}
+
 /** POST /v1/creative/quote — the price in credits. Nothing is held or charged. */
 export async function quoteCreative(caller: ApiCaller, body: unknown): Promise<ApiResult> {
   const parsed = parseCreativeBody(body, { requireMaxCredits: false });
   if (!parsed.ok) return parsed.result;
   const r = parsed.request;
+  const notOnTheApi = refuseOffApiCapability(r.capability);
+  if (notOnTheApi) return notOnTheApi;
   if (r.mode === "exact")
     return call(caller, "api_creative_quote", { p_capability: r.capability, p_model: r.model, p_params: r.params }, "0062");
   // A routed mode (0075): the database picks among the models the API sells and
@@ -502,6 +514,8 @@ export async function createCreative(caller: ApiCaller, body: unknown, idempoten
   const parsed = parseCreativeBody(body, { requireMaxCredits: true });
   if (!parsed.ok) return parsed.result;
   const r = parsed.request;
+  const notOnTheApi = refuseOffApiCapability(r.capability);
+  if (notOnTheApi) return notOnTheApi;
   return call(caller, "api_creative_create", {
     p_capability: r.capability,
     p_model: r.model,
@@ -610,8 +624,8 @@ export async function oauthQuoteCreative(caller: ApiCaller, body: unknown): Prom
   const parsed = parseCreativeBody(b ? { capability: b.capability, model: b.model, params: b.params } : body, { requireMaxCredits: false });
   if (!parsed.ok) return parsed.result;
   const r = parsed.request;
-  if (!(API_CREATIVE_CAPABILITIES as readonly string[]).includes(r.capability))
-    return bad("capability_not_supported", `capability must be one of: ${API_CREATIVE_CAPABILITIES.join(", ")}.`);
+  const offApi = refuseOffApiCapability(r.capability);
+  if (offApi) return offApi;
   return call(caller, "oauth_creative_quote", { p_capability: r.capability, p_model: r.model, p_params: r.params }, "0191");
 }
 

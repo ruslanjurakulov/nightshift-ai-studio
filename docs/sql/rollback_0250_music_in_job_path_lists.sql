@@ -1,0 +1,186 @@
+-- rollback_0250_music_in_job_path_lists.sql — takes migration 0250 (music known to sellable_models, on the web only) out again.
+-- OWNER-APPLY: paste into the Supabase SQL editor, as one transaction. Nothing in the app runs it. Idempotent.
+--
+-- WHAT COMES BACK: 0192's sellable_models and 0188's api_creative_model_ok (861978aa7b3d2d072433a9f6f8d7e857 comment-cut,
+--   cbe9f5d42dcdcfddb604d4a30c2f80ae folded), verbatim. sellable_models (md5 85aaba9a2ec82dc7f276dd2135b4c7cf with comments cut and white space folded,
+--   0230's fingerprint; 40f61462ddae2fc0e83a0956f4d8b75b folded only, as 0192 pins it). sellable_models('music', ...) then raises
+--   22023 "unknown capability music" again: a routed music quote answers no_model_available (route_model reads the 22023 as no
+--   candidates), a routed music job's worker failover raises 22023, and the API answers a music call invalid_params. An exact
+--   Studio music job is quoted, held and run as before (that path prices through creative_price, which 0228 owns).
+-- WHAT IS KEPT: everything else. 0228's checks and functions, the grants (authenticated and service_role, as 0192's), every row.
+-- WHAT IT DOES: 0. REFUSES (changes nothing) if sellable_models is neither 0250's body nor 0192's, or api_creative_model_ok neither
+--   0250's nor 0188's (a later file changed it: take that out first). 1. REFUSES, naming them, while any music model is beta or ga:
+--   with it on sale, the rollback would bring back the dead end above (routed quotes find nothing, the worker's failover raises
+--   22023). Take them off sale (availability hidden) first. 2. Puts both earlier bodies back. 3. Asserts the end state.
+-- EMERGENCY PROCEDURE, in this order and never the other way round (Atlas, 28 Nov):
+--   1. Take every music model off sale: update public.model_registry set availability = 'hidden' where 'music' = any (capabilities).
+--      One update; it stops new money at once (no quote, no hold, no new job), while the jobs already running finish.
+--   2. Then run this file. There is deliberately no force switch: a force is what gets used in a hurry.
+--   The NOTICE this file prints lists the routed music jobs still in flight: after the revert their worker failover raises 22023, so
+--   let them finish (or cancel them, which refunds) before relying on the revert.
+-- No backslash anywhere in this file (0219's header); the pattern is written [-][-] so that no literal holds two dashes in a row.
+
+begin;
+set local lock_timeout = '5s';
+
+do $$
+declare
+  h text;
+  onsale text;
+  inflight text;
+begin
+  select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p
+   where p.oid = to_regprocedure('public.sellable_models(text, text)');
+  if h is null or h <> all (array['58c81cd592628820d3bd348353e6a5a8', '85aaba9a2ec82dc7f276dd2135b4c7cf']) then
+    raise exception 'rollback 0250: sellable_models() is neither 0250''s body nor 0192''s (md5 %): a later file changed it; take that file out first', h;
+  end if;
+  select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p
+   where p.oid = to_regprocedure('public.api_creative_model_ok(text, text)');
+  if h is null or h <> all (array['ab087bc94fd3b9337f94d8dbea5b56ea', '861978aa7b3d2d072433a9f6f8d7e857']) then
+    raise exception 'rollback 0250: api_creative_model_ok() is neither 0250''s body nor 0188''s (md5 %): a later file changed it; take that file out first', h;
+  end if;
+  select string_agg(id || ' (' || availability || ')', ', ' order by id) into onsale
+    from public.model_registry where 'music' = any (capabilities) and availability in ('beta', 'ga');
+  select string_agg(j.id::text || ' (' || j.mode || ', ' || j.status || ')', ', ' order by j.created_at) into inflight
+    from public.creative_jobs j
+   where j.capability = 'music' and j.mode <> 'exact'
+     and j.status in ('queued', 'running', 'provider_pending', 'processing', 'rendering');
+  if inflight is not null then
+    raise notice 'rollback 0250: routed music jobs still in flight (their worker failover raises 22023 once 0250 is out): %', inflight;
+  end if;
+  if onsale is not null then
+    raise exception 'rollback 0250: these music models are on sale, and without 0250 routing finds none of them and a failover raises 22023: %. Take them off sale (availability hidden) first', onsale;
+  end if;
+end $$;
+
+-- sellable_models: 0192's body, verbatim (0192_adult_attestation.sql, section 7).
+create or replace function public.sellable_models(p_capability text default null, p_surface text default 'web')
+  returns table (
+    id text, display_name text, provider text, capabilities text[], availability text,
+    verified_at timestamptz, credit_unit text, entitlement text,
+    credits_per_unit numeric, margin numeric, spec jsonb)
+  language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  if p_surface is null or p_surface not in ('web', 'api', 'mcp') then
+    raise exception 'unknown surface %', p_surface using errcode = '22023';
+  end if;
+  if p_capability is not null
+     and p_capability not in ('t2i', 'edit', 't2v', 'i2v', 'tts', 'sfx', 'upscale', 'remove_bg',
+                              'voice_change', 'dub', 'video_upscale', 'describe', 'captions',
+                              'expand', 'relight', 'erase', 'video_edit', 'video_reframe', 'video_remove_bg') then
+    raise exception 'unknown capability %', p_capability using errcode = '22023';
+  end if;
+  -- Captions are a web tool (0072): the transcript lives in caption_tracks,
+  -- which only a signed-in member's session can read. Sold through the API or
+  -- MCP (api_creative_model_ok asks this function for 'api'), a key could pay
+  -- for a job whose result it can never fetch. No other surface lists them,
+  -- whatever the registry says.
+  if p_capability = 'captions' and p_surface <> 'web' then
+    return;
+  end if;
+  return query
+    select m.id, m.display_name, m.provider, m.capabilities, m.availability, m.verified_at,
+           -- 0084: the rate as charged (margin folded in) and never the margin
+           -- itself. The column stays (NULL) so the return type, and every
+           -- earlier migration's create-or-replace on a replay, is unchanged.
+           m.credit_unit, m.entitlement, cp.credits_per_unit * (1 + cp.margin), null::numeric,
+           -- The public half of spec: what a person choosing a model needs.
+           -- Never provider costs, evidence, notes, the probe or the vendor id.
+           jsonb_strip_nulls(jsonb_build_object(
+             'output', m.spec -> 'output', 'inputs', m.spec -> 'inputs',
+             'aspect_ratios', m.spec -> 'aspect_ratios',
+             'aspect_ratios_by_capability', m.spec -> 'aspect_ratios_by_capability',
+             'image_sizes', m.spec -> 'image_sizes', 'resolutions', m.spec -> 'resolutions',
+             'durations_s', m.spec -> 'durations_s', 'audio_out', m.spec -> 'audio_out',
+             'upscale_factors', m.spec -> 'upscale_factors', 'languages', m.spec -> 'languages',
+             'upscale_targets', m.spec -> 'upscale_targets', 'end_frame', m.spec -> 'end_frame',
+             'async', m.spec -> 'async', 'unit', m.spec -> 'pricing' -> 'unit',
+             'qualities', m.spec -> 'qualities',
+             'relight_looks', m.spec -> 'relight_looks',
+             'default_resolution', m.spec -> 'default_resolution',
+             'price_variants_by', m.spec -> 'pricing' -> 'variants' -> 'by',
+             'attribution', m.spec -> 'attribution', 'api_exposure', m.spec -> 'api_exposure',
+             -- 0192: the vendor's terms are 18+: still listed (never hidden), and the app marks it "for adults only".
+             'requires_adult', case when public.model_requires_adult(m.spec) then true end,
+             'limits', m.spec -> 'limits', 'quality_tier', m.spec -> 'quality_tier',
+             'speed_tier', m.spec -> 'speed_tier'))
+      from public.model_registry m
+      join public.credit_prices cp on cp.unit = m.credit_unit
+     where m.availability in ('beta', 'ga')
+       and m.verified_at is not null
+       and m.verified_probe_id is not null
+       and coalesce(m.spec ->> 'terms_gate', '') = ''
+       and cp.credits_per_unit > 0
+       -- 0124: the owner's switch (model_is_available is TRUE for every model until it is put in force).
+       and public.model_is_available(m.id)
+       -- 0125: a shutdown date the vendor announced (spec.shutdown.on) that has come ends the sale.
+       and not public.model_past_shutdown(m.spec)
+       -- A model sold by quality is shown only when at least one of its tiers
+       -- has a price: a tier without a row is unpriced, never free.
+       and (m.spec -> 'pricing' -> 'variants' ->> 'by' is distinct from 'quality'
+            or exists (select 1
+                         from jsonb_array_elements_text(coalesce(m.spec -> 'qualities', '[]'::jsonb)) as tiers(tier)
+                         join public.credit_prices qp on qp.unit = m.credit_unit || '_' || tiers.tier
+                        where qp.credits_per_unit > 0))
+       -- Likewise a model sold by soundtrack, or by a resolution it pins (0070):
+       -- shown only while one of its variants has a price (never free).
+       and (not (coalesce(m.spec -> 'pricing' -> 'variants' ->> 'by', '') in ('audio', 'resolution_audio')
+                 or (coalesce(m.spec -> 'pricing' -> 'variants' ->> 'by', '') = 'resolution'
+                     and nullif(m.spec ->> 'default_resolution', '') is not null))
+            or exists (select 1
+                         from jsonb_object_keys(coalesce(m.spec -> 'pricing' -> 'variants' -> 'prices', '{}'::jsonb)) as vk(variant)
+                         join public.credit_prices vp
+                           on vp.unit = m.credit_unit || '_' || regexp_replace(lower(vk.variant), '[^a-z0-9]', '_', 'g')
+                        where vp.credits_per_unit > 0))
+       and (p_capability is null or p_capability = any (m.capabilities))
+       -- 0188: 'web_mcp' is sold on the web and to the 'mcp' surface (our own signed-in connector), never to 'api' (the public
+       -- developer API: a vendor's written permission can stop short of it). Only 'any' opens 'api'; a value this file does not
+       -- know opens nothing but the web (fail closed).
+       and (p_surface = 'web' or coalesce(m.spec ->> 'api_exposure', 'any') = 'any'
+            or (p_surface = 'mcp' and m.spec ->> 'api_exposure' = 'web_mcp'))
+       and (p_surface = 'web' or not ('captions' = any (m.capabilities)))
+     order by m.provider, m.id;
+end
+$$;
+
+revoke all on function public.sellable_models(text, text) from public, anon;
+grant execute on function public.sellable_models(text, text) to authenticated, service_role;
+
+-- api_creative_model_ok: 0188's body, verbatim (0188_recraft_web_mcp.sql).
+create or replace function public.api_creative_model_ok(p_capability text, p_model text) returns boolean
+  language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  -- 0124: a model the owner switched off that the API would otherwise sell is refused with its own word, so a caller is told "temporarily
+  -- unavailable" and not "not available through the API". Nothing is held. Every other model is judged as before.
+  if not public.model_is_available(p_model)
+     and exists (select 1 from public.model_registry r
+                  where r.id = p_model and p_capability = any (r.capabilities)
+                    and r.availability in ('beta', 'ga') and r.verified_at is not null
+                    -- 0188: only a model the API would otherwise sell ('any') gets the "temporarily off" word here.
+                    and coalesce(r.spec ->> 'api_exposure', 'any') = 'any'
+                    and p_capability <> 'captions') then
+    perform public.creative_refuse('model_temporarily_off', format('%s is temporarily unavailable', p_model));
+  end if;
+  return exists (select 1 from public.sellable_models(p_capability, 'api') s where s.id = p_model);
+end
+$$;
+revoke all on function public.api_creative_model_ok(text, text) from public, anon, authenticated, service_role;
+
+do $$
+begin
+  if (select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) from pg_proc p
+       where p.oid = 'public.sellable_models(text, text)'::regprocedure) is distinct from '85aaba9a2ec82dc7f276dd2135b4c7cf' then
+    raise exception 'rollback 0250 end state: sellable_models() is not 0192''s body';
+  end if;
+  if has_function_privilege('anon', 'public.sellable_models(text, text)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.sellable_models(text, text)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.sellable_models(text, text)', 'EXECUTE') then
+    raise exception 'rollback 0250 end state: sellable_models() grants are not 0192''s';
+  end if;
+  if (select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) from pg_proc p
+       where p.oid = 'public.api_creative_model_ok(text, text)'::regprocedure) is distinct from '861978aa7b3d2d072433a9f6f8d7e857' then
+    raise exception 'rollback 0250 end state: api_creative_model_ok() is not 0188''s body';
+  end if;
+end $$;
+
+commit;

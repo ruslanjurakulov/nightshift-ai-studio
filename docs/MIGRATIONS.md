@@ -3386,3 +3386,63 @@ database doors it used.
   The two rows now have no terms gate, so `--all` in the Probe models workflow includes them: one paid call each.
 - **Tests.** `tests/test_country_sale_allow_list_migration.py`, `tests/test_geoip_build.py` (`RegistryField`),
   `tests/test_google_requires_adult.py`, `tests/security/test_sec_country_sale_0238.py`, `tests/security/test_sec_country_block.py`.
+
+## sellable_models knows `music`: the last closed capability list on the job path (0250)
+
+0250 (`0250_music_in_job_path_lists.sql`, stream S6) is **live on apply**. It replaces two functions, writes no row, changes no
+grant and puts nothing on sale.
+
+- **Evidence** (measured in a PG16 lab with every migration through 0238). After 0228, `sellable_models` (0192's body) still raised
+  22023 "unknown capability music". With a music model lit and priced:
+  - `route_model` (0196) catches that 22023 as "no candidates", so every routed music quote and job (auto, cheap, fast, quality)
+    answered `no_model_available` with a model on sale;
+  - `reroute_creative_job` (0208, the worker's failover) does not catch it, so a routed music job's failover raised in the worker;
+  - `api_creative_model_ok` and `api_creative_models` answered music as an unknown capability (`invalid_params`).
+  - The exact Studio path never asks `sellable_models` (it prices through `creative_price`), so an exact music job was already
+    quoted, held and claimed. "Every music job would fail" was true of routed jobs and the failover only.
+- **Sweep.** The migration header lists every closed capability list on the job path, read from the live body (the last migration
+  that replaces each function), with its md5, in four groups:
+  - must add music: `sellable_models` (and, for BR-S6-06, `api_creative_model_ok`'s captions exclusion);
+  - already know it: `creative_capability_supported`, `creative_params_problem`, `creative_price`, `creative_quantity` and 0228's
+    two CHECKs;
+  - no closed list: quote, create, cancel, claim, advance, finish, attach, expire, hold, capture and refund, the router, the
+    operator preview, the country gate. `creative_jobs.capability`'s CHECK is a shape, not a list, and no credit or price table
+    names a capability;
+  - correctly exclude it: the API's list (`api_creative_models`, `API_CREATIVE_CAPABILITIES`) and the connected assistants'
+    (`oauth_creative_capabilities` and the functions gated by it), because music is web_only. Film's takes are t2i, edit, i2v
+    and tts only. The style and source checks and the workflow picture lists are about pictures and input files.
+  - `video_music` and `video_character_swap` stay unknown everywhere.
+- **Change.**
+  - `sellable_models`: 0192's body with `'music'` appended to its list of known capabilities, and music kept to the web the way
+    captions are (BR-S6-06, `docs/security/LEDGER.md`): an early return for `p_capability = 'music'` on any other surface, and
+    no music row in the API's or MCP's full list. Without that, a music row whose `api_exposure` is `any` (or absent, which reads
+    as `any`) would be quoted, held and queued for an API key, exact or routed.
+  - `api_creative_model_ok`: 0188's body, its "temporarily off" word leaves music out with captions.
+  - On the API and MCP surfaces music is then "not sold here" (an empty list, `api_creative_model_ok` false), not 22023.
+  So `api_creative_models` called with `music` straight in the database answers 200 with no models instead of 400 invalid_params
+  (`test_sec_breach_mcp_studio_0162.py` pins the new answer). The public route still answers 400 first: `music` is not in
+  `API_CREATIVE_CAPABILITIES`.
+- **Guard.** 0230's comment-cut fingerprint (`--` comments cut, then white space folded). It accepts only the earlier body or
+  0250's own (a replay is a no-op), and otherwise refuses, naming the drift. No backslash.
+  - `sellable_models`: 0192's `85aaba9a2ec82dc7f276dd2135b4c7cf` -> 0250's `58c81cd592628820d3bd348353e6a5a8` (folded only
+    `40f61462ddae2fc0e83a0956f4d8b75b` -> `c6320684517e3487a8f536105d2d25a2`).
+  - `api_creative_model_ok`: 0188's `861978aa7b3d2d072433a9f6f8d7e857` -> 0250's `ab087bc94fd3b9337f94d8dbea5b56ea` (folded only
+    `cbe9f5d42dcdcfddb604d4a30c2f80ae` -> `38d1ab91f7a18f4ff6fe10dbf642e3da`).
+- **Order.** Apply by hand after 0228, 0230 and 0238. It needs only 0192's body; without 0228 it sells nothing (a NOTICE says so).
+  A replay of 0192 refuses while 0250 is on (0192's guard), and so do 0124's, 0125's and 0188's. A replay of an older file that
+  replaces `sellable_models` without a guard (0035 to 0100) puts an older body back: apply the chain after it again, ending with
+  0192 and then 0250.
+- **Undo.** `docs/sql/rollback_0250_music_in_job_path_lists.sql` (owner-applied): refuses a body that is neither 0250's nor the
+  earlier one, **refuses, naming them, while any music model is beta or ga** (without 0250 routing finds none of them and the
+  worker's failover raises 22023: take them off sale first), and puts 0192's and 0188's bodies back verbatim.
+- **Owner step.** Apply 0250 in the SQL editor (one transaction), then run the Verify query at the end of the file: every column
+  reads true.
+- **Defence in depth (BR-S6-06).** The registry validator requires `api_exposure: web_only` on a music entry
+  (`tests/test_music_web_only_registry.py`), and the public API's `quoteCreative` / `createCreative` refuse a capability outside
+  `API_CREATIVE_CAPABILITIES` (music, captions) with 400 `capability_not_supported` before the database is asked
+  (`command-center/tests/api-creative.test.ts`).
+- **Tests.** `tests/test_music_job_path_lists_migration.py` (static) and `tests/security/test_sec_music_job_path_0250.py` (a real
+  PostgreSQL, with the red half: on 0192's body the same failover raises 22023), and Breach's
+  `tests/security/test_sec_breach_music_0250.py` (BR-S6-06 and the rest of its attacks). Contract `tests/security/sec_music_job_path_0250.py`.
+  `sec_db.rollback_0250_on_sale` measures the old behaviour with a music model on sale (the rollback itself refuses that).
+  `sec_db.take_off_0192` takes 0250 off first, and `put_back_0192` puts it back last.

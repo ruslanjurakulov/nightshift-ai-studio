@@ -909,3 +909,9 @@ sec_platform_roster_0233.extend(TABLES, FUNCTIONS)
 import sec_country_sale_0238  # noqa: E402
 
 sec_country_sale_0238.extend(TABLES, FUNCTIONS)
+
+# Migration 0250 (sellable_models knows music; S6): no new table or function; sellable_models keeps 0192's grants.
+# tests/security/sec_music_job_path_0250.py
+import sec_music_job_path_0250  # noqa: E402
+
+sec_music_job_path_0250.extend(TABLES, FUNCTIONS)
