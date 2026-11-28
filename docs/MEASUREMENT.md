@@ -564,8 +564,7 @@ What the numbers say:
   instrumental promise), not as a false positive of the detector.
 - Five samples is a smoke measurement. The rule says so wherever it is quoted.
 
-**Decision rule, proposed from run 46132895972 (smoke measurement, n = 5; for Atlas and the owner to approve before any check is
-built on it).** A Lyria answer is refused as sung (`after_completion` bad_response, refunded, never retried on another model) if
+**Decision rule, approved 2026-11-28 (Atlas, from run 46132895972; a smoke measurement, n = 5).** A Lyria answer is refused as sung (`after_completion` bad_response, refunded, never retried on another model) if
 **any** of these holds:
 
 1. `returned_singing` on Google's text block (the existing product check).
@@ -579,6 +578,11 @@ Signals 2 and 3 each separate all five samples alone, so the rule keeps both (an
 measures and Silero are not part of the rule (margins too thin, or no separation). If either detector fails to run, the answer is
 refused as "check did not run", never accepted (rules 4 and 5). A false refusal costs the customer nothing (it is refunded) and
 costs us one song; a false acceptance breaks the instrumental promise, so the rule leans to refusing.
+
+**Standing re-measurement.** The first 50 real songs sold in beta are measured again with the same three signals (numbers only,
+no audio kept). Recorded here: how many were refused, by which signal, and how many of those refusals a person judged to be
+instrumental after all (the false-refusal rate), plus any song that passed and was reported as sung. The thresholds change only
+through a new entry in this section, from those numbers.
 
 ---
 
