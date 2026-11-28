@@ -351,6 +351,224 @@ describe("Activity", () => {
   });
 });
 
+describe("Activity, a project's log in the reference style", () => {
+  const T1 = "7a000000-0000-4000-8000-0000000000a1";
+  const T2 = "7a000000-0000-4000-8000-0000000000a2";
+  const T3 = "7a000000-0000-4000-8000-0000000000a3";
+  const WORKER = "film-worker-host-7.internal";
+  const takes = [
+    { id: T1, kind: "keyframe", status: "completed", version: 1, shot_index: 0, attempt: 1 },
+    { id: T2, kind: "extend", status: "superseded", version: 1, shot_index: 2, attempt: 1 },
+    { id: T3, kind: "extend", status: "running", version: 1, shot_index: 2, attempt: 2 },
+  ];
+  const filmAt = (events: unknown[], total?: number) => {
+    const fj = filmJson({ status: "running" }, [sceneJson(S1, 0, { current_version: 1, shot_count: 2, takes })]) as Record<string, unknown>;
+    fj.events = events;
+    if (total !== undefined) fj.events_total = total;
+    return { film: fj, segments: [seg()], takes: [] };
+  };
+  // 0198's shapes: take_completed {take_id, kind, shot_index, attempt}; a retryable failure writes only take_retried.
+  const EVENTS = [
+    { id: 1, event: "segment_claimed", created_at: "2026-11-21T10:00:00Z", detail: { segment_id: "seg1", worker: WORKER, attempt: 1 } },
+    { id: 2, event: "take_completed", scene_id: S1, created_at: "2026-11-21T10:01:00Z", detail: { take_id: T1, kind: "keyframe", shot_index: 0, attempt: 1, charged: 9871 } },
+    { id: 3, event: "take_retried", scene_id: S1, created_at: "2026-11-21T10:02:00Z", detail: { take_id: T2, retry_take_id: T3, kind: "extend", failure: "vendor said: secret", charged: 0 } },
+    { id: 4, event: "brand_new_word", created_at: "2026-11-21T10:03:00Z" },
+  ];
+  const FAILED = { id: 5, event: "take_failed", scene_id: S1, created_at: "2026-11-21T10:04:00Z", detail: { take_id: T3, kind: "extend", failure: "provider_error", charged: 0 } };
+  const rows = () => screen.getAllByTestId("live-activity-item");
+  const tagOf = (li: HTMLElement) => within(li).getByTestId("live-activity-tag");
+  const reduce = (on: boolean) =>
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("max-width") || (on && q.includes("reduce")), media: q, addEventListener() {}, removeEventListener() {} }));
+  const twoReadings = (first: unknown[], second: unknown[]) => {
+    let n = 0;
+    answer = () => {
+      n += 1;
+      return { status: 200, body: filmAt(n === 1 ? first : second) };
+    };
+  };
+  const nextPoll = () =>
+    act(async () => {
+      await vi.advanceTimersByTimeAsync(7000);
+    });
+
+  it("each line carries the tag made from its row, its code hidden from a screen reader, next to a mono time and its sentence", async () => {
+    answer = live(filmAt(EVENTS));
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    const lines = rows();
+    expect(lines.map((li) => tagOf(li).querySelector(".lv-tag-code")?.textContent)).toEqual(["log", "clip-01.2", "key-01", "seg"]);
+    expect(lines.map((li) => tagOf(li).querySelector(".lv-tag-code")?.getAttribute("aria-hidden"))).toEqual(["true", "true", "true", "true"]);
+    expect(lines.map((li) => li.getAttribute("data-family"))).toEqual(["log", "clip", "key", "seg"]);
+    expect(lines[1].textContent).toContain("Scene 1 · clip: waiting to retry");
+    expect(lines[2].textContent).toContain("Scene 1 · picture: done");
+    expect(lines[3].textContent).toContain(c.activity.words.segment_claimed);
+    expect(lines[0].querySelector("time")?.className).toContain("lv-log-time");
+  });
+
+  it("the spoken tag ends in a stop, says the shot only when the tag shows it, and not the scene the sentence already says", async () => {
+    answer = live(
+      filmAt([
+        ...EVENTS,
+        // No take row and no shot: the tag is clip-01 with no `.n`, so no shot is said.
+        { id: 6, event: "take_completed", scene_id: S1, created_at: "2026-11-21T10:05:00Z", detail: { kind: "clip" } },
+        // A word with no sentence: the scene is said in the tag, since nothing else says it.
+        { id: 7, event: "take_started_x", scene_id: S1, created_at: "2026-11-21T10:06:00Z", detail: { take_id: T1, kind: "keyframe" } },
+      ]),
+    );
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    const spoken = (li: HTMLElement) => tagOf(li).querySelector(".sr-only")?.textContent;
+    const byWord = (w: string) => rows().filter((li) => li.getAttribute("data-word") === w);
+    expect(spoken(byWord("take_retried")[0])).toBe("Clip, shot 2. ");
+    // Newest first: id 6 (the clip) above id 2 (the picture).
+    expect(spoken(byWord("take_completed")[0])).toBe("Clip. ");
+    expect(spoken(byWord("take_completed")[1])).toBe("Picture. ");
+    expect(spoken(byWord("take_started_x")[0])).toBe("Picture, scene 1. ");
+  });
+
+  it("a failure stands out as bad and a retry as warn; other lines carry no outcome", async () => {
+    answer = live(filmAt([...EVENTS, FAILED]));
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    expect(rows().map((li) => [li.getAttribute("data-word"), li.getAttribute("data-outcome")])).toEqual([
+      ["take_failed", "bad"],
+      ["brand_new_word", null],
+      ["take_retried", "warn"],
+      ["take_completed", null],
+      ["segment_claimed", null],
+    ]);
+  });
+
+  it("a long kind word is cut in the tag, and the whole word stays on it as a title", async () => {
+    const long = "a_kind_word_of_thirty_one_chars";
+    expect(long).toHaveLength(31);
+    answer = live(filmAt([{ id: 9, event: "take_completed", created_at: "2026-11-21T10:05:00Z", detail: { kind: long } }]));
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    const tag = tagOf(rows()[0]);
+    expect(tag.getAttribute("title")).toBe(long);
+    expect(tag.querySelector(".lv-tag-code")?.textContent).toBe(long);
+  });
+
+  it("the worker's host name, credits and free text in detail never reach the page", async () => {
+    answer = live(filmAt(EVENTS));
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    const html = document.body.innerHTML;
+    expect(html).not.toContain(WORKER);
+    expect(html).not.toContain("9871");
+    expect(html).not.toContain("secret");
+  });
+
+  it("an event word with no sentence is shown as its own code, under the log tag", async () => {
+    answer = live(filmAt(EVENTS));
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    const unknown = rows()[0];
+    expect(unknown.getAttribute("data-word")).toBe("brand_new_word");
+    expect(unknown.querySelector("code")?.textContent).toBe("brand_new_word");
+    expect(tagOf(unknown).textContent).toContain(c.activity.tags.log);
+  });
+
+  it("every time is HH:MM:SS, and a divider names the day above lines of another day and where the day changes", async () => {
+    answer = live(filmAt(EVENTS.slice(0, 2).map((e, i) => ({ ...e, created_at: i === 0 ? "2026-11-19T22:00:00Z" : "2026-11-21T10:01:00Z" }))));
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    expect(rows().map((li) => li.querySelector("time")?.textContent)).toEqual(rows().map((li) => expect.stringMatching(/^\d{2}:\d{2}:\d{2}$/)));
+    const list = screen.getByTestId("live-activity").querySelector("ol")!;
+    const order = [...list.children].map((el) => el.getAttribute("data-testid"));
+    // Newest first, both lines older than today: a divider over each day.
+    expect(order).toEqual(["live-activity-day", "live-activity-item", "live-activity-day", "live-activity-item"]);
+  });
+
+  it("lines of today carry no divider", async () => {
+    const now = Date.now();
+    answer = live(filmAt(EVENTS.slice(0, 2).map((e, i) => ({ ...e, created_at: new Date(now - (2 - i) * 1000).toISOString() }))));
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    expect(screen.queryByTestId("live-activity-day")).toBeNull();
+  });
+
+  it("a row the log could not read is counted as not shown, in the reader's plural", async () => {
+    // Two rows recorded; one has no readable time and is not drawn.
+    answer = live(filmAt([EVENTS[0], { ...EVENTS[1], created_at: "not a time" }], 2));
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    expect(rows()).toHaveLength(1);
+    expect(screen.getByTestId("live-activity-earlier").textContent).toBe("1 event not shown.");
+  });
+
+  it("never says nothing is recorded beside a count of events not shown", async () => {
+    answer = live(filmAt([], 7));
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    expect(screen.queryByTestId("live-activity-empty")).toBeNull();
+    expect(screen.getByTestId("live-activity-earlier").textContent).toBe("7 events not shown.");
+  });
+
+  it("nothing is marked new on the first reading (a refresh replays no log); a line from a later poll is", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    twoReadings(EVENTS.slice(0, 2), EVENTS.slice(0, 3));
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(document.querySelectorAll(".is-new")).toHaveLength(0);
+    await nextPoll();
+    await waitFor(() => expect(rows()).toHaveLength(3));
+    expect([...document.querySelectorAll(".is-new.is-arriving")].map((li) => li.getAttribute("data-word"))).toEqual(["take_retried"]);
+  });
+
+  it("under reduced motion a new line keeps a still marker and gets no animation", async () => {
+    reduce(true);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    twoReadings(EVENTS.slice(0, 2), EVENTS.slice(0, 3));
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    await nextPoll();
+    await waitFor(() => expect(rows()).toHaveLength(3));
+    expect(document.querySelectorAll(".is-arriving")).toHaveLength(0);
+    expect([...document.querySelectorAll(".is-new.is-still")].map((li) => li.getAttribute("data-word"))).toEqual(["take_retried"]);
+  });
+
+  it("another plan's first reading marks nothing new, in its very first paint", async () => {
+    const F2 = "0f000000-0000-4000-8000-0000000000f2";
+    answer = (url) => ({ status: 200, body: filmAt(url.includes(F2) ? [{ ...EVENTS[0], id: 90 }, { ...EVENTS[1], id: 91 }] : EVENTS.slice(0, 2)) });
+    const { rerender } = render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    rerender(<LiveView filmStudio target={{ kind: "film", id: F2 }} />);
+    await waitFor(() => expect(rows().map((li) => li.querySelector("time")?.getAttribute("dateTime"))).toHaveLength(2));
+    await waitFor(() => expect(screen.getByTestId("live-activity").querySelectorAll("li[data-word]")).toHaveLength(2));
+    expect(document.querySelectorAll(".is-new")).toHaveLength(0);
+  });
+
+  it("a failed read keeps the lines and says, in the panel, that they may be out of date", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let n = 0;
+    answer = () => {
+      n += 1;
+      return n === 1 ? { status: 200, body: filmAt(EVENTS) } : { status: 502, body: { error: "failed" } };
+    };
+    render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
+    await screen.findByTestId("live-activity");
+    expect(screen.queryByTestId("live-activity-stale")).toBeNull();
+    await nextPoll();
+    expect((await screen.findByTestId("live-activity-stale")).textContent).toBe(c.stale);
+    expect(rows()).toHaveLength(4);
+  });
+
+  it("a run's log keeps its plain lines: no tags, no log style", async () => {
+    const W = { window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:05:00Z" }, workflow: null, hold: null };
+    answer = live({ job: null, ...W, events: [{ ts: "2026-11-21T10:01:00Z", event: "topic.selected", status: "ok", agent: "host-x" }] });
+    render(<LiveView filmStudio target={{ kind: "window", channel: "ch-alpha", since: "2026-11-21T10:00:00Z" }} />);
+    const panel = await screen.findByTestId("live-activity");
+    expect(panel.className).not.toContain("is-log");
+    expect(within(panel).queryByTestId("live-activity-tag")).toBeNull();
+    const [line] = within(panel).getAllByTestId("live-activity-item");
+    expect(line.children).toHaveLength(2);
+    expect(line.textContent).toContain(c.activity.words["topic.selected"]);
+  });
+});
+
 describe("Activity, across readings and plans (Lens)", () => {
   const W = { window: { since: "2026-11-21T10:00:00Z", now: "2026-11-21T10:05:00Z" }, workflow: null, hold: null };
   const ev = (event: string, ts: string) => ({ ts, event, status: "ok", agent: null });

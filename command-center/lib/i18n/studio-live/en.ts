@@ -204,12 +204,29 @@ export const studioLiveEn = {
     empty: "Nothing recorded yet.",
     notReportedFilm: "Not reported: when a step starts, music, and the steps inside the assembly.",
     notReportedRun: "Render and upload results, and the publish gate's hold or block, appear only after the next sync.",
-    earlier: "{n} events not shown.",
+    /** By the reader's plural rule (lib/plural.ts): English uses one / other. */
+    earlier: { one: "{n} event not shown.", few: "{n} events not shown.", many: "{n} events not shown.", other: "{n} events not shown." },
     cut: "The run's log is longer than this view reads: its newest events may be missing.",
     step: "A step",
     made: "{step}: done",
     failed: "{step}: failed",
     retried: "{step}: waiting to retry",
+    /** A log line's tag, spoken: the tag itself (`clip-03.2`) is a code for the eye. */
+    tags: {
+      clip: "Clip",
+      clipScene: "Clip, scene {n}",
+      clipShot: "Clip, scene {n}, shot {shot}",
+      /** The sentence after it already names the scene. */
+      clipShotOnly: "Clip, shot {shot}",
+      key: "Picture",
+      keyScene: "Picture, scene {n}",
+      voice: "Voice",
+      asm: "Assembly",
+      seg: "Work part",
+      film: "Project",
+      log: "Log",
+      logCode: "Log, {code}",
+    },
     words: {
       "created": "Project created",
       "saved": "Plan saved",
