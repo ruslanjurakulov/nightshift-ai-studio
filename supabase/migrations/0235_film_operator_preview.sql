@@ -13,7 +13,9 @@
 --     c836631256f669318c9ef499d7c4c54b). So a hidden model is refused at save, quote, start and resume, for everyone.
 --   * 0139 lets the operator use exactly such a model in the Studio: creative_operator_preview(org, availability, spec)
 --     (ca8654e202cf46029350aaa3111c4c5d) is hidden (never disabled) + spec.operator_preview the JSON true + is_platform_admin() from the
---     JWT + credits_exempt(org) + a member, and creative_price (which film_price's lines call through film_try_price) already quotes it.
+--     JWT + credits_exempt(org) + is_org_member(org), and creative_price (which film_price's lines call through film_try_price) already
+--     quotes it. The member check adds nothing for a platform admin: 0043's accessible_org_ids makes every platform owner/admin a member
+--     of every organization (Breach 0235-I1, informational).
 --   * So an operator-only test film narrated by ElevenLabs v3 or v4 (hidden, terms-gated, verified, uz/ru/en) is refused at
 --     voice.model before creative_price is ever asked.
 -- DIAGNOSIS. Film's own model check is the only gate that does not know the organization; creative_price, which prices every line,
@@ -36,7 +38,8 @@
 --   film_resume_price (0215: film_resume_precheck, film_price), save_film and create_film_draft (0166: film_apply_settings,
 --   film_save_scenes).
 -- WHO GETS WHAT. creative_operator_preview reads is_platform_admin() from the caller's own JWT, so the widening reaches only a platform
---   owner/admin acting in the credits-exempt organization they are a member of. A customer, a member of the exempt organization who is
+--   owner/admin acting in the credits-exempt organization: every platform owner/admin, seat or not (0139's member check is vacuous for
+--   them, 0043), the same people start_film's exempt branch lets start a film there. A customer, a member of the exempt organization who is
 --   not a platform admin, and a platform admin acting in any other organization get model_not_available, as before. The service role
 --   (no JWT) never passes it. start_film already lets only a platform admin start a film in the exempt organization, which holds
 --   nothing (0171), so a preview film costs no customer anything; its lines are quoted by creative_price as the Studio quotes a preview

@@ -43,7 +43,9 @@ export function refusalText(w: AiWords, status: number, body: Record<string, unk
   const r = words(w, status, body, via);
   const e = typeof body.error === "string" ? body.error : "";
   if (status === 401 || e === "unauthorized" || e === "session_expired") return { ...r, signIn: true };
-  if (e === "chat_daily_cap" || e === "plan_over_cap") return { ...r, check: true };
+  // The Free trial does not come back by itself: its remedy is a plan, not Check again.
+  if (e === "plan_over_cap" && body.scope === "trial") return r;
+  if (e === "chat_daily_cap" || e === "plan_over_cap" || e === "chat_reserved" || e === "plan_too_long") return { ...r, check: true };
   return r;
 }
 
@@ -66,10 +68,22 @@ function words(w: AiWords, status: number, body: Record<string, unknown>, via: "
     case "model_unavailable": return { text: w.modelDown, retry: true };
     case "chat_plan_required": return { text: w.planRequired, retry: false };
     case "chat_daily_cap": return { text: w.dailyCap, retry: false };
+    // 0232: the rest of today's messages are held by a storyboard being written; back by `until` (minutes), never "in 24 hours".
+    case "chat_reserved": {
+      const at = typeof body.until === "string" ? Date.parse(body.until) : Number.NaN;
+      const person = body.scope === "person";
+      const n = num(body.reserved);
+      if (!Number.isFinite(at) || (person && n === null)) return { text: person ? w.reservedPersonPlain : w.reservedPlain, retry: false };
+      const time = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(at);
+      return { text: person ? fmt(w.reservedPerson, { n: n as number, time }) : fmt(w.reserved, { time }), retry: false };
+    }
+    // The film's own bound on a plan (0232): its length changed while the plan was being set up; checking again re-reads it.
+    case "plan_too_long": return { text: w.planTooLong, retry: false };
     case "plan_over_cap": {
       const most = num(body.needed) ?? "?";
       const left = num(body.left);
       const person = body.scope === "person";
+      if (body.scope === "trial" && left !== null) return { text: fmt(w.overCapTrial, { most, left }), retry: false };
       // A count the server did not give is never drawn as 0 (rule 5): said without the number.
       if (left === null) return { text: fmt(person ? w.overCapPersonNoLeft : w.overCapNoLeft, { most }), retry: false };
       return { text: fmt(person ? w.overCapPerson : w.overCap, { most, left }), retry: false };

@@ -3,7 +3,9 @@ in a real database.
 
 0139 lets the operator use a hidden model marked `"operator_preview": true` in the Studio: creative_operator_preview(org, availability,
 spec) holds only for a hidden row marked with the JSON true, a caller whose own JWT is a platform owner/admin, and the credits-exempt
-organization they are a member of. Film Studio's own model check (0166's film_check_model, 0171's film_model_problem) asked
+organization. Its member check is vacuous for a platform admin (0043's accessible_org_ids makes every platform owner/admin a member of
+every organization), so the audience is every platform owner/admin in the exempt organization, the same as start_film's exempt branch
+(Breach 0235-I1, informational). Film Studio's own model check (0166's film_check_model, 0171's film_model_problem) asked
 sellable_models with no organization, so it refused every hidden model for everyone. 0235 gives that check the film's organization.
 What would break without each guard (each test names it):
 
