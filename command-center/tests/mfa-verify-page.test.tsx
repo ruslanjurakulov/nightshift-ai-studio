@@ -18,6 +18,11 @@ const s = vi.hoisted(() => ({
   user: null as null | { id: string; factors?: Array<{ status: string; factor_type: string }> },
   aal: "aal1" as string,
   aalThrows: false,
+  /** The token's TOTP amr timestamp, minutes before now; null = no amr entry. */
+  codeAgeMinutes: null as number | null,
+  /** What owner_security_get() answers; null = it raises (a non-admin, 42501). */
+  security: null as null | { admin_aal2_required: boolean; recent_mfa_minutes: number },
+  rpcCalls: 0,
 }));
 
 vi.mock("@/lib/config", () => ({ SUPABASE_URL: "https://x.supabase.co", SUPABASE_ANON_KEY: "anon", isSupabaseConfigured: true }));
@@ -28,9 +33,16 @@ vi.mock("@/lib/supabase/server", () => ({
       mfa: {
         getAuthenticatorAssuranceLevel: async () => {
           if (s.aalThrows) throw new Error("x");
-          return { data: { currentLevel: s.aal } };
+          const methods =
+            s.codeAgeMinutes === null ? [] : [{ method: "totp", timestamp: Math.floor((Date.now() - s.codeAgeMinutes * 60_000) / 1000) }];
+          return { data: { currentLevel: s.aal, currentAuthenticationMethods: methods } };
         },
       },
+    },
+    rpc: async (fn: string) => {
+      s.rpcCalls += 1;
+      if (fn !== "owner_security_get" || !s.security) return { data: null, error: { code: "42501", message: "only a platform owner" } };
+      return { data: { ok: true, settings: s.security, caller: {} }, error: null };
     },
   }),
 }));
@@ -54,6 +66,9 @@ beforeEach(() => {
   s.user = null;
   s.aal = "aal1";
   s.aalThrows = false;
+  s.codeAgeMinutes = null;
+  s.security = null;
+  s.rpcCalls = 0;
   vi.unstubAllEnvs();
   vi.stubEnv("NIGHTSHIFT_ADMIN_MFA", "");
 });
@@ -80,6 +95,69 @@ describe("/login/verify", () => {
     s.user = { id: "u", factors: VERIFIED };
     s.aal = "aal2";
     await expect(page("/chronos/billing")).rejects.toThrow("NEXT_REDIRECT:/chronos/billing");
+  });
+
+  describe("an aal2 session whose code is older than the database's window (the owner AI stale_mfa loop)", () => {
+    const GATE_ON = { admin_aal2_required: true, recent_mfa_minutes: 480 };
+
+    it("stale aal2 + verified factor: the code form, returning to /owner/ai (no bounce back to the refusal)", async () => {
+      s.user = { id: "u", factors: VERIFIED };
+      s.aal = "aal2";
+      s.codeAgeMinutes = 481;
+      s.security = GATE_ON;
+      const el = (await page("/owner/ai")) as { props: { next: string } };
+      expect(el.props.next).toBe("/owner/ai");
+    });
+
+    it("fresh aal2 (code inside the window): straight on", async () => {
+      s.user = { id: "u", factors: VERIFIED };
+      s.aal = "aal2";
+      s.codeAgeMinutes = 479;
+      s.security = GATE_ON;
+      await expect(page("/owner/ai")).rejects.toThrow("NEXT_REDIRECT:/owner/ai");
+    });
+
+    it("the window is the database's, not a constant: 481 minutes passes under a 600-minute setting", async () => {
+      s.user = { id: "u", factors: VERIFIED };
+      s.aal = "aal2";
+      s.codeAgeMinutes = 481;
+      s.security = { admin_aal2_required: true, recent_mfa_minutes: 600 };
+      await expect(page("/owner/ai")).rejects.toThrow("NEXT_REDIRECT:/owner/ai");
+    });
+
+    it("gate off in the database (it refuses nobody as stale): straight on", async () => {
+      s.user = { id: "u", factors: VERIFIED };
+      s.aal = "aal2";
+      s.codeAgeMinutes = 10_000;
+      s.security = { admin_aal2_required: false, recent_mfa_minutes: 480 };
+      await expect(page("/owner/ai")).rejects.toThrow("NEXT_REDIRECT:/owner/ai");
+    });
+
+    it("window unreadable (not an admin, or the call fails): the old rule, straight on", async () => {
+      s.user = { id: "u", factors: VERIFIED };
+      s.aal = "aal2";
+      s.codeAgeMinutes = 10_000;
+      await expect(page("/chronos")).rejects.toThrow("NEXT_REDIRECT:/chronos");
+    });
+
+    it("lockout safety: no verified factor is never sent to a code page, however old its session", async () => {
+      s.user = { id: "u", factors: [{ status: "unverified", factor_type: "totp" }] };
+      s.aal = "aal2";
+      s.codeAgeMinutes = 10_000;
+      s.security = GATE_ON;
+      await expect(page("/owner/ai")).rejects.toThrow("NEXT_REDIRECT:/owner/ai");
+      // and the database is not even asked: nothing about it could change the answer
+      expect(s.rpcCalls).toBe(0);
+    });
+
+    it("an off-site next is still refused for a stale session after the code (safeLoginReturn)", async () => {
+      s.user = { id: "u", factors: VERIFIED };
+      s.aal = "aal2";
+      s.codeAgeMinutes = 481;
+      s.security = GATE_ON;
+      const el = (await page("//evil.example")) as { props: { next: string } };
+      expect(el.props.next).toBe("/command-center");
+    });
   });
 
   it("NIGHTSHIFT_ADMIN_MFA=off (break-glass): no code is asked, even of an enrolled account", async () => {

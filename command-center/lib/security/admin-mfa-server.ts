@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { ADMIN_MFA_ENV, hasVerifiedTotpFactor, parseAdminMfaMode, type AdminMfaMode } from "@/lib/security/admin-mfa";
 import { lastSecondFactorAtMs, parseRecentMfaMinutes, recentMfaDecision } from "@/lib/security/recent-mfa";
+import { coerceOwnerSecurity } from "@/lib/owner-reads";
 
 /**
  * What the server knows about this request's second factor, read the safe way.
@@ -52,6 +53,28 @@ export async function readMfaState(user: MfaUser | null | undefined): Promise<Mf
       aal = null;
     }
     return { userId: user.id, aal, hasVerifiedFactor: hasVerifiedTotpFactor(user), lastFactorAt };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The database's "how old may the code be" window, read from the database itself
+ * (owner_security_get(), migration 0107: the same owner_security_settings row that
+ * admin_mfa_state() judges by), so the code page never carries a second number that
+ * could drift from the one that refuses the owner. Minutes while the gate is on;
+ * null when the gate is off (the database then refuses nobody as stale), when the
+ * caller is not a platform admin (the function raises 42501), or when it cannot be
+ * read. null only ever means "keep the old rule", never "ask for less than aal2".
+ */
+export async function readDbRecentMfaWindow(): Promise<number | null> {
+  try {
+    const supabase = await createClient();
+    if (!supabase) return null;
+    const { data, error } = await supabase.rpc("owner_security_get");
+    if (error) return null;
+    const security = coerceOwnerSecurity(data);
+    return security?.gateOn ? security.recentMfaMinutes : null;
   } catch {
     return null;
   }

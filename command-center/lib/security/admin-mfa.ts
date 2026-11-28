@@ -88,6 +88,42 @@ export function mfaDecision({ mode, admin, aal, hasVerifiedFactor }: MfaInput): 
   return mode === "enforce" ? "challenge" : "warn_complete";
 }
 
+/**
+ * Is the session's second factor older than the window? Mirrors admin_mfa_state()
+ * (migration 0107): strictly older than `windowMinutes` is stale, exactly on it is
+ * not, and an unreadable time or an unknown window is NOT stale (the database also
+ * passes a session whose amr age it cannot read). One rule for every caller, so the
+ * code page can never disagree with the database about who must type a code again.
+ */
+export function isSecondFactorStale(lastFactorAt: number | null, now: number, windowMinutes: number | null): boolean {
+  if (lastFactorAt === null || windowMinutes === null || !Number.isFinite(windowMinutes)) return false;
+  return now - lastFactorAt > windowMinutes * 60_000;
+}
+
+export interface VerifyPageInput {
+  aal: string | null | undefined;
+  hasVerifiedFactor: boolean;
+  /** When the session's code was last typed (ms), from the token's `amr`; null = unreadable. */
+  lastFactorAt: number | null;
+  now: number;
+  /** The database's recent_mfa_minutes while its gate is on; null = no staleness rule applies or it is unknown. */
+  windowMinutes: number | null;
+}
+
+/**
+ * Does /login/verify show the code form? An aal2 session whose code is older than
+ * the database's window is treated like a password-only one: the owner AI (and every
+ * owner_guard action) refuses it with `stale_mfa` and links here, so sending it
+ * straight back made a loop the owner could never leave (found live 2026-11-21).
+ * LOCKOUT SAFETY: an account with no verified factor never gets the form, whatever
+ * its session says; there is no code it could type.
+ */
+export function verifyPageNeedsCode({ aal, hasVerifiedFactor, lastFactorAt, now, windowMinutes }: VerifyPageInput): boolean {
+  if (!hasVerifiedFactor) return false;
+  if (normalizeAal(aal) !== "aal2") return true;
+  return isSecondFactorStale(lastFactorAt, now, windowMinutes);
+}
+
 /** The code page, remembering where the person was going. `next` is validated again there. */
 export function mfaVerifyUrl(next?: string | null): string {
   return next ? `${MFA_VERIFY_PATH}?next=${encodeURIComponent(next)}` : MFA_VERIFY_PATH;

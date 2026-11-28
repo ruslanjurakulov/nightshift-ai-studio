@@ -86,7 +86,7 @@ export const ownerAssistantUz: typeof ownerAssistantEn = {
       not_configured: "Chat modelining kaliti bu serverda oʻrnatilmagan. Uni server sozlamalariga qoʻshing va qayta soʻrang.",
     },
     daily_cap: "Bugungi {limit} ta savol chegarasiga yetildi. U 24 soat ichida tiklanadi.",
-    second_factor: "Buning uchun ikkinchi omil kerak. Uni tasdiqlab, qayta soʻrang.",
+    second_factor: "Xavfsizlik uchun telefoningizdagi autentifikator ilovasidan 6 xonali kodni qayta kiriting.",
     not_enabled: "Ega AI yordamchisi uchun hali qoʻllanmagan maʼlumotlar bazasi migratsiyasi ({n}) kerak.",
     unavailable: "Hozir javob berib boʻlmadi. Muammo bizning tomonda. Qayta soʻrang.",
     network: "Serverga ulanib boʻlmadi. Aloqani tekshirib, qayta soʻrang.",
@@ -127,6 +127,6 @@ export const ownerAssistantUz: typeof ownerAssistantEn = {
     failed: "Hozir buni bajarib boʻlmadi. Qayta urinib koʻring.",
   },
   signIn: "Kirish",
-  verify: "Tasdiqlash",
+  verify: "Kodni kiritish",
   retry: "Qayta soʻrash",
 };

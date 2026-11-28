@@ -286,3 +286,38 @@ describe("a signed-out visitor", () => {
     expect(new URL(verify.headers.get("location") ?? "https://x/").pathname).toBe("/login");
   });
 });
+
+/**
+ * The one staleness rule the code page, the recent-MFA step-up and admin_mfa_state()
+ * (0107: `v_age > recent_mfa_minutes * 60`) share. What would break: the page sending a
+ * session the database calls stale straight back to the refusal (the owner AI loop), or
+ * asking for a code the database does not want.
+ */
+describe("the shared second-factor staleness rule", () => {
+  const MIN = 60_000;
+  const NOW = Date.UTC(2026, 10, 21, 12, 0, 0);
+
+  it("479 minutes inside a 480-minute window is fresh; 481 is stale; exactly 480 is fresh (as the database)", async () => {
+    const { isSecondFactorStale } = await import("../lib/security/admin-mfa");
+    expect(isSecondFactorStale(NOW - 479 * MIN, NOW, 480)).toBe(false);
+    expect(isSecondFactorStale(NOW - 481 * MIN, NOW, 480)).toBe(true);
+    expect(isSecondFactorStale(NOW - 480 * MIN, NOW, 480)).toBe(false);
+  });
+
+  it("an unreadable code time or an unknown window is not stale (the database passes an unreadable age too)", async () => {
+    const { isSecondFactorStale } = await import("../lib/security/admin-mfa");
+    expect(isSecondFactorStale(null, NOW, 480)).toBe(false);
+    expect(isSecondFactorStale(NOW - 10_000 * MIN, NOW, null)).toBe(false);
+  });
+
+  it("the code page: aal1 + factor asks; stale aal2 + factor asks; fresh aal2 does not; no factor never does", async () => {
+    const { verifyPageNeedsCode } = await import("../lib/security/admin-mfa");
+    const base = { now: NOW, windowMinutes: 480 };
+    expect(verifyPageNeedsCode({ ...base, aal: "aal1", hasVerifiedFactor: true, lastFactorAt: null })).toBe(true);
+    expect(verifyPageNeedsCode({ ...base, aal: "aal2", hasVerifiedFactor: true, lastFactorAt: NOW - 481 * MIN })).toBe(true);
+    expect(verifyPageNeedsCode({ ...base, aal: "aal2", hasVerifiedFactor: true, lastFactorAt: NOW - 479 * MIN })).toBe(false);
+    for (const aal of ["aal1", "aal2", null]) {
+      expect(verifyPageNeedsCode({ ...base, aal, hasVerifiedFactor: false, lastFactorAt: NOW - 10_000 * MIN })).toBe(false);
+    }
+  });
+});

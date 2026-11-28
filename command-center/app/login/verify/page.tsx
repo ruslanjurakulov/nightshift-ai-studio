@@ -5,7 +5,8 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { getDictionary } from "@/lib/i18n/server";
 import { safeLoginReturn } from "@/lib/safe-redirect";
 import { getUser } from "@/lib/supabase/server";
-import { adminMfaMode, readMfaState } from "@/lib/security/admin-mfa-server";
+import { adminMfaMode, readDbRecentMfaWindow, readMfaState } from "@/lib/security/admin-mfa-server";
+import { verifyPageNeedsCode } from "@/lib/security/admin-mfa";
 import { normalizeAal } from "@/lib/security/aal";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,10 @@ export async function generateMetadata(): Promise<Metadata> {
  *
  * - Signed out: /login, carrying only a validated internal continuation.
  * - `NIGHTSHIFT_ADMIN_MFA=off` (break-glass): no code is asked anywhere.
- * - Already aal2, or no verified factor (so no code exists): on to `next`.
+ * - No verified factor (so no code exists): on to `next`, always (lockout safety).
+ * - aal2 with a code younger than the database's recent_mfa_minutes: on to `next`.
+ *   An aal2 session whose code is OLDER gets the form: the database refuses it
+ *   (`stale_mfa`) and links here, and sending it back looped forever.
  * - Otherwise the code form. If the state cannot be read the form is shown too:
  *   it can only ask for MORE, and it always has a sign-out.
  */
@@ -40,6 +44,18 @@ export default async function VerifyPage({ searchParams }: { searchParams: Promi
   if (!user) redirect(continuation ? `/login?next=${encodeURIComponent(continuation)}` : "/login");
   if (adminMfaMode() === "off") redirect(next);
   const state = await readMfaState(user);
-  if (state && (!state.hasVerifiedFactor || normalizeAal(state.aal) === "aal2")) redirect(next);
+  if (state) {
+    // The database is asked for its window only for an enrolled aal2 session: nobody else's answer depends on it.
+    const freshnessMatters = state.hasVerifiedFactor && normalizeAal(state.aal) === "aal2";
+    const windowMinutes = freshnessMatters ? await readDbRecentMfaWindow() : null;
+    const needsCode = verifyPageNeedsCode({
+      aal: state.aal,
+      hasVerifiedFactor: state.hasVerifiedFactor,
+      lastFactorAt: state.lastFactorAt,
+      now: Date.now(),
+      windowMinutes,
+    });
+    if (!needsCode) redirect(next);
+  }
   return <MfaChallenge next={next} />;
 }
