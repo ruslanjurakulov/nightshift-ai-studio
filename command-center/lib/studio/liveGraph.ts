@@ -240,7 +240,7 @@ export function coerceFilmLive(raw: unknown): FilmReading | null {
     master: (() => {
       const m = rec(r.master);
       const assetId = m ? str(m.asset_id) : null;
-      return m && assetId ? { assetId, sound: coerceMasterSound(m.sound) } : null;
+      return m && assetId ? { assetId, sound: coerceMasterSound(m.mix_format, m.sound) } : null;
     })(),
     rawEvents: rows ? { rows, total } : null,
   };
@@ -445,10 +445,11 @@ export function filmGraph(r: FilmReading): LiveGraph {
   // The final video is the assembly's file: there only when the segment recorded one.
   const finalAsset = seg?.assemblyAssetId ?? null;
   const final: LiveStatus = r.segments === null ? "unknown" : finalAsset ? "done" : asm === "failed" || asm === "stopped" ? "stopped" : asm === "done" ? "unknown" : "waiting";
+  // The route answers null for `master` when the read failed: a file is there and what it records could not be read (Pixel M2).
   const sound: MasterSound | undefined = finalAsset
     ? r.master && r.master.assetId === finalAsset
       ? r.master.sound
-      : { state: "unknown" }
+      : { state: "unknown", cause: "read_failed" }
     : undefined;
   nodes.push({ id: "final", kind: "final", status: final, assetId: finalAsset, ...(sound ? { sound } : {}), col: 6, row: mid });
   edges.push({ from: "assembly", to: "final" });

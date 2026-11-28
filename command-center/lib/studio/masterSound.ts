@@ -15,21 +15,23 @@ export interface MeasuredLoudness {
   lra: number | null;
 }
 
+/** Why the sound is unknown, each with its own sentence (Pixel M2): the record could not be read, the file was made before sound
+ * checks were recorded, or the file carries no record. */
+export type UnknownCause = "read_failed" | "made_before" | "no_record";
+
 export type MasterSound =
-  | { state: "unknown" }
-  /** The project has no sound at all (no narration, no music, no shot's own sound). */
+  | { state: "unknown"; cause: UnknownCause }
+  /** The project has no sound at all (no narration, no music, no clip's own sound). */
   | { state: "none" }
   | {
       state: "ready";
       mode: LoudnessMode;
       measured: MeasuredLoudness;
-      /** Shots whose priced sound option was bought and whose sound the project does not play: "already paid for". */
-      paidUnused: number;
-      /** Shots whose file carries sound that is left out by default (a model whose sound comes with the clip). */
-      defaultUnused: number;
+      /** Clips bought with the priced sound option whose sound this video does not play. null: not recorded (rule 5, never 0). */
+      paidUnused: number | null;
+      /** Clips whose file carries sound left out by default (a model whose sound comes with the clip). null: not recorded. */
+      defaultUnused: number | null;
     };
-
-const UNKNOWN: MasterSound = { state: "unknown" };
 
 function rec(v: unknown): Record<string, unknown> | null {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
@@ -46,26 +48,40 @@ function modeOf(loud: Record<string, unknown>): LoudnessMode {
   return "unknown";
 }
 
-/** `provenance.sound` of the master (whatever the database answered) as the view reads it. */
-export function coerceMasterSound(raw: unknown): MasterSound {
+export const MIX_FORMAT = 2;
+
+/**
+ * The master's sound as the view reads it. `mixFormat` is the master's `provenance.mix_format` and `raw` its `provenance.sound`
+ * (whatever the database answered). A master from before the record (no mix_format, or an older one) is "made_before".
+ */
+export function coerceMasterSound(mixFormat: unknown, raw: unknown): MasterSound {
+  if (typeof mixFormat !== "number" || mixFormat < MIX_FORMAT) return { state: "unknown", cause: "made_before" };
   const s = rec(raw);
-  if (!s || s.mix_format !== 2) return UNKNOWN;
+  if (!s || s.mix_format !== MIX_FORMAT) return { state: "unknown", cause: "no_record" };
   if (s.status === "no sound") return { state: "none" };
   const loud = rec(s.master_loudness);
-  if (s.status !== "mastered" || !loud) return UNKNOWN;
+  if (s.status !== "mastered" || !loud) return { state: "unknown", cause: "no_record" };
   const m = rec(loud.measured) ?? {};
-  let paidUnused = 0;
-  let defaultUnused = 0;
+  let paidUnused: number | null = 0;
+  let defaultUnused: number | null = 0;
   for (const scene of Array.isArray(s.scenes) ? s.scenes : []) {
     const sc = rec(scene);
     if (!sc) continue;
     const status = Array.isArray(sc.clip_sound) ? sc.clip_sound : [];
-    const paid = Array.isArray(sc.sound_paid) ? sc.sound_paid : [];
-    const file = Array.isArray(sc.file_sound) ? sc.file_sound : [];
+    if (!status.length) continue;
+    // A scene that lists its clips but not whether each was paid for (or what its file carries) leaves the count unknown, never
+    // a 0 that reads as "nothing" (Pixel L5).
+    const paid = Array.isArray(sc.sound_paid) && sc.sound_paid.length === status.length ? sc.sound_paid : null;
+    const file = Array.isArray(sc.file_sound) && sc.file_sound.length === status.length ? sc.file_sound : null;
+    if (!paid) paidUnused = null;
+    if (!paid || !file) defaultUnused = null;
     status.forEach((st, k) => {
       if (st === "used" || st === "lip-synced") return;
-      if (paid[k] === true) paidUnused += 1;
-      else if (st === "muted" && sc.source === "default" && file[k] === true) defaultUnused += 1;
+      if (paid && paid[k] === true) {
+        if (paidUnused !== null) paidUnused += 1;
+      } else if (paid && file && st === "muted" && sc.source === "default" && file[k] === true && defaultUnused !== null) {
+        defaultUnused += 1;
+      }
     });
   }
   return { state: "ready", mode: modeOf(loud), measured: { i: num(m.I), tp: num(m.TP), lra: num(m.LRA) }, paidUnused, defaultUnused };

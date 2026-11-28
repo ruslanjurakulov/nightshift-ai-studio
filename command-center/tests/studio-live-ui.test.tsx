@@ -133,30 +133,46 @@ describe("details", () => {
     expect(within(fin).getByTestId("live-open-timeline").getAttribute("href")).toBe(`/alpha/studio?view=timeline&film=${FILM}`);
   });
 
-  it("the final video says what its file recorded about its sound, and unknown when it recorded nothing (rule 5)", async () => {
+  it("the final video says what its file recorded about its sound, and why it is unknown when it is (rule 5)", async () => {
     const done = [seg({ status: "settled", assembly_status: "completed", assembly_asset_id: MP4 })];
     const sound = {
       mix_format: 2, status: "mastered", clip_stem_shots: 1,
-      master_loudness: { mode: "dynamic", status: "dynamic (linear not possible)", measured: { I: -18.2, TP: -3, LRA: 14, thresh: -29 } },
+      master_loudness: { mode: "dynamic", status: "dynamic (linear not possible)", measured: { I: -18.2, TP: null, LRA: 14, thresh: -29 } },
       scenes: [{ scene: 1, role: "muted", source: "chosen", clip_sound: ["muted"], sound_paid: [true], file_sound: [true] }],
     };
-    for (const [master, state] of [[{ asset_id: MP4, sound }, "ready"], [{ asset_id: MP4, sound: null }, "unknown"], [null, "unknown"]] as const) {
+    const open = async (master: unknown) => {
       cleanup();
       answer = live({ film: film("ready"), segments: done, takes: [], master });
       render(<LiveView filmStudio target={{ kind: "film", id: FILM }} />);
       await screen.findByTestId("live-list");
       fireEvent.click(node("final"));
-      const box = screen.getByTestId("live-final-sound");
-      expect(box.getAttribute("data-state")).toBe(state);
-      if (state === "ready") {
-        expect(within(box).getByTestId("live-final-loudness").textContent).toBe(c.sound.dynamic);
-        expect(box.textContent).toContain("Measured before: -18.2 LUFS, true peak -3 dBTP, range 14 LU.");
-        expect(within(box).getByTestId("live-final-paid").textContent).toBe("Shots whose sound was already paid for and is not used in this video: 1.");
-      } else {
-        expect(box.textContent).toContain(c.sound.unknown);
-        expect(box.textContent).not.toContain(c.sound.linear);
-      }
+      return screen.getByTestId("live-final-sound");
+    };
+    const box = await open({ asset_id: MP4, mix_format: 2, sound });
+    expect(box.getAttribute("data-state")).toBe("ready");
+    expect(within(box).getByTestId("live-final-loudness").textContent).toBe(c.sound.dynamic);
+    const measured = within(box).getByTestId("live-final-measured");
+    // Each number keeps its unit (a no-break space, an abbreviation with its title); a missing one is the phrase alone.
+    expect(measured.textContent).toBe("Measured before levelling: -18.2\u00a0LUFS, true peak not recorded, range 14\u00a0LU.");
+    expect(measured.textContent).not.toContain("not recorded dBTP");
+    expect(measured.querySelector("abbr")?.getAttribute("title")).toBe(c.sound.unitTitles.lufs);
+    expect(within(box).getByTestId("live-final-paid").textContent).toBe(c.sound.paidUnused.replace("{n}", "1"));
+    for (const [master, cause, text] of [
+      [null, "read_failed", c.sound.unknownReadFailed],
+      [{ asset_id: MP4, mix_format: null, sound: null }, "made_before", c.sound.unknownMadeBefore],
+      [{ asset_id: MP4, mix_format: 2, sound: null }, "no_record", c.sound.unknownNoRecord],
+    ] as const) {
+      const b = await open(master);
+      expect([b.getAttribute("data-state"), b.getAttribute("data-cause")]).toEqual(["unknown", cause]);
+      expect(b.textContent).toContain(text);
+      expect(b.textContent).not.toContain(c.sound.linear);
     }
+  });
+
+  it("the sound copy never says publish, and calls clips clips (Pixel M2, M3)", () => {
+    const all = JSON.stringify(c.sound).toLowerCase();
+    expect(all).not.toContain("publish");
+    expect(all).not.toContain("shot");
   });
 
   it("a done picture shows in the details (an image has a thumbnail and no play link); Escape closes and focus returns to the step", async () => {

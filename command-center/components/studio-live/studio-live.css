@@ -75,6 +75,7 @@
 .lv-final-sound { flex-basis: 100%; display: grid; gap: 4px; }
 .lv-final-sound h3 { font-size: 13px; font-weight: 600; margin: 0; }
 .lv-final-sound p { margin: 0; }
+.lv-num { white-space: nowrap; }
 
 @media (max-width: 1279px) {
   /* The tab bar and the raised Create key sit over the last rows on a phone (S4 MEDIUM 5). */
