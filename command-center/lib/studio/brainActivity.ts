@@ -38,9 +38,29 @@ export type BrainActivity =
   /** A first send that made no session ended without an answer (Atlas, 28 Nov): only after a null "thinking", never with a plan. */
   | { session_id: null; phase: "end"; reason: "failed"; plan?: never };
 
+/**
+ * S3's addition to the contract (LIVE_CREATION_PLAN item 9, "Create in place"), for #989 to mirror: the person's confirmed Create went
+ * through (S2's start route answered ok) and this conversation became this film. Sent once per start, before the panel records the
+ * handoff on the server, so the board beside it reads the film at once instead of after a page reload. It carries ids only (no
+ * quote, no money): the board reads everything else from the read-only live route. The server's handoff stays the truth after a
+ * refresh; this event and `&film=` in the URL are how the page on screen learns it first.
+ */
+export const BRAIN_HANDOFF_EVENT = "nightshift:brain-handoff";
+export type BrainHandoff = { session_id: string; film_id: string };
+
 export type BrainCanvasEvent =
   | { kind: "brief"; detail: { session_id: string; updated_at: string } }
-  | { kind: "activity"; detail: BrainActivity };
+  | { kind: "activity"; detail: BrainActivity }
+  | { kind: "handoff"; detail: BrainHandoff };
+
+const FILM_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The handoff's runtime guard: a real session and a film id that is a UUID (films.id), nothing else read. */
+export function isBrainHandoff(d: unknown): d is BrainHandoff {
+  if (!d || typeof d !== "object" || Array.isArray(d)) return false;
+  const h = d as Record<string, unknown>;
+  return typeof h.session_id === "string" && h.session_id.length > 0 && typeof h.film_id === "string" && FILM_UUID.test(h.film_id);
+}
 
 const PHASES: ReadonlySet<string> = new Set(["thinking", "planning", "saving", "pricing", "end"]);
 
@@ -65,9 +85,11 @@ export function dispatchBrainCanvas(e: BrainCanvasEvent): boolean {
   if (typeof window === "undefined") return false;
   if (e.kind === "activity" && !isBrainActivity(e.detail)) return false;
   if (e.kind === "brief" && !(typeof e.detail.session_id === "string" && e.detail.session_id.length > 0)) return false;
+  if (e.kind === "handoff" && !isBrainHandoff(e.detail)) return false;
   // S3-local, the one line not in #989: remembered for a listener that mounts late (the replay below).
   if (e.kind === "activity") lastByWindow.set(window, e.detail);
-  window.dispatchEvent(new CustomEvent(e.kind === "brief" ? BRAIN_BRIEF_EVENT : BRAIN_ACTIVITY_EVENT, { detail: e.detail }));
+  const name = e.kind === "brief" ? BRAIN_BRIEF_EVENT : e.kind === "handoff" ? BRAIN_HANDOFF_EVENT : BRAIN_ACTIVITY_EVENT;
+  window.dispatchEvent(new CustomEvent(name, { detail: e.detail }));
   return true;
 }
 
@@ -132,4 +154,19 @@ export function onBrainActivity(handler: (a: HeardActivity) => void, { replay = 
 export function clearBrainActivity(): void {
   if (typeof window === "undefined") return;
   lastByWindow.delete(window);
+}
+
+/**
+ * Calls `handler` with every well-formed handoff (a conversation id the board can read, a film UUID); returns the unsubscribe. No
+ * replay: a board that mounts after the event is a page that was loaded, and a loaded page has `&film=` in its URL or the handoff
+ * in the conversation's brief.
+ */
+export function onBrainHandoff(handler: (h: BrainHandoff) => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const on = (e: Event) => {
+    const d = (e as CustomEvent<unknown>).detail;
+    if (isBrainHandoff(d) && SESSION.test(d.session_id)) handler({ session_id: d.session_id, film_id: d.film_id.toLowerCase() });
+  };
+  window.addEventListener(BRAIN_HANDOFF_EVENT, on);
+  return () => window.removeEventListener(BRAIN_HANDOFF_EVENT, on);
 }

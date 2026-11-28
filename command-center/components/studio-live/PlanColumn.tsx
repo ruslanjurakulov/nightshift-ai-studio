@@ -6,14 +6,17 @@ import { useSearchParams } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
-import { onBrainActivity, type BrainActivity } from "@/lib/studio/brainActivity";
+import { onBrainActivity, onBrainHandoff, type BrainActivity, type BrainHandoff } from "@/lib/studio/brainActivity";
 import { adoptSession, enteringIds, initialView, parseViewMemory, VIEW_MEMORY_KEY, viewOnSend, type ColumnView, type ViewMemory } from "@/lib/studio/planBoard";
 import { planItems } from "@/lib/studio/planGrid";
-import type { BoardInput } from "@/lib/studio/boardModel";
+import { hasLitStep, type BoardInput } from "@/lib/studio/boardModel";
+import { nsMarkOnce } from "@/lib/studio/nsMark";
 import { CanvasActiveContext } from "@/components/studio-canvas/canvasActive";
 import { BRAIN_BRIEF_EVENT, useBrainBrief } from "./useBrainBrief";
 import { useBoardModel } from "./useBoardModel";
 import { Details } from "./Details";
+import { LiveLane } from "./LiveLane";
+import { useLiveGraph, type LiveTarget } from "./useLiveGraph";
 import { PlanBoard, PlanList, planCards } from "./PlanBoard";
 import { SegTabs, tabPanelProps } from "./SegTabs";
 import { reduced } from "./StoryBoard";
@@ -71,7 +74,14 @@ const cardOf = (nodeId: string) => (/^scene#\d+:(keyframe|clip)$/.test(nodeId) ?
  * `nightshift:brain-brief`, through useBrainBrief), and says when a turn or a storyboard is out (`nightshift:brain-activity`). No
  * polling timer and no new route.
  *
- * Read-only (CLAUDE.md rule 3): the cards are DRAFT steps; nothing here starts, prices or spends. Create stays in the panel.
+ * After Create the same board turns to the film in place (LIVE_CREATION_PLAN §3.9): the panel's `nightshift:brain-handoff`, the
+ * page's `&film=` (a refresh), or the brief's own handoff (a refresh with only `?brain=`) names the film, and the cards light from its
+ * live reading (useLiveGraph, the read-only `/api/films/{id}/live`), with the film's lane under them. The cards keep their ids
+ * (position-keyed), so nothing remounts: the person sees the plan they confirmed start to be made. Measured before: a full reload,
+ * 0.35 s with no page, then a page without this panel, and the first live card 1.2–1.5 s after confirm.
+ *
+ * Read-only (CLAUDE.md rule 3): the cards are DRAFT steps, then the film's steps as the database reports them; nothing here starts,
+ * prices or spends. Create stays in the panel, the person's own confirmed act.
  *
  * The person's own canvas stays mounted while the plan is shown, hidden and inert, and told it is not active (CanvasActiveContext):
  * its overlays, keys, drops and search stand down (its project bar stays in the header), and an open composer, a quote or a running
@@ -184,6 +194,17 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
     window.addEventListener(BRAIN_BRIEF_EVENT, on);
     return () => window.removeEventListener(BRAIN_BRIEF_EVENT, on);
   }, []);
+  // Create went through: this conversation's board turns to the film, and is shown (as a send shows it), unless the person chose their
+  // own canvas in this same conversation.
+  useEffect(
+    () =>
+      onBrainHandoff((h) => {
+        if (h.session_id !== sessionRef.current) return;
+        setHeard(h);
+        setView(viewOnSend(readMemory(), h.session_id));
+      }),
+    [],
+  );
 
   const [selected, setSelected] = useState<string | null>(null);
   // Another conversation is a first reading (nothing "new" on it) unless this column started it from a send.
@@ -205,8 +226,27 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
   const brief = read.load.state === "ready" ? read.load.brief : null;
   const phase = activity && activity.session_id === session && activity.phase !== "end" ? activity.phase : null;
   const planCounts = phase === "planning" ? (activity?.plan ?? null) : null;
-  const boardInput = useMemo<BoardInput | null>(() => (brief ? { source: "brief", brief, writing: phase === "planning" } : null), [brief, phase]);
+
+  // The film this conversation became, first from what this page heard (the panel's handoff), then from the server's record of it
+  // (the brief's handoff: the truth after a refresh), then from the URL's `&film=` (a refresh before the brief is read, or a handoff
+  // the server did not record). Each only for this conversation: another one's film is never drawn under it.
+  const [heard, setHeard] = useState<BrainHandoff | null>(null);
+  const urlFilmRaw = params?.get("film") ?? null;
+  const urlFilm = url !== null && url === session && urlFilmRaw && SESSION.test(urlFilmRaw) ? urlFilmRaw.toLowerCase() : null;
+  const briefFilm = brief?.handoff?.kind === "film" ? brief.handoff.filmId : null;
+  const filmId = (heard && heard.session_id === session ? heard.film_id : null) ?? briefFilm ?? urlFilm;
+  const target = useMemo<LiveTarget | null>(() => (filmId ? { kind: "film", id: filmId } : null), [filmId]);
+  const live = useLiveGraph(target);
+  const filmKey = filmId ? `film:${filmId}` : null;
+  const liveGraph = live.load.state === "ready" && live.load.key === filmKey ? live.load.graph : null;
+
+  // One model across Create (`plan` stays the conversation): the film's reading folds into the brief's board, the same cards by id.
+  const boardInput = useMemo<BoardInput | null>(
+    () => (liveGraph ? { source: "live", graph: liveGraph } : brief ? { source: "brief", brief, writing: phase === "planning" } : null),
+    [liveGraph, brief, phase],
+  );
   const model = useBoardModel(boardInput, session);
+  const making = model?.stage === "making" || model?.stage === "assembled";
   const graph = model?.graph ?? null;
   const items = useMemo(() => (graph ? planItems(graph) : null), [graph]);
   const ids = useMemo(() => (items ? [...items.top.map((n) => n.id), ...items.scenes.map((s) => s.id), ...items.footer.map((n) => n.id)] : null), [items]);
@@ -246,6 +286,19 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
   const onOpen = useCallback((id: string) => setSelected(/^scene#\d+$/.test(id) ? `${id}:keyframe` : id), []);
   const sel = graph?.nodes.find((n) => n.id === selected) ?? null;
   const cards = useMemo(() => (items ? planCards(t, items, { selected, onOpen, enter }) : []), [t, items, selected, onOpen, enter]);
+
+  // The timing harness's marks (tools/visual-qa/timing): taken once the state that draws the thing is committed.
+  const hasCards = cards.length > 0;
+  const lit = making && !!graph && hasLitStep(graph);
+  useEffect(() => {
+    if (hasCards) nsMarkOnce(making ? "ns:live:first-card" : "ns:plan:first-card");
+  }, [hasCards, making]);
+  useEffect(() => {
+    if (phase === "planning") nsMarkOnce("ns:plan:storyboard-start");
+  }, [phase]);
+  useEffect(() => {
+    if (lit) nsMarkOnce("ns:live:first-lit");
+  }, [lit]);
 
   // Closing a step gives focus back to its card, focused before the details unmount (or the browser drops it to <body>); Escape
   // closes it wherever focus is, and is taken, so nothing else on the page reads it as "leave" (Pixel H5).
@@ -308,12 +361,35 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
     </div>
   );
 
+  // The film named but not read yet, or not readable: the brief's board stays, and this line says why it has not lit.
+  const ls = live.load.state;
+  const filmLine: ReactNode =
+    ls === "loading" ? (
+      <p className="ds-t-caption plan-quiet" role="status" data-testid="plan-live-loading">{c.loading}</p>
+    ) : ls === "error" ? (
+      <p className="ds-t-caption" role="alert" data-testid="plan-live-error">
+        {c.readFailed}{" "}
+        <button type="button" className="cv-kbtn plan-key" onClick={live.retry}>
+          {c.retry}
+        </button>
+      </p>
+    ) : ls === "expired" ? (
+      <p className="ds-t-caption" role="alert" data-testid="plan-live-expired">
+        {c.expired}{" "}
+        <Link href={`/login?next=${encodeURIComponent(typeof window === "undefined" ? "/" : window.location.pathname + window.location.search)}`}>{c.signIn}</Link>
+      </p>
+    ) : ls === "notFound" ? (
+      <p className="ds-t-caption" role="status" data-testid="plan-live-notfound">{c.notFound}</p>
+    ) : ls === "unavailable" ? (
+      <p className="ds-t-caption" role="status" data-testid="plan-live-unavailable">{c.unavailable}</p>
+    ) : null;
+
   let body: ReactNode = null;
   if (items) {
     body = (
       <div className={`lv-main plan-stage${sel ? " has-details" : ""}`} data-stage={model?.stage}>
         {phone ? <PlanList cards={cards} /> : <PlanBoard cards={cards} items={items} />}
-        {sel ? <Details node={sel} run={false} filmId={null} onClose={close} /> : null}
+        {sel ? <Details node={sel} run={false} filmId={making ? filmId : null} video={making ? graph?.video : undefined} onClose={close} /> : null}
       </div>
     );
   } else if (phase === "thinking") body = planning;
@@ -388,10 +464,16 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
       </p>
       <div className="plan-col-stack">
         {shown === "plan" ? (
-          <section {...tabPanelProps("plan-col", "plan")} className="cv-root lv-root plan-root" data-testid="plan-board-pane" data-phase={phase ?? "end"}>
+          <section {...tabPanelProps("plan-col", "plan")} className="cv-root lv-root plan-root" data-testid="plan-board-pane" data-phase={phase ?? "end"} data-stage={model?.stage}>
             <header className="plan-head">
               <h2 className="ds-t-heading-xl plan-title">{brief?.title || p.title}</h2>
-              {graph ? <p className="ds-t-caption">{p.headerNote}</p> : null}
+              {graph ? (
+                <p className="ds-t-caption" data-testid={making ? "plan-making" : undefined}>
+                  {making ? (graph.settled ? c.settled : p.making) : p.headerNote}
+                </p>
+              ) : null}
+              {filmId && !liveGraph ? filmLine : null}
+              {making && live.stale ? <p className="ds-t-caption lv-stale" data-testid="plan-live-stale">{c.stale}</p> : null}
               {graph && phase === "thinking" ? (
                 <p className="ds-t-caption plan-quiet" data-testid="plan-thinking">
                   {elapsed >= STILL_WORKING_MS ? p.stillWorking : p.planning}
@@ -430,6 +512,9 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
               </div>
             ) : null}
             {body}
+            {making && filmKey ? (
+              <LiveLane load={live.load} planKey={filmKey} stale={live.stale} selected={selected} onOpen={setSelected} retry={live.retry} />
+            ) : null}
             {items && absentLine ? <p className="ds-t-caption plan-absent">{absentLine}</p> : null}
           </section>
         ) : null}

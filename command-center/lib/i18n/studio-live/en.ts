@@ -159,6 +159,7 @@ export const studioLiveEn = {
     canvas: "My canvas",
     title: "The plan",
     headerNote: "Plan · nothing runs until Create",
+    making: "Being made · steps light as the server reports them, checked every 6 s",
     empty: "Your plan draws itself here as you talk with Nightshift AI. Send a message to start.",
     planning: "Planning…",
     stillWorking: "Still working…",

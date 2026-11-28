@@ -6,15 +6,19 @@
  *   flow    one sentence typed in the panel -> the first reply -> Choose -> the storyboard -> Create -> the confirm block, sampled
  *           every 100 ms with a screenshot every 500 ms. Asserts: the planning skeleton while the first turn is out, the Plan board
  *           after the first reply with cards, the storyboard row while the storyboard is written, the confirm key fully visible, the
- *           switch back to the person's canvas, no page error.
+ *           switch back to the person's canvas, no page error. Then Create in place (LIVE_CREATION_PLAN item 9): confirm, and the
+ *           same board turns to the film with no navigation (no new document, the panel still there, the scene card the same
+ *           element), `&film=` added to the URL with `?brain=` kept, the film's lane under the board.
  *   layout  the page opened on a 12-scene conversation at 1440, 768, 390 and 360, light and dark (the app's own theme,
  *           chronos_theme), en / ru / uz. Asserts: the Plan cards are drawn (below 1024 px through the Chat / Plan tabs), no horizontal
  *           overflow, no page error, no card text under 12 px as rendered; at 1440x900 also: the 12 scenes fit the board at zoom 1,
- *           the page does not scroll, every card is reached by Tab, Escape closes a step and never leaves the page.
+ *           the page does not scroll, every card is reached by Tab, Escape closes a step and never leaves the page. Then the same page
+ *           after Create (`?brain=&film=`, a refresh): the film's board and its lane, no horizontal overflow, no page error.
  *
  * The model is stubbed at the browser boundary, as in the measurement: lib/server/brain/llm.ts has no base-URL seam, and every turn
  * writes through ai_chat_* functions the fake refuses. /api/brain/turn is answered here after --L ms, in the route's recorded shape;
- * the film start is never sent. No vendor, LLM or paid provider is called; nothing is started, priced or spent.
+ * the film start is answered here too (never sent to the server). The film's live reading is the fake's fixed film ("Football in
+ * 2050"), not the one planned here. No vendor, LLM or paid provider is called; nothing is started, priced or spent.
  *
  * Needs a running app built against the fake (NEXT_PUBLIC_SUPABASE_URL = the fake's URL; NIGHTSHIFT_AI_CHAT=on,
  * NIGHTSHIFT_FILM_STUDIO=admins at runtime) and the fake (`PORT=... FAKE_ADMIN=1 node tools/visual-qa/fake-supabase.mjs`).
@@ -122,10 +126,19 @@ async function stubBrain(page, state) {
       return json(r, { brief: ready, film: { id: FILM_ID, version: 8 }, models: { clip: { id: "qa-clip", name: "QA Clip" }, keyframe: { id: "qa-pic", name: "QA Pictures" } },
         quota: { used: 2 + WINDOWS, limit: 30, trial_left: null }, film_quote: QUOTE });
     }
+    if (b.action === "handoff") {
+      state.handoffs++;
+      state.brief = { ...ready, status: "created", handoff: { kind: "film", film_id: FILM_ID } };
+      return json(r, { ok: true });
+    }
     return json(r, { error: "bad_request" }, 400);
   });
-  // Never reaches the server: nothing is started or held.
-  await page.route(/\/api\/films\/[^/]+\/start$/, (r) => json(r, { error: "lab_never_starts" }, 409));
+  // Never reaches the server: nothing is started or held. Refused unless the run says the stubbed start may answer ok.
+  await page.route(/\/api\/films\/[^/]+\/start$/, async (r) => {
+    if (!state.allowStart) return json(r, { error: "lab_never_starts" }, 409);
+    await sleep(300);
+    return json(r, { start: { ok: true, replayed: false } });
+  });
 }
 
 const probe = () => {
@@ -141,6 +154,7 @@ const probe = () => {
     plan: !!pane,
     phase: pane?.dataset.phase ?? null,
     stage: pane?.querySelector("[data-stage]")?.getAttribute("data-stage") ?? null,
+    paneStage: pane?.getAttribute("data-stage") ?? null,
     planning: !!pane?.querySelector("[data-testid=plan-thinking]"),
     skeleton: !!pane?.querySelector("[data-testid=plan-thinking] .plan-skel"),
     storyboard: !!pane?.querySelector("[data-testid=plan-storyboard]"),
@@ -167,8 +181,13 @@ async function flow() {
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e.message).slice(0, 200)));
-  const state = { brief: null, sessionReads: 0 };
+  const state = { brief: null, sessionReads: 0, handoffs: 0, allowStart: false };
   await stubBrain(page, state);
+  // Every new document after the first load is a reload (the measured "before": location.assign to ?view=live).
+  const docs = [];
+  page.on("framenavigated", (f) => {
+    if (f === page.mainFrame()) docs.push({ t: Date.now() - T0.v, url: f.url() });
+  });
 
   const T0 = { v: Date.now() };
   const t = () => Date.now() - T0.v;
@@ -247,6 +266,42 @@ async function flow() {
   await page.locator("[data-testid=plan-switch-plan]").click();
   await sleep(800);
   await page.screenshot({ path: path.join(dir, "plan-again.png") });
+
+  // Create in place: the person confirms; the stubbed start answers ok; the board must turn to the film without a navigation.
+  state.allowStart = true;
+  await page.evaluate(() => {
+    window.__labDoc = "before-create";
+    const el = document.querySelector('[data-testid=plan-board-pane] [data-node-id="scene#1"]');
+    if (el) el.__labSame = true;
+  });
+  const docsBefore = docs.length;
+  await page.locator("[data-testid=film-create-key]").click();
+  await page.locator("[data-testid=film-create-confirm-key]").waitFor({ timeout: 10000 }).catch(() => mark("no_confirm_2"));
+  await sleep(400);
+  mark("confirm_pressed");
+  await page.locator("[data-testid=film-create-confirm-key]").click();
+  const making = await page
+    .waitForFunction(() => document.querySelector("[data-testid=plan-board-pane]")?.getAttribute("data-stage") === "making", null, { timeout: 15000 })
+    .then(() => true, () => false);
+  mark(making ? "board_making" : "board_not_making");
+  await sleep(1500);
+  const after = await page.evaluate(() => {
+    const u = new URL(location.href);
+    const el = document.querySelector('[data-testid=plan-board-pane] [data-node-id="scene#1"]');
+    return {
+      sameDoc: window.__labDoc === "before-create",
+      sameCard: !!el && el.__labSame === true,
+      panel: !!document.querySelector("[data-testid=nightshift-ai-panel]"),
+      liveView: !!document.querySelector("[data-testid=live-view]"),
+      film: u.searchParams.get("film"),
+      brain: u.searchParams.get("brain"),
+      view: u.searchParams.get("view"),
+      lane: !!document.querySelector("[data-testid=plan-board-pane] [data-testid=live-lane]"),
+      marks: performance.getEntriesByType("mark").map((m) => m.name).filter((n) => n.startsWith("ns:")),
+    };
+  });
+  mark("after_create", after);
+  await page.screenshot({ path: path.join(dir, "created-in-place.png") });
   sampling = false;
   await sampler;
   await shooter;
@@ -277,6 +332,12 @@ async function flow() {
     viewport_transforms_after_send: [...new Set(ok.filter((s) => s.t >= S).map((s) => s.transform).filter(Boolean))].length,
     max_entering: Math.max(0, ...ok.map((s) => s.entering)),
     session_reads: state.sessionReads,
+    after_confirm_s: {
+      "board turned to the film (stage making)": rel(first(M.confirm_pressed, (s) => s.stage === "making" || s.paneStage === "making"), M.confirm_pressed),
+    },
+    documents_after_create: docs.length - docsBefore,
+    after_create: after,
+    handoffs_recorded: state.handoffs,
     confirm: confirmVisible,
     canvas_back: canvasBack,
     page_errors: errors,
@@ -289,6 +350,13 @@ async function flow() {
   check(derived.after_choose_s["scene cards on the board"] !== null, `${run}: the storyboard's scene cards reached the board`);
   check(confirmVisible.ok === true, `${run}: the confirm key is wholly visible above the composer`);
   check(canvasBack.plan === false && canvasBack.inert === false, `${run}: "My canvas" shows the person's canvas again`);
+  check(making, `${run}: after confirm the board turned to the film in place (stage making)`);
+  check(docs.length - docsBefore === 0 && after.sameDoc, `${run}: no navigation after Create (new documents: ${docs.length - docsBefore})`);
+  check(after.panel && !after.liveView, `${run}: the panel stays, no separate live page`);
+  check(after.sameCard, `${run}: the scene card is the same element before and after Create (no remount)`);
+  check(after.film === FILM_ID && after.brain === SID && after.view === null, `${run}: &film= added, ?brain= kept (${after.brain}, ${after.film})`);
+  check(after.lane, `${run}: the film's lane is under the board`);
+  check(state.handoffs === 1, `${run}: the handoff was recorded once (${state.handoffs})`);
   check(errors.length === 0, `${run}: no page error`);
 }
 
@@ -315,7 +383,7 @@ async function layout() {
         const page = await ctx.newPage();
         const errors = [];
         page.on("pageerror", (e) => errors.push(String(e.message).slice(0, 200)));
-        const state = { brief: readyN(N), sessionReads: 0 };
+        const state = { brief: readyN(N), sessionReads: 0, handoffs: 0, allowStart: false };
         await stubBrain(page, state);
         const name = `${locale}-${theme}-${width}`;
         await page.goto(`${BASE}/${SLUG}/studio?brain=${SID}`, { waitUntil: "load", timeout: 120000 });
@@ -422,6 +490,24 @@ async function layout() {
           check(ok === 10 && page.url() === before, `${name}: Escape closes the step, focus back on its card 10/10 (${ok}; ${misses.join(" ")}), stays on the Studio`);
         }
         await page.screenshot({ path: path.join(dir, `${name}.png`), fullPage: phone });
+        // After Create: a refresh on ?brain=&film= draws the film's board in the Plan column (the Plan tab below 1024 px).
+        state.brief = { ...readyN(N), status: "created", handoff: { kind: "film", film_id: FILM_ID } };
+        await page.goto(`${BASE}/${SLUG}/studio?brain=${SID}&film=${FILM_ID}`, { waitUntil: "load", timeout: 120000 });
+        await page.waitForSelector("[data-testid=studio-split]", { timeout: 60000 });
+        if (width < 1024) await page.locator("[data-testid=studio-tab-plan]").click().catch(() => {});
+        const made = await page
+          .waitForFunction(() => document.querySelector("[data-testid=plan-board-pane]")?.getAttribute("data-stage") === "making", null, { timeout: 20000 })
+          .then(() => true, () => false);
+        await sleep(1200);
+        const m = await page.evaluate(() => ({
+          lane: !!document.querySelector("[data-testid=plan-board-pane] [data-testid=live-lane]"),
+          cards: document.querySelectorAll("[data-testid=plan-board-pane] [data-node-id]").length,
+          scrollW: document.scrollingElement.scrollWidth,
+          clientW: document.scrollingElement.clientWidth,
+        }));
+        check(made && m.cards > 0 && m.lane, `${name}: after Create the Plan column shows the film's board (${m.cards} cards) and its lane`);
+        check(m.scrollW <= m.clientW, `${name}: after Create, no horizontal overflow (${m.scrollW} <= ${m.clientW})`);
+        await page.screenshot({ path: path.join(dir, `${name}-making.png`), fullPage: phone });
         check(errors.length === 0, `${name}: no page error ${errors.join(" | ")}`);
         await ctx.close();
       }

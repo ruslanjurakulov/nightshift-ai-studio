@@ -3,7 +3,7 @@
 import { createContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
-import { onBrainActivity, type BrainPhase } from "@/lib/studio/brainActivity";
+import { onBrainActivity, onBrainHandoff, type BrainPhase } from "@/lib/studio/brainActivity";
 import { BRAIN_BRIEF_EVENT } from "./useBrainBrief";
 import { SegTabs, tabPanelProps } from "./SegTabs";
 
@@ -102,6 +102,17 @@ export function StudioSplit({
     window.addEventListener(BRAIN_BRIEF_EVENT, on);
     return () => window.removeEventListener(BRAIN_BRIEF_EVENT, on);
   }, []);
+  // Create went through: the film is made on the Plan tab (the board in place of the old live page), so that is where the person is
+  // taken, as the first send takes them to the plan. Another conversation's handoff moves nothing.
+  useEffect(
+    () =>
+      onBrainHandoff((h) => {
+        if (h.session_id !== current.current) return;
+        setHasPlan(true);
+        setTabState("plan");
+      }),
+    [],
+  );
 
   const chip =
     narrow && tab === "chat" && (phase || hasPlan) ? (

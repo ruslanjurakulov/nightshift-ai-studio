@@ -34,7 +34,8 @@ import "./nightshift-ai-panel.css";
  * choose a scenario; the one that spends is the existing one:
  *   - long: a LINK to the Run now form, prefilled — that form's own priced button holds and starts (CLAUDE.md rule 3);
  *   - short: S2's FilmCreateButton (#905), given the draft and quote_film's answer: it asks the person to confirm that number and
- *     starts the film through the film route; this panel only records the handoff once it went through and opens the live view.
+ *     starts the film through the film route; this panel only records the handoff once it went through, and the board beside it
+ *     turns to the film in place (`nightshift:brain-handoff` and `&film=` in the URL; no reload).
  * Every price shown is the server's; with none, no number is shown (rule 5). Every BRIEF change is announced to the canvas (S6b) with
  * the browser event `nightshift:brain-brief`.
  *
@@ -287,6 +288,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     const u = new URL(window.location.href);
     if (u.searchParams.get("brain") !== sid) {
       u.searchParams.set("brain", sid);
+      // Another conversation's film is not this one's.
+      u.searchParams.delete("film");
       window.history.replaceState(null, "", u.toString());
     }
     if (b) setBrief(b);
@@ -326,6 +329,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       const u = new URL(window.location.href);
       if (u.searchParams.get("brain") !== sid) return;
       u.searchParams.delete("brain");
+      u.searchParams.delete("film");
       // Only a page that was drawn with ?brain= comes back with different props; otherwise there is no re-read to skip.
       if (initialSession) dropped.current = true;
       routerRef.current.replace(`${u.pathname}${u.search}${u.hash}`, { scroll: false });
@@ -885,11 +889,20 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   /** A start went through (S2's button): the conversation records which film it became, once, and the live view opens. A replay
    *  (this press already counted) is the same start: recorded once all the same. */
   const filmStarted = async (filmId: string) => {
-    if (session && handedOff.current !== filmId) {
+    // Without a conversation the board beside the panel has nothing to follow: the live page, as before.
+    if (!session) return window.location.assign(liveHref(filmId));
+    // In place, not a reload (measured: 0.35 s of no page, then a page without this panel): the board hears the film now, and the
+    // URL keeps it for a refresh; the server's handoff below stays the truth.
+    dispatchBrainCanvas({ kind: "handoff", detail: { session_id: session, film_id: filmId } });
+    const u = new URL(window.location.href);
+    if (u.searchParams.get("film") !== filmId) {
+      u.searchParams.set("film", filmId);
+      window.history.replaceState(null, "", u.toString());
+    }
+    if (handedOff.current !== filmId) {
       handedOff.current = filmId;
       await post({ action: "handoff", session, handoff: { kind: "film", film_id: filmId } }).catch(() => undefined);
     }
-    window.location.assign(liveHref(filmId));
   };
   const liveHref = (filmId: string) => `/${encodeURIComponent(channelSlug)}/studio?view=live&film=${encodeURIComponent(filmId)}`;
   /** The film's project editor (/{channel}/create/projects/{id}), where a model is set or a storyboard edited: S2's Create links
@@ -903,6 +916,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (typeof window === "undefined") return;
     const u = new URL(window.location.href);
     if (!u.searchParams.has("brain")) return;
+    u.searchParams.delete("film");
     // The same path as forget(): the canvas draws ?brain= from the page's props, so a history.replaceState left it drawing the old
     // conversation beside the new chat (#900's leftover). A replace, so Back does not return to it; the re-read it causes is skipped.
     u.searchParams.delete("brain");

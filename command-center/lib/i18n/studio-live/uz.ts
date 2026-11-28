@@ -158,6 +158,7 @@ export const studioLiveUz: StudioLiveDictionary = {
     canvas: "Mening holstim",
     title: "Reja",
     headerNote: "Reja · «Yaratish» bosilmaguncha hech narsa ishga tushmaydi",
+    making: "Tayyorlanmoqda · qadamlar server xabar berganda yonadi, har 6 soniyada tekshiriladi",
     empty: "Nightshift AI bilan suhbatlashganingiz sari rejangiz shu yerda chiziladi. Boshlash uchun xabar yuboring.",
     planning: "Rejalashtirilmoqda…",
     stillWorking: "Hali davom etmoqda…",

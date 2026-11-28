@@ -99,3 +99,14 @@ export function reduceBoard(prev: BoardModel | null, input: BoardInput): BoardMo
   if (prev && prev.graph === graph && prev.stage === stage) return prev;
   return { stage, graph };
 }
+
+/** Steps a film reading marks done the moment it exists (filmGraph: the idea and the script are the plan itself). */
+const DONE_AT_ONCE = new Set(["idea", "script", "character", "location", "prop"]);
+
+/**
+ * A live reading with a step lit: one working, or one finished beyond what a film has the moment it is created. The `ns:live:first-lit`
+ * mark's condition; a board of only "waiting" steps and a done idea is not lit.
+ */
+export function hasLitStep(g: LiveGraph): boolean {
+  return g.nodes.some((n) => n.status === "working" || (n.status === "done" && !DONE_AT_ONCE.has(n.kind)));
+}

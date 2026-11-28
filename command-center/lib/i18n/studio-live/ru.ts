@@ -158,6 +158,7 @@ export const studioLiveRu: StudioLiveDictionary = {
     canvas: "Мой холст",
     title: "План",
     headerNote: "План · ничего не запускается до «Создать»",
+    making: "Создаётся · шаги загораются по мере отчётов сервера, проверка каждые 6 с",
     empty: "План рисуется здесь, пока вы общаетесь с Nightshift AI. Отправьте сообщение, чтобы начать.",
     planning: "Планируем…",
     stillWorking: "Всё ещё работаем…",

@@ -14,7 +14,8 @@ import { useLiveGraph, type LiveTarget } from "./useLiveGraph";
 import { nodeName, StoryBoard } from "./StoryBoard";
 import { Details, failureText } from "./Details";
 import { useBoardModel } from "./useBoardModel";
-import type { BoardInput } from "@/lib/studio/boardModel";
+import { hasLitStep, type BoardInput } from "@/lib/studio/boardModel";
+import { nsMarkOnce } from "@/lib/studio/nsMark";
 import "@/components/studio-canvas/studio-canvas.css";
 import "./studio-live.css";
 
@@ -163,6 +164,16 @@ export function LiveView({
     setLit(new Set(before ? graph.nodes.filter((n) => n.status === "done" && before.has(n.id) && before.get(n.id) !== "done").map((n) => n.id) : []));
     seen.current = new Map(graph.nodes.map((n) => [n.id, n.status]));
   }, [graph, source]);
+
+  // The timing harness's marks, as the Plan column takes them: the film's first cards, and its first lit step.
+  const liveCards = source === "live" && !!graph && graph.nodes.length > 0;
+  const liveLit = source === "live" && !!graph && hasLitStep(graph);
+  useEffect(() => {
+    if (liveCards) nsMarkOnce("ns:live:first-card");
+  }, [liveCards]);
+  useEffect(() => {
+    if (liveLit) nsMarkOnce("ns:live:first-lit");
+  }, [liveLit]);
 
   let body: React.ReactNode;
   if (draft) body = null;
