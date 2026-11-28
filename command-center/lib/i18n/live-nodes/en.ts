@@ -1,0 +1,95 @@
+/**
+ * The live canvas's node cards (components/live): what a card says about its own state. Source of truth for ./ru and ./uz.
+ * Kind labels are set in capitals by CSS (.ds-t-label), so they are written here in sentence case: an uppercase string would
+ * be read letter by letter by some screen readers.
+ */
+export const liveNodesEn = {
+  kind: {
+    script: "Script",
+    scene: "Scene {n}",
+    sceneUnnumbered: "Scene",
+    shot: "Shot {n}",
+    shotUnnumbered: "Shot",
+    ofShot: "{kind} · shot {n}",
+    character: "Character",
+    location: "Location",
+    prop: "Prop",
+    still: "Still",
+    clip: "Clip",
+    voice: "Voice",
+    music: "Music",
+    film: "Film",
+  },
+  state: {
+    ghost: "Planned",
+    queued: "Queued",
+    working: "Working",
+    arrived: "Ready",
+    failed: "Needs you",
+    disabled: "Not available",
+    insufficient: "Needs credits",
+    unknown: "Unknown",
+  },
+  /** A working card's phase word: what the job is doing, as the server reported it. */
+  phase: {
+    queued: "Queued",
+    making: "Making",
+    storing: "Storing",
+  },
+  /** {n}: the vendor's own queue position, shown only when the vendor reports one. */
+  queuePosition: "Position {n} in the vendor's queue",
+  /** The elapsed timer, for a screen reader: "Elapsed 1:05". */
+  elapsed: "Elapsed {time}",
+  /** A percentage the vendor itself measured (never estimated here). */
+  measured: "{pct}% done, as the provider reports it",
+  progressLabel: "Progress",
+  /** Over a prompt revealed on the card: the server already checked this text. */
+  written: "Written",
+  /** A provisional card (plan §3.5): the server has not checked its window yet. */
+  checking: "Checking",
+  /** A length chip: measured from the file, requested by the person, planned by the brain. */
+  duration: { measured: "{s} s", requested: "~{s} s", planned: "{s} s plan" },
+  durationLabel: { measured: "Length, measured", requested: "Length, as requested", planned: "Length, as planned" },
+  prompt: "Prompt",
+  model: "Model",
+  price: "{n} {unit}",
+  priceLabel: "Price",
+  failed: {
+    cause: "What happened",
+    remedy: "What to do",
+    retry: "Retry this one · {n} {unit}",
+    /** The backend gave no price for a retry: it cannot be pressed. */
+    retryUnpriced: "Retry · price unavailable",
+    retrying: "Retrying…",
+  },
+  insufficient: {
+    shortfall: "Needs {n} more {unit} than you have.",
+    topUp: "Add credits",
+  },
+  ready: "{kind} ready: {name}",
+  /** The alt text of an arrived picture when the caller has no better one. */
+  resultAlt: "Result for {name}",
+  /** An arrived picture whose link no longer loads (signed links expire). */
+  mediaFailed: "The picture could not be loaded. Open the card to see it again.",
+  disabledNoReason: "The reason was not recorded.",
+  cast: "In this shot",
+  empty: {
+    title: "Your canvas is empty",
+    prompt: "Write one sentence in the chat, and the plan will appear here.",
+    examplesLabel: "Try one of these",
+    examples: [
+      "A lighthouse keeper finds a letter from 1952",
+      "A 30-second ad for a small coffee roaster",
+      "How a city gets its water, for curious kids",
+    ],
+  },
+  /** The style guide's specimen (operators only): every card here is a fixture, said so on the page. */
+  specimen: {
+    title: "Live canvas nodes",
+    note: "Fixtures, not a real run. Each card shows one state the live canvas can be in.",
+    replay: "Play the arrival again",
+    connectors: "Connectors by data type",
+  },
+};
+
+export type LiveNodesDictionary = typeof liveNodesEn;

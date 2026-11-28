@@ -13,6 +13,7 @@ import { SegmentedSwitch } from "@/components/ui/SegmentedSwitch";
 import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
 import { StepCard, StepList } from "@/components/ui/StepCard";
 import { Button, IconButton, Toggle } from "@/components/ds/Button";
+import { LiveSpecimen } from "@/components/live/LiveSpecimen";
 
 /** The colour roles shown as swatches, in the order IDENTITY.md §2 lists them. */
 export const SWATCHES = [
@@ -86,6 +87,9 @@ function Specimen({ theme }: { theme: "dark" | "light" }) {
       <Ruler />
       <DsControls />
       <DsScale />
+      <Block title={t.liveNodes.specimen.title}>
+        <LiveSpecimen />
+      </Block>
     </section>
   );
 }

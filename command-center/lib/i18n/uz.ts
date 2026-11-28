@@ -20,6 +20,7 @@ import { studioHubUz } from "./studio-hub/uz";
 import { studioCanvasUz } from "./studio-canvas/uz";
 import { studioTimelineUz } from "./studio-timeline/uz";
 import { studioLiveUz } from "./studio-live/uz";
+import { liveNodesUz } from "./live-nodes/uz";
 import { ownerSafetyUz } from "./owner-safety/uz";
 import { confirmSheetsUz } from "./confirm-sheets/uz";
 import { ownerRpcUz } from "./owner-rpc/uz";
@@ -90,6 +91,7 @@ export const uz: Dictionary = {
   studioCanvas: studioCanvasUz,
   studioTimeline: studioTimelineUz,
   studioLive: studioLiveUz,
+  liveNodes: liveNodesUz,
   ownerSafety: ownerSafetyUz,
   confirmSheets: confirmSheetsUz,
   ownerRpc: ownerRpcUz,
