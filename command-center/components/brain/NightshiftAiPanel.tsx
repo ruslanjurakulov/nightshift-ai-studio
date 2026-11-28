@@ -633,6 +633,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     setBusy(true);
     setProblem(null);
     setAsking(label || null);
+    // Whether this press opened with a null "thinking": only that one may be closed by a null "end" (#989's rule).
+    const openedNull = sessionRef.current === null;
     dispatchBrainCanvas({ kind: "activity", detail: { session_id: sessionRef.current, phase: "thinking" } });
     try {
       const { res, d } = await post(body);
@@ -703,7 +705,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       setBusy(false);
       if (sessionRef.current) dispatchBrainCanvas({ kind: "activity", detail: { session_id: sessionRef.current, phase: "end" } });
       // A first send that made no session: the canvas is told it ended without an answer, so it never keeps "planning" (Atlas).
-      else dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "end", reason: "failed" } });
+      else if (openedNull) dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "end", reason: "failed" } });
       // A card's option that was pressed is gone with the card: focus goes back to the box, not to <body> (Pixel P5).
       setTimeout(refocus, 0);
     }
