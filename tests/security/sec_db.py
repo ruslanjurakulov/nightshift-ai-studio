@@ -385,6 +385,9 @@ ON_0156 = (*ON_0156, MIGRATION_0218.name)
 #: 0219 (the operator route for connected assistants) refuses to apply before 0218 (which sits on 0208): a sequence that leaves
 #: 0208 or 0218 out leaves 0219 out too, and puts it back last.
 ON_0156 = (*(f for f in ON_0156 if f != "0219_oauth_creative_operator_models.sql"), "0219_oauth_creative_operator_models.sql")
+#: 0230 (the country gate reads an allow-list vendor's own list) replaces 0208's creative_jobs_geo_gate and refuses to apply without
+#: it: a sequence that leaves 0208 out leaves 0230 out too, and puts it back last.
+ON_0156 = (*(f for f in ON_0156 if f != "0230_geo_gate_allow_list.sql"), "0230_geo_gate_allow_list.sql")
 ON_0155 = (MIGRATION_0156.name, *ON_0156)
 #: Migrations written on 0153's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0153 out
 #: leaves these out too, in this order.
@@ -423,6 +426,8 @@ ON_0139 = (*ON_0139, "0226_org_spender_everywhere.sql")
 #: 0232 (one plan per film, its turns reserved) replaces 0226's ai_chat_reserve_turn and ai_chat_plan_end and refuses to apply
 #: without them: right after it, in both lists.
 ON_0139 = (*ON_0139, "0232_ai_chat_film_plan_leases.sql")
+#: 0230 sits on 0208's gate: after 0208 (and everything put back after it), last.
+ON_0139 = (*(f for f in ON_0139 if f != "0230_geo_gate_allow_list.sql"), "0230_geo_gate_allow_list.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
@@ -444,7 +449,9 @@ ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164
            # 0218 sits on 0208's creative_price and creative_params_problem: out and back with it, after it.
            "0218_creative_prompt_limits.sql",
            # 0219 replaces 0192's and 0191's oauth_creative_* bodies and refuses to apply without 0218: last.
-           "0219_oauth_creative_operator_models.sql")
+           "0219_oauth_creative_operator_models.sql",
+           # 0230 replaces 0208's creative_jobs_geo_gate and refuses to apply without 0208: out and back with it, last.
+           "0230_geo_gate_allow_list.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -660,6 +667,22 @@ def put_back_0208(conn_or_session) -> None:
     if not has_0208(conn) and has_0159(conn) and has_0196(conn):
         conn.execute(MIGRATION_0208.read_text(encoding="utf-8"))
     put_back_0218(conn)
+    put_back_0230(conn)
+
+
+MIGRATION_0230 = MIGRATIONS / "0230_geo_gate_allow_list.sql"
+ROLLBACK_0230 = REPO / "docs" / "sql" / "rollback_0230_geo_gate_allow_list.sql"
+#: md5 (white space folded) of creative_jobs_geo_gate: 0208's body, and 0230's allow-list read on it (BR-S6-04).
+GEO_GATE_0208 = "71468a6f60d2659cd44199a3c834dc69"
+GEO_GATE_0230 = "6d28388da6b6b927b0da500524fe0325"
+
+
+def put_back_0230(conn_or_session) -> None:
+    """0230 again where 0208's gate body is live: a replay of 0208 (create or replace) puts 0208's body back over 0230's, and 0208's
+    rollback drops the function with whichever body it has, so only this step is needed to keep the chain at its end state."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if _md5_of(conn, "public.creative_jobs_geo_gate()") == GEO_GATE_0208:
+        conn.execute(MIGRATION_0230.read_text(encoding="utf-8"))
 
 
 def rollback_0159_body() -> str:
@@ -1243,6 +1266,34 @@ class SimpleSession:
 
     def __init__(self, conn):
         self.conn = conn
+
+
+MIGRATION_0219 = MIGRATIONS / "0219_oauth_creative_operator_models.sql"
+ROLLBACK_0219 = REPO / "docs" / "sql" / "rollback_0219_oauth_creative_operator_models.sql"
+
+
+def has_0219(conn_or_session) -> bool:
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    return bool(conn.execute("select to_regprocedure('public.oauth_creative_org_model_state(uuid, text, text)') is not null").fetchone()[0])
+
+
+def take_off_0219(conn_or_session) -> None:
+    """0219 (the operator route for connected assistants, the ByteDance refusal, the recorded exposure) replaces oauth_creative_models()
+    and oauth_creative_quote() (0192's bodies) and oauth_creative_create() (0191's). 0192's rollback refuses any other body, and a
+    replay of 0191 would silently put 0191's create back, so take_off_0192 takes 0219 off first. Its rollback keeps the exposure
+    columns, which put_back_0219 picks up again as its own."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0219(conn):
+        text = ROLLBACK_0219.read_text(encoding="utf-8")
+        conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def put_back_0219(conn_or_session) -> None:
+    """0219 again, once 0192 (whose bodies it builds on) is on, and only when it is not on already."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if has_0219(conn) or not has_0192(conn):
+        return
+    conn.execute(MIGRATION_0219.read_text(encoding="utf-8"))
 
 
 MIGRATION_0219 = MIGRATIONS / "0219_oauth_creative_operator_models.sql"

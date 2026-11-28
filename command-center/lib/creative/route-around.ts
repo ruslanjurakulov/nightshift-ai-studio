@@ -15,7 +15,7 @@
  * tests/geo-route-around.test.ts pins the ranking against the SQL's text.
  */
 import type { CreativeDb, CreativeResult, GenerationInput } from "@/lib/creative/operations";
-import { quote } from "@/lib/creative/operations";
+import { quote, WORDLESS_CAPABILITIES } from "@/lib/creative/operations";
 
 export type RoutedMode = "auto" | "cheap" | "fast" | "quality";
 
@@ -111,6 +111,18 @@ export async function missingWords(
   const m = sellable?.find((x) => x.id === model);
   if (!m || !m.wordsRequired.includes(capability)) return null;
   return { status: 422, body: { error: "prompt_required", detail: `${m.displayName} needs words for ${capability}`, model: m.id } };
+}
+
+/**
+ * Rule 6, fail early: picture upscale's only model (Ideogram's Topaz Standard V2) takes no prompt, and its adapter refuses a
+ * job that carries one rather than drop the words silently. Without this the quote priced it, the press held credits, and the
+ * job failed at the worker. Refused here, before any quote or hold, with the reason named. Invisible characters are not words.
+ */
+export function wordsNotTaken(capability: string, params: Record<string, unknown>): CreativeResult | null {
+  if (!WORDLESS_CAPABILITIES.includes(capability)) return null;
+  const words = params.prompt;
+  if (typeof words !== "string" || words.replace(/[\u200B-\u200D\u2060\uFEFF]/g, "").trim() === "") return null;
+  return { status: 422, body: { error: "prompt_not_taken", detail: `${capability} takes no prompt` } };
 }
 
 /**
