@@ -75,6 +75,8 @@ export function mapWorkflowError(error: DbError): CreativeResult {
   const detail = typeof error.details === "string" && error.details ? error.details.slice(0, 300) : undefined;
   const extra = detail ? { detail } : {};
   if (error.code === "NS400") {
+    // 0226: running a workflow spends the workspace's credits, which takes a seat in it; the Studio's own word (mapCreativeError).
+    if (word === "not_a_member") return mapCreativeError(error);
     if (word === "invalid_inputs") return fail(400, "invalid_inputs", extra);
     if (word === "limit_reached") return fail(409, "limit_reached", extra);
     if (word === "confirm_price") return fail(400, "confirm_price");

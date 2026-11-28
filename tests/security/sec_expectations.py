@@ -863,6 +863,12 @@ import sec_film_resume_0215  # noqa: E402
 
 sec_film_resume_0215.extend(TABLES, FUNCTIONS)
 
+# Migration 0226 (only a member spends an organization's credits, on every path): tests/security/sec_org_spender_0226.py. No table and
+# no function of its own (twenty-eight bodies replaced, each keeping its entry above); the hook keeps the pattern every migration follows.
+import sec_org_spender_0226  # noqa: E402
+
+sec_org_spender_0226.extend(TABLES, FUNCTIONS)
+
 # Migration 0230 (the country gate reads an allow-list vendor's own list, BR-S6-04): no table, no new function; 0208's trigger
 # function is replaced in place. tests/security/sec_geo_allowlist_0230.py
 import sec_geo_allowlist_0230  # noqa: E402

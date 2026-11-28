@@ -505,6 +505,7 @@ export type StartErrorKey =
   | "idempotency_conflict"
   | "adult_attestation_required"
   | "adult_only_service"
+  | "not_a_member"
   | "failed";
 
 export interface StartError {
@@ -535,6 +536,8 @@ const START_WORDS: Record<string, StartErrorKey> = {
   // The render_jobs run gate's words (0192/0196): the episode's run uses Gemini, whose terms are 18+.
   adult_attestation_required: "adult_attestation_required",
   adult_only_service: "adult_only_service",
+  // 0226: starting an episode spends the workspace's credits, which takes a seat in it.
+  not_a_member: "not_a_member",
 };
 
 /** `start_series_episode`'s refusal, as a key (and the numbers its detail carries). The message is the database's fixed word; the
