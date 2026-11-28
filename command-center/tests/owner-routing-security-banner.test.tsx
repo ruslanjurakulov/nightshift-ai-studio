@@ -72,7 +72,7 @@ describe("PipelineRouting", () => {
   // The lists the Providers page passes (lib/server/pipeline-options.ts): the panel no longer imports the vendor registry.
   const routing = routingOptions();
   const show = (initial: Record<string, string> = {}) =>
-    render(<PipelineRouting initial={initial} configured={[]} githubConfigured videoProviders={routing.video} imageGenerators={routing.image} />);
+    render(<PipelineRouting initial={initial} configured={[]} githubConfigured videoProviders={routing.video} imageGenerators={routing.image} defaults={routing.defaults} vars={routing.vars} />);
   const videoSelect = () => screen.getByLabelText(en.providers.routingVideo) as HTMLSelectElement;
   const autopilot = () => screen.getByRole("switch", { name: en.providers.routingAutopilot });
 

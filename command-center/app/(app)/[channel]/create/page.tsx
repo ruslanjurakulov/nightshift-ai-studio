@@ -296,7 +296,7 @@ export default async function CreatePage({
         <StudioHome
           orgId={genOrgId}
           models={panelModels}
-          exampleModels={exampleModelsFor(panelModels)}
+          exampleModels={frame ? exampleModelsFor(panelModels) : {}}
           unavailable={switchedOff}
           plans={plans}
           defaultStyleKitId={startKit}

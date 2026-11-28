@@ -53,7 +53,7 @@ function fakeBuild(): string {
   writeFileSync(
     path.join(chunks, "70-desk.js"),
     'e("ul",{className:"fx-grid"});e("ul",{className:"cv-effects"});e("div",{id:"credit-prices"});' +
-      'e("div",{className:"g2-key-field"});e("div",{className:"g2-switchrow"});e("p",{"data-price-hold":!0});t="00B / Direct model provider review"',
+      'e("div",{className:"g2-key-field"});a=t.providers.routingAutopilot;b=t.create.voiceModelDropped;t="00B / Direct model provider review"',
   );
   mkdirSync(path.join(root, ".next", "server", "app"), { recursive: true });
   writeFileSync(path.join(root, ".next", "server", "app", "_not-found.html"), "<html>404</html>");

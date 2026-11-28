@@ -23,6 +23,24 @@ export interface ProviderDef {
   live: boolean;
 }
 
+/** The pipeline's routing defaults (config.py): which video provider runs when none is named, which one is the b-roll
+ *  generator gated by its own flag, and which image generator runs when none is named. */
+export interface RoutingDefaults {
+  video: string;
+  image: string;
+  broll: string;
+}
+
+/** The GitHub Actions variables the routing panel reads and writes (lib/server/github-variables.ts allowlists them). */
+export interface RoutingVariables {
+  videoProvider: string;
+  videoGen: string;
+  broll: string;
+  imageProvider: string;
+  imageGen: string;
+  autopilot: string;
+}
+
 /** A generator the operator's routing panel can switch the pipeline to: what it shows, and the key it warns about. */
 export interface RoutingOption {
   id: string;

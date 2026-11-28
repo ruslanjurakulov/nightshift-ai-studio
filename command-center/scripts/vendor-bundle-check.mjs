@@ -64,6 +64,8 @@ export const SIGNED_IN_SOURCES = [
   "lib/server/pipeline-options.ts",
   "lib/server/creative-examples.ts",
   "lib/creative/model-names.ts",
+  "lib/server/github-secrets.ts",
+  "lib/server/github-variables.ts",
 ];
 /** How many of the Create form's video options (id and label side by side) in one file make it the list. */
 export const OPTION_PAIRS_MIN = 3;
@@ -136,15 +138,22 @@ function readSignedIn() {
   const ttsSrc = src("lib/ttsLanguages.ts");
   src("lib/ttsModels.ts");
   const pipelineSrc = src("lib/server/pipeline-options.ts");
+  const ghSecretsSrc = src("lib/server/github-secrets.ts");
+  const ghVariablesSrc = src("lib/server/github-variables.ts");
   const examplesSrc = src("lib/server/creative-examples.ts");
 
   const secretNames = new Set();
   for (const text of [providersSrc, imageSrc]) for (const m of text.matchAll(/secretName:\s*"([A-Z][A-Z0-9_]+)"/g)) secretNames.add(m[1]);
   const fromProviders = secretNames.size;
-  const envBlocks = [...keysSrc.matchAll(/envSets:\s*\[([^\n]*?)\],?\s*$/gm)];
+  const envBlocks = [...keysSrc.matchAll(/envSets:\s*\[((?:[^\[\]]|\[[^\[\]]*\])*)\]/g)];
   for (const b of envBlocks) for (const m of b[1].matchAll(/"([A-Z][A-Z0-9_]+)"/g)) secretNames.add(m[1]);
   // Floors from the files as they are today (16 providers, 6 generators, 20-odd vendors): far below them, the regexes no longer
   // read the files.
+  // The YouTube secrets the new-channel wizard saves (YOUTUBE_SECRET_NAMES): a secret name like any other.
+  const yt = ghSecretsSrc.match(/export const YOUTUBE_SECRET_NAMES\s*=\s*\{([\s\S]*?)\}/);
+  const ytNames = yt ? [...yt[1].matchAll(/"(YOUTUBE_[A-Z0-9_]+)"/g)].map((m) => m[1]) : [];
+  if (ytNames.length < 3) fail2(`read only ${ytNames.length} YOUTUBE_SECRET_NAMES from lib/server/github-secrets.ts — its shape changed.`);
+  for (const n of ytNames) secretNames.add(n);
   if (fromProviders < 12 || envBlocks.length < 12) fail2(`read ${fromProviders} secret names from lib/providers.ts and lib/imageProviders.ts and ${envBlocks.length} envSets from lib/model-keys.ts — their shape changed.`);
 
   const keyPages = new Set();
@@ -162,7 +171,7 @@ function readSignedIn() {
 
   const registry = agentSrc.match(/export const PROVIDERS\s*=\s*\{([\s\S]*?)\n\}\s*as const;/);
   if (!registry) fail2("PROVIDERS is no longer an object literal in lib/agent-providers.ts — update readSignedIn().");
-  const agentKeys = ["licensingState", "pricingMode"];
+  const agentKeys = ["licensingState", "pricingMode", "apiState"];
   const agentStates = new Set();
   for (const k of agentKeys) for (const m of registry[1].matchAll(new RegExp(`${k}:\\s*"([a-z_]+)"`, "g"))) agentStates.add(m[1]);
   const developers = [...registry[1].matchAll(/developer:\s*"([^"]+)"/g)].map((m) => m[1]);
@@ -173,9 +182,20 @@ function readSignedIn() {
   const createOptions = [...videoBlock[1].matchAll(/\{\s*id:\s*"([a-z0-9-]+)",\s*name:\s*"([^"]+)"/g)].map((m) => ({ id: m[1], name: m[2] }));
   if (createOptions.length < 5) fail2(`read only ${createOptions.length} Create video options — its shape changed.`);
 
+  const imageOptions = [...imageSrc.matchAll(/\{\s*id:\s*"([a-z0-9-]+)",\s*name:\s*"([^"]+)"/g)].map((m) => ({ id: m[1], name: m[2] }));
+  if (imageOptions.length < 4) fail2(`read only ${imageOptions.length} image generators from lib/imageProviders.ts — its shape changed.`);
+  const ttsSrcModels = src("lib/ttsModels.ts");
+  // The routing variables the Providers panel writes (WRITABLE_VARIABLES' CHRONOS_* names): one names the b-roll vendor, all
+  // are our pipeline's configuration. The panel gets them as props.
+  const wv = ghVariablesSrc.match(/export const WRITABLE_VARIABLES\s*=\s*\[([\s\S]*?)\]/);
+  const routingVariables = wv ? [...wv[1].matchAll(/"(CHRONOS_[A-Z0-9_]+)"/g)].map((m) => m[1]) : [];
+  if (routingVariables.length < 5) fail2(`read only ${routingVariables.length} CHRONOS_* names from WRITABLE_VARIABLES in lib/server/github-variables.ts — its shape changed.`);
+
   const ttsBlock = ttsSrc.match(/TTS_MODEL_LANGUAGES[^=]*=\s*\{([\s\S]*?)\n\};/);
   const ttsModels = ttsBlock ? [...ttsBlock[1].matchAll(/^\s*([a-z0-9_]+):\s*\[/gm)].map((m) => m[1]) : [];
   if (ttsModels.length < 5) fail2(`read only ${ttsModels.length} models of TTS_MODEL_LANGUAGES from lib/ttsLanguages.ts — its shape changed.`);
+  // The model ids the queue accepts and the picker lists (lib/ttsModels.ts), when the table does not key one of them.
+  for (const m of ttsSrcModels.matchAll(/"(eleven_[a-z0-9_]+)"/g)) if (!ttsModels.includes(m[1])) ttsModels.push(m[1]);
 
   const exBlock = examplesSrc.match(/EXAMPLE_MODELS[^=]*=\s*\{([\s\S]*?)\};/);
   const exampleModels = exBlock ? [...exBlock[1].matchAll(/^\s*([a-z0-9_]+):\s*"([^"]+)",?\s*$/gm)].map((m) => ({ id: m[1], model: m[2] })) : [];
@@ -190,6 +210,8 @@ function readSignedIn() {
     agentStates: [...agentStates],
     developers,
     createOptions,
+    imageOptions,
+    routingVariables,
     ttsModels,
     exampleModels,
   };
@@ -241,16 +263,16 @@ export function patterns(source) {
     // A pair whose name is not just its slug written properly (bfl -> Black Forest Labs) is the map's own: one is enough.
     alone: p.name.toLowerCase().replace(/[^a-z0-9]/g, "") !== p.slug.replace(/[^a-z0-9]/g, ""),
   }));
-  const options = (source.createOptions ?? []).map((o) => ({
+  const options = [...(source.createOptions ?? []), ...(source.imageOptions ?? [])].map((o) => ({
     label: `${o.id}:"${o.name}"`,
     // value:"kling",children:"Kling" (the compiled <option>) or {id:"kling",name:"Kling"} (the list itself).
-    re: new RegExp(`${Q}?(?:value|id)${Q}?\\s*:\\s*${Q}${escape(o.id)}${Q}\\s*,\\s*${Q}?(?:children|name|label)${Q}?\\s*:\\s*${Q}${escape(o.name)}${Q}`),
+    re: new RegExp(`${Q}?(?:value|id)${Q}?\\s*:\\s*${Q}${escape(o.id)}${Q}[^{}]{0,200}?${Q}?(?:children|name|label)${Q}?\\s*:\\s*${Q}${escape(o.name)}${Q}`),
   }));
   return { single, pairs, options };
 }
 
 /** The signed-in screens' patterns: [label, RegExp]. Empty when the source has none of the fields (a caller of the old shape). */
-function signedInPatterns({ secretNames = [], keyPages = [], defaultModels = [], studioIds = [], agentKeys = [], agentStates = [], developers = [], ttsModels = [], exampleModels = [] }) {
+function signedInPatterns({ createOptions = [], routingVariables = [], secretNames = [], keyPages = [], defaultModels = [], studioIds = [], agentKeys = [], agentStates = [], developers = [], ttsModels = [], exampleModels = [] }) {
   const out = [];
   const key = (k) => new RegExp(`(?<![\\w$])${Q}?${escape(k)}${Q}?\\s*:`);
   if (secretNames.length > 0) {
@@ -258,6 +280,7 @@ function signedInPatterns({ secretNames = [], keyPages = [], defaultModels = [],
     out.push(["defaultModel: key", key("defaultModel")]);
   }
   for (const n of secretNames) out.push([`secret name ${n}`, new RegExp(`(?<![A-Za-z0-9_])${escape(n)}(?![A-Za-z0-9_])`)]);
+  for (const v of routingVariables) out.push([`routing variable ${v}`, new RegExp(`(?<![A-Za-z0-9_])${escape(v)}(?![A-Za-z0-9_])`)]);
   for (const u of keyPages) out.push([`vendor key page ${u}`, new RegExp(urlPattern(u))]);
   const studio = new Set(studioIds);
   for (const m of defaultModels) if (!studio.has(m)) out.push([`image generator default model ${m}`, new RegExp(`${Q}${escape(m)}${Q}`)]);
@@ -268,11 +291,20 @@ function signedInPatterns({ secretNames = [], keyPages = [], defaultModels = [],
   if (ttsModels.length > 0) {
     out.push(["narration model language table", new RegExp(`(?<![\\w$])${Q}?(?:${ttsModels.map(escape).join("|")})${Q}?\\s*:\\s*\\[\\s*${Q}(?:uz|ru|en)${Q}`)]);
   }
+  // A narration vendor model id in ANY form (a label map key, an id list, an option's id): the ids are the vendor's own.
+  for (const m of ttsModels) out.push([`narration vendor model ${m}`, new RegExp(`(?<![A-Za-z0-9_])${escape(m)}(?![A-Za-z0-9_])`)]);
+  // An example id mapped straight to its model (the exampleModels prop, EXAMPLE_MODELS minified).
+  for (const e of exampleModels) out.push([`example ${e.id} model map`, new RegExp(`(?<![\\w$])${Q}?${escape(e.id)}${Q}?\\s*:\\s*${Q}${escape(e.model)}${Q}`)]);
   // An example's id and the model it was written for, in one object (in either order).
   for (const e of exampleModels) {
     const id = `${Q}?id${Q}?\\s*:\\s*${Q}${escape(e.id)}${Q}`;
     const model = `${Q}?modelId${Q}?\\s*:\\s*${Q}${escape(e.model)}${Q}`;
     out.push([`example ${e.id} model`, new RegExp(`${id}[^{}]{0,600}?${model}|${model}[^{}]{0,600}?${id}`)]);
+  }
+  // Three of the Create form's video ids as adjacent array elements, in any order: the option list without its names.
+  if (createOptions.length >= 3) {
+    const vid = `${Q}(?:${createOptions.map((o) => escape(o.id)).join("|")})${Q}`;
+    out.push(["Create form video id list", new RegExp(`${vid}\\s*,\\s*${vid}\\s*,\\s*${vid}`)]);
   }
   return out;
 }
@@ -346,7 +378,14 @@ function selfTestSignedIn(source, scan, has) {
   for (const e of source.exampleModels) must(`{id:"${e.id}",mode:"video",modelId:"${e.model}",aspect:"16:9"}`, `example ${e.id} model`, `example ${e.id}'s model`);
   const compiled = source.createOptions.map((o) => `(0,r.jsx)("option",{value:"${o.id}",children:"${o.name}"})`).join(",");
   const listed = JSON.stringify(source.createOptions);
-  for (const text of [compiled, listed]) must(text, "Create form operator video options", "the Create form's video option list");
+  // An option with another prop between its value and its label is the same option.
+  const spaced = source.createOptions.map((o) => `(0,r.jsx)("option",{value:"${o.id}",className:"o",children:"${o.name}"})`).join(",");
+  for (const text of [compiled, listed, spaced]) must(text, "Create form operator video options", "the Create form's video option list");
+  must(JSON.stringify(source.imageOptions), "Create form operator video options", "the image generator option list");
+  must(`z.enum(${JSON.stringify(source.createOptions.slice(0, 3).map((o) => o.id))})`, "Create form video id list", "three video ids side by side");
+  for (const m of source.ttsModels) must(`L={${m}:"x"}`, `narration vendor model ${m}`, `the narration model id ${m} as a key`);
+  for (const e of source.exampleModels) must(JSON.stringify({ [e.id]: e.model }), `example ${e.id} model map`, `example ${e.id} -> model as a map`);
+  for (const v of source.routingVariables) must(`{[${JSON.stringify(v)}]:"1"}`, `routing variable ${v}`, `the routing variable ${v}`);
 }
 
 function main() {
@@ -408,8 +447,9 @@ function main() {
     ['"credit-prices"', "the operator's price editor"],
     // The signed-in screens that carried the vendor lists: they must still be built, now fed by props.
     ['"g2-key-field"', "the operator's Providers board"],
-    ['"g2-switchrow"', "the Providers page's routing panel"],
-    ['"data-price-hold"', "the Create form"],
+    // Property reads only these two components make (the dictionary chunk holds the keys as `routingAutopilot:`, not `.x`).
+    [".routingAutopilot", "the Providers page's routing panel"],
+    [".voiceModelDropped", "the Create form"],
     ["Direct model provider review", "the Agent Builder"],
   ]) {
     if (![...texts.values()].some((t) => t.includes(marker))) fail2(`no chunk contains ${marker} (${screen}) — that screen is not in the build, so a pass would mean nothing.`);

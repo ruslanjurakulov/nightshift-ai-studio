@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * Where "Run now" sends a run: GitHub Actions (the default) or the Supabase job
  * queue a VPS worker drains (roadmap phase B, docs/WORKER_VPS.md).
@@ -51,7 +53,8 @@ export type RunOptions = {
 export const VIDEO_PROVIDERS = ["minimax", "higgsfield", "kling", "veo", "seedance", "wan"] as const;
 import { formatPublishHint, parsePublishHint } from "./publish";
 import { IMAGE_PROVIDERS } from "./imageProviders";
-import { isTtsModel, isVoiceId } from "./ttsModels";
+import { isTtsModel } from "./ttsModels";
+import { isVoiceId } from "./voices";
 
 export { IMAGE_PROVIDERS };
 

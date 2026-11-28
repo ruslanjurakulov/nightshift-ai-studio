@@ -1,8 +1,6 @@
 import "server-only";
 import { ttsLanguageCode, type VerifiedTtsLanguage } from "@/lib/tts-language-code";
 
-export { VERIFIED_TTS_LANGUAGES, TTS_LANGUAGE_NAMES_BY_SPELLING, foldLanguage, ttsLanguageCode, type VerifiedTtsLanguage } from "@/lib/tts-language-code";
-
 /**
  * Which ElevenLabs model speaks which language. This is the Command Center's copy of
  * modules/tts_languages.py, and tests/test_tts_languages.py keeps the two tables equal.

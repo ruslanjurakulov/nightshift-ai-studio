@@ -34,7 +34,7 @@ function fakeBuild(over: Record<string, string> = {}): string {
   writeFileSync(
     path.join(chunks, "70-desk.js"),
     'e("ul",{className:"fx-grid"});e("ul",{className:"cv-effects"});e("div",{id:"credit-prices"});' +
-      'e("div",{className:"g2-key-field"});e("div",{className:"g2-switchrow"});e("p",{"data-price-hold":!0});t="00B / Direct model provider review"',
+      'e("div",{className:"g2-key-field"});a=t.providers.routingAutopilot;b=t.create.voiceModelDropped;t="00B / Direct model provider review"',
   );
   mkdirSync(path.join(root, ".next", "server", "pages"), { recursive: true });
   writeFileSync(path.join(root, ".next", "server", "pages", "500.html"), "<html>500</html>");
@@ -196,6 +196,15 @@ describe("vendor-bundle-check: the signed-in screens", () => {
     ],
     ["the narration model language table (chunk 6601)", "static/chunks/6601-a.js", 'T={eleven_v4:["uz","ru","en"],eleven_v4_turbo:["uz","ru","en"]}', ["narration model language table"]],
     ["the table as an RSC payload", "server/app/create.rsc", '1:{"eleven_multilingual_v2":["ru","en"]}', ["narration model language table"]],
+    ["a YouTube secret the wizard saves", "static/chunks/app/channels-new.js", 'o.YOUTUBE_CLIENT_SECRET_JSON=c.trim()', ["secret name YOUTUBE_CLIENT_SECRET_JSON"]],
+    [
+      "the routing panel's variable names (one names the b-roll vendor)",
+      "static/chunks/app/providers-b.js",
+      '{CHRONOS_VIDEO_PROVIDER:"minimax",CHRONOS_ENABLE_MINIMAX_BROLL:"1"}',
+      ["routing variable CHRONOS_VIDEO_PROVIDER", "routing variable CHRONOS_ENABLE_MINIMAX_BROLL"],
+    ],
+    ["a narration vendor model id as a label key", "static/chunks/6601-b.js", 'L={eleven_flash_v2_5:"Flash v2.5"}', ["narration vendor model eleven_flash_v2_5"]],
+    ["the starters' exampleModels prop", "server/app/create.rsc", '1:{"exampleModels":{"mountain_drone":"veo-3.1-fast"}}', ["example mountain_drone model map"]],
     ["a starter with its model", "static/chunks/app/create-b.js", '{id:"mountain_drone",mode:"video",capability:"t2v",modelId:"veo-3.1-fast",aspect:"16:9"}', ["example mountain_drone model"]],
   ])("fails on %s", (_label, rel, text, expected) => {
     const root = fakeBuild();
@@ -228,6 +237,15 @@ describe("vendor-bundle-check: the signed-in screens", () => {
     const r = run(root);
     expect(r.out).toContain("clean");
     expect(r.code).toBe(0);
+  });
+
+  it("exits 2 when the Create form (its own property read) is not in the build", () => {
+    const root = fakeBuild();
+    const desk = path.join(root, ".next", "static", "chunks", "70-desk.js");
+    writeFileSync(desk, readFileSync(desk, "utf8").replace("t.create.voiceModelDropped", "t.create.other"));
+    const r = run(root);
+    expect(r.code).toBe(2);
+    expect(r.out).toContain(".voiceModelDropped");
   });
 
   it("names the counts it read, so a pass says what it checked", () => {

@@ -2,7 +2,7 @@ import "server-only";
 import { isCreditExempt } from "@/lib/credits";
 import { IMAGE_GENERATORS } from "@/lib/imageProviders";
 import { PROVIDERS } from "@/lib/providers";
-import type { RoutingOption } from "@/lib/provider-types";
+import type { RoutingDefaults, RoutingOption, RoutingVariables } from "@/lib/provider-types";
 import type { PipelineOptions } from "@/lib/pipeline-options";
 import { TTS_LANGUAGE_READ_ON, TTS_MODEL_LANGUAGES } from "@/lib/ttsLanguages";
 import { DEPRECATED_TTS_MODELS, TTS_MODEL_LABELS, TTS_PICKER_MODELS, isTtsModel } from "@/lib/ttsModels";
@@ -29,9 +29,28 @@ const CREATE_VIDEO_MODELS: readonly { id: string; name: string; probed?: boolean
   { id: "minimax", name: "MiniMax" },
 ];
 
-/** The Providers page's routing panel: the video generators and the image generators, each with the key it needs. */
-export function routingOptions(): { video: RoutingOption[]; image: RoutingOption[] } {
+/** The routing variables, as config.py reads them. The b-roll generator is gated by its own flag, whose name names it. */
+const ROUTING_VARIABLES: RoutingVariables = {
+  videoProvider: "CHRONOS_VIDEO_PROVIDER",
+  videoGen: "CHRONOS_ENABLE_VIDEO_GEN",
+  broll: "CHRONOS_ENABLE_MINIMAX_BROLL",
+  imageProvider: "CHRONOS_IMAGE_PROVIDER",
+  imageGen: "CHRONOS_ENABLE_IMAGE_GEN",
+  autopilot: "CHRONOS_AGENT_AUTOPILOT",
+};
+
+/** config.py: CHRONOS_VIDEO_PROVIDER defaults to minimax (the b-roll generator), CHRONOS_IMAGE_PROVIDER to leonardo. */
+const ROUTING_DEFAULTS: RoutingDefaults = { video: "minimax", image: "leonardo", broll: "minimax" };
+
+/**
+ * The Providers page's routing panel: the video and image generators (each with the key it needs), config.py's defaults
+ * and the variable names. All of it from here: the panel's static chunk used to carry the defaults (`|| "minimax"`,
+ * `"leonardo"`) and the variable names, one of which names the b-roll vendor.
+ */
+export function routingOptions(): { video: RoutingOption[]; image: RoutingOption[]; defaults: RoutingDefaults; vars: RoutingVariables } {
   return {
+    defaults: { ...ROUTING_DEFAULTS },
+    vars: { ...ROUTING_VARIABLES },
     video: PROVIDERS.filter((p) => p.category === "video").map(({ id, name, secretName }) => ({ id, name, secretName })),
     image: IMAGE_GENERATORS.map(({ id, name, secretName }) => ({ id, name, secretName })),
   };

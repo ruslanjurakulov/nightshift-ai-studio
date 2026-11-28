@@ -21,13 +21,11 @@ import { PROVIDER_CATEGORIES, type ProviderCategory, type ProviderDef } from "@/
  * by opt-in provider adapters (Track 4) and change nothing until a key is set.
  */
 
-export { PROVIDER_CATEGORIES, type ProviderCategory, type ProviderDef };
-
 /**
  * Every provider a channel operator can configure from the site. Grouped by
  * category in the UI; ordering here is the display order within a category.
  */
-export const PROVIDERS: ProviderDef[] = [
+export const PROVIDERS = [
   // Language models — scripting, topic + prompt generation
   { id: "gemini", name: "Google Gemini", category: "llm", secretName: "GEMINI_API_KEY", consoleUrl: "https://aistudio.google.com/apikey", live: true },
   { id: "anthropic", name: "Anthropic Claude", category: "llm", secretName: "ANTHROPIC_API_KEY", consoleUrl: "https://console.anthropic.com/settings/keys", live: false },
@@ -49,15 +47,19 @@ export const PROVIDERS: ProviderDef[] = [
   { id: "ideogram", name: "Ideogram", category: "image", secretName: "IDEOGRAM_API_KEY", consoleUrl: "https://ideogram.ai/manage-api", live: false },
   { id: "fal", name: "fal.ai", category: "image", secretName: "FAL_KEY", consoleUrl: "https://fal.ai/dashboard/keys", live: false },
   { id: "pexels", name: "Pexels", category: "image", secretName: "PEXELS_API_KEY", consoleUrl: "https://www.pexels.com/api", live: true },
-];
+] as const satisfies readonly ProviderDef[];
+
+/** A provider the registry knows. */
+export type ProviderId = (typeof PROVIDERS)[number]["id"];
 
 /** Secret names for every provider — the allowlist imports this. */
 export const PROVIDER_SECRET_NAMES: readonly string[] = PROVIDERS.map((p) => p.secretName);
 
-/** The secret a provider's key is sealed into. Throws on an id not in the list: a screen asking for one is a programming
- *  error, and a guessed name would seal a key where the bot never reads it. */
-export function secretNameOf(id: string): string {
+/** The secret a provider's key is sealed into. Typed by the registry's ids, so a guessed id does not compile: a guessed name
+ *  would seal a key where the bot never reads it. */
+export function secretNameOf(id: ProviderId): string {
   const p = PROVIDERS.find((x) => x.id === id);
+  // Unreachable while the type holds; a cast from outside must fail loudly rather than return a made-up name.
   if (!p) throw new Error(`unknown provider: ${id}`);
   return p.secretName;
 }

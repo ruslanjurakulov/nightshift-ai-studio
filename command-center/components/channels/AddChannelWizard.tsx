@@ -97,10 +97,15 @@ export function AddChannelWizard({
   initialNiche = null,
   initialLanguage = null,
   keyNames,
+  youtubeNames,
 }: {
-  /** The GitHub secret names of the three keys this wizard can save, from the page (lib/providers.ts is server-only: no secret
-   *  name may sit in a static chunk). Shown under each field and used as the key of the save. */
-  keyNames: { gemini: string; pexels: string; eleven: string };
+  /** The GitHub secret names of the three vendor keys this wizard can save, from the page (lib/providers.ts is server-only: no
+   *  secret name may sit in a static chunk). Shown under each field and used as the key of the save. Null for anyone but the
+   *  platform operator: only the operator can write a secret (/api/setup/secrets), so the three fields are not drawn. */
+  keyNames: { gemini: string; pexels: string; eleven: string } | null;
+  /** The YouTube secrets' names (lib/server/github-secrets.ts), for every viewer: the Data API key field also verifies the
+   *  channel (/api/setup/youtube), which a customer can do, and the client-secret field shows its name as the hint. */
+  youtubeNames: { dataKey: string; clientSecret: string; channelId: string };
   orgId?: string | null;
   /** The caller administers the operator's own organization: the database then
    *  stamps the confirmation from this lookup (migration 0086). */
@@ -224,14 +229,14 @@ export function AddChannelWizard({
   /** The secrets the operator actually filled in, keyed by their GitHub name. */
   function pendingSecrets(): Record<string, string> {
     const out: Record<string, string> = {};
-    if (geminiKey.trim()) out[keyNames.gemini] = geminiKey.trim();
-    if (pexelsKey.trim()) out[keyNames.pexels] = pexelsKey.trim();
-    if (elevenKey.trim()) out[keyNames.eleven] = elevenKey.trim();
-    if (ytDataKey.trim()) out.YOUTUBE_DATA_API_KEY = ytDataKey.trim();
-    if (clientSecretJson.trim()) out.YOUTUBE_CLIENT_SECRET_JSON = clientSecretJson.trim();
+    if (keyNames && geminiKey.trim()) out[keyNames.gemini] = geminiKey.trim();
+    if (keyNames && pexelsKey.trim()) out[keyNames.pexels] = pexelsKey.trim();
+    if (keyNames && elevenKey.trim()) out[keyNames.eleven] = elevenKey.trim();
+    if (ytDataKey.trim()) out[youtubeNames.dataKey] = ytDataKey.trim();
+    if (clientSecretJson.trim()) out[youtubeNames.clientSecret] = clientSecretJson.trim();
     if (tokenJson.trim()) out[secret] = tokenJson.trim();
     const yt = info?.channelId || youtubeChannelId.trim();
-    if (yt) out.YOUTUBE_CHANNEL_ID = yt;
+    if (yt) out[youtubeNames.channelId] = yt;
     return out;
   }
 
@@ -663,18 +668,22 @@ export function AddChannelWizard({
               )
             )}
             <div className="grid gap-3 sm:grid-cols-2">
-              <Secret label={t.channels.keyGemini} value={geminiKey} onChange={setGeminiKey} name={keyNames.gemini} />
-              <Secret label={t.channels.keyPexels} value={pexelsKey} onChange={setPexelsKey} name={keyNames.pexels} />
-              <Secret label={t.channels.keyEleven} value={elevenKey} onChange={setElevenKey} name={keyNames.eleven} />
+              {keyNames && (
+                <>
+                  <Secret label={t.channels.keyGemini} value={geminiKey} onChange={setGeminiKey} name={keyNames.gemini} />
+                  <Secret label={t.channels.keyPexels} value={pexelsKey} onChange={setPexelsKey} name={keyNames.pexels} />
+                  <Secret label={t.channels.keyEleven} value={elevenKey} onChange={setElevenKey} name={keyNames.eleven} />
+                </>
+              )}
               <Secret
                 label={t.channels.keyYoutubeData}
                 value={ytDataKey}
                 onChange={setYtDataKey}
-                name="YOUTUBE_DATA_API_KEY"
+                name={youtubeNames.dataKey}
                 hint={t.channels.keyYoutubeDataHint}
               />
             </div>
-            <Field label={t.channels.keyClientSecret} hint="YOUTUBE_CLIENT_SECRET_JSON">
+            <Field label={t.channels.keyClientSecret} hint={youtubeNames.clientSecret}>
               <textarea
                 value={clientSecretJson}
                 onChange={(e) => setClientSecretJson(e.target.value)}

@@ -1,10 +1,7 @@
 import "server-only";
-import { modelSpeaks, ttsLanguageCode } from "./ttsLanguages";
+import { modelSpeaks } from "./ttsLanguages";
+import { ttsLanguageCode } from "./tts-language-code";
 import type { TtsBlock } from "./pipeline-options";
-
-// The voices are not the narration models: the customers' forms list them, so they are lib/voices.ts (client-safe).
-export { VOICES, isVoiceId, type Voice } from "./voices";
-export { TTS_LANGUAGE_NAMES } from "./tts-language-code";
 
 /**
  * ElevenLabs narration models the run queue accepts (modules/run_request.TTS_MODELS).

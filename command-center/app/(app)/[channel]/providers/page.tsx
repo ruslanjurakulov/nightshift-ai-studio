@@ -105,6 +105,8 @@ export default async function ProvidersPage({
         githubConfigured={isGithubConfigured}
         videoProviders={routing.video}
         imageGenerators={routing.image}
+        defaults={routing.defaults}
+        vars={routing.vars}
       />
     </div>
   );
