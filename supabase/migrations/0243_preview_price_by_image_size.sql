@@ -549,6 +549,11 @@ begin
   if not exists (select 1 from pg_proc p where p.oid = fn and p.prosecdef and p.proconfig @> array['search_path=public, pg_temp']) then
     raise exception '0243 end state: creative_price is not security definer with a pinned search_path';
   end if;
+  -- create or replace keeps the owner, and the md5 reads only the source: a security definer handed to another role would pass
+  -- both (Breach 0243 F2). postgres owns it live (read 2026-11-28), as 0164 checks for its own definers.
+  if (select pg_get_userbyid(p.proowner) from pg_proc p where p.oid = fn) is distinct from 'postgres' then
+    raise exception '0243 end state: creative_price is not owned by postgres';
+  end if;
   -- The guards every creative_price keeps (0124's switch, 0125's date, 0224's dated rate) and the preview reached only through 0139's rule.
   def := pg_get_functiondef(fn);
   if position('model_is_available' in def) = 0 or position('model_past_shutdown' in def) = 0

@@ -419,3 +419,34 @@ def test_the_file_needs_0228_its_guard_refuses_a_hand_edit_and_its_rollback_rest
         assert _md5(d) == drifted, "the rollback puts a body back only from 0243's own"
     finally:
         sec_db.drop_database(admin, name)
+
+
+def test_a_creative_price_handed_to_another_owner_is_refused_by_the_file_and_its_rollback(lab):
+    # Breach 0243 F2: create or replace keeps the owner and the md5 reads only the source, so a security definer whose owner was
+    # changed by hand passed the guard, the end state and the rollback. Both end states now name the owner.
+    admin = sec_db.admin_dsn()
+    name = f"ns_preview_owner_{uuid.uuid4().hex[:8]}"
+    base = sec_db.create_database(admin, name)
+    mig = sec_db.MIGRATION_0243.read_text(encoding="utf-8")
+    rb = sec_db.ROLLBACK_0243.read_text(encoding="utf-8")
+    try:
+        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name != sec_db.MIGRATION_0243.name])
+        d = Db(base)
+        assert _md5(d) == sec_db.CREATIVE_PRICE_0228
+        d.su("do $$ begin if not exists (select 1 from pg_roles where rolname = 'ns_owner_drift') then "
+             "create role ns_owner_drift nologin; end if; end $$")
+        d.su(f"alter function {SIG} owner to ns_owner_drift")
+        with pytest.raises(Exception) as cm:
+            d.su(mig)
+        assert "0243 end state: creative_price is not owned by postgres" in str(cm.value)
+        assert _md5(d) == sec_db.CREATIVE_PRICE_0228, "the refused apply leaves nothing behind"
+        d.su(f"alter function {SIG} owner to postgres")
+        d.su(mig)
+        assert _md5(d) == sec_db.CREATIVE_PRICE_0243
+        d.su(f"alter function {SIG} owner to ns_owner_drift")
+        with pytest.raises(Exception) as cm:
+            d.su(rb)
+        assert "rollback 0243 end state: creative_price is not owned by postgres" in str(cm.value)
+        assert _md5(d) == sec_db.CREATIVE_PRICE_0243, "the refused rollback leaves nothing behind"
+    finally:
+        sec_db.drop_database(admin, name)

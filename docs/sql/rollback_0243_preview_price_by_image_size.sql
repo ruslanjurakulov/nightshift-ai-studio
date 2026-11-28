@@ -459,6 +459,11 @@ begin
     || case when preview then jsonb_build_object('preview', true) else '{}'::jsonb end;
 end
 $$$cp0228$, '@@0243_BACKSLASH@@', chr(92));
+  else
+    -- Said, not silent: a rollback that changed nothing must not read as one that worked (Lens N2).
+    raise notice 'rollback 0243: creative_price is not 0243''s body (md5 %); nothing changed',
+      (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
+        where oid = to_regprocedure('public.creative_price(uuid, text, text, jsonb)'));
   end if;
 end
 $rb$;
@@ -478,6 +483,10 @@ begin
      or has_function_privilege('anon', 'public.creative_price(uuid, text, text, jsonb)', 'EXECUTE')
      or has_function_privilege('service_role', 'public.creative_price(uuid, text, text, jsonb)', 'EXECUTE') then
     raise exception 'rollback 0243 end state: an API role can call creative_price';
+  end if;
+  if (select pg_get_userbyid(proowner) from pg_proc where oid = 'public.creative_price(uuid, text, text, jsonb)'::regprocedure)
+     is distinct from 'postgres' then
+    raise exception 'rollback 0243 end state: creative_price is not owned by postgres';
   end if;
 end
 $rb$;

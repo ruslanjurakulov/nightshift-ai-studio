@@ -137,6 +137,13 @@ class TheGuards(unittest.TestCase):
 
 
 class NothingElse(unittest.TestCase):
+    def test_both_end_states_name_the_owner_and_a_rollback_that_does_nothing_says_so(self):
+        # Breach 0243 F2: the md5 reads only the source; create or replace keeps a hand-changed owner. Lens N2: a no-op is said.
+        self.assertIn("is distinct from 'postgres' then\n    raise exception '0243 end state: creative_price is not owned by postgres'",
+                      TEXT)
+        self.assertIn("raise exception 'rollback 0243 end state: creative_price is not owned by postgres'", ROLLBACK)
+        self.assertIn("raise notice 'rollback 0243: creative_price is not 0243''s body (md5 %); nothing changed'", ROLLBACK)
+
     def test_it_writes_no_row_and_grants_nothing(self):
         low = CODE.lower()
         for word in ("insert into", "update public.", "delete from", "grant ", "truncate", "alter table"):
