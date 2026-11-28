@@ -728,6 +728,146 @@ def _elst_cut(src: Path, dst: Path, start_s: float, seg_s: float) -> None:
     dst.write_bytes(_unbox(fix(top)))
 
 
+def _box(kind: bytes, payload: bytes) -> bytes:
+    return struct.pack(">I", 8 + len(payload)) + kind + payload
+
+
+def _full(kind: bytes, payload: bytes, version: int = 0) -> bytes:
+    return _box(kind, bytes([version, 0, 0, 0]) + payload)
+
+
+def _trak(timescale, stts, *, codec=b"avc1", samples=None, media_ticks=None, track_ticks=None, esds=b""):
+    """A video trak as a muxer writes one: stsd's one sample entry, stts,
+    stsz (``samples``, default the stts total), mdhd's length (default the
+    stts total time) and tkhd's in a 1000-tick movie timescale."""
+    total, ticks = sum(n for n, _ in stts), sum(n * d for n, d in stts)
+    media = ticks if media_ticks is None else media_ticks
+    track = round(media * 1000 / timescale) if track_ticks is None else track_ticks
+    tkhd = _full(b"tkhd", struct.pack(">IIIII", 0, 0, 1, 0, track) + b"\x00" * 60)
+    mdhd = _full(b"mdhd", struct.pack(">IIII", 0, 0, timescale, media) + b"\x00" * 4)
+    hdlr = _full(b"hdlr", struct.pack(">I", 0) + b"vide" + b"\x00" * 13)
+    stsd = _full(b"stsd", struct.pack(">I", 1) + _box(codec, b"\x00" * 78 + esds))
+    table = _full(b"stts", struct.pack(">I", len(stts)) + b"".join(struct.pack(">II", n, d) for n, d in stts))
+    stsz = _full(b"stsz", struct.pack(">II", 0, total if samples is None else samples))
+    return _box(b"trak", tkhd + _box(b"mdia", mdhd + hdlr + _box(b"minf", _box(b"stbl", stsd + table + stsz))))
+
+
+def _movie(*traks, movie_ticks=0) -> bytes:
+    mvhd = _full(b"mvhd", struct.pack(">IIII", 0, 0, 1000, movie_ticks) + b"\x00" * 80)
+    return (_box(b"ftyp", b"isom\x00\x00\x02\x00isomiso2") + _box(b"moov", mvhd + b"".join(traks))
+            + _box(b"mdat", b"\x00" * 1024))
+
+
+class ContainerReadPins(unittest.TestCase):
+    """#949 read an MP4 / MOV's rate from its stts alone when ffprobe is not on
+    the machine (the Probe models runner): every BR-L-211 header lie came back
+    on that path. ffprobe is hidden here; each file is what the ffprobe path
+    already refuses, written as the boxes themselves."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def _hidden(self):
+        real = shutil.which
+        return mock.patch.object(video.shutil, "which",
+                                 lambda name, *a, **k: None if name == "ffprobe" else real(name, *a, **k))
+
+    def _submit(self, data: bytes, name="source.mp4"):
+        src = self.tmp / name
+        src.write_bytes(data)
+        a = build_adapter("video.runway_upscale", env=ENV, session=_Session(_routes()))
+        req = CapabilityRequest("video_upscale", input_media=(str(src),), upscale_target="4k")
+        with self._hidden(), mock.patch.object(video.subprocess, "run",
+                                               side_effect=AssertionError("ffprobe is not on this machine")):
+            try:
+                a.submit(req, "magnific_video_upscaler_creative")
+            except AdapterError as e:
+                return e, a.session.calls
+        return None, a.session.calls
+
+    def assertRefused(self, data, words, **kw):
+        err, calls = self._submit(data, **kw)
+        self.assertIsNotNone(err, "the upscale was submitted")
+        self.assertEqual(err.code, E_BAD_REQUEST)
+        self.assertIn(words, err.message)
+        self.assertEqual(calls, [], "nothing may be uploaded or POSTed before the refusal")
+
+    def assertAccepted(self, data, **kw):
+        err, calls = self._submit(data, **kw)
+        self.assertIsNone(err, err and err.message)
+        self.assertEqual([c[1].rsplit("/", 1)[-1] for c in calls if "/v1/" in c[1]], ["uploads", "video_upscale"])
+
+    def test_an_honest_30_fps_h264_is_accepted(self):
+        self.assertAccepted(_movie(_trak(15360, [(120, 512)]), movie_ticks=4000))
+
+    def test_br_l_211_a_tail_padded_stts_is_refused_without_ffprobe(self):
+        # 240 frames of 120 fps; the last sample padded to 833 s, so the stts
+        # average reads 0.287 fps. mdhd still says 2 s.
+        self.assertRefused(_movie(_trak(15360, [(239, 128), (1, 12800000)], media_ticks=30720), movie_ticks=2000),
+                           "holds 240 frames in 2.0 seconds of picture")
+
+    def test_br_l_211_every_header_at_a_quarter_second_is_refused_without_ffprobe(self):
+        # 600 samples at 60 fps (10 s), mdhd / mvhd / tkhd all 0.25 s.
+        self.assertRefused(_movie(_trak(15360, [(600, 256)], media_ticks=3840, track_ticks=250), movie_ticks=250),
+                           "holds 600 frames in 0.2 seconds of picture")
+
+    def test_the_shortest_header_wins_whichever_it_is(self):
+        honest = dict(media_ticks=153600, track_ticks=10000)
+        for name, trak, movie in (("mdhd", dict(honest, media_ticks=3840), 10000),
+                                  ("tkhd", dict(honest, track_ticks=250), 10000),
+                                  ("mvhd", honest, 250)):
+            with self.subTest(short=name):
+                self.assertRefused(_movie(_trak(15360, [(600, 256)], **trak), movie_ticks=movie),
+                                   "holds 600 frames in 0.2 seconds of picture")
+
+    def test_br_l_211_a_sample_size_count_unlike_the_stts_total_is_unknown(self):
+        data = _movie(_trak(15360, [(120, 512)], samples=1980), movie_ticks=4000)
+        src = self.tmp / "s.mp4"
+        src.write_bytes(data)
+        with self._hidden():
+            self.assertIsNone(video.read_frames(str(src)).rate)
+            self.assertIsNone(video.video_fps(str(src)))
+        self.assertRefused(data, "could not be read")
+
+    def test_br_l_211_two_video_traks_are_refused_without_ffprobe(self):
+        self.assertRefused(_movie(_trak(15360, [(120, 512)]), _trak(15360, [(480, 128)]), movie_ticks=4000),
+                           "this file holds 2 video streams")
+
+    def test_a_one_sample_jpeg_trak_ahead_of_h264_is_accepted_without_ffprobe(self):
+        # One tick of a 90 kHz scale: read as the stream, it is 90 000 fps.
+        thumb = _trak(90000, [(1, 1)], codec=b"jpeg")
+        self.assertAccepted(_movie(thumb, _trak(15360, [(120, 512)]), movie_ticks=4000), name="source.mov")
+
+    def test_an_mp4v_jpeg_thumbnail_is_a_still_and_mpeg4_video_is_not(self):
+        # An .mp4 stores the JPEG as mp4v, objectTypeIndication 0x6C (ffmpeg's
+        # -map 0 -map 1 -c copy); 0x20 is MPEG-4 Part 2 video.
+        def esds(oti):
+            dc = bytes([0x04, 13, oti, 0x11]) + b"\x00" * 11
+            return _full(b"esds", bytes([0x03, 3 + len(dc), 0, 1, 0]) + dc)
+
+        main = _trak(15360, [(120, 512)])
+        self.assertAccepted(_movie(_trak(90000, [(1, 1)], codec=b"mp4v", esds=esds(0x6C)), main, movie_ticks=4000))
+        self.assertRefused(_movie(_trak(90000, [(1, 1)], codec=b"mp4v", esds=esds(0x20)), main, movie_ticks=4000),
+                           "this file holds 2 video streams")
+
+    def test_a_jpeg_trak_of_two_samples_is_a_second_video(self):
+        thumb = _trak(90000, [(2, 1)], codec=b"jpeg")
+        self.assertRefused(_movie(thumb, _trak(15360, [(120, 512)]), movie_ticks=4000),
+                           "this file holds 2 video streams")
+
+    def test_br_l_211_a_codec_it_cannot_count_without_ffprobe_is_unknown(self):
+        # A VP9 sample can be a superframe of 8 shown frames and an MPEG-4 one
+        # two packed B-frames: without a decoder, samples are not frames.
+        for codec in (b"vp09", b"mp4v", b"av01"):
+            with self.subTest(codec=codec):
+                self.assertRefused(_movie(_trak(15360, [(120, 512)], codec=codec), movie_ticks=4000),
+                                   "could not be read")
+
+    def test_webm_without_ffprobe_is_unknown(self):
+        self.assertRefused(b"\x1a\x45\xdf\xa3" + b"\x00" * 1024, "could not be read", name="source.webm")
+
+
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg + ffprobe")
 class RealBytesTests(unittest.TestCase):
     """Generated at test time; no binary is committed."""
@@ -861,6 +1001,48 @@ class RealBytesTests(unittest.TestCase):
                 self.assertIsNotNone(err, "two real video tracks were submitted")
                 self.assertIn("this file holds 2 video streams", err.message)
                 self.assertEqual(calls, [])
+
+    def test_br_l_211_the_container_read_without_ffprobe_agrees_with_ffprobe_on_real_forgeries(self):
+        # The same real H.264 files the ffprobe pins above use, read again with
+        # ffprobe hidden (the Probe models runner): the verdict, the frames
+        # and the seconds must be ffprobe's.
+        x264 = ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-an"]
+        src, padded, hidden = self.tmp / "src.mp4", self.tmp / "padded.mp4", self.tmp / "hide_tail.mp4"
+        self._ffmpeg("-f", "lavfi", "-i", "testsrc2=s=64x64:r=240:d=10", "-vf", r"select='gte(t\,2)+not(mod(n\,8))'",
+                     "-fps_mode", "passthrough", *x264, "-g", "1", "-use_editlist", "0", str(src))
+        _stts_pad(src, padded, 100)
+        _elst_cut(padded, hidden, 0, 2)
+        v240, png, tagged, first = (self.tmp / n for n in ("v240.mp4", "cover.png", "tagged.mp4", "first.mp4"))
+        self._ffmpeg("-f", "lavfi", "-i", "testsrc=size=64x64:rate=240:duration=1", *x264, str(v240))
+        self._ffmpeg("-f", "lavfi", "-i", "color=c=red:s=16x16:d=1", "-frames:v", "1", str(png))
+        self._ffmpeg("-i", str(v240), "-i", str(png), "-map", "0", "-map", "1", "-c", "copy",
+                     "-disposition:v:1", "attached_pic", str(tagged))
+        _cover_first(tagged, first)
+        main, thumb, aux = self.tmp / "main.mp4", self.tmp / "thumb.jpg", self.tmp / "aux.mp4"
+        self._ffmpeg("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=4", *x264, str(main))
+        self._ffmpeg("-f", "lavfi", "-i", "testsrc=size=160x120:rate=1", "-frames:v", "1", str(thumb))
+        self._ffmpeg("-f", "lavfi", "-i", "testsrc=size=160x120:rate=30:duration=4", *x264, str(aux))
+        files = {"hide_tail": (hidden, False), "cover_first_240": (first, False), "plain_30": (main, True)}
+        for ext in (".mp4", ".mov"):
+            two, both = self.tmp / f"two_trak{ext}", self.tmp / f"aux2{ext}"
+            self._ffmpeg("-i", str(main), "-i", str(thumb), "-map", "0", "-map", "1", "-c", "copy", str(two))
+            self._ffmpeg("-i", str(main), "-i", str(aux), "-map", "0", "-map", "1", "-c", "copy", str(both))
+            files[two.name], files[both.name] = (two, True), (both, False)
+        real = shutil.which
+        for name, (path, accepted) in files.items():
+            with self.subTest(file=name):
+                probed = video.read_frames(str(path))
+                with mock.patch.object(video.shutil, "which",
+                                       lambda n, *a, **k: None if n == "ffprobe" else real(n, *a, **k)):
+                    boxed = video.read_frames(str(path))
+                    err, calls = self._submit(path)
+                self.assertEqual(err is None, accepted, err and err.message)
+                if not accepted:
+                    self.assertEqual(calls, [])
+                self.assertEqual(boxed.refusal, probed.refusal)
+                self.assertEqual(boxed.frames, probed.frames)
+                if probed.seconds is not None:
+                    self.assertAlmostEqual(boxed.seconds, probed.seconds, places=2)
 
     def test_br_l_211_a_real_shortened_header_reads_as_its_frames(self):
         short = self.tmp / "short.mp4"

@@ -685,63 +685,211 @@ def _boxes(buf: bytes, start: int, end: int):
 _MP4_MAX_TOP_BOXES = 10_000
 
 
-def _track_fps(buf: bytes, start: int, end: int) -> tuple[bool, Optional[float]]:
-    """(is a video track, its average frame rate) from a ``trak``'s own sample table: samples x timescale / total
-    sample time. The rate is None for a video track whose timing cannot be read; the caller must not move on to a
-    later video track then, because that would report a rate for a stream other than the one ffprobe calls v:0."""
-    handler = timescale = None
-    frames = ticks = 0
-    seen_mdhd = seen_stts = malformed = False
+#: Sample entries whose one sample is one shown frame: ``_ONE_FRAME_PER_PACKET``
+#: (H.264, HEVC, ProRes) as an MP4 / MOV names them. Without ffprobe nothing
+#: decodes any other codec to count its frames (a VP9 superframe or a packed
+#: MPEG-4 B-frame is several frames in one sample), so any other is unknown.
+_MP4_ONE_FRAME_ENTRIES = frozenset({b"avc1", b"avc3", b"hvc1", b"hev1",
+                                    b"apch", b"apcn", b"apcs", b"apco", b"ap4h", b"ap4x"})
+#: ``_STILL_CODECS`` as QuickTime names them (JPEG, Motion JPEG A / B, PNG).
+_MP4_STILL_ENTRIES = frozenset({b"jpeg", b"mjpa", b"mjpb", b"png "})
+#: An MP4 (not MOV) stores a JPEG or PNG thumbnail as ``mp4v`` and names it in
+#: esds' objectTypeIndication (ISO 14496-1: 0x6C JPEG, 0x6D PNG): what ffmpeg
+#: writes for ``-map 0 -map 1 -c copy`` of a JPEG into .mp4, a file the
+#: ffprobe path accepts as a still.
+_MP4V_STILL_TYPES = frozenset({0x6C, 0x6D})
+#: Where a VisualSampleEntry's own boxes (avcC, esds) start: 8 bytes of
+#: SampleEntry and 70 of the visual fields (ISO 14496-12 12.1.3).
+_VISUAL_ENTRY_FIELDS = 78
+
+
+def _descriptor(buf: bytes, pos: int, end: int) -> Optional[Tuple[int, int, int]]:
+    """(tag, body start, body end) of one MPEG-4 descriptor; its size is up to
+    four 7-bit bytes. None when it does not fit."""
+    if pos >= end:
+        return None
+    tag, pos, size = buf[pos], pos + 1, 0
+    for _ in range(4):
+        if pos >= end:
+            return None
+        b = buf[pos]
+        pos += 1
+        size = (size << 7) | (b & 0x7F)
+        if not b & 0x80:
+            break
+    else:
+        return None
+    if pos + size > end:
+        return None
+    return tag, pos, pos + size
+
+
+def _esds_object_type(buf: bytes, start: int, end: int) -> Optional[int]:
+    """The objectTypeIndication of an ``esds`` box's payload, or None."""
+    es = _descriptor(buf, start + 4, end)
+    if not es or es[0] != 0x03:
+        return None
+    _, pos, stop = es
+    if pos + 3 > stop:
+        return None
+    flags = buf[pos + 2]
+    pos += 3
+    if flags & 0x80:
+        pos += 2
+    if flags & 0x40:
+        if pos >= stop:
+            return None
+        pos += 1 + buf[pos]
+    if flags & 0x20:
+        pos += 2
+    dc = _descriptor(buf, pos, stop)
+    if not dc or dc[0] != 0x04 or dc[1] >= dc[2]:
+        return None
+    return buf[dc[1]]
+
+
+def _sample_entry(buf: bytes, start: int, end: int) -> Optional[bytes]:
+    """The fourcc of an ``stsd`` that holds exactly one sample entry, with an
+    ``mp4v`` JPEG / PNG named ``jpeg``; None for none, several, or unreadable:
+    a second entry may be a second codec, and the reading would be neither's."""
+    if end - start < 8 or int.from_bytes(buf[start + 4:start + 8], "big") != 1:
+        return None
+    entries = list(_boxes(buf, start + 8, end))
+    if len(entries) != 1:
+        return None
+    kind, ps, pe = entries[0]
+    if kind == b"mp4v":
+        for k, s, e in _boxes(buf, ps + _VISUAL_ENTRY_FIELDS, pe):
+            if k == b"esds" and _esds_object_type(buf, s, e) in _MP4V_STILL_TYPES:
+                return b"jpeg"
+    return kind
+
+
+def _full_box_duration(buf: bytes, start: int, end: int, v0: Tuple[int, int], v1: Tuple[int, int]
+                       ) -> Optional[Tuple[Optional[int], int]]:
+    """(timescale or None, duration) at a full box's version-0 or version-1
+    offsets (each a pair, the timescale's offset -1 when the box has none);
+    None when the box is too short. An all-ones duration is ISO's "unknown",
+    read as 0, so it is no length at all rather than the longest one."""
+    wide = buf[start] == 1
+    ts_at, dur_at = v1 if wide else v0
+    n = 8 if wide else 4
+    if dur_at + n > end - start or (ts_at >= 0 and ts_at + 4 > end - start):
+        return None
+    dur = int.from_bytes(buf[start + dur_at:start + dur_at + n], "big")
+    if dur == (1 << (8 * n)) - 1:
+        dur = 0
+    ts = int.from_bytes(buf[start + ts_at:start + ts_at + 4], "big") if ts_at >= 0 else None
+    return ts, dur
+
+
+#: mvhd / mdhd: timescale then duration; tkhd: duration only (mvhd's timescale).
+_HD_OFFSETS = {b"mvhd": ((12, 16), (20, 24)), b"mdhd": ((12, 16), (20, 24)), b"tkhd": ((-1, 20), (-1, 28))}
+#: The shortest payload of each, version 0 / 1 (ISO 14496-12 8.2.2, 8.3.2, 8.4.2).
+_HD_MIN = {b"mvhd": (100, 112), b"mdhd": (24, 36), b"tkhd": (84, 96)}
+
+
+def _header(buf: bytes, kind: bytes, start: int, end: int) -> Optional[Tuple[Optional[int], int]]:
+    if end - start < 1 or end - start < _HD_MIN[kind][1 if buf[start] == 1 else 0]:
+        return None
+    v0, v1 = _HD_OFFSETS[kind]
+    return _full_box_duration(buf, start, end, v0, v1)
+
+
+#: The boxes a track's reading takes, each in its own parent only (a stts
+#: directly in minf is not the sample table); stsz and stz2 share one slot.
+_TRACK_SLOTS = {(b"tkhd", b"trak"): "tkhd", (b"mdhd", b"mdia"): "mdhd", (b"stts", b"stbl"): "stts",
+                (b"stsz", b"stbl"): "stsz", (b"stz2", b"stbl"): "stsz", (b"stsd", b"stbl"): "stsd"}
+
+
+@dataclass
+class _Mp4Track:
+    """One video ``trak`` as its own boxes describe it. ``samples`` is the
+    time-to-sample total only when the sample-size table counts the same
+    (ffprobe's ``nb_frames`` is the stsz count, and the stts average is over
+    the stts total: two counts are no count)."""
+
+    entry: Optional[bytes] = None
+    samples: Optional[int] = None
+    ticks: int = 0
+    timescale: Optional[int] = None
+    media_ticks: int = 0
+    track_ticks: int = 0
+    malformed: bool = False
+
+    def is_still(self) -> bool:
+        # ``_is_still``'s rule: a still codec and at most one sample, both read.
+        return (not self.malformed and self.entry in _MP4_STILL_ENTRIES
+                and self.samples is not None and self.samples <= 1)
+
+
+def _mp4_track(buf: bytes, start: int, end: int) -> Optional[_Mp4Track]:
+    """A ``trak``'s codec, sample counts and lengths, or None when it is not
+    video. Each box counts once in its own parent: a second mdhd, stts, stsz,
+    stsd or tkhd leaves the reading ambiguous, and malformed is unknown, never
+    one of the two."""
+    handler = None
+    t = _Mp4Track()
+    stts_total = stsz_count = None
+    seen = set()
     stack = [(b"trak", start, end)]
     while stack:
         parent, s, e = stack.pop()
         for kind, ps, pe in _boxes(buf, s, e):
             if kind in _MP4_CONTAINERS:
                 stack.append((kind, ps, pe))
-            elif kind == b"hdlr" and parent == b"mdia" and pe - ps >= 12:
+                continue
+            if kind == b"hdlr" and parent == b"mdia" and pe - ps >= 12:
                 # Only the media handler names the track's kind: a QuickTime file has a second hdlr in minf (the data
                 # handler, "alis"), which would otherwise hide that the track is video.
                 handler = buf[ps + 8:ps + 12]
-            elif kind == b"mdhd" and parent == b"mdia":
-                # A second media header leaves the timescale ambiguous: malformed is unknown, never one of the two.
-                if seen_mdhd or pe - ps < 24:
-                    malformed = True
+                continue
+            slot = _TRACK_SLOTS.get((kind, parent))
+            if slot is None:
+                continue
+            if slot in seen:
+                t.malformed = True
+                continue
+            seen.add(slot)
+            if slot in ("tkhd", "mdhd"):
+                got = _header(buf, kind, ps, pe)
+                if got is None:
+                    t.malformed = True
+                elif slot == "tkhd":
+                    t.track_ticks = got[1]
+                else:
+                    t.timescale, t.media_ticks = got
+            elif slot == "stts":
+                count = int.from_bytes(buf[ps + 4:ps + 8], "big") if pe - ps >= 8 else -1
+                if count < 0 or 8 + count * 8 > pe - ps:
+                    t.malformed = True
                     continue
-                seen_mdhd = True
-                # version 1 carries 64-bit creation/modification times before the timescale.
-                at = ps + (20 if buf[ps] == 1 else 12)
-                if at + 4 > pe:
-                    malformed = True
-                    continue
-                timescale = int.from_bytes(buf[at:at + 4], "big")
-            elif kind == b"stts" and parent == b"stbl":
-                # Two time-to-sample tables would sum into an average of neither: unknown instead.
-                if seen_stts or pe - ps < 8:
-                    malformed = True
-                    continue
-                seen_stts = True
-                count = int.from_bytes(buf[ps + 4:ps + 8], "big")
-                if 8 + count * 8 > pe - ps:
-                    malformed = True
-                    continue
+                stts_total = 0
                 for i in range(count):
                     at = ps + 8 + i * 8
                     n, delta = int.from_bytes(buf[at:at + 4], "big"), int.from_bytes(buf[at + 4:at + 8], "big")
-                    frames += n
-                    ticks += n * delta
+                    stts_total += n
+                    t.ticks += n * delta
+            elif slot == "stsz":
+                # stsz and stz2 both keep the sample count at offset 8.
+                if pe - ps < 12:
+                    t.malformed = True
+                    continue
+                stsz_count = int.from_bytes(buf[ps + 8:ps + 12], "big")
+            else:
+                t.entry = _sample_entry(buf, ps, pe)
     # The walk finishes even after a malformed box, so a broken audio track is still known to be "not video".
     if handler != b"vide":
-        return False, None
-    if malformed or not timescale or not frames or not ticks:
-        return True, None
-    return True, frames * timescale / ticks
+        return None
+    if stts_total is not None and stts_total == stsz_count:
+        t.samples = stts_total
+    return t
 
 
-def mp4_fps(path: str) -> Optional[float]:
-    """The first video track's average frame rate read from an MP4 / MOV file's own sample table, without ffprobe, or
-    None when it cannot be read. The same figure ffprobe reports as ``avg_frame_rate``: every frame, over the time they
-    span. Never a guess: a file without a ``moov`` box, a malformed box, a first video track with no readable timing
-    (even when a later one has some), or more than ``_MP4_MAX_TOP_BOXES`` top-level boxes is None."""
+def _read_moov(path: str) -> Optional[bytes]:
+    """The payload of an MP4 / MOV file's first ``moov`` box, or None: no
+    moov, a malformed top-level box, one over ``_MOOV_MAX_BYTES``, or more
+    than ``_MP4_MAX_TOP_BOXES`` boxes before it."""
     try:
         with open(path, "rb") as fh:
             fh.seek(0, 2)
@@ -765,17 +913,75 @@ def mp4_fps(path: str) -> Optional[float]:
                     if size > _MOOV_MAX_BYTES:
                         return None
                     fh.seek(pos + skip)
-                    buf = fh.read(size - skip)
-                    for k, ps, pe in _boxes(buf, 0, len(buf)):
-                        if k == b"trak":
-                            is_video, fps = _track_fps(buf, ps, pe)
-                            if is_video:
-                                return fps
-                    return None
+                    return fh.read(size - skip)
                 pos += size
     except OSError:
         return None
     return None
+
+
+def mp4_frames(path: str) -> FrameReading:
+    """``read_frames`` for an MP4 / MOV without ffprobe, from the file's own
+    boxes (#949's container read, under BR-L-211's rules).
+
+    The Probe models workflow's runner installs no system ffmpeg and the
+    pinned imageio-ffmpeg ships no ffprobe; the live Runway upscale probe of
+    2026-11-27 was refused with "frame rate could not be read" before any
+    call, although the drawn clip is a plain 24 fps H.264 MP4
+    (tests/test_runway_upscale_probe_fps.py). The stts average alone, which
+    #949 read, is the header BR-L-211 caught lying both ways, so the rate is
+    counted here as ``read_frames`` counts it: the larger of the stts average
+    and the samples over the shortest positive of mdhd's, mvhd's and tkhd's
+    length, one frame forgiven. Samples are the stts total, and unknown when
+    stsz counts otherwise.
+
+    The same stream rules: one-sample still tracks are dropped (cover art is
+    in udta, not a trak), more than one video track is refused, and samples
+    are frames only for ``_MP4_ONE_FRAME_ENTRIES``; nothing here can decode
+    another codec to count it, so it is unknown. Never a guess: a malformed
+    box, a missing table or length, or a file ``_read_moov`` refuses is
+    unknown."""
+    moov = _read_moov(path)
+    if moov is None:
+        return FrameReading()
+    movie_scale, movie_ticks, mvhd_seen = None, 0, False
+    tracks: List[_Mp4Track] = []
+    for kind, ps, pe in _boxes(moov, 0, len(moov)):
+        if kind == b"mvhd":
+            got = _header(moov, kind, ps, pe)
+            if mvhd_seen or got is None:
+                return FrameReading()
+            mvhd_seen = True
+            movie_scale, movie_ticks = got
+        elif kind == b"trak":
+            track = _mp4_track(moov, ps, pe)
+            if track is not None:
+                tracks.append(track)
+    pictures = [t for t in tracks if not t.is_still()]
+    if len(pictures) > 1:
+        return FrameReading(refusal=f"this file holds {len(pictures)} video streams; export it again with just "
+                                    "the one to upscale")
+    if not pictures:
+        return FrameReading()
+    t = pictures[0]
+    if t.malformed or t.entry not in _MP4_ONE_FRAME_ENTRIES or not t.samples or not t.timescale or not t.ticks:
+        return FrameReading()
+    lengths = [t.media_ticks / t.timescale]
+    if movie_scale:
+        lengths += [movie_ticks / movie_scale, t.track_ticks / movie_scale]
+    lengths = [x for x in lengths if x > 0]
+    if not lengths:
+        return FrameReading()
+    seconds = min(lengths)
+    avg = f"{t.samples * t.timescale}/{t.ticks}"
+    rate = counted_rate({"nb_frames": t.samples, "avg_frame_rate": avg, "duration": seconds}, {}, slack_frames=1)
+    return FrameReading(rate=rate, avg=parse_rate(avg), frames=t.samples, seconds=seconds)
+
+
+def mp4_fps(path: str) -> Optional[float]:
+    """``mp4_frames``' rate, or None when it is unknown or refused."""
+    reading = mp4_frames(path)
+    return None if reading.refusal else reading.rate
 
 
 def read_frames(path: str, *, timeout: int = 30) -> FrameReading:
@@ -800,11 +1006,11 @@ def read_frames(path: str, *, timeout: int = 30) -> FrameReading:
     file runs under (``ffmpeg_limits``, ``media_library.decoder_cap``)."""
     exe = shutil.which("ffprobe")
     if not exe:
-        # #949: without ffprobe (the Probe models runner) an MP4 / MOV is read
-        # from its own sample table.
+        # Without ffprobe (the Probe models runner) an MP4 / MOV is read from
+        # its own boxes under the same rules; WebM and MKV still need ffprobe,
+        # which the worker image has.
         if Path(str(path)).suffix.lower() in (".mp4", ".mov"):
-            avg = mp4_fps(str(path))
-            return FrameReading(rate=avg, avg=avg)
+            return mp4_frames(str(path))
         return FrameReading()
     suffix = Path(str(path)).suffix.lower()
     # The file is a member's library copy: only the file protocol, and the
