@@ -125,6 +125,8 @@
 .lv-board.plan-board { height: auto; min-height: 280px; flex: 1; background: var(--ds-surface-1); }
 .plan-flow { position: absolute; inset: 0; }
 .plan-node { max-width: 100%; }
+/* React Flow gives a node that is neither draggable nor selectable pointer-events:none: the card takes the click itself (as LiveView's). */
+.plan-flow .psc { pointer-events: all; }
 .plan-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--ds-space-2); }
 
 /* PlanSceneCard, the placeholder for S5's <LiveNode>: a solid surface, a dashed edge for a planned step, S5's type roles. */

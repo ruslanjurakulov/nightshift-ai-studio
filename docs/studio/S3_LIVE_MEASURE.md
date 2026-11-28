@@ -222,3 +222,32 @@ click for the second table.
 - The session was read twice per run: once after the first reply, and once after the storyboard.
 - The confirm key was wholly above the composer in both runs.
 - The layout pass passed: no horizontal overflow and no page error at 1440 and 390, light and dark, en, ru and uz.
+
+### Review round (Pixel, Lens, React reviewer)
+
+- **The Plan column is a storyboard, not the step graph.** `components/studio-live/PlanBoard.tsx` lays the plan out with
+  `lib/studio/planGrid.ts`: one card per scene, wrapped to the board's width at zoom 1, with the idea, the script and the cast above
+  the scenes and the assembly and final video below them. A longer plan scrolls down and is never shrunk. React Flow `Controls` are
+  available to fit or zoom. 12 scenes fit a 1440×900 window (lab-checked).
+- **Cards.** Each scene card carries its title, the first line of its visual, its planned length and its cast; there is no per-card
+  "Planned". The card is a placeholder, `PlanSceneCard.tsx`, built to S5's `<LiveNode>` props, which replaces it.
+  - Status maps to S5's states; a finished step with no file reads "unknown" (rule 5).
+  - The cast is carried on the scene's cards, not drawn as wires.
+- **Phones and tablets.** Below 1024 px, Chat and Plan are tabs (`StudioSplit.tsx`). The first send of a conversation opens the
+  plan; a chip above the chat opens it afterwards.
+- **The hidden canvas.** It stands down through `CanvasActiveContext`: its bar, palette, quick-add, inspector, drawer and keys are
+  off while the plan is shown.
+- **Escape** closes a step and never leaves the Studio (`SectionShell.tsx`).
+- **LiveView.** It no longer re-renders every frame after a handoff, and it rings nothing on the film's first reading.
+
+Measured after this round (same stub, 1440 dark, main merged):
+
+| Event | L=2 s | L=8 s |
+|---|---|---|
+| Plan column and planning skeleton after Send | 0.09 s | 0.10 s |
+| First plan cards after Send | 2.21 s | 8.18 s |
+| "Writing the storyboard…" after Choose | 0.12 s | 0.05 s |
+| Scene cards after Choose | 2.24 s | 8.13 s |
+
+The page itself still scrolls about 50 px at 1440×900. The cause is on main: the app shell's left rail and the map credit under
+the page, neither of which this PR touches. The Studio column ends inside the window.

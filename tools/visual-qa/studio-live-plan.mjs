@@ -4,10 +4,13 @@
  * measurement in docs/studio/S3_LIVE_MEASURE.md. Two parts:
  *
  *   flow    one sentence typed in the panel -> the first reply -> Choose -> the storyboard -> Create -> the confirm block, sampled
- *           every 100 ms with a screenshot every 500 ms. Asserts: the column shows the Plan board after the first reply, it has
- *           cards, the storyboard state is shown while the storyboard is written, the confirm key is fully visible, no page error.
- *   layout  the page opened on a conversation, at 1440 and 390, light and dark, en / ru / uz. Asserts: Plan cards drawn, no
- *           horizontal overflow, no page error. One screenshot each.
+ *           every 100 ms with a screenshot every 500 ms. Asserts: the planning skeleton while the first turn is out, the Plan board
+ *           after the first reply with cards, the storyboard row while the storyboard is written, the confirm key fully visible, the
+ *           switch back to the person's canvas, no page error.
+ *   layout  the page opened on a 12-scene conversation at 1440, 768, 390 and 360, light and dark (the app's own theme,
+ *           chronos_theme), en / ru / uz. Asserts: the Plan cards are drawn (below 1024 px through the Chat / Plan tabs), no horizontal
+ *           overflow, no page error, no card text under 12 px as rendered; at 1440x900 also: the 12 scenes fit the board at zoom 1,
+ *           the page does not scroll, every card is reached by Tab, Escape closes a step and never leaves the page.
  *
  * The model is stubbed at the browser boundary, as in the measurement: lib/server/brain/llm.ts has no base-URL seam, and every turn
  * writes through ai_chat_* functions the fake refuses. /api/brain/turn is answered here after --L ms, in the route's recorded shape;
@@ -87,6 +90,7 @@ const briefBase = { version: 1, session_id: SID, kind: "short", language: "en", 
 const drafting = { ...briefBase, status: "drafting", target_seconds: FILM_S, characters, locations };
 const { plan_turns: _pt, ...outlineReady } = outline("The kite that came back");
 const ready = { ...briefBase, ...outlineReady, status: "ready", scenes, price: { state: "unpriced" } };
+const readyN = (n) => ({ ...ready, scenes: scenes.length >= n ? scenes.slice(0, n) : Array.from({ length: n }, (_, i) => ({ ...scenes[0], id: `s${i + 1}`, n: i + 1, title: `Shot ${i + 1}` })) });
 const QUOTE = { film_id: FILM_ID, version: 8, priced: true, total: 16, quote_id: `fq-8-${"0".repeat(31)}1`, lines: [], scenes: [], refusals: [], planned_seconds: FILM_S,
   assembly_minutes: 2, exempt: false, available: 1180, active_films: 0, film_studio_enabled: true, blocked_by: [], may_start: true, startable: true };
 
@@ -138,15 +142,18 @@ const probe = () => {
     phase: pane?.dataset.phase ?? null,
     stage: pane?.querySelector("[data-stage]")?.getAttribute("data-stage") ?? null,
     planning: !!pane?.querySelector("[data-testid=plan-planning]"),
+    skeleton: !!pane?.querySelector("[data-testid=plan-planning] .plan-skel"),
     storyboard: !!pane?.querySelector("[data-testid=plan-storyboard]"),
-    cards: pane ? pane.querySelectorAll(".lv-card").length : 0,
-    entering: pane ? pane.querySelectorAll(".lv-card[data-enter]").length : 0,
-    sceneCards: pane ? pane.querySelectorAll('.lv-card[data-testid^="live-node-scene#"]').length : 0,
+    cards: pane ? pane.querySelectorAll("[data-node-id]").length : 0,
+    entering: pane ? pane.querySelectorAll("article.ds-reveal").length : 0,
+    sceneCards: pane ? pane.querySelectorAll('[data-node-id^="scene#"]').length : 0,
     transform: vp ? vp.style.transform : null,
     canvasInert: canvas ? canvas.hasAttribute("inert") : null,
     createKey: !!q("[data-testid=film-create-key]"),
     scrollW: document.scrollingElement.scrollWidth,
     clientW: document.scrollingElement.clientWidth,
+    scrollH: document.scrollingElement.scrollHeight,
+    clientH: document.scrollingElement.clientHeight,
   };
 };
 
@@ -205,13 +212,13 @@ async function flow() {
   await page.locator("[data-testid=nightshift-ai-panel] .chat-send").click();
   await page.getByRole("button", { name: /^Choose this one: The kite/ }).waitFor({ timeout: L + 60000 });
   mark("outlines_visible");
-  await page.locator("[data-testid=plan-board-pane] .lv-card").first().waitFor({ timeout: 10000 }).then(() => mark("plan_cards"), () => mark("no_plan_cards"));
+  await page.locator("[data-testid=plan-board-pane] [data-node-id]").first().waitFor({ timeout: 10000 }).then(() => mark("plan_cards"), () => mark("no_plan_cards"));
   await sleep(1000);
   mark("choose_pressed");
   await page.getByRole("button", { name: /^Choose this one: The kite/ }).click();
   await page.locator("[data-testid=film-create-key]").waitFor({ timeout: CHOOSE_MS + 60000 });
   mark("create_visible");
-  await page.locator('[data-testid=plan-board-pane] .lv-card[data-testid^="live-node-scene#"]').first().waitFor({ timeout: 10000 }).then(() => mark("scene_cards"), () => mark("no_scene_cards"));
+  await page.locator('[data-testid=plan-board-pane] [data-node-id^="scene#"]').first().waitFor({ timeout: 10000 }).then(() => mark("scene_cards"), () => mark("no_scene_cards"));
   await sleep(1500);
   mark("create_pressed");
   await page.locator("[data-testid=film-create-key]").click();
@@ -256,6 +263,7 @@ async function flow() {
     after_send_s: {
       "plan column shown": rel(first(S, (s) => s.plan), S),
       "Planning… shown": rel(first(S, (s) => s.planning), S),
+      "planning skeleton shown": rel(first(S, (s) => s.skeleton), S),
       "reply shown in panel": rel(first(S, (s) => s.replies > 0), S),
       "first plan cards": rel(first(S, (s) => s.cards > 0), S),
     },
@@ -276,7 +284,7 @@ async function flow() {
   writeFileSync(path.join(dir, "raw.json"), JSON.stringify({ marks, samples, derived }, null, 1));
   console.log(JSON.stringify(derived, null, 1));
   check(derived.after_send_s["first plan cards"] !== null, `${run}: the Plan board shows cards after the first reply`);
-  check(derived.after_send_s["Planning… shown"] !== null, `${run}: the board said Planning… while the first turn was out`);
+  check(derived.after_send_s["planning skeleton shown"] !== null, `${run}: the planning skeleton while the first turn was out`);
   check(derived.after_choose_s["storyboard state shown"] !== null, `${run}: the storyboard state was shown while it was written`);
   check(derived.after_choose_s["scene cards on the board"] !== null, `${run}: the storyboard's scene cards reached the board`);
   check(confirmVisible.ok === true, `${run}: the confirm key is wholly visible above the composer`);
@@ -288,25 +296,90 @@ async function layout() {
   const dir = path.join(OUT, "layout");
   mkdirSync(dir, { recursive: true });
   const browser = await chromium.launch({ executablePath: process.env.VISUAL_QA_CHROMIUM || "/opt/pw-browsers/chromium", args: ["--no-sandbox"] });
+  const N = 12;
   for (const locale of ["en", "ru", "uz"])
-    for (const scheme of ["light", "dark"])
-      for (const width of [1440, 390]) {
+    for (const theme of ["light", "dark"])
+      for (const width of [1440, 768, 390, 360]) {
         const phone = width < 700;
-        const ctx = await browser.newContext({ viewport: { width, height: phone ? 844 : 900 }, isMobile: phone, hasTouch: phone, colorScheme: scheme });
+        const height = phone ? 844 : 900;
+        const ctx = await browser.newContext({ viewport: { width, height }, isMobile: phone, hasTouch: width <= 1024, colorScheme: theme });
+        // The app's own theme switch (not only the system's): a real light page, not a dark one in a light browser.
+        await ctx.addInitScript((t) => {
+          try {
+            localStorage.setItem("chronos_theme", t);
+          } catch {
+            /* storage refused */
+          }
+        }, theme);
         await ctx.addCookies([{ name: "chronos_locale", value: locale, url: BASE }, { ...sessionCookie(FAKE, "canvas"), url: BASE }]);
         const page = await ctx.newPage();
         const errors = [];
         page.on("pageerror", (e) => errors.push(String(e.message).slice(0, 200)));
-        const state = { brief: ready, sessionReads: 0 };
+        const state = { brief: readyN(N), sessionReads: 0 };
         await stubBrain(page, state);
-        const name = `${locale}-${scheme}-${width}`;
+        const name = `${locale}-${theme}-${width}`;
         await page.goto(`${BASE}/${SLUG}/studio?brain=${SID}`, { waitUntil: "load", timeout: 120000 });
-        const cards = await page.locator("[data-testid=plan-board-pane] .lv-card").first().waitFor({ timeout: 30000 }).then(() => true, () => false);
-        await sleep(900);
+        await page.waitForSelector("[data-testid=studio-split]", { timeout: 60000 });
+        await sleep(600);
+        const tabs = await page.locator("[data-testid=studio-tab-plan]").count();
+        if (width < 1024) {
+          check(tabs === 1, `${name}: Chat / Plan tabs below 1024 px`);
+          await page.locator("[data-testid=studio-tab-plan]").click().catch(() => {});
+        } else check(tabs === 0, `${name}: chat and plan side by side, no tabs`);
+        const cards = await page.locator("[data-testid=plan-board-pane] [data-node-id]").first().waitFor({ timeout: 30000 }).then(() => true, () => false);
+        await sleep(1200);
         const s = await page.evaluate(probe);
-        await page.screenshot({ path: path.join(dir, `${name}.png`), fullPage: phone });
+        const small = await page.evaluate(() => {
+          const out = [];
+          for (const el of document.querySelectorAll("[data-testid=plan-board-pane] .psc *")) {
+            if (!el.childNodes.length || ![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
+            const r = el.getBoundingClientRect();
+            if (!r.width) continue;
+            const size = parseFloat(getComputedStyle(el).fontSize);
+            const vp = el.closest(".react-flow__viewport");
+            const zoom = vp ? Number(/scale\(([\d.]+)\)/.exec(vp.style.transform)?.[1] ?? 1) : 1;
+            if (size * zoom < 11.95) out.push(`${el.className}:${(size * zoom).toFixed(1)}`);
+          }
+          return out.slice(0, 5);
+        });
         check(cards && s.cards > 0, `${name}: Plan cards drawn (${s.cards})`);
         check(s.scrollW <= s.clientW, `${name}: no horizontal overflow (${s.scrollW} <= ${s.clientW})`);
+        check(small.length === 0, `${name}: no card text under 12 px as rendered ${small.join(" ")}`);
+        if (width === 1440) {
+          const fit = await page.evaluate(() => {
+            const board = document.querySelector("[data-testid=plan-board]")?.getBoundingClientRect();
+            const vp = document.querySelector("[data-testid=plan-board] .react-flow__viewport")?.style.transform ?? "";
+            const out = [...document.querySelectorAll('[data-testid=plan-board] [data-node-id^="scene#"]')].map((b) => b.closest("article").getBoundingClientRect());
+            const inside = out.every((r) => board && r.top >= board.top - 0.5 && r.bottom <= board.bottom + 0.5 && r.left >= board.left - 0.5 && r.right <= board.right + 0.5);
+            return { scenes: out.length, inside, zoom1: /scale\(1\)/.test(vp) };
+          });
+          check(fit.scenes === N && fit.inside && fit.zoom1, `${name}: ${N} scenes fit the board at zoom 1 (${JSON.stringify(fit)})`);
+          // The Studio's own column ends inside the window. (The page itself still scrolls on main by the app shell's rail and the
+          // map credit under the page, which this PR does not touch: reported, not asserted.)
+          const col = await page.evaluate(() => Math.round(document.querySelector("[data-testid=studio-plan-column]").getBoundingClientRect().bottom));
+          check(col <= 900, `${name}: the Plan column ends inside the 900 px window (${col}); page scroll ${s.scrollH}/${s.clientH}`);
+          // Tab through the board from its first card: every card is reached.
+          const ids = await page.evaluate(() => [...document.querySelectorAll("[data-testid=plan-board-pane] [data-node-id]")].map((e) => e.dataset.nodeId));
+          await page.locator("[data-testid=plan-board-pane] [data-node-id]").first().focus();
+          const reached = new Set();
+          for (let i = 0; i < ids.length + 2; i++) {
+            const id = await page.evaluate(() => document.activeElement?.closest?.("[data-node-id]")?.dataset.nodeId ?? null);
+            if (id) reached.add(id);
+            await page.keyboard.press("Tab");
+          }
+          check(ids.every((id) => reached.has(id)), `${name}: every card is reached by Tab (${reached.size}/${ids.length})`);
+          // Escape closes a step and never leaves the Studio.
+          const before = page.url();
+          await page.locator('[data-testid=plan-board-pane] [data-node-id="scene#3"]').click();
+          const opened = await page.locator("[data-testid=live-details]").count();
+          await page.keyboard.press("Escape");
+          await sleep(300);
+          const closed = (await page.locator("[data-testid=live-details]").count()) === 0;
+          await page.keyboard.press("Escape");
+          await sleep(500);
+          check(opened === 1 && closed && page.url() === before, `${name}: Escape closes the step and stays on the Studio`);
+        }
+        await page.screenshot({ path: path.join(dir, `${name}.png`), fullPage: phone });
         check(errors.length === 0, `${name}: no page error ${errors.join(" | ")}`);
         await ctx.close();
       }

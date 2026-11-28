@@ -118,9 +118,12 @@ describe("Nightshift AI panel: writing the storyboard", () => {
     expect(document.querySelector('[data-model="keyframe"]')).toBeNull();
   });
 
-  it("keeps every remedy key clear of the canvas's phone dock", () => {
+  it("keeps every remedy key clear of the phone's tab bar; the canvas's dock is never on screen with the chat (a tab of its own)", () => {
     const css = readFileSync(join(__dirname, "../components/brain/nightshift-ai-panel.css"), "utf8");
-    expect(css).toMatch(/@media \(max-width: 40rem\) \{[^}]*\.ns-ai-dock \{ margin-bottom: calc\(env\(safe-area-inset-bottom\) \+ 172px\); \}/);
+    expect(css).toMatch(/@media \(max-width: 40rem\) \{[^}]*\.ns-ai-dock \{ margin-bottom: calc\(env\(safe-area-inset-bottom\) \+ 88px\); \}/);
+    // Below 1024 px the Studio shows Chat and Plan one at a time (StudioSplit): the canvas, and its fixed dock, sit in the Plan tab.
+    const live = readFileSync(join(__dirname, "../components/studio-live/studio-live.css"), "utf8");
+    expect(live).toMatch(/\.studio-split\[data-tab="chat"\] > \.studio-split-plan \{ display: none; \}/);
   });
 });
 
