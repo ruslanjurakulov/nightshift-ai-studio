@@ -23,6 +23,7 @@ export const billingLedgerRu: BillingLedgerDictionary = {
     used_untracked: "неизвестно: расход конвейера у этого провайдера не записывается",
     used_no_rows: "неизвестно: в журнале конвейера ещё нет строк",
     used_unpriced: "неизвестно: у части расхода нет цены",
+    used_failed_calls: "неизвестно: вызовы Studio не удались, и неизвестно, выставил ли провайдер за них счёт",
     used_may_have_billed: "неизвестно: неудачные пробы могли быть оплачены",
     negative: "неизвестно: израсходовано больше, чем записано пополнений",
   },
@@ -40,6 +41,7 @@ export const billingLedgerRu: BillingLedgerDictionary = {
   usdUnknown: "{qty} {unit}, цена в USD неизвестна",
   rowsUsdUnknown: "{unit}: строк {n}, цена в USD неизвестна",
   billingUnknown: "неудачных проб, которые могли быть оплачены: {n}",
+  failedCalls: "неудачные вызовы, оплата неизвестна: {n}",
   // The vendor-named units (gemini_*, pexels_*) are in lib/server/ledger-unit-labels.ts: this dictionary ships to the browser.
   units: {
     second: "с",

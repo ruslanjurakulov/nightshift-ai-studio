@@ -22,6 +22,7 @@ export const billingLedgerUz: BillingLedgerDictionary = {
     used_untracked: "nomaʼlum: konveyerning bu provayderdagi sarfi qayd etilmaydi",
     used_no_rows: "nomaʼlum: konveyer jurnalida hali qator yoʻq",
     used_unpriced: "nomaʼlum: sarfning bir qismi narxsiz",
+    used_failed_calls: "nomaʼlum: Studio chaqiruvlari muvaffaqiyatsiz boʻldi, yetkazib beruvchi ular uchun hisob yozgani nomaʼlum",
     used_may_have_billed: "nomaʼlum: muvaffaqiyatsiz sinovlar uchun pul olingan boʻlishi mumkin",
     negative: "nomaʼlum: qayd etilgan toʻldirishlardan koʻproq sarflangan",
   },
@@ -39,6 +40,7 @@ export const billingLedgerUz: BillingLedgerDictionary = {
   usdUnknown: "{qty} {unit}, USD narxi nomaʼlum",
   rowsUsdUnknown: "{unit}: {n} qator, USD narxi nomaʼlum",
   billingUnknown: "pul olingan boʻlishi mumkin boʻlgan muvaffaqiyatsiz sinovlar: {n}",
+  failedCalls: "muvaffaqiyatsiz chaqiruvlar, toʻlov nomaʼlum: {n}",
   // The vendor-named units (gemini_*, pexels_*) are in lib/server/ledger-unit-labels.ts: this dictionary ships to the browser.
   units: {
     second: "s",

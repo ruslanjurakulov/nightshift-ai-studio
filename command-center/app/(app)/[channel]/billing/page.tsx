@@ -198,7 +198,7 @@ export default async function BillingPage() {
             timed(
               supabase
                 .from("creative_job_costs")
-                .select("id,provider,vendor_model,unit,quantity,usd_estimate,recorded_at", from === 0 ? { count: "exact" } : undefined)
+                .select("id,provider,vendor_model,unit,quantity,usd_estimate,price_source,recorded_at", from === 0 ? { count: "exact" } : undefined)
                 .gte("recorded_at", sinceIso)
                 .order("recorded_at", { ascending: false })
                 .order("id", { ascending: false })

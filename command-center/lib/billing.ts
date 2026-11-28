@@ -417,8 +417,20 @@ export interface StudioCostRow {
   unit: string | null;
   quantity: number | string | null;
   usd_estimate: number | string | null;
+  /** Where a price came from; FAILED_CALL marks a call that delivered nothing (its quantity is what was asked). */
+  price_source?: string | null;
   recorded_at: string;
 }
+
+/**
+ * The price_source the workers write on the cost row of a vendor call that delivered nothing: it failed, timed out, answered
+ * without a file, or was abandoned (modules/creative_worker.py FAILED_CALL_PRICE_SOURCE). Its quantity is what was ASKED for, and
+ * whether the vendor bills such a call is not known: it is never priced at the rate card and never counted as spend, only shown
+ * beside it as "failed calls, billing unknown", and it keeps the total unknown (CLAUDE.md #5).
+ */
+export const FAILED_CALL = "failed_call";
+
+export const isFailedCall = (r: { price_source?: string | null }) => r.price_source === FAILED_CALL;
 
 /** One probe call (model_probe_runs, 0035). `vendor_credits` exists from 0152 on; absent or NULL = the vendor said nothing. */
 export interface ProbeRunRow {
@@ -537,6 +549,8 @@ export interface SourceUse {
   unpriced: UnpricedPart[];
   /** Probes that failed in a way the vendor may still have billed (a timeout, an outage, a bad answer after the task ran). */
   billingUnknown: number;
+  /** Studio calls that delivered nothing (FAILED_CALL rows): whether the vendor billed them is unknown. */
+  failedCalls: number;
 }
 
 export interface LedgerInputs {
@@ -577,6 +591,7 @@ export type UsedUnknownWhy =
   | "used_untracked"
   | "used_no_rows"
   | "used_unpriced"
+  | "used_failed_calls"
   | "used_may_have_billed";
 
 /** The cause that keeps the sum of these sources unknown, or null when it is known. */
@@ -587,6 +602,7 @@ export function usedUnknownWhy(sources: readonly SourceUse[]): UsedUnknownWhy | 
   if (sources.some((s) => s.state === "untracked")) return "used_untracked";
   if (sources.some((s) => s.state === "no_rows")) return "used_no_rows";
   if (sources.some((s) => s.unpriced.length > 0)) return "used_unpriced";
+  if (sources.some((s) => s.failedCalls > 0)) return "used_failed_calls";
   return "used_may_have_billed";
 }
 
@@ -629,11 +645,11 @@ export const REFUSED_BEFORE_WORK: ReadonlySet<string> = new Set(["auth", "quota"
 type Part = { usd: number | null; estimate: boolean; unit: string; quantity: number | null };
 
 function emptySource(state: SourceState): SourceUse {
-  return { state, rows: 0, usd: state === "not_used" ? 0 : null, pricedUsd: 0, estimate: false, unpriced: [], billingUnknown: 0 };
+  return { state, rows: 0, usd: state === "not_used" ? 0 : null, pricedUsd: 0, estimate: false, unpriced: [], billingUnknown: 0, failedCalls: 0 };
 }
 
 /** Sums priced and unpriced parts into one SourceUse. No part at all is a measured zero (the read worked and found none). */
-function sumParts(parts: Part[], billingUnknown = 0): SourceUse {
+function sumParts(parts: Part[], billingUnknown = 0, failedCalls = 0): SourceUse {
   let priced = 0;
   let estimate = false;
   const unpriced = new Map<string, UnpricedPart>();
@@ -648,15 +664,16 @@ function sumParts(parts: Part[], billingUnknown = 0): SourceUse {
     u.rows += 1;
     unpriced.set(p.unit, u);
   }
-  const whole = unpriced.size === 0 && billingUnknown === 0;
+  const whole = unpriced.size === 0 && billingUnknown === 0 && failedCalls === 0;
   return {
     state: "ok",
-    rows: parts.length + billingUnknown,
+    rows: parts.length + billingUnknown + failedCalls,
     usd: whole ? priced : null,
     pricedUsd: priced,
     estimate,
     unpriced: [...unpriced.values()],
     billingUnknown,
+    failedCalls,
   };
 }
 
@@ -690,8 +707,14 @@ function pipelineUse(x: LedgerInputs, start: number): SourceUse {
 function studioUse(x: LedgerInputs, start: number): SourceUse {
   if (x.studioUnread) return emptySource("unread");
   const parts: Part[] = [];
+  let failedCalls = 0;
   for (const r of x.studioRows) {
     if (billingIdFor(r.provider, r.vendor_model) !== x.provider.id || !inWindow(rowMs(r.recorded_at), start, x.now)) continue;
+    if (isFailedCall(r)) {
+      // What was asked of a call that delivered nothing, not what was used: never at the rate card, never a $0.
+      failedCalls += 1;
+      continue;
+    }
     const qty = positive(r.quantity);
     const unit = r.unit || "unit";
     const recorded = positive(r.usd_estimate);
@@ -706,7 +729,7 @@ function studioUse(x: LedgerInputs, start: number): SourceUse {
     const rate = model?.usdPerUnit ?? null;
     parts.push({ usd: rate !== null && qty !== null ? rate * qty : null, estimate: true, unit, quantity: qty });
   }
-  return cutAt(sumParts(parts), x.studioFromMs, start);
+  return cutAt(sumParts(parts, 0, failedCalls), x.studioFromMs, start);
 }
 
 function probeUse(x: LedgerInputs, start: number): SourceUse {

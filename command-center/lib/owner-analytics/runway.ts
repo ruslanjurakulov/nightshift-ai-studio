@@ -22,6 +22,7 @@ import {
   type BalanceRow,
   type BilledProvider,
   REFUSED_BEFORE_WORK,
+  isFailedCall,
   type BillingSettingsRow,
   type CostRowLite,
   type LedgerInputs,
@@ -132,6 +133,8 @@ export interface ModelRunway {
   unitsFloor: boolean;
   /** Probes (each a paid call) over 7 days. */
   probes7d: number;
+  /** Studio calls over 7 days that delivered nothing (FAILED_CALL rows): never priced, and they keep `usd7d` unknown. */
+  failedCalls7d: number;
   /** USD of the model's Studio cost rows and probes over 7 days; null when any is unpriced. */
   usd7d: number | null;
   usd7dPriced: number;
@@ -229,6 +232,7 @@ function modelsOf(p: BilledProvider, x: RunwayData): ModelRunway[] {
         units7d: x.activity.d7 ? 0 : null,
         unitsFloor: false,
         probes7d: 0,
+        failedCalls7d: 0,
         usd7d: 0,
         usd7dPriced: 0,
         usd7dEstimate: false,
@@ -268,6 +272,12 @@ function modelsOf(p: BilledProvider, x: RunwayData): ModelRunway[] {
     const t = Date.parse(c.recorded_at);
     if (billingIdFor(c.provider, c.vendor_model) !== p.id || !(t >= from7 && t <= x.now)) continue;
     const r = row(regOfVendor(c.vendor_model) ?? c.vendor_model ?? "unknown");
+    if (isFailedCall(c)) {
+      // A call that delivered nothing: its quantity is what was asked, and whether the vendor billed it is unknown (billing.ts).
+      r.failedCalls7d++;
+      r.usd7d = null;
+      continue;
+    }
     const usd = num(c.usd_estimate);
     const model = mine.get(r.model);
     const qty = num(c.quantity);

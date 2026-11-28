@@ -80,6 +80,9 @@ class CostDb(tfo.FakeDb):
             raise self.raise_on_cost
         self.costs.append((job, usage))
 
+    def has_cost(self, job):
+        return any(j == job for j, _ in self.costs)
+
     def rows(self, kind, attempt=None):
         """Cost rows of the takes of one kind (and attempt), in the order written."""
         jobs = {t["job"] for t in self.takes_ if t["kind"] == kind and (attempt is None or t["attempt"] == attempt) and t["job"]}
@@ -140,8 +143,8 @@ class FilmFailureExits(unittest.TestCase):
         h, db, _ = film(img_key=["failed"])
         h.run()
         self.assertEqual(db.take("keyframe")["status"], "superseded")
-        # A picture that never came: 0 pictures, as the adapter's usage says for no file.
-        self.assert_one_failed_call(db.rows("keyframe", attempt=1), 0.0)
+        # A picture that never came: how many the vendor billed is not known, so the count is NULL, never 0.
+        self.assert_one_failed_call(db.rows("keyframe", attempt=1), None)
         retry = db.rows("keyframe", attempt=2)
         self.assertEqual(len(retry), 1)
         self.assertIsNone(retry[0].price_source)
@@ -151,7 +154,7 @@ class FilmFailureExits(unittest.TestCase):
         h, db, _ = film(img_key=["empty"])
         h.run()
         self.assertEqual(db.failed[0][2], "no_output")
-        self.assert_one_failed_call(db.rows("keyframe", attempt=1), 0.0)
+        self.assert_one_failed_call(db.rows("keyframe", attempt=1), None)
 
     def test_a_timeout_writes_one_failed_call_row_for_the_requested_seconds(self):
         db = CostDb()
@@ -177,7 +180,7 @@ class FilmFailureExits(unittest.TestCase):
         h, db, _ = film(img_key=[tfo.Err("auth")])
         h.run()
         self.assertEqual(db.failed[0][2], "auth")
-        self.assert_one_failed_call(db.rows("keyframe", attempt=1), 0.0)
+        self.assert_one_failed_call(db.rows("keyframe", attempt=1), None)
 
     def test_a_task_id_that_could_not_be_stored_writes_one_failed_call_row(self):
         h, db, _ = film()
@@ -186,7 +189,7 @@ class FilmFailureExits(unittest.TestCase):
         out = h.run()
         self.assertEqual(out.result, "left")
         # Nobody will poll it again (submit_started with no task id fails as worker_lost): its row is written now.
-        self.assert_one_failed_call(db.rows("keyframe"), 0.0)
+        self.assert_one_failed_call(db.rows("keyframe"), None)
 
     def test_a_lease_lost_mid_poll_leaves_the_row_to_the_claim_that_polls_the_task_next(self):
         db = CostDb()
@@ -216,9 +219,11 @@ class FilmFailureExits(unittest.TestCase):
         db.seg["worker"] = "w-0"
         job = db.take_job(kf["id"], "w-0")
         db.jobs[job["job_id"]].update(submitting=True, task="task-img-key-9", status="processing")
+        earlier = cw.ProviderUsage(provider="acme", unit="image", quantity=1.0)
+        db.costs.append((job["job_id"], earlier))  # the worker that left wrote it after recording 'processing'
         h.run()
         self.assertEqual(kf["status"], "completed")
-        self.assertEqual([u for j, u in db.costs if j == job["job_id"]], [])
+        self.assertEqual([u for j, u in db.costs if j == job["job_id"]], [earlier])
 
     def test_a_resumed_poll_that_fails_writes_the_calls_one_failed_call_row(self):
         db = CostDb()
@@ -231,7 +236,107 @@ class FilmFailureExits(unittest.TestCase):
         db.jobs[job["job_id"]].update(submitting=True, task="task-img-key-9", status="provider_pending")
         h.run()
         rows = [u for j, u in db.costs if j == job["job_id"]]
-        self.assert_one_failed_call(rows, 0.0)
+        self.assert_one_failed_call(rows, None)
+
+
+class FilmResume(unittest.TestCase):
+    """A worker killed (or refused) after the vendor delivered and before its job recorded 'processing' leaves a 'submitted' job;
+    the claim that resumes it polls again. One call, one row."""
+
+    def _kill_at_processing(self, how):
+        db = CostDb()
+        adapters = {m: FilmAdapter(m) for m in ("img-key", "vid-clip", "tts-a")}
+        real = db.advance_job
+        state = {"once": True}
+
+        def adv(job, w, step, task=None, route=None):
+            if step == "processing" and state["once"]:
+                state["once"] = False
+                return how()
+            return real(job, w, step, task, route)
+
+        db.advance_job = adv
+        first = tfo.Harness(db, adapters)
+        try:
+            first.run()
+        except KeyboardInterrupt:
+            pass  # the process died (exit 143): nothing after this line ran
+        kf = db.take("keyframe")
+        self.assertEqual(db.jobs[kf["job"]]["task"], "task-img-key-1")
+        self.assertEqual(db.rows("keyframe"), [])  # nothing written before 'processing'
+        db.lost, db.seg["worker"] = True, "w-dead"
+        self.assertEqual(tfo.Harness(db, adapters, worker_id="w-2").run().result, "settled")
+        rows = db.rows("keyframe")
+        self.assertEqual(len(rows), 1, rows)
+        self.assertIsNone(rows[0].price_source)
+        self.assertEqual(len(db.costs), 5)  # and every other call still has exactly one
+
+    def test_a_worker_killed_before_processing_is_resumed_with_one_row_not_two(self):
+        def die():
+            raise KeyboardInterrupt("killed")
+
+        self._kill_at_processing(die)
+
+    def test_a_processing_step_refused_is_resumed_with_one_row_not_two(self):
+        self._kill_at_processing(lambda: False)
+
+    def test_a_processing_step_out_of_reach_is_resumed_with_one_row_not_two(self):
+        def down():
+            raise cw.CreativeUnavailable("advance_creative_job: HTTP 503")
+
+        self._kill_at_processing(down)
+
+    def test_a_resumed_processing_job_without_its_row_writes_it_once(self):
+        # Died between 'processing' and the row: the database says there is none, so the resuming claim writes it.
+        db = CostDb()
+        h = tfo.Harness(db, {m: FilmAdapter(m) for m in ("img-key", "vid-clip", "tts-a")})
+        kf = db.takes_[0]
+        kf["status"] = "running"
+        db.seg["worker"] = "w-0"
+        job = db.take_job(kf["id"], "w-0")
+        db.jobs[job["job_id"]].update(submitting=True, task="task-img-key-9", status="processing")
+        h.run()
+        self.assertEqual(len([u for j, u in db.costs if j == job["job_id"]]), 1)
+
+
+class FilmAbandoned(unittest.TestCase):
+    """0171 failed the take's job as worker_lost after its last lease: the call reached the vendor and nobody polls it again."""
+
+    def _ended(self, task, status="failed", worker=None, prior=None):
+        db = CostDb()
+        h = tfo.Harness(db, {m: FilmAdapter(m) for m in ("img-key", "vid-clip", "tts-a")})
+        clip = db.takes_[1]
+        clip["status"] = "running"
+        db.seg["worker"] = "w-0"
+        job = db.take_job(clip["id"], "w-0")["job_id"]
+        db.jobs[job].update(submitting=True, task=task, status=status)
+        if worker is not None:
+            db.jobs[job]["worker"] = worker
+            db.take_job = (lambda real: lambda take, w: dict(real(take, w), job_worker=worker) if take == clip["id"] else real(take, w))(
+                db.take_job)
+        if prior is not None:
+            db.costs.append((job, prior))
+        db.seg["worker"] = "w-1"
+        h.run()
+        self.assertIn(("clip", "provider_error", "worker_lost"), [f[:3] for f in db.failed])
+        return [u for j, u in db.costs if j == job]
+
+    def test_an_ended_job_with_a_stored_task_writes_one_failed_call_estimate(self):
+        rows = self._ended("task-vid-clip-9")
+        self.assertEqual([(u.price_source, u.quantity, u.usd) for u in rows], [(FAILED_CALL, 10.0, None)])
+
+    def test_a_job_that_cannot_be_handed_to_this_worker_writes_one_failed_call_estimate(self):
+        rows = self._ended("task-vid-clip-9", status="provider_pending", worker="w-other")
+        self.assertEqual([u.price_source for u in rows], [FAILED_CALL])
+
+    def test_an_ended_job_whose_call_already_has_a_row_writes_no_second(self):
+        earlier = cw.ProviderUsage(provider="acme", unit="second", quantity=10.0, price_source=FAILED_CALL)
+        self.assertEqual(self._ended("task-vid-clip-9", prior=earlier), [earlier])
+
+    def test_an_ended_job_with_no_task_or_a_held_answer_writes_nothing(self):
+        for task in (None, "sync:abc"):
+            with self.subTest(task=task):
+                self.assertEqual(self._ended(task), [])
 
 
 class FilmNarration(unittest.TestCase):
@@ -308,7 +413,7 @@ class RegistryUsage(unittest.TestCase):
 
     def test_a_failed_call_is_priced_at_what_was_asked_with_no_usd(self):
         for unit, cap, params, qty in (("second", "i2v", {"duration_s": 8, "prompt": "x"}, 8.0),
-                                       ("image", "t2i", {"prompt": "x"}, 0.0),
+                                       ("image", "t2i", {"prompt": "x"}, None),
                                        ("character", "tts", {"prompt": "hello"}, 5.0)):
             with self.subTest(unit=unit):
                 req = cw.GenerationRequest(job_id="j", org_id="o", capability=cap, model="m", params=params)
@@ -331,6 +436,7 @@ class CreativeAdapterWithUsage(tcw.FakeAdapter):
     def __init__(self, polls=None, **kw):
         super().__init__(polls=polls, **kw)
         del self.usage  # the method below, not the fake's reported-usage attribute
+        self.poll_usage = True
 
     def usage(self, request, n_files):
         return cw.ProviderUsage(provider="acme", vendor_model="img-x-1", unit="image", quantity=float(n_files), route="exact")
@@ -349,10 +455,17 @@ class CreativeAdapterWithUsage(tcw.FakeAdapter):
         out_dir.mkdir(parents=True, exist_ok=True)
         f = Path(out_dir) / "output_0.png"
         f.write_bytes(b"\x89PNG fake image")
-        return cw.ProviderPoll(cw.SUCCEEDED, files=[f], usage=self.usage(request, 1))
+        return cw.ProviderPoll(cw.SUCCEEDED, files=[f], usage=self.usage(request, 1) if self.poll_usage else None)
 
 
-class RaisingQueue(tcw.FakeQueue):
+class CostQueue(tcw.FakeQueue):
+    """The fake 0036 queue, with the cost-row read a resumed claim asks (CreativeRest.has_cost)."""
+
+    def has_cost(self, job_id):
+        return bool(self.costs)
+
+
+class RaisingQueue(CostQueue):
     def __init__(self, *a, boom=None, **kw):
         super().__init__(*a, **kw)
         self.boom = boom
@@ -365,14 +478,14 @@ class RaisingQueue(tcw.FakeQueue):
 
 class CreativeWorkerCosts(tcw.Base):
     def run_job(self, polls, q=None, **kw):
-        q = q or tcw.FakeQueue(tcw.job())
+        q = q or CostQueue(tcw.job())
         a = CreativeAdapterWithUsage(polls=polls)
         self.worker(q, a, **kw).run_once()
         return q, a
 
     def assert_one_failed_call(self, q):
         self.assertEqual(len(q.costs), 1, q.costs)
-        self.assertEqual((q.costs[0].price_source, q.costs[0].usd, q.costs[0].quantity), (FAILED_CALL, None, 0.0))
+        self.assertEqual((q.costs[0].price_source, q.costs[0].usd, q.costs[0].quantity), (FAILED_CALL, None, None))
 
     def test_success_writes_one_measured_row(self):
         q, _ = self.run_job(["pending", "ok"])
@@ -403,7 +516,7 @@ class CreativeWorkerCosts(tcw.Base):
         self.assert_one_failed_call(q)
 
     def test_a_task_id_that_could_not_be_stored_writes_one_failed_call_row(self):
-        q = tcw.FakeQueue(tcw.job())
+        q = CostQueue(tcw.job())
         real = q.advance
         q.advance = lambda job_id, w, step, task_id=None, route=None: (
             False if step == "submitted" else real(job_id, w, step, task_id, route))
@@ -412,18 +525,62 @@ class CreativeWorkerCosts(tcw.Base):
 
     def test_the_database_out_of_reach_while_settling_leaves_the_row_to_the_next_claim(self):
         # The job is left with its task id stored; the stale sweep re-queues it and the claim that polls it writes the row.
-        q, _ = self.run_job(["ok"], q=tcw.FakeQueue(tcw.job(), down_at="finish"))
+        q, _ = self.run_job(["ok"], q=CostQueue(tcw.job(), down_at="finish"))
         self.assertIsNone(q.finished)
+        self.assertEqual(q.costs, [])
+        task = q.current["provider_task_id"]
+        q.down_at, q.job = None, dict(q.current, status="provider_pending")
+        self.run_job(["ok"], q=q)
+        self.assertTrue(q.finished["ok"])
+        self.assertEqual(len(q.costs), 1)  # one call, one row, written by the claim that settled it
+        self.assertIsNone(q.costs[0].price_source)
+        self.assertEqual(q.current["provider_task_id"], task)
+
+    def test_a_resumed_call_that_already_has_its_row_is_not_written_again(self):
+        # The worker that left wrote the failure's row and died before the job was failed: the next claim polls, fails, writes none.
+        q = CostQueue(tcw.job(status="provider_pending", provider_task_id="task-77"))
+        earlier = cw.ProviderUsage(provider="acme", unit="image", price_source=FAILED_CALL)
+        q.costs.append(earlier)
+        self.run_job(["failed"], q=q)
+        self.assertEqual(q.costs, [earlier])
+
+    def test_a_resumed_call_whose_row_cannot_be_checked_is_not_written(self):
+        q = CostQueue(tcw.job(status="provider_pending", provider_task_id="task-77"))
+
+        def down(job_id):
+            raise cw.CreativeUnavailable("creative_job_costs: HTTP 503")
+
+        q.has_cost = down
+        with self.assertLogs("creative_worker", level="WARNING") as logs:
+            self.run_job(["failed"], q=q)
+        self.assertEqual(q.costs, [])
+        self.assertEqual(q.finished["error_code"], "content_policy")  # the outcome is the vendor's, not the read's
+        self.assertIn("CreativeUnavailable", "\n".join(logs.output))
+
+    def test_a_delivered_file_with_no_reported_usage_never_becomes_a_failed_call_row(self):
+        q = CostQueue(tcw.job())
+        a = CreativeAdapterWithUsage(polls=["ok"])
+        a.poll_usage = False
+        real = q.finish
+
+        def boom(*args, **kw):
+            if args[2] is True:
+                raise ValueError("bad")
+            return real(*args, **kw)
+
+        q.finish = boom
+        self.worker(q, a).run_once()
+        self.assertEqual(q.finished["error_code"], "worker_error")
         self.assertEqual(q.costs, [])
 
     def test_a_resumed_job_whose_task_then_fails_writes_the_calls_one_row(self):
         # The worker that submitted it left the task stored without a row; the claim that sees the outcome writes it.
-        q, a = self.run_job(["failed"], q=tcw.FakeQueue(tcw.job(status="provider_pending", provider_task_id="task-77")))
+        q, a = self.run_job(["failed"], q=CostQueue(tcw.job(status="provider_pending", provider_task_id="task-77")))
         self.assertNotIn(("submit", "img-x"), a.log)
         self.assert_one_failed_call(q)
 
     def test_a_storing_failure_after_a_delivered_file_writes_the_vendors_usage_once(self):
-        q = tcw.FakeQueue(tcw.job())
+        q = CostQueue(tcw.job())
         real = q.finish
 
         def boom(*a, **kw):
@@ -448,6 +605,39 @@ class CreativeWorkerCosts(tcw.Base):
                 self.assertIn("provider cost not recorded (RuntimeError)", text)
                 for leak in (tfo.SECRET, URL, "a cat"):
                     self.assertNotIn(leak, text)
+
+
+class HasCostRead(unittest.TestCase):
+    """CreativeRest.has_cost: one select by job id, with the service key in headers only; an error says nothing of the key."""
+
+    class Session:
+        def __init__(self, status=200, body=None, boom=None):
+            self.status, self.body, self.boom, self.calls = status, body, boom, []
+
+        def get(self, url, params=None, timeout=None, headers=None):
+            self.calls.append((url, dict(params or {})))
+            if self.boom:
+                raise self.boom
+            return types.SimpleNamespace(status_code=self.status, json=lambda: self.body)
+
+    def test_it_asks_for_one_row_of_this_job_and_reads_an_answer(self):
+        for body, want in (([{"id": 1}], True), ([], False)):
+            with self.subTest(body=body):
+                sess = self.Session(body=body)
+                rest = cw.CreativeRest("https://db.example", tfo.SECRET, session=sess)
+                self.assertIs(rest.has_cost("job-1"), want)
+                url, params = sess.calls[0]
+                self.assertEqual(url, "https://db.example/rest/v1/creative_job_costs")
+                self.assertEqual(params, {"select": "id", "job_id": "eq.job-1", "limit": "1"})
+                self.assertNotIn(tfo.SECRET, url + repr(params))
+
+    def test_a_failed_read_is_unavailable_and_names_no_key(self):
+        for sess in (self.Session(status=503), self.Session(boom=OSError(f"{URL} {tfo.SECRET}"))):
+            rest = cw.CreativeRest("https://db.example", tfo.SECRET, session=sess)
+            with self.assertRaises(cw.CreativeUnavailable) as e:
+                rest.has_cost("job-1")
+            self.assertNotIn(tfo.SECRET, str(e.exception))
+            self.assertNotIn(URL, str(e.exception))
 
 
 if __name__ == "__main__":

@@ -68,7 +68,7 @@ export const readRunway = cache(async (nowMs: number): Promise<RunwayData | null
 
   const [costs, studio, probes, reg, actAll, act7, act1] = await Promise.all([
     paged<CostRowLite & { id?: number; synced_at?: string | null }>("video_costs", "id,unit,quantity,stage,recorded_at,synced_at", "recorded_at"),
-    paged<StudioCostRow & { id?: number }>("creative_job_costs", "id,provider,vendor_model,unit,quantity,usd_estimate,recorded_at", "recorded_at"),
+    paged<StudioCostRow & { id?: number }>("creative_job_costs", "id,provider,vendor_model,unit,quantity,usd_estimate,price_source,recorded_at", "recorded_at"),
     paged<ProbeRunRow & { id?: number }>("model_probe_runs", `${probeCols},vendor_credits`, "created_at").then((r) =>
       missingColumn(r.error) ? paged<ProbeRunRow & { id?: number }>("model_probe_runs", probeCols, "created_at") : r,
     ),

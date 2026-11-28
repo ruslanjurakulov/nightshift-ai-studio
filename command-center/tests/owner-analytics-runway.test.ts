@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { registryPrices } from "@/lib/billing";
 import { providerRunways, runsOutAt, type ModelActivity, type RunwayData } from "@/lib/owner-analytics/runway";
 import { paymentPlan } from "@/lib/owner-analytics/payment-plan";
-import { runwayProvidersTable } from "@/lib/owner-analytics/runway-tables";
+import { runwayModelsTable, runwayProvidersTable } from "@/lib/owner-analytics/runway-tables";
 import { ownerAnalyticsEn as d } from "@/lib/i18n/owner-analytics/en";
 
 // Synthetic fixtures only: no real price, top-up or balance.
@@ -75,6 +75,19 @@ describe("provider runway", () => {
     expect(r.usd7d).toBeNull();
     expect(r.runsOut).toBeNull();
     expect(r.status).toBe("unknown");
+  });
+
+  it("a failed call (asked 5 s, delivered nothing) is never priced as spend: the model counts it apart and its 7 days stay unknown", () => {
+    const x = data();
+    x.studioRows = [...x.studioRows, { ...studio(1, null), price_source: "failed_call" }, { ...studio(1, null), quantity: null, price_source: "failed_call" }];
+    const r = minimax(x);
+    expect(r.usd7d).toBeNull(); // not 35 + 5 s at the rate card, and not 35 as though they were free
+    expect(r.runsOut).toBeNull();
+    expect(r.models[0]).toMatchObject({ model: "lab-video", failedCalls7d: 2, usd7d: null });
+    expect(r.models[0].usd7dPriced).toBeCloseTo(35);
+    const t = runwayModelsTable(d, [r], NOW);
+    expect(t.rows[0][t.columns.indexOf(d.runwayFailedCalls7d)]).toBe(2);
+    expect(minimax(data()).models[0].failedCalls7d).toBe(0);
   });
 
   it("says the balance before tracking is unknown when spend predates the first top-up", () => {
