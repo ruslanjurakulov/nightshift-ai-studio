@@ -237,6 +237,14 @@ describe("FilmCreateButton", () => {
     expect(startRemedy("voice_language_unknown")).toBe("fix_and_requote");
   });
 
+  it("0239: a style kit or @character with no description that the key-frame model cannot see says what to add, and offers Check again", () => {
+    mount(q({ priced: false, total: null, quote_id: null, startable: false, refusals: [{ reason: "style_needs_description", detail: "scene 1: the style kit has no description" }] }));
+    expect(screen.getByTestId("film-create-reasons").textContent).toContain(k.unpriced.style_needs_description);
+    expect(k.unpriced.style_needs_description).not.toBe(k.unpriced.other);
+    expect(screen.getByRole("button", { name: k.checkAgain })).toBeTruthy();
+    expect(startRemedy("style_needs_description")).toBe("fix_and_requote");
+  });
+
   describe("fixHref: a refusal fixed in the project links to the editor first (S1: Check again alone loops)", () => {
     const FIX = "/synthetic-channel/studio?film=synthetic";
     const withFix = (quote: FilmQuote, fixHref?: string) =>
