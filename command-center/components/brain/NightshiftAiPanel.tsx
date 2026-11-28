@@ -155,6 +155,17 @@ type PairedTurn = { key: string; q: string; a: string; msg: Msg | null };
  * the person's press, not a question waiting for an answer, so it is never drawn as "no saved answer" (Lens M5). While the plan runs
  * the panel draws it once (`asking`); afterwards the plan card carries the title.
  */
+/**
+ * A short digest of the BRIEF's characters (their looks and stages): the sheets panel is keyed on it, so a plan chosen again with
+ * other characters or looks starts the panel fresh (no confirm box, no quote of the old cast left on screen; Lens M4).
+ */
+export function charactersKey(brief: Pick<Brief, "characters">): string {
+  const text = JSON.stringify((brief.characters ?? []).map((c) => [c.id, c.name, c.look ?? null, c.age_stages ?? null]));
+  let h = 5381;
+  for (let i = 0; i < text.length; i += 1) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
 export function withoutChoices(messages: Msg[]): Msg[] {
   return messages.filter((m, i) => {
     if (m.role !== "user") return true;
@@ -1091,7 +1102,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
           sheets={brief.kind === "short" && film && session && (brief.characters?.length ?? 0) > 0 ? (
             // Character sheets (lib/brain/ref-sheets): their own route and their own confirm; attaching them re-prices the film,
             // and the Create below is remounted with that quote.
-            <RefSheetsPanel key={`${session}:${film.id}`} brief={brief} sessionId={session} filmId={film.id} channelSlug={channelSlug}
+            <RefSheetsPanel key={`${session}:${film.id}:${charactersKey(brief)}`} brief={brief} sessionId={session} filmId={film.id} channelSlug={channelSlug}
               onFilmQuote={(q, version) => setFilm((f) => (f && f.id === film.id ? { ...f, quote: coerceQuote(q), version } : f))} />
           ) : null}
           create={brief.kind === "short" && film ? (

@@ -1,5 +1,6 @@
 import { createClient, getUser } from "@/lib/supabase/server";
-import { carrySheets } from "@/lib/brain/ref-sheets";
+import { carrySheets, filmLinkOf } from "@/lib/brain/ref-sheets";
+import { storedSheets } from "@/lib/server/brain/ref-sheets";
 import { requireOrgRole } from "@/lib/auth/org-roles";
 import { rejectCrossOrigin } from "@/lib/server/same-origin";
 import { readJsonBodyCapped, SMALL_BODY_BYTES } from "@/lib/server/json-body";
@@ -252,7 +253,9 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
     ? { scenarios: answer.scenarios, factsState: facts.state, factsSource: facts.source }
     : { lengthOutOfRange: answer.lengthOutOfRange, factsState: facts.state, factsSource: facts.source };
   const done = await finish("ok", llm.tokensIn, llm.tokensOut, {
-    text: answer.reply, payload, slots: answer.slots, step: answer.step, brief, card: answer.card,
+    // The character sheets and the draft's link survive a chat turn (Lens H1): read again just before this write, so a press made
+    // meanwhile is kept too. Before this, a turn wrote a BRIEF without them and the paid pictures were lost from the sheet.
+    text: answer.reply, payload, slots: answer.slots, step: answer.step, brief: { ...brief, ...(await carried(supabase, s)) }, card: answer.card,
   });
   if (done.error) return dbRefusal(done.error) ?? brainJson({ error: "unavailable" }, 503);
   return brainJson({
@@ -265,6 +268,15 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
     await (called ? finish("vendor_error", null, null) : finishUnsent()).then(() => undefined, () => undefined);
     return brainJson({ error: "unavailable", quota: called ? quota : uncharged(quota) }, 503);
   }
+}
+
+/**
+ * The character sheets and the draft's film link as stored right now (lib/brain/ref-sheets carrySheets), for a write that replaces
+ * the BRIEF: read again just before it (Lens M2), falling back to what this request read first when that read fails. The window
+ * between this read and the write remains; closing it needs a compare-and-swap in the database.
+ */
+async function carried(supabase: SupabaseClient, s: Session) {
+  return carrySheets((await storedSheets(supabase, s.id)) ?? s.brief);
 }
 
 /** sha256 hex of a server-made string: ids derived from a conversation that must not show it (Breach BR-S1-04). */
@@ -306,7 +318,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     const p = await chatPricing(supabase, s.channel_id, s.org_id);
     const price: BriefPrice = p.ok ? await priceLong(chosen.target_seconds, p.spendable, p.quote) : { state: "failed" };
     const brief = buildBrief(s.id, slots, chosen, "ready", price);
-    const saved = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: brief, p_step: "ready" });
+    const saved = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: { ...brief, ...(await carried(supabase, s)) }, p_step: "ready" });
     if (saved.error) return dbRefusal(saved.error) ?? brainJson({ error: "unavailable" }, 503);
     return brainJson({ brief });
   }
@@ -584,7 +596,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     // 5. The storyboard is kept before anything else can fail (Lens M6): a refresh, or a draft save that fails, finds it and choosing
     // again re-reads it without a turn. Unpriced until the quote below says otherwise. Only while this attempt holds the lease.
     if (!(await stillOurs())) return superseded(f.id);
-    const kept = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: { ...draftBrief, ...carrySheets(s.brief), price: { state: "unpriced" } }, p_step: "ready" });
+    const kept = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: { ...draftBrief, ...(await carried(supabase, s)), price: { state: "unpriced" } }, p_step: "ready" });
     if (kept.error) return dbRefusal(kept.error) ?? brainJson({ error: "unavailable" }, 503);
     // Shots per scene from the film's own clip model as the database stored it, when its lengths are listed (G4); otherwise one
     // shot, and the quote names what is missing.
@@ -599,6 +611,9 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
       return brainJson({ error: "film_refused", reason: machineReason(saved.error.message), film_id: f.id, ...(quota !== undefined ? { quota } : {}) }, 409);
     }
     const version = (saved.data as { film?: { version?: number } } | null)?.film?.version ?? v0 + 1;
+    // Which film scene each BRIEF scene became, from save_film's own answer: the only link the character sheets' attach trusts
+    // (lib/brain/ref-sheets FilmLink), so a scene is never matched by position after the storyboard changed (Lens M3).
+    const filmLink = filmLinkOf(f.id, draftBrief.scenes ?? [], saved.data);
     // 7. The price.
     const q = await supabase.rpc("quote_film", { p_film: f.id, p_version: version });
     const quoteRead = q.error ? null : coerceQuote(q.data);
@@ -606,7 +621,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     const brief: Brief = { ...draftBrief, price: priceOf(quoteRead) };
     if (!(await stillOurs())) return superseded(f.id);
     // The character sheets this conversation already made (lib/brain/ref-sheets) survive the storyboard being saved again.
-    const stored = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: { ...brief, ...carrySheets(s.brief) }, p_step: "ready" });
+    const stored = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: { ...brief, ...(await carried(supabase, s)), ...(filmLink ? { film_link: filmLink } : {}) }, p_step: "ready" });
     if (stored.error) return dbRefusal(stored.error) ?? brainJson({ error: "unavailable" }, 503);
     ending = { state: "done", reason: "" };
     return brainJson({

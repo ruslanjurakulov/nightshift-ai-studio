@@ -11,16 +11,18 @@ import type { RefSheet, RefView, SheetView } from "@/lib/brain/ref-sheets";
 /**
  * "Make character sheets" under a short film's plan (docs/studio/NIGHTSHIFT_AI.md, "Character sheets"). It talks only to
  * /api/brain/sheets: the price it shows is the one that route summed from the database's own quotes (never a number of its own),
- * nothing is held before the person's confirm, and every picture is one job on the existing creative path. The job states are read
- * again on every load, so a refresh mid-job finds the pictures where they were.
+ * nothing is held before the person's confirm, and the confirm carries the token of exactly the set that was shown, so a quote that
+ * changed meanwhile is refused rather than bought. Job states are read again on every load, so a refresh mid-job loses nothing.
  */
 
-type Quote = { total: number; views: { view: SheetView }[]; waiting: number };
+type Quote = { total: number; views: { view: SheetView }[]; waiting: number; token: string };
 type Gate = { open: true } | { open: false; reason: string } | null;
-type Loaded = { sheets: RefSheet[]; model: { name: string | null; film_own: boolean } | null; gate: Gate; quote: Quote | null; refusal?: string };
-type Problem = { code: string; available?: number | null; needed?: number | null } | null;
+type Loaded = { sheets: RefSheet[]; model: { name: string | null; film_own: "same" | "none" | "unable" } | null; gate: Gate; quote: Quote | null; refusal?: string };
+type Problem = { code: string; started?: number; scene?: number | null; limit?: number | null } | null;
 
 const POLL_MS = 4000;
+/** What a poll compares: which views are in which state (a cheap states-only read), so the quote is asked again only on a change. */
+const statesOf = (sheets: RefSheet[]) => sheets.map((s) => `${s.character_id}:${s.stage ?? ""}:${s.views.map((v) => `${v.view}=${v.status}`).join(",")}`).join("|");
 
 export function RefSheetsPanel({ brief, sessionId, filmId, channelSlug, onFilmQuote }: {
   brief: Brief; sessionId: string; filmId: string | null; channelSlug: string;
@@ -31,7 +33,9 @@ export function RefSheetsPanel({ brief, sessionId, filmId, channelSlug, onFilmQu
   const c = t.aiChat.sheets;
   const [data, setData] = useState<Loaded | null>(null);
   const [loadFailed, setLoadFailed] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState(false);
+  /** The quote the person pressed Make on: what the confirm says and sends back, never a later one. */
+  const [pending, setPending] = useState<Quote | null>(null);
+  const [repriced, setRepriced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem>(null);
   const [attached, setAttached] = useState<number | null>(null);
@@ -52,14 +56,27 @@ export function RefSheetsPanel({ brief, sessionId, filmId, channelSlug, onFilmQu
   }, [query]);
 
   useEffect(() => { void load(); }, [load]);
+  // A quote that changed while the confirm is open (a poll, a redo in another tab): the box closes and the new price is said.
+  useEffect(() => {
+    if (pending && data?.quote?.token !== pending.token) {
+      setPending(null);
+      setRepriced(true);
+    }
+  }, [data, pending]);
   const making = (data?.sheets ?? []).some((s) => s.views.some((v) => v.status === "making"));
-  // Followed while a picture is being made; nothing is polled once every job has ended.
+  const shownStates = data ? statesOf(data.sheets) : "";
+  // Followed while a picture is being made, with the cheap states-only read; the full read (and its quotes) only on a change.
   useEffect(() => {
     if (!making) return;
-    const id = window.setInterval(() => void load(), POLL_MS);
+    const id = window.setInterval(() => {
+      void fetch(`/api/brain/sheets?${query}&states=1`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { sheets?: RefSheet[] } | null) => { if (d?.sheets && statesOf(d.sheets) !== shownStates) void load(); })
+        .catch(() => undefined);
+    }, POLL_MS);
     return () => window.clearInterval(id);
-  }, [making, load]);
-  useEffect(() => { if (confirming) confirmRef.current?.focus(); }, [confirming]);
+  }, [making, load, query, shownStates]);
+  useEffect(() => { if (pending) confirmRef.current?.focus(); }, [pending]);
 
   async function post(body: Record<string, unknown>) {
     setBusy(true);
@@ -69,8 +86,8 @@ export function RefSheetsPanel({ brief, sessionId, filmId, channelSlug, onFilmQu
         body: JSON.stringify({ session: sessionId, ...(filmId ? { film: filmId } : {}), ...body }) });
       const d = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok) {
-        setProblem({ code: typeof d?.error === "string" ? d.error : "failed",
-          available: typeof d?.available === "number" ? d.available : null, needed: typeof d?.needed === "number" ? d.needed : null });
+        const num = (v: unknown) => (typeof v === "number" ? v : null);
+        setProblem({ code: typeof d?.error === "string" ? d.error : "failed", started: num(d?.started) ?? 0, scene: num(d?.scene), limit: num(d?.limit) });
         // A new price (price_changed), or jobs queued before a refusal: shown as the server read them.
         await load();
         return null;
@@ -85,9 +102,10 @@ export function RefSheetsPanel({ brief, sessionId, filmId, channelSlug, onFilmQu
   }
 
   const make = async () => {
-    if (!data?.quote) return;
-    setConfirming(false);
-    const d = await post({ action: "make", max_credits: data.quote.total });
+    const q = pending;
+    if (!q) return;
+    setPending(null);
+    const d = await post({ action: "make", max_credits: q.total, quote_token: q.token });
     if (d) await load();
   };
   const mark = async (s: RefSheet, v: RefView, action: "approve" | "redo") => {
@@ -108,13 +126,14 @@ export function RefSheetsPanel({ brief, sessionId, filmId, channelSlug, onFilmQu
     const label = stage ? (ch?.age_stages ?? []).find((a) => a.id === stage)?.label : undefined;
     return `${ch?.name ?? id}${label ? ` (${label})` : ""}`;
   };
-  const err = (code: string) => (c.errors as Record<string, string>)[code] ?? c.errors.failed;
+  const err = (p: { code: string; scene?: number | null; limit?: number | null }) =>
+    fmt((c.errors as Record<string, string>)[p.code] ?? c.errors.failed, { scene: p.scene ?? "?", limit: p.limit ?? "?" });
 
   if (!data && !loadFailed) return <p className="text-xs text-[var(--color-muted)]" role="status">{c.loading}</p>;
   if (!data) {
     return (
       <div className="flex flex-col gap-2" role="alert" data-sheets-error={loadFailed ?? ""}>
-        <p className="text-sm">{err(loadFailed ?? "failed")}</p>
+        <p className="text-sm">{err({ code: loadFailed ?? "failed" })}</p>
         {loadFailed === "unauthorized"
           ? <Link className="btn-quiet inline-flex min-h-11 items-center px-4 text-sm" href="/login">{c.signIn}</Link>
           : <button type="button" className="btn-quiet min-h-11 px-4 text-sm" onClick={() => void load()}>{c.reload}</button>}
@@ -124,13 +143,20 @@ export function RefSheetsPanel({ brief, sessionId, filmId, channelSlug, onFilmQu
 
   const views = data.sheets.flatMap((s) => s.views);
   const done = views.filter((v) => v.status === "ready" || v.status === "approved").length;
-  const fronts = data.quote?.views.every((v) => v.view === "front") ?? true;
+  const quoted = data.quote?.views ?? [];
+  const fronts = quoted.filter((v) => v.view === "front").length;
+  // The label says what the press makes: fronts, the side and back views, or a mix of both (counted).
+  const label = (q: Quote) => fronts === quoted.length ? fmt(c.make, { credits: credits(q.total) })
+    : fronts === 0 ? fmt(c.makeMore, { credits: credits(q.total) })
+    : fmt(pluralForm(c.makeMixed, quoted.length, locale), { n: quoted.length, credits: credits(q.total) });
   const anyApproved = views.some((v) => v.status === "approved");
+  const modelLine = !data.model ? null : !data.model.name ? c.modelUnnamed
+    : fmt(data.model.film_own === "same" ? c.model : data.model.film_own === "none" ? c.modelNone : c.modelOther, { name: data.model.name });
   return (
     <section className="flex min-w-0 flex-col gap-2" aria-label={c.title} data-sheets>
       <h4 className="text-sm font-semibold">{c.title}</h4>
       <p className="text-xs text-[var(--color-muted)]">{c.intro}</p>
-      {data.model && <p className="text-xs" data-sheets-model>{data.model.name ? fmt(data.model.film_own ? c.model : c.modelOther, { name: data.model.name }) : c.modelUnnamed}</p>}
+      {modelLine && <p className="text-xs" data-sheets-model>{modelLine}</p>}
       {/* The gate, said plainly: closed today for every key-frame model on sale, so the sheets are kept and nothing is attached. */}
       {data.gate === null || data.gate.open === false
         ? <p className="text-xs" role="note" data-gate="closed">{data.gate === null ? c.gateUnknown : c.gateClosed}</p>
@@ -159,20 +185,20 @@ export function RefSheetsPanel({ brief, sessionId, filmId, channelSlug, onFilmQu
           </li>
         ))}
       </ul>
-      {data.refusal && <p className="text-sm" role="alert" data-sheets-refusal={data.refusal}>{err(data.refusal)}</p>}
+      {data.refusal && <p className="text-sm" role="alert" data-sheets-refusal={data.refusal}>{err({ code: data.refusal })}</p>}
       {!data.refusal && data.quote === null && <p className="text-sm" role="alert">{c.priceUnknown}</p>}
-      {data.quote && data.quote.views.length > 0 && !confirming && (
-        <button type="button" className="btn-primary min-h-11 self-start px-4 text-sm" disabled={busy} onClick={() => setConfirming(true)}>
-          {fmt(fronts ? c.make : c.makeMore, { credits: credits(data.quote.total) })}
-        </button>
+      {repriced && data.quote && <p className="text-sm" role="status" data-repriced>{fmt(c.repriced, { credits: credits(data.quote.total) })}</p>}
+      {data.quote && quoted.length > 0 && !pending && (
+        <button type="button" className="btn-primary min-h-11 self-start px-4 text-sm" disabled={busy}
+          onClick={() => { setRepriced(false); setPending(data.quote); }}>{label(data.quote)}</button>
       )}
       {data.quote && data.quote.waiting > 0 && <p className="text-xs text-[var(--color-muted)]">{pluralText(c.waiting, data.quote.waiting, locale)}</p>}
-      {confirming && data.quote && (
+      {pending && (
         <div className="flex flex-col gap-2" role="group" aria-label={c.title}>
-          <p className="text-sm">{fmt(c.confirm, { credits: credits(data.quote.total) })}</p>
+          <p className="text-sm">{fmt(c.confirm, { credits: credits(pending.total) })}</p>
           <div className="flex flex-wrap gap-2">
             <button ref={confirmRef} type="button" className="btn-primary min-h-11 px-4 text-sm" disabled={busy} onClick={() => void make()}>{c.confirmYes}</button>
-            <button type="button" className="btn-quiet min-h-11 px-4 text-sm" onClick={() => setConfirming(false)}>{c.cancel}</button>
+            <button type="button" className="btn-quiet min-h-11 px-4 text-sm" onClick={() => setPending(null)}>{c.cancel}</button>
           </div>
         </div>
       )}
@@ -183,11 +209,14 @@ export function RefSheetsPanel({ brief, sessionId, filmId, channelSlug, onFilmQu
       {attached !== null && <p className="text-sm" role="status">{pluralText(c.attached, attached, locale)}</p>}
       {problem && (
         <div className="flex flex-col gap-2" role="alert" data-sheets-problem={problem.code}>
-          <p className="text-sm">{err(problem.code)}</p>
+          <p className="text-sm">{err(problem)}</p>
+          {/* Something was held for pictures that did start: said, never hidden behind "nothing was held" (Lens M1). */}
+          {(problem.started ?? 0) > 0 && problem.code !== "sheets_not_saved" && <p className="text-sm">{pluralText(c.started, problem.started!, locale)}</p>}
           {problem.code === "insufficient_credits" && (
             <Link className="btn-quiet inline-flex min-h-11 items-center self-start px-4 text-sm" href={`/${encodeURIComponent(channelSlug)}/credits#topups`}>{c.topUp}</Link>
           )}
           {problem.code === "unauthorized" && <Link className="btn-quiet inline-flex min-h-11 items-center self-start px-4 text-sm" href="/login">{c.signIn}</Link>}
+          {problem.code === "sheets_not_saved" && <button type="button" className="btn-quiet min-h-11 self-start px-4 text-sm" onClick={() => void load()}>{c.reload}</button>}
         </div>
       )}
     </section>

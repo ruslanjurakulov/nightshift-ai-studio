@@ -82,12 +82,17 @@ describe("IDOR", () => {
 describe("a member who may not spend", () => {
   it("is refused by the database at the hold, passed on by name, with no job recorded", async () => {
     fake.state.createError = { code: "NS400", message: "not_a_member" };
-    const r = await post({ session: SESSION, action: "make", max_credits: 18 });
+    const confirm = async () => {
+      const q = (await (await GET(new Request(`http://x/api/brain/sheets?session=${SESSION}`))).json()).quote;
+      return post({ session: SESSION, action: "make", max_credits: q.total, quote_token: q.token });
+    };
+    const r = await confirm();
     expect(r.status).toBe(403);
-    expect(r.body.error).toBe("not_a_member");
+    expect(r.body).toMatchObject({ error: "not_a_member", started: 0 });
     expect(fake.state.jobs.size).toBe(0);
-    expect((r.body.sheets as { views: { job_id?: string | null }[] }[]).flatMap((s) => s.views).every((v) => !v.job_id)).toBe(true);
+    expect((r.body.sheets as { views: { job_id?: string | null; status: string }[] }[]).flatMap((s) => s.views)
+      .every((v) => !v.job_id && v.status !== "making")).toBe(true);
     fake.state.createError = { code: "42501", message: "forbidden" };
-    expect((await post({ session: SESSION, action: "make", max_credits: 18 })).body.error).toBe("forbidden");
+    expect((await confirm()).body.error).toBe("forbidden");
   });
 });

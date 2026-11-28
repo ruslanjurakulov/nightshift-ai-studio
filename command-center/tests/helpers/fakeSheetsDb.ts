@@ -33,6 +33,7 @@ export function storyBrief(o: Partial<Brief> = {}): Brief {
         keyframe_model: "openai-gpt-image-2.6-sunburst", clip_model: "minimax-h3", shot: "medium", camera: { position: "from behind, low", move: "static" },
         in_frame: [{ character_id: "c1", age_stage: "a2" }] },
     ],
+    film_link: { film_id: FILM, scenes: [{ brief: "s1", film: uuid(901) }, { brief: "s2", film: uuid(902) }] },
     ...o,
   } as Brief;
 }
@@ -58,6 +59,10 @@ export function makeFake() {
     assets: new Map<string, Row>(),
     film: null as Row | null,
     calls: [] as { fn: string; args: Row }[],
+    reads: [] as { table: string; filters: Row; inKey: string }[],
+    /** Fails the ai_chat_save_brief calls numbered here (1-based, counted from the start of the test). */
+    failSaveAt: [] as number[],
+    saveCount: 0,
     saved: [] as Row[],
     n: 0,
   };
@@ -65,10 +70,11 @@ export function makeFake() {
     from(table: string) {
       const filters: Record<string, unknown> = {};
       let ins: unknown[] | null = null;
+      let inKey = "";
       const b: Row = {};
       for (const m of ["select", "order", "limit", "neq", "not", "is"]) b[m] = () => b;
       b.eq = (k: string, v: unknown) => { filters[k] = v; return b; };
-      b.in = (_k: string, v: unknown[]) => { ins = v; return b; };
+      b.in = (k: string, v: unknown[]) => { ins = v; inKey = k; return b; };
       b.maybeSingle = async () => {
         if (table === "ai_chat_sessions") {
           const s = state.session;
@@ -78,6 +84,11 @@ export function makeFake() {
         return { data: null, error: null };
       };
       b.then = (resolve: (v: unknown) => void) => {
+        if (table === "creative_jobs") {
+          state.reads.push({ table, filters: { ...filters }, inKey });
+          const rows = [...state.jobs.values()].filter((j) => j.org_id === filters.org_id && (ins ?? []).includes(j[inKey]));
+          return resolve({ data: rows, error: null });
+        }
         if (table === "media_assets") {
           const rows = (ins ?? []).map((id) => state.assets.get(String(id))).filter((r): r is Row => !!r && r.org_id === filters.org_id);
           return resolve({ data: rows, error: null });
@@ -105,11 +116,13 @@ export function makeFake() {
           if (typeof args.p_max_credits !== "number" || price > args.p_max_credits) return { data: null, error: { code: "NS409", message: "price_changed" } };
           state.n += 1;
           const id = uuid(state.n);
-          state.jobs.set(id, { id, status: "queued", capability: args.p_capability, params: args.p_params, quoted_credits: price, result_asset_ids: [] });
+          state.jobs.set(id, { id, org_id: args.p_org, idempotency_key: key, status: "queued", capability: args.p_capability, params: args.p_params, quoted_credits: price, result_asset_ids: [] });
           state.byKey.set(key, id);
           return { data: { job: state.jobs.get(id), replay: false }, error: null };
         }
         if (fn === "ai_chat_save_brief") {
+          state.saveCount += 1;
+          if (state.failSaveAt.includes(state.saveCount)) return { data: null, error: { code: "XX000", message: "boom" } };
           state.saved.push(args.p_brief as Row);
           if (state.session) state.session = { ...state.session, brief: args.p_brief };
           return { data: null, error: null };
@@ -141,7 +154,7 @@ export function makeFake() {
     json: {
       film: { id: FILM, org_id: ORG, channel_id: null, version: 7, status: "draft", title: "T", source_kind: "script", source_text: "",
               language: "en", aspect: "16:9", target_seconds: 30, clip_model: "minimax-h3", keyframe_model: "openai-gpt-image-2.6-sunburst", ...o },
-      editable: true, refs: [], totals: { scenes: 2 },
+      editable: true, refs: [], totals: { scenes: 2 }, limits: { max_prompt_chars: 2000 },
       scenes: [{ id: uuid(901), visual_prompt: "v1", refs: [], keyframe_model: null }, { id: uuid(902), visual_prompt: "v2", refs: [], keyframe_model: null }],
     },
   });

@@ -22,15 +22,20 @@ let answer: Record<string, unknown>;
 let postAnswer: { status: number; body: Record<string, unknown> };
 let posts: Record<string, unknown>[];
 let getStatus = 200;
+let statesAnswer: Record<string, unknown> | null = null;
+const gets = { full: 0, states: 0 };
 
 const withStatus = (sheets: RefSheet[], ch: string, stage: string | null, view: string, o: Record<string, unknown>) =>
   sheets.map((s) => (s.character_id === ch && s.stage === stage ? { ...s, views: s.views.map((v) => (v.view === view ? { ...v, ...o } : v)) } : s));
 
 beforeEach(() => {
+  gets.full = 0;
+  gets.states = 0;
   posts = [];
   getStatus = 200;
-  answer = { sheets: plan, model: { name: "GPT Image", film_own: true }, gate: { open: false, reason: "refs_not_on_keyframe" },
-             quote: { total: 18, views: [{ view: "front" }, { view: "front" }, { view: "front" }], waiting: 6 } };
+  answer = { sheets: plan, model: { name: "GPT Image", film_own: "same" }, gate: { open: false, reason: "refs_not_on_keyframe" },
+             quote: { total: 18, views: [{ view: "front" }, { view: "front" }, { view: "front" }], waiting: 6, token: "t-18" } };
+  statesAnswer = null;
   postAnswer = { status: 200, body: { sheets: plan } };
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (url.startsWith("/api/media/")) return new Response(JSON.stringify({ urls: { thumb: "/m/t.png" } }), { status: 200 });
@@ -38,6 +43,8 @@ beforeEach(() => {
       posts.push(JSON.parse(String(init.body)));
       return new Response(JSON.stringify(postAnswer.body), { status: postAnswer.status });
     }
+    if (url.includes("&states=1")) { gets.states += 1; return new Response(JSON.stringify(statesAnswer ?? { sheets: (answer as { sheets: unknown }).sheets }), { status: 200 }); }
+    gets.full += 1;
     return new Response(JSON.stringify(getStatus === 200 ? answer : { error: "unauthorized" }), { status: getStatus });
   }));
 });
@@ -71,7 +78,8 @@ describe("the character sheets panel", () => {
     expect(posts).toHaveLength(0);
     fireEvent.click(await screen.findByRole("button", { name: /Make character sheets/ }));
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: en.confirmYes })); });
-    expect(posts).toEqual([{ session: SESSION, film: FILM, action: "make", max_credits: 18 }]);
+    // The confirm carries the token of the very set it was shown (Breach BR-RS-01).
+    expect(posts).toEqual([{ session: SESSION, film: FILM, action: "make", max_credits: 18, quote_token: "t-18" }]);
   });
 
   it("shows no price at all when the server could not quote, only the refusal by name", async () => {
@@ -132,6 +140,48 @@ describe("the character sheets panel", () => {
     mount();
     await screen.findByText(en.gateClosed);
     expect(screen.queryByRole("button", { name: en.attach })).toBeNull();
+  });
+
+  it("polls the cheap states read while a picture is made, re-reads the quote only on a change, and closes a confirm whose price changed", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const sheets = withStatus(plan, "c2", null, "front", { status: "making", job_id: "dddddddd-0000-4000-8000-000000000001" });
+      answer = { ...answer, sheets };
+      mount();
+      fireEvent.click(await screen.findByRole("button", { name: /Make character sheets · 18 credits/ }));
+      expect(screen.getByRole("button", { name: en.confirmYes })).toBeTruthy();
+      const full0 = gets.full;
+      await act(async () => { vi.advanceTimersByTime(4100); });
+      expect(gets.states).toBeGreaterThan(0);
+      expect(gets.full).toBe(full0);
+      // The front is made: the states read differs, so the full read (and its new quote) is asked once.
+      const made = withStatus(plan, "c2", null, "front", { status: "ready", asset_id: "eeeeeeee-0000-4000-8000-000000000009" });
+      statesAnswer = { sheets: made };
+      answer = { ...answer, sheets: made, quote: { total: 28, views: [{ view: "front" }, { view: "front" }, { view: "side" }, { view: "back" }], waiting: 4, token: "t-28" } };
+      await act(async () => { vi.advanceTimersByTime(4100); });
+      await waitFor(() => expect(screen.queryByRole("button", { name: en.confirmYes })).toBeNull());
+      expect(screen.getByText("The price changed while you were confirming. It is now 28 credits; press again to confirm the new one.")).toBeTruthy();
+      // A mix of fronts and side/back views is labelled as pictures, counted.
+      expect(screen.getByRole("button", { name: "Make 4 pictures · 28 credits" })).toBeTruthy();
+      expect(posts).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says pictures were started, not 'nothing held', when the sheet could not be saved after them", async () => {
+    postAnswer = { status: 503, body: { error: "sheets_not_saved", started: 3 } };
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: /Make character sheets/ }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: en.confirmYes })); });
+    const alert = await screen.findByText(en.errors.sheets_not_saved);
+    expect(alert.closest("[role=alert]")!.textContent).not.toMatch(/nothing (new )?was held/i);
+  });
+
+  it("names the film model's absence, not an inability, when the film has none", async () => {
+    answer = { ...answer, model: { name: "GPT Image", film_own: "none" } };
+    mount();
+    expect(await screen.findByText("Drawn with GPT Image, because the film has no picture model set yet.")).toBeTruthy();
   });
 
   it("speaks Russian and Uzbek", async () => {

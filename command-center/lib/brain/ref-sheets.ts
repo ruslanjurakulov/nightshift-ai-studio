@@ -14,7 +14,11 @@
  * characters and the model's own limit, and the gate below are Nightshift's own.
  */
 
-import { characterLine, NO_TEXT, plain, type Brief, type BriefCharacter, type BriefScene } from "@/lib/brain/logic";
+import {
+  CAMERA_MOVES, CAP, FILM, SHOT_SIZES, arr, characterLine, NO_TEXT, obj, plain, readCharacters, sid,
+  type Brief, type BriefCharacter, type BriefScene, type CameraMove, type ShotSize,
+} from "@/lib/brain/logic";
+import { MODEL_ID } from "@/lib/brain/film-models";
 // The adapters' own reference_capabilities, per registry model (tools/ref_capabilities_twin.py writes it from modules/capabilities;
 // tests/test_ref_capabilities_twin.py fails when it drifts). Read only where the registry row has no ref_capabilities of its own.
 import REF_TWIN from "@/lib/brain/ref-capabilities.json";
@@ -37,6 +41,12 @@ export interface RefView {
   attempt?: number;
   /** The job's own error code when it failed (a machine word), never its text. */
   error?: string | null;
+  /**
+   * The idempotency key the job was (or is being) created with, saved BEFORE create_creative_job is called: when the save of the
+   * job id after it fails, the next read finds the job by this key (0225 lets a member read creative_jobs.idempotency_key), so a
+   * picture that was paid for is never lost from the sheet.
+   */
+  key?: string | null;
 }
 export interface RefSheet { character_id: string; stage: string | null; views: RefView[] }
 
@@ -98,13 +108,18 @@ export function planSheets(b: Pick<Brief, "characters" | "scenes" | "visual_styl
   return out;
 }
 
+export const SHEETS_MAX = CAP.characters * (CAP.stages + 1);
+
 /** A stored sheet list read back from the BRIEF, defensively (it is JSON a person's session wrote): anything malformed is dropped. */
 export function readSheets(raw: unknown): RefSheet[] {
   if (!Array.isArray(raw)) return [];
   const out: RefSheet[] = [];
+  // Never more sheets than a BRIEF can ask for (CAP.characters x (CAP.stages + the character's own look)): a list written straight
+  // through 0199 is bounded here too.
+  const list = raw.slice(0, SHEETS_MAX);
   const isId = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(v);
   const isUuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-  for (const s of raw) {
+  for (const s of list) {
     if (!s || typeof s !== "object") continue;
     const o = s as Record<string, unknown>;
     if (!isId(o.character_id) || !(o.stage === null || isId(o.stage)) || !Array.isArray(o.views)) continue;
@@ -118,9 +133,10 @@ export function readSheets(raw: unknown): RefSheet[] {
         job_id: isUuid(w.job_id) ? w.job_id : null,
         attempt: typeof w.attempt === "number" && Number.isInteger(w.attempt) && w.attempt >= 0 && w.attempt < 1000 ? w.attempt : 0,
         error: typeof w.error === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(w.error) ? w.error : null,
+        key: typeof w.key === "string" && /^sheet:[0-9a-f]{48}$/.test(w.key) ? w.key : null,
       });
     }
-    out.push({ character_id: o.character_id, stage: (o.stage as string | null) ?? null, views });
+    out.push({ character_id: o.character_id, stage: (o.stage as string | null) ?? null, views: views.slice(0, SHEET_VIEWS.length) });
   }
   return out;
 }
@@ -218,7 +234,8 @@ export function selectRefs(b: Pick<Brief, "characters">, sheets: readonly RefShe
   for (const x of inFrameOf(s)) {
     if (seen.has(x.character_id)) continue;
     seen.add(x.character_id);
-    if (seen.size > SELECT.characters) break;
+    // Over the per-scene character cap: said as missing (drawn from words alone), never silently dropped from the report.
+    if (seen.size > SELECT.characters) { missing.push(x.character_id); continue; }
     const sheet = sheets.find((h) => h.character_id === x.character_id && h.stage === (x.age_stage ?? null));
     const wanted = wantedView(s);
     const ok = (v: SheetView) => sheet?.views.find((w) => w.view === v && w.status === "approved" && w.asset_id);
@@ -241,7 +258,7 @@ export function selectRefs(b: Pick<Brief, "characters">, sheets: readonly RefShe
     refs: picks.map((p) => ({ kind: "character" as const, asset_id: p.asset_id })),
     picks, missing,
     // ViMax's text_prompt rule: name each reference as "Image N" and nothing else.
-    line: said.length ? `Reference pictures: ${said.join(" ")}` : "",
+    line: said.length ? `${REF_LINE}${said.join(" ")}` : "",
   };
 }
 
@@ -256,18 +273,16 @@ export type RefGate = { open: true; imageRefsMax: number } | { open: false; reas
 
 /**
  * The registry's `ref_capabilities` (S2, #970): which of a model's capabilities take reference pictures. Read from the model's
- * public spec as sellable_models returns it, at the top or under `inputs` (where image_refs_max already is). Absent, malformed, or
- * two places that disagree: null, which is unknown here (refGate then reads the adapters' own declaration, never the model's name).
+ * public spec as sellable_models returns it, under `inputs` (where image_refs_max already is): sellable_models projects only the
+ * registry's `inputs` object, so a top-level field would never reach here, and #970 must put it under `inputs` (or extend the
+ * projection). Absent: undefined, and refGate reads the adapters' own declaration. Malformed: null, unknown (closed).
  */
-export function refCapabilitiesOf(spec: unknown): string[] | null {
+export function refCapabilitiesOf(spec: unknown): string[] | null | undefined {
   const o = spec && typeof spec === "object" ? (spec as Record<string, unknown>) : {};
-  const read = (v: unknown): string[] | null | undefined =>
-    v === undefined ? undefined : Array.isArray(v) && v.every((x) => typeof x === "string") ? (v as string[]) : null;
-  const top = read(o.ref_capabilities);
-  const inputs = o.inputs && typeof o.inputs === "object" ? read((o.inputs as Record<string, unknown>).ref_capabilities) : undefined;
-  if (top === null || inputs === null) return null;
-  if (top && inputs && (top.length !== inputs.length || top.some((x) => !inputs.includes(x)))) return null;
-  return top ?? inputs ?? null;
+  const inputs = o.inputs && typeof o.inputs === "object" ? (o.inputs as Record<string, unknown>) : {};
+  const v = inputs.ref_capabilities;
+  if (v === undefined) return undefined;
+  return Array.isArray(v) && v.every((x) => typeof x === "string") ? (v as string[]) : null;
 }
 
 export interface GateModel { id: string; spec: unknown }
@@ -288,7 +303,8 @@ export function refGate(modelId: string | null, onSaleT2i: readonly GateModel[],
   if (spec.terms_gate !== undefined && spec.terms_gate !== null) return { open: false, reason: "terms_gated" };
   if (spec.requires_adult === true && age !== "adult") return { open: false, reason: "adult_attestation_required" };
   // The registry's field first (S2, #970); where a row has none, what the model's adapter declares (the twin); neither: unknown.
-  const caps = refCapabilitiesOf(spec) ?? (Object.prototype.hasOwnProperty.call(twin, modelId) ? [...twin[modelId]] : null);
+  const own = refCapabilitiesOf(spec);
+  const caps = own !== undefined ? own : Object.prototype.hasOwnProperty.call(twin, modelId) ? [...twin[modelId]] : null;
   if (caps === null) return { open: false, reason: "refs_unknown" };
   if (!caps.includes(KEYFRAME_CAPABILITY)) return { open: false, reason: "refs_not_on_keyframe" };
   const inputs = (spec.inputs && typeof spec.inputs === "object" ? spec.inputs : {}) as Record<string, unknown>;
@@ -302,7 +318,105 @@ export function refGate(modelId: string | null, onSaleT2i: readonly GateModel[],
  * this, a re-save dropped the job ids of pictures the person paid for. Whatever no longer matches the story is re-planned when the
  * sheets are next read (mergeSheets), never shown as the new look's.
  */
-export function carrySheets(prev: unknown): { ref_sheets?: RefSheet[] } {
-  const sheets = readSheets(prev && typeof prev === "object" ? (prev as { ref_sheets?: unknown }).ref_sheets : undefined);
-  return sheets.length ? { ref_sheets: sheets } : {};
+export function carrySheets(prev: unknown): { ref_sheets?: RefSheet[]; film_link?: FilmLink } {
+  const o = prev && typeof prev === "object" ? (prev as { ref_sheets?: unknown; film_link?: unknown }) : {};
+  const sheets = readSheets(o.ref_sheets);
+  const link = readFilmLink(o.film_link);
+  return { ...(sheets.length ? { ref_sheets: sheets } : {}), ...(link ? { film_link: link } : {}) };
+}
+
+/**
+ * The draft film the chat's choice saved its storyboard into, and which film scene each BRIEF scene became (written by the turn
+ * route right after its save_film, from the film's own answer). The only link attach trusts: a film id the browser names that is
+ * not this one is refused, and a scene is matched by its id here, never by position.
+ */
+export interface FilmLink { film_id: string; scenes: { brief: string; film: string }[] }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function readFilmLink(raw: unknown): FilmLink | null {
+  const o = obj(raw);
+  if (typeof o.film_id !== "string" || !UUID_RE.test(o.film_id)) return null;
+  const scenes = arr(o.scenes).slice(0, FILM.maxScenes).map(obj)
+    .filter((x) => typeof x.brief === "string" && /^[a-z][a-z0-9_-]{0,15}$/i.test(x.brief) && typeof x.film === "string" && UUID_RE.test(x.film))
+    .map((x) => ({ brief: String(x.brief), film: String(x.film) }));
+  return { film_id: o.film_id, scenes };
+}
+/** The link from save_film's answer (0166 film_read: scenes in position order), paired with the BRIEF's scenes in story order. */
+export function filmLinkOf(filmId: string, briefScenes: readonly { id: string }[], saved: unknown): FilmLink | null {
+  const scenes = arr(obj(saved).scenes).map(obj);
+  if (!UUID_RE.test(filmId) || scenes.length !== briefScenes.length) return null;
+  const ordered = [...scenes].sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0));
+  if (ordered.some((x) => typeof x.id !== "string" || !UUID_RE.test(x.id))) return null;
+  return { film_id: filmId, scenes: briefScenes.map((b, i) => ({ brief: b.id, film: String(ordered[i].id) })) };
+}
+
+/** What the sheets need of a BRIEF, re-read through the BRIEF's own caps (never the stored jsonb cast as a Brief, BR-RS-03). */
+export type SheetBrief = Pick<Brief, "characters" | "scenes" | "visual_style" | "style"> & {
+  kind: Brief["kind"]; ref_sheets: RefSheet[]; film_link: FilmLink | null;
+};
+export function readSheetBrief(raw: unknown): SheetBrief {
+  const r = obj(raw);
+  const chars = readCharacters(r.characters);
+  const known = new Set(chars.map((c) => c.id));
+  const scenes = arr(r.scenes).slice(0, FILM.maxScenes).map(obj).map((o, i): BriefScene => {
+    const inFrame = arr(o.in_frame).slice(0, CAP.characters).map(obj)
+      .map((x) => ({ character_id: sid(x.character_id, ""), age_stage: typeof x.age_stage === "string" ? sid(x.age_stage, "") || null : null }))
+      .filter((x) => known.has(x.character_id));
+    const cam = obj(o.camera);
+    const shot = SHOT_SIZES.find((x) => x === o.shot) as ShotSize | undefined;
+    const move = (CAMERA_MOVES.find((x) => x === cam.move) ?? "static") as CameraMove;
+    return {
+      id: sid(o.id, `s${i + 1}`), n: i + 1, title: plain(o.title, CAP.title), duration_s: typeof o.duration_s === "number" ? o.duration_s : 0,
+      visual_prompt: "", dialogue: [], location_id: null, prop_ids: [], clip_model: null,
+      character_ids: arr(o.character_ids).slice(0, CAP.characters).map((x) => sid(x, "")).filter((x) => known.has(x)),
+      keyframe_model: typeof o.keyframe_model === "string" && MODEL_ID.test(o.keyframe_model) ? o.keyframe_model : null,
+      ...(shot ? { shot } : {}),
+      ...(typeof cam.position === "string" ? { camera: { position: plain(cam.position, CAP.camera), move } } : {}),
+      ...(typeof o.first_frame === "string" ? { first_frame: plain(o.first_frame, CAP.frame) } : {}),
+      ...(inFrame.length ? { in_frame: inFrame } : {}),
+    };
+  });
+  return {
+    kind: r.kind === "short" || r.kind === "long" ? r.kind : null,
+    characters: chars, scenes,
+    visual_style: plain(r.visual_style, CAP.visualStyle) || undefined,
+    style: plain(r.style, CAP.style) || null,
+    ref_sheets: readSheets(r.ref_sheets),
+    film_link: readFilmLink(r.film_link),
+  };
+}
+
+const STATUS_RANK: Record<ViewStatus, number> = { planned: 0, failed: 1, making: 2, ready: 3, approved: 4 };
+const sameView = (x: RefView | undefined, y: RefView | undefined) => JSON.stringify(x ?? null) === JSON.stringify(y ?? null);
+/**
+ * Two writers of the same sheets (two tabs, or a chat turn and a press): the fresher BRIEF's list merged with ours view by view.
+ * A view THIS write changed (it differs from `base`, what this request started from) is ours: an intent saved before its create,
+ * a revert after a refused create, an approval, a redo. Any other view keeps the later attempt, and within one attempt the further
+ * state, of the two. A view only one side has is kept. Without a compare-and-swap in the database this narrows the window to the
+ * moment between the re-read and the write; it does not close it.
+ */
+export function mergeConcurrent(fresh: readonly RefSheet[], ours: readonly RefSheet[], base: readonly RefSheet[] = []): RefSheet[] {
+  const key = (s: Pick<RefSheet, "character_id" | "stage">) => `${s.character_id}:${s.stage ?? ""}`;
+  const was = new Map(base.map((s) => [key(s), s]));
+  const out = new Map<string, RefSheet>(fresh.map((s) => [key(s), s]));
+  for (const s of ours) {
+    const f = out.get(key(s));
+    if (!f) { out.set(key(s), s); continue; }
+    out.set(key(s), { ...s, views: SHEET_VIEWS.map((v) => {
+      const a = f.views.find((x) => x.view === v);
+      const b = s.views.find((x) => x.view === v);
+      if (!a || !b) return (b ?? a)!;
+      if (!sameView(b, was.get(key(s))?.views.find((x) => x.view === v))) return b;
+      const ra = [a.attempt ?? 0, STATUS_RANK[a.status]];
+      const rb = [b.attempt ?? 0, STATUS_RANK[b.status]];
+      return rb[0] > ra[0] || (rb[0] === ra[0] && rb[1] >= ra[1]) ? b : a;
+    }).filter(Boolean) });
+  }
+  return [...out.values()].slice(0, SHEETS_MAX);
+}
+
+/** The reference line attach adds to a key-frame prompt; an older one is replaced, never added twice. */
+export const REF_LINE = "Reference pictures: ";
+export function withRefLine(prompt: string, line: string): string {
+  const kept = prompt.split("\n").filter((l) => !l.startsWith(REF_LINE)).join("\n");
+  return line ? `${kept}\n${line}` : kept;
 }

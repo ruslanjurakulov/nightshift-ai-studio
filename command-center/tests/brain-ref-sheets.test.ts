@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { look, storyBrief } from "./helpers/fakeSheetsDb";
 import {
-  REF_BYTES_MAX, carrySheets, mergeSheets, planSheets, refCapabilitiesOf, refGate, selectRefs, sheetPrompt, wantedView,
+  REF_BYTES_MAX, SHEETS_MAX, filmLinkOf, mergeConcurrent, readSheetBrief, readSheets, withRefLine, carrySheets, mergeSheets, planSheets, refCapabilitiesOf, refGate, selectRefs, sheetPrompt, wantedView,
   type AssetFacts, type RefSheet,
 } from "@/lib/brain/ref-sheets";
 import { keyframePrompt, type BriefCharacter, type BriefScene } from "@/lib/brain/logic";
@@ -127,6 +127,55 @@ describe("the per-scene selector", () => {
   });
 });
 
+describe("the fix round's guards", () => {
+  it("re-reads a stored BRIEF through its own caps: at most 8 characters, 4 stages each, 40 sheets (Breach BR-RS-03)", () => {
+    const many = { ...b, characters: Array.from({ length: 200 }, (_, i) => ({ ...mira, id: `x${i}`, name: `N${i}`,
+      age_stages: Array.from({ length: 9 }, (_, k) => ({ id: `a${k}`, label: `L${k}`, look: look("x") })) })) };
+    const read = readSheetBrief(many);
+    expect(read.characters).toHaveLength(8);
+    expect(read.characters!.every((c) => (c.age_stages ?? []).length <= 4)).toBe(true);
+    expect(planSheets(read).length).toBeLessThanOrEqual(SHEETS_MAX);
+    expect(SHEETS_MAX).toBe(40);
+    expect(readSheets(Array.from({ length: 500 }, () => ({ character_id: "c1", stage: null, views: [] })))).toHaveLength(40);
+    // Not a short film's BRIEF, or a malformed one: no characters, nothing planned.
+    expect(readSheetBrief("x").characters).toEqual([]);
+    expect(readSheetBrief({ characters: "x" }).kind).toBeNull();
+  });
+
+  it("merges two writers view by view: what this write changed is ours, the rest keeps the later attempt and state", () => {
+    const base = planSheets(b);
+    const approvedTom = base.map((s) => s.character_id === "c2" ? { ...s, views: s.views.map((v, i) => (i === 0 ? { ...v, status: "approved" as const, asset_id: A(1) } : v)) } : s);
+    const redoneTom = base.map((s) => s.character_id === "c2" ? { ...s, views: s.views.map((v, i) => (i === 0 ? { ...v, status: "planned" as const, attempt: 1 } : v)) } : s);
+    // Another writer approved Tom's front meanwhile; this write changed nothing of Tom: the approval is kept.
+    expect(mergeConcurrent(approvedTom, base, base).find((s) => s.character_id === "c2")!.views[0].status).toBe("approved");
+    // This write redid it: the redo is ours, whatever the other writer stored.
+    expect(mergeConcurrent(approvedTom, redoneTom, approvedTom).find((s) => s.character_id === "c2")!.views[0]).toMatchObject({ status: "planned", attempt: 1 });
+    // An intent this write saved before its create is kept over the stored "planned", and its revert after a refusal too.
+    const intent = base.map((s) => ({ ...s, views: s.views.map((v) => ({ ...v, status: "making" as const, key: "sheet:" + "a".repeat(48) })) }));
+    expect(mergeConcurrent(base, intent, base)[0].views[0].status).toBe("making");
+    expect(mergeConcurrent(intent, base, intent)[0].views[0].status).toBe("planned");
+  });
+
+  it("adds the reference line once, replacing an older one", () => {
+    expect(withRefLine("v1", "Reference pictures: A should reference Image 0.")).toBe("v1\nReference pictures: A should reference Image 0.");
+    expect(withRefLine("v1\nReference pictures: old", "Reference pictures: new")).toBe("v1\nReference pictures: new");
+  });
+
+  it("reports the 5th and later in-frame characters as missing, never silently dropped", () => {
+    const many = { ...b, characters: Array.from({ length: 6 }, (_, i) => ({ ...tom, id: `k${i}`, name: `K${i}` })) };
+    const ms = approved(planSheets(many));
+    const s6 = { ...b.scenes![0], in_frame: many.characters.map((c) => ({ character_id: c.id, age_stage: null })) };
+    expect(selectRefs(many, ms.sheets, s6, budget, ms.assets).missing).toEqual(["k4", "k5"]);
+  });
+
+  it("links each BRIEF scene to the film scene save_film answered with, by position, or not at all", () => {
+    const saved = { scenes: [{ id: "dddddddd-0000-4000-8000-000000000902", position: 1 }, { id: "dddddddd-0000-4000-8000-000000000901", position: 0 }] };
+    expect(filmLinkOf("bbbbbbbb-0000-4000-8000-000000000002", [{ id: "s1" }, { id: "s2" }], saved)).toEqual({ film_id: "bbbbbbbb-0000-4000-8000-000000000002",
+      scenes: [{ brief: "s1", film: "dddddddd-0000-4000-8000-000000000901" }, { brief: "s2", film: "dddddddd-0000-4000-8000-000000000902" }] });
+    expect(filmLinkOf("bbbbbbbb-0000-4000-8000-000000000002", [{ id: "s1" }], saved)).toBeNull();
+  });
+});
+
 describe("the gate", () => {
   const row = (id: string, spec: Record<string, unknown> = {}) => ({ id, spec: { inputs: { image_refs_max: 14 }, ...spec } });
 
@@ -141,25 +190,27 @@ describe("the gate", () => {
 
   it("is closed when neither the registry nor the adapters say (unknown is never open)", () => {
     expect(refGate("fake-new", [row("fake-new")], "adult", {})).toEqual({ open: false, reason: "refs_unknown" });
-    expect(refCapabilitiesOf({ ref_capabilities: "t2i" })).toBeNull();
-    expect(refCapabilitiesOf({ ref_capabilities: ["t2i"], inputs: { ref_capabilities: ["edit"] } })).toBeNull();
+    expect(refCapabilitiesOf({ inputs: { ref_capabilities: "t2i" } })).toBeNull();
+    // A malformed registry field is unknown (closed), never read past to the twin.
+    expect(refGate("gemini-nano-banana-2.1", [row("gemini-nano-banana-2.1", { inputs: { image_refs_max: 14, ref_capabilities: [1] } })], "adult")).toEqual({ open: false, reason: "refs_unknown" });
+    // sellable_models projects the registry's `inputs` only: a top-level field never reaches the server, so it is not read.
+    expect(refCapabilitiesOf({ ref_capabilities: ["t2i"] })).toBeUndefined();
   });
 
   it("opens for a sellable model whose registry ref_capabilities include t2i, the registry's word first", () => {
-    expect(refGate("fake", [row("fake", { ref_capabilities: ["t2i", "edit"] })], "adult", {})).toEqual({ open: true, imageRefsMax: 14 });
     expect(refGate("fake", [row("fake", { inputs: { image_refs_max: 14, ref_capabilities: ["t2i"] } })], "adult", {})).toEqual({ open: true, imageRefsMax: 14 });
     // The registry says edit only: the twin's t2i is not read.
-    expect(refGate("fake", [row("fake", { ref_capabilities: ["edit"] })], "adult", { fake: ["t2i"] })).toEqual({ open: false, reason: "refs_not_on_keyframe" });
+    expect(refGate("fake", [row("fake", { inputs: { image_refs_max: 14, ref_capabilities: ["edit"] } })], "adult", { fake: ["t2i"] })).toEqual({ open: false, reason: "refs_not_on_keyframe" });
     // No registry field: the adapters' own declaration (Gemini-like) opens it once the model is on sale.
     expect(refGate("gemini-nano-banana-2.1", [row("gemini-nano-banana-2.1")], "adult")).toEqual({ open: true, imageRefsMax: 14 });
   });
 
   it("is closed for a terms-gated model, an 18+ model without the person's attestation, and a model that takes no picture", () => {
-    expect(refGate("g", [row("g", { terms_gate: "terms_review_required", ref_capabilities: ["t2i"] })], "adult", {})).toEqual({ open: false, reason: "terms_gated" });
+    expect(refGate("g", [row("g", { terms_gate: "terms_review_required", inputs: { image_refs_max: 14, ref_capabilities: ["t2i"] } })], "adult", {})).toEqual({ open: false, reason: "terms_gated" });
     for (const age of ["none", "unknown", "minor"] as const) {
-      expect(refGate("g", [row("g", { requires_adult: true, ref_capabilities: ["t2i"] })], age, {})).toEqual({ open: false, reason: "adult_attestation_required" });
+      expect(refGate("g", [row("g", { requires_adult: true, inputs: { image_refs_max: 14, ref_capabilities: ["t2i"] } })], age, {})).toEqual({ open: false, reason: "adult_attestation_required" });
     }
-    expect(refGate("g", [{ id: "g", spec: { ref_capabilities: ["t2i"], inputs: { image_refs_max: 0 } } }], "adult", {})).toEqual({ open: false, reason: "no_ref_slots" });
+    expect(refGate("g", [{ id: "g", spec: { inputs: { image_refs_max: 0, ref_capabilities: ["t2i"] } } }], "adult", {})).toEqual({ open: false, reason: "no_ref_slots" });
   });
 });
 
