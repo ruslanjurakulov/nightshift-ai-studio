@@ -10,8 +10,9 @@ docs/research/sonilo-first-party.md has the quotes.
 DARK. ``sonilo-video-music`` is REGISTRY-ONLY: the database has no ``video_music`` capability
 (``base.REGISTRY_ONLY_CAPABILITIES``), so that entry is not synced, cannot be probed or priced, and no job can name it.
 ``sonilo-music`` (``music``, known to the database since 0228) is synced dark: its row is hidden, terms-gated and unpriced, so
-``--all`` never probes it and nothing can sell it; only a probe that names it would call Sonilo. Nothing here was called with a
-key.
+``--all`` never probes it; only a probe that names it would call Sonilo. The terms gate is not a hard barrier (the owner can clear
+it in the app since 0227); the missing credit price is the one the database enforces. Sonilo's written answer on its terms is a
+process precondition no code checks, so no price may be written before it. Nothing here was called with a key.
 
 * A task is created with ``POST /v1/text-to-music`` or ``POST /v1/video-to-music`` (``multipart/form-data``) and
   ``mode=async``, which answers ``202 {"task_id", "status": "processing"}``; ``GET /v1/tasks/{task_id}`` answers ``status``

@@ -234,7 +234,8 @@ class RegistryEntryTests(unittest.TestCase):
     def test_the_music_one_syncs_dark_and_the_sync_cannot_light_it(self):
         # 0228 put `music` in the database's lists, so sonilo-music syncs. What keeps it off sale is the database, not the file:
         # sync_model_registry (0035) never writes availability, a new row takes 0035's default 'hidden', and 0035's CHECKs refuse
-        # beta/ga for a row whose spec carries a terms_gate or that no probe has verified. No credit price exists for its unit.
+        # beta/ga for a row whose spec carries a terms_gate or that no probe has verified. The owner can clear the gate in the app
+        # (0227), so the missing credit price is the last hard barrier: no migration may write one for its unit.
         self.assertFalse(self.r["sonilo-music"].registry_only)
         (row,) = [row for row in reg.sync_rows(list(self.r.values())) if row["id"] == "sonilo-music"]
         self.assertEqual(set(row), {"id", "display_name", "provider", "adapter", "capabilities", "credit_unit", "entitlement", "spec"})
@@ -262,6 +263,7 @@ class RegistryEntryTests(unittest.TestCase):
             self.assertIn("Uzbekistan", notes, mid)
         self.assertIn("REGISTRY-ONLY", self.r["sonilo-video-music"].raw["api_documented"]["note"])
         self.assertIn("SYNCED DARK after 0228", self.r["sonilo-music"].raw["api_documented"]["note"])
+        self.assertIn("written answer on its terms (not enforced by code)", self.r["sonilo-music"].raw["api_documented"]["note"])
         self.assertFalse({e.id for e in self.r.values() if not e.terms_gate} & set(IDS))
 
     def test_a_registry_only_entry_must_be_dark_by_its_own_fields(self):
@@ -1248,6 +1250,51 @@ class WiringTests(unittest.TestCase):
         (rows,), _ = db.sync.call_args
         self.assertEqual({row["id"] for row in rows} & set(IDS), {"sonilo-music"})
         self.assertFalse([row["id"] for row in rows if set(row["capabilities"]) & REGISTRY_ONLY_CAPABILITIES])
+
+    def test_a_sync_refused_by_a_database_without_0228_names_the_migration_not_0035(self):
+        # PostgREST answers a CHECK violation 400 with code 23514; the body's details hold the failing row, which is never kept.
+        from tools import probe_models
+
+        class Resp:
+            def __init__(self, status, data):
+                self.status_code, self._data = status, data
+
+            def json(self):
+                return self._data
+
+        class Http:
+            def __init__(self, resp):
+                self.resp = resp
+
+            def post(self, url, json=None, headers=None, timeout=None):  # noqa: A002 — requests' own name
+                return self.resp
+
+        check = {"code": "23514", "details": "Failing row contains (google-lyria-3.5, ...)", "hint": None,
+                 "message": 'new row for relation "model_registry" violates check constraint "model_registry_capabilities_check"'}
+        rows = reg.sync_rows(list(reg.registry().values()))
+        db = probe_models.RegistryDB("https://db.test", "service-key-not-real", session=Http(Resp(400, check)))
+        with self.assertRaises(probe_models.RpcError) as cm:
+            db.sync(rows)
+        msg = str(cm.exception)
+        self.assertIn("apply migration 0228", msg)
+        self.assertIn("capability music", msg)
+        self.assertNotIn("0035", msg)
+        self.assertNotIn("Failing row", msg)
+        self.assertEqual((cm.exception.status, cm.exception.sqlstate), (400, "23514"))
+        # The same CHECK with no music row in the batch: a missing migration, but not 0228.
+        db = probe_models.RegistryDB("https://db.test", "k", session=Http(Resp(400, check)))
+        with self.assertRaises(probe_models.RpcError) as cm:
+            db.sync([r for r in rows if "music" not in r["capabilities"]])
+        self.assertNotIn("0228", str(cm.exception))
+        self.assertIn("a migration that adds it is missing", str(cm.exception))
+        # Any other refusal is passed on as before.
+        for status, body in ((400, {"code": "23514", "message": 'violates check constraint "model_registry_credit_unit_check"'}),
+                             (400, "not json"), (500, None)):
+            db = probe_models.RegistryDB("https://db.test", "k", session=Http(Resp(status, body)))
+            with self.assertRaises(probe_models.RpcError) as cm:
+                db.sync(rows)
+            self.assertNotIn("0228", str(cm.exception), body)
+            self.assertEqual(cm.exception.constraint_hint, None)
 
     def test_the_worker_serves_no_video_music_row_and_serves_music_only_as_it_serves_any_gated_model(self):
         # video_music: no job can name it through the database, and a row that names it all the same is not served.

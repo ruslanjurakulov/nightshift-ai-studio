@@ -84,8 +84,12 @@ CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE,
 #: migrations, so the migration that teaches the database a capability is also the change that takes it out of here.
 #: A character swap is not a creative job at all (0137 prices, holds and runs it in its own tables), so it stays here for good:
 #: the creative system must never be able to sell it.
-#: ``music`` left this set once 0228 was confirmed live. Leaving it is not a sale: a synced row starts ``hidden`` (0035's default,
-#: and the sync never writes availability), and the database refuses beta/ga for a row with a terms_gate or without a probe.
+#: ``music`` left this set once 0228 was confirmed live. A synced row starts ``hidden`` (0035's default; the sync never writes
+#: availability). The terms gate is NOT a hard barrier: since 0227 the owner clears it in the app (owner_accept_model_terms), and a
+#: named probe verifies the row. What the database still enforces after that is the credit price (an unpriced quote is refused),
+#: plus, for Lyria, 0142's countries CHECK (it carries blocked_countries) and its models_audio:premium entitlement. The
+#: vocal-activity check (Lyria), Sonilo's written answer on its terms and the owner's legal sign-off are process preconditions that
+#: no code enforces, so no credit price may be written for a music model before them (tests/security/test_sec_music_synced_dark.py).
 REGISTRY_ONLY_CAPABILITIES = frozenset({VIDEO_MUSIC, VIDEO_CHARACTER_SWAP})
 OUTPUT_OF = {T2I: "image", EDIT: "image", T2V: "video", I2V: "video", TTS: "audio", SFX: "audio",
              UPSCALE: "image", REMOVE_BG: "image", VOICE_CHANGE: "audio", DUB: "audio",

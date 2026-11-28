@@ -126,7 +126,8 @@ class RegistryEntryTests(unittest.TestCase):
     def test_it_syncs_dark_gated_web_only_and_unpriced_so_the_row_cannot_be_sold(self):
         # 0228 put `music` in the database's lists, so the entry syncs. The row the sync sends carries no availability (0035's
         # sync_model_registry never writes it, so a new row is 'hidden'), and its terms_gate rides the spec, which 0035's
-        # model_registry_terms_before_sale CHECK reads: no beta/ga while it is set, whatever a probe says.
+        # model_registry_terms_before_sale CHECK reads: no beta/ga while it is set. The owner can clear it in the app (0227), so the
+        # credit price is the last hard barrier (tests/security/test_sec_music_synced_dark.py, test_lit_by_the_owner_but_unpriced_*).
         self.assertNotIn(MUSIC, REGISTRY_ONLY_CAPABILITIES)
         self.assertFalse(self.e.registry_only)
         (row,) = [row for row in reg.sync_rows(list(self.r.values())) if row["id"] == LYRIA]
@@ -137,6 +138,7 @@ class RegistryEntryTests(unittest.TestCase):
         self.assertEqual((row["spec"]["terms_gate"], row["spec"]["api_exposure"], row["spec"]["pricing"]["confirmed"]),
                          ("terms_review_required", "web_only", False))
         self.assertIn("SYNCED DARK after 0228", self.e.raw["api_documented"]["note"])
+        self.assertIn("vocal-activity check (not enforced by code)", self.e.raw["api_documented"]["note"])
 
     def test_it_syncs_with_googles_allow_list_so_the_geo_gate_asks_it(self):
         # 0230's creative_jobs_geo_gate answers a Google row by spec.available_countries (Google's own allow-list): a code not on
