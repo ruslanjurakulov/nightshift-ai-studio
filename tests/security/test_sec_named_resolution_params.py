@@ -302,7 +302,7 @@ def test_the_lab_takes_the_whole_chain_off_and_puts_it_back_from_0156s_bodies(co
         assert _md5_conn(conn, CP) == "e0c4a7806642086398558cf322c95a0d", "0125's body"
         assert _md5_conn(conn, PP) == PP_0126, "0126's body"
         sec_db.put_back_0139(session)
-        assert (_md5_conn(conn, PP), _md5_conn(conn, CP)) == (sec_db.CREATIVE_PARAMS_PROBLEM_0218, sec_db.CREATIVE_PRICE_0218)
+        assert (_md5_conn(conn, PP), _md5_conn(conn, CP)) == (sec_db.CREATIVE_PARAMS_PROBLEM_0218, sec_db.CREATIVE_PRICE_0224)
 
 
 def _md5s(d):

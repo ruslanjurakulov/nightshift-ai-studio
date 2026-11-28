@@ -10,7 +10,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { priceTypedFigure } from "@/lib/confirm-tier";
 import { postOperator } from "@/lib/operator-post";
-import { priceBigChange, ratioText, REASON_MAX } from "@/lib/owner-rpc";
+import { DATED_PRICE_SQLSTATE, priceBigChange, ratioText, REASON_MAX } from "@/lib/owner-rpc";
 import { ownerFailureText } from "@/lib/owner-rpc-text";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { useToast } from "@/components/feedback/ToastProvider";
@@ -127,6 +127,7 @@ export function CreditPricesEditor({
       successMessage: fmt(t.ownerSafety.priceSaved, { name }),
       run: async () => {
         const { error: e, status } = await supabase.from("credit_prices").upsert(row, { onConflict: "unit" });
+        if (e?.code === DATED_PRICE_SQLSTATE) return t.ownerRpc.err.dated_price_scheduled;
         return e ? operatorFailureText(t, { kind: supabaseFailureKind(e, status), data: {} }, t.ownerTruth.serverError) : true;
       },
     });

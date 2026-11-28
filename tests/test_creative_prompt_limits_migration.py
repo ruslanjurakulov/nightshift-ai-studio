@@ -208,6 +208,11 @@ class CreativePromptLimitsMigration(unittest.TestCase):
         for f in LATER:
             text = (MIG / f).read_text(encoding="utf-8")
             for name in HUNKS:
+                if f == "0224_dated_credit_price.sql" and name == "creative_price":
+                    # 0224 replaces it with this file's body plus its one line, the body this file's own 0224 branch writes
+                    # (tests/test_dated_credit_price_migration.py pins both).
+                    self.assertIn("'59c5c289009a874af043c534b29934ee', 'ea2b58e88fe34ae18b261e5a0fbef435'", text)
+                    continue
                 self.assertNotIn(f"function public.{name}(", text, (f, name))
 
     def test_on_0224s_base_the_body_is_this_files_plus_0224s_one_line_and_nothing_else(self):
@@ -340,15 +345,22 @@ class CreativePromptLimitsMigration(unittest.TestCase):
         self.assertIn("ON_0156 = (*ON_0156, MIGRATION_0218.name)", LAB)
         off = LAB[LAB.index("def take_off_0208("):LAB.index("def put_back_0208(")]
         self.assertLess(off.index("take_off_0218(conn)"), off.index("rollback_0208_body()"))
-        self.assertIn("return rollback_0218_if_on() +", LAB[LAB.index("def rollback_0208_body("):LAB.index("def take_off_0208(")])
+        self.assertIn("rollback_0218_if_on() +", LAB[LAB.index("def rollback_0208_body("):LAB.index("def take_off_0208(")])
         self.assertIn("put_back_0218(conn)", LAB[LAB.index("def put_back_0208("):LAB.index("def rollback_0159_body(")])
         self.assertIn("ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0218.name), MIGRATION_0218.name)", LAB)
         on_0124 = LAB[LAB.index("ON_0124 = ("):]
         on_0124 = on_0124[:on_0124.index(")\n")]
-        # 0218 closes the list, or is followed only by 0219 (which refuses to apply without it) and 0230 (which refuses to apply
-        # without 0208, out and back with it).
+        # 0218 closes the list, or is followed only by 0219 (which refuses to apply without it), 0224 (on its creative_price) and 0230
+        # (which refuses to apply without 0208, out and back with it), in the order they were applied live: 0218, 0219, 0224, 0230.
         self.assertRegex(on_0124, r'"0218_creative_prompt_limits\.sql"(,\s*(#[^\n]*\s*)*"0219_oauth_creative_operator_models\.sql")?'
+                                  r'(,\s*(#[^\n]*\s*)*"0224_dated_credit_price\.sql")?'
                                   r'(,\s*(#[^\n]*\s*)*"0230_geo_gate_allow_list\.sql")?$')
+        # 0218 before 0224 in every list both are in (0224 sits on 0218's creative_price; put back in this order).
+        self.assertLess(on_0124.index('"0218_creative_prompt_limits.sql"'), on_0124.index('"0224_dated_credit_price.sql"'))
+        self.assertLess(LAB.index("ON_0156 = (*ON_0156, MIGRATION_0218.name)"),
+                        LAB.index('ON_0156 = (*(f for f in ON_0156 if f != "0224_dated_credit_price.sql"), "0224_dated_credit_price.sql")'))
+        self.assertLess(LAB.index("ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0218.name), MIGRATION_0218.name)"),
+                        LAB.index('ON_0139 = (*(f for f in ON_0139 if f != "0224_dated_credit_price.sql"), "0224_dated_credit_price.sql")'))
         off = LAB[LAB.index("def take_off_0171("):LAB.index("def put_back_0171(")]
         self.assertLess(off.index("take_off_0218(conn)"), off.index("rollback_0171_body("))
         self.assertIn("put_back_0218(", LAB[LAB.index("def put_back_0171("):LAB.index("MIGRATION_0174 =")])

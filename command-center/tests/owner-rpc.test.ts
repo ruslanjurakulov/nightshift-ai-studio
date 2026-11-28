@@ -258,6 +258,7 @@ describe("ownerRpcErrorToHttp: a database error, without its text", () => {
     ["PGRST202", 503, "migration_missing"],
     ["42883", 503, "migration_missing"],
     ["PGRST301", 401, "unauthorized"],
+    ["NS428", 422, "dated_price_scheduled"],
     ["XX000", 502, "rpc_failed"],
     ["", 502, "rpc_failed"],
   ])("%s is %i %s", (code, status, error) => {
