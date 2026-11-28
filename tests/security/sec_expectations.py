@@ -909,3 +909,9 @@ sec_platform_roster_0233.extend(TABLES, FUNCTIONS)
 import sec_country_sale_0238  # noqa: E402
 
 sec_country_sale_0238.extend(TABLES, FUNCTIONS)
+
+# Migrations 0246 (film_takes / film_segments progress columns, two service-role writers) and 0248 (a members' median read of take
+# timings): tests/security/sec_take_progress_0246_0248.py
+import sec_take_progress_0246_0248  # noqa: E402
+
+sec_take_progress_0246_0248.extend(TABLES, FUNCTIONS)

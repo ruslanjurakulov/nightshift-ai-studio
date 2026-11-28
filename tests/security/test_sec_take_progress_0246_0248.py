@@ -232,3 +232,32 @@ def test_someone_who_may_not_read_the_film_gets_not_found_whether_or_not_it_exis
         assert state == "P0002" and "not_found" in msg
     state, _msg, _detail = err(lambda: db.act("anon", None, "select public.film_take_typical_seconds(%s)", [film]))
     assert state == "42501"
+
+
+# ── replay, rollback and the guard ──────────────────────────────────────────
+
+def test_both_files_replay_onto_themselves_roll_back_and_apply_again_and_refuse_a_foreign_body(db):
+    import psycopg
+
+    import sec_db
+
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        for path in (sec_db.MIGRATION_0246, sec_db.MIGRATION_0248):
+            c.execute(path.read_text(encoding="utf-8"))          # a second run of each changes nothing and raises nothing
+        sec_db.take_off_0248(c)
+        sec_db.take_off_0246(c)
+        gone = c.execute("select to_regprocedure(%s), to_regprocedure(%s), (select count(*) from information_schema.columns "
+                         "where table_schema = 'public' and table_name = 'film_takes' and column_name in "
+                         "('progress', 'vendor_state', 'progress_at'))", [TAKE_PROGRESS, TYPICAL]).fetchone()
+        assert gone == (None, None, 0)
+        sec_db.put_back_0246(c)
+        sec_db.put_back_0248(c)
+        assert c.execute(FOLD, [TAKE_PROGRESS]).fetchone()[0] == "e3c572fc3cc3b95d7dd113b223e837d3"
+        c.execute("create or replace function public.film_take_typical_seconds(p_film uuid) returns jsonb "
+                  "language sql stable security definer set search_path = public, pg_temp as $$ select '[]'::jsonb $$")
+        with pytest.raises(psycopg.Error) as e:
+            c.execute(sec_db.MIGRATION_0248.read_text(encoding="utf-8"))
+        assert "is not this file's" in str(e.value)
+        c.rollback()
+    for path in (sec_db.MIGRATION_0246, sec_db.MIGRATION_0248, sec_db.ROLLBACK_0246, sec_db.ROLLBACK_0248):
+        assert "\\" not in path.read_text(encoding="utf-8"), path
