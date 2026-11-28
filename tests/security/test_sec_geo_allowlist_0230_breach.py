@@ -149,6 +149,7 @@ def test_breach_md5_fold_lets_a_comment_swallow_the_hmac_check(db):
     # the folded md5. Planted: geo_claim_country() with the Vault read, the key check and the HMAC comparison inside the comment
     # above them. 0230 should refuse to finish on it ("is not 0208's body"); it applies, and an unsigned claim is then trusted.
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0244(c)  # 0244 replaces 0230's gate, which 0230's rollback refuses: off first, in this rolled-back transaction
         src = c.execute("select prosrc from pg_proc where oid = 'public.geo_claim_country()'::regprocedure").fetchone()[0]
         start = src.index("  -- The key lives in Vault")
         end = src.index("  return parts[2];")

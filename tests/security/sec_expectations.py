@@ -909,3 +909,9 @@ sec_platform_roster_0233.extend(TABLES, FUNCTIONS)
 import sec_country_sale_0238  # noqa: E402
 
 sec_country_sale_0238.extend(TABLES, FUNCTIONS)
+
+# Migration 0244 (a film take and a workflow step carry the country their start verified): one closed table, two internal functions.
+# tests/security/sec_geo_claim_carry_0244.py
+import sec_geo_claim_carry_0244  # noqa: E402
+
+sec_geo_claim_carry_0244.extend(TABLES, FUNCTIONS)

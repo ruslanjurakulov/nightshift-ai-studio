@@ -33,13 +33,12 @@ worker's failover): a job on a model with a non-empty `blocked_countries` needs 
 it shares with Supabase Vault only, made for this user, at most 300 seconds ahead. No valid claim: `country_unverified`; a
 listed country: `country_blocked`. The header goes from our server to Supabase, never to the browser, and is sent only on a
 call that may create a job on a gated model (the Studio's create, the region editor's run, Run now and the advance of a
-workflow with such a step). The country is read in the transaction and stored nowhere.
+workflow with such a step). The country is read in the transaction, and stored only for a film or workflow start (0244, below).
 
 Not vouched for, so refused for a gated model: the worker moving a job onto one (failover: `reroute_creative_job` skips that
-candidate and tries the next, it does not abort the failover), a Film Studio take (the worker
-makes it; there is no visitor), the API and MCP (a server's address says nothing about the person; these models are
-`web_only` anyway), and a workflow step carried on from another member's page (the claim is bound to the person whose session
-makes the call, and the step is made as the run's starter). Setup: the same 32+ character value in the web's
+candidate and tries the next, it does not abort the failover), the API and MCP (a server's address says nothing about the person;
+these models are `web_only` anyway), and a direct `create_creative_job` with no claim. A Film Studio take and a later workflow step
+have no visitor either; since 0244 they carry the country their start verified (below). Setup: the same 32+ character value in the web's
 `NIGHTSHIFT_GEO_CLAIM_KEY` and in Vault as `nightshift_geo_claim_key`; without it every job on a gated model is refused and
 the web logs the remedy.
 
@@ -73,8 +72,20 @@ reads the row, not the gate, so the order of undoing is fixed: take such a model
 (both rollbacks refuse while a country-listed row is on sale). No row changes availability in 0238. The registry validator
 holds the same line: `blocked_countries` with no `terms_gate` needs `available_countries`. The two Google image models the owner
 cleared on 2026-11-28 (`gemini-3-pro-image`, `gemini-nano-banana-2.1`) stay `hidden` and unpriced, and are not operator previews
-(priced by size, which the preview fallback cannot price yet; docs/MIGRATIONS.md, 0238). A Film Studio take carries no visitor,
-so the gate refuses it (`country_unverified`) for these rows.
+(priced by size, which the preview fallback cannot price yet; docs/MIGRATIONS.md, 0238). A Film Studio take carries no visitor;
+since 0244 it carries the country its start verified (below).
+
+**A film or a workflow carries the country its start verified (0244).** The worker writes a take's job, and a later workflow step is
+made at an advance, in transactions with no visitor's claim. So the start reads the claim: `start_film`, `start_film_resume` and
+`start_workflow_run` ask `geo_claim_country()` once, in the starter's own request, and refuse by name when any model in the plan is
+not allowed there (`country_unverified` with no trusted claim, a forged or expired one included; `country_blocked` for RU, BY ...),
+before anything is held, with the gate's own rule (`creative_geo_refusal`). The country is then recorded for that film segment or run
+only (`creative_geo_carry`, closed to every API role, never updated), and the gate accepts it for a new job of that segment's take
+(written by `film_take_job` for that take) until `film_segments.deadline_at`, or of that run's step (made by
+`workflow_advance_locked` under the step's own key, as the starter) within 24 hours of the start. Never for another segment, film or
+run, never extended, never refreshed but by a new start. This is the one place a country is stored, and only while a run may use it;
+`rollback_0244` drops it. The film start route does not send the claim yet, so until it does a film on a gated model is refused
+`country_unverified` at the start (nothing held).
 
 ## How a request's country is known
 
@@ -129,7 +140,7 @@ the thing asked for:
 Everyone else (an unknown country included) takes the database's path untouched.
 
 **Not checked.** A workflow run that was started elsewhere and is carried on (`/advance`) from a blocked country: the run and its
-price were confirmed at the start. Series and channel runs name no registry model in any request (they run the channel's configured
+price were confirmed at the start, and since 0244 its later steps carry the country the start verified, not the advancing page's. Series and channel runs name no registry model in any request (they run the channel's configured
 pipeline), so there is nothing to check by country there. Character Studio has its own two models and its own table.
 
 ## Unknown: allowed for a visitor, refused for a broken setup

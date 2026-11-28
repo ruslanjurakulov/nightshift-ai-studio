@@ -871,6 +871,7 @@ def test_a_replay_changes_nothing(db, a):
     fid, _seg = paused(db, a)
     resumed(db, a, fid)
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0244(c)  # 0244 replaces 0215's two film starts, which 0215's guard and rollback refuse: off first, in this rolled-back transaction
         before = c.execute(SNAPSHOT).fetchone()[0]
         c.execute(MIGRATION.read_text(encoding="utf-8"))
         c.execute(MIGRATION.read_text(encoding="utf-8"))
@@ -894,6 +895,7 @@ def test_a_replay_changes_nothing(db, a):
 ])
 def test_the_drift_guard_refuses_a_body_a_check_or_a_column_that_is_not_its_own(db, tamper, message):
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0244(c)  # 0244 replaces 0215's two film starts, which 0215's guard and rollback refuse: off first, in this rolled-back transaction
         c.execute(tamper)
         with pytest.raises(psycopg.Error) as e:
             c.execute(MIGRATION.read_text(encoding="utf-8"))
@@ -909,12 +911,14 @@ def test_the_rollback_refuses_while_a_resume_is_open_then_puts_the_earlier_bodie
     fid, _seg = paused(db, a)
     out = resumed(db, a, fid)
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0244(c)  # 0244 replaces 0215's two film starts, which 0215's guard and rollback refuse: off first, in this rolled-back transaction
         with pytest.raises(psycopg.Error) as e:
             c.execute(_rollback_text())
         assert "resume segment(s) are open" in str(e.value)
         c.rollback()
     finish(db, a, out["id"])
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0244(c)  # 0244 replaces 0215's two film starts, which 0215's guard and rollback refuse: off first, in this rolled-back transaction
         c.execute(_rollback_text())
         for sig, was in (("public.film_read(uuid)", "92f02292981b366f817bd37881e20a0f"),
                          ("public.archive_film(uuid)", "9ca4e793fd81bbd4a0aecdebd59d6dc6"),

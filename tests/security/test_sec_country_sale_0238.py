@@ -122,6 +122,7 @@ def test_a_sync_that_drops_the_allow_list_on_sale_is_refused_whole(conn, sc):
 
 def test_the_file_refuses_a_gate_that_is_not_0230s(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0244(s)  # 0244 sits on 0230's gate, which 0238 asks for: off first, in this rolled-back transaction
         s.conn.execute(body(RB0230))                                   # 0208's gate body back
         out = s.run(MIGRATION.read_text(encoding="utf-8"))
         assert not out.ok and "0238 found a creative_jobs_geo_gate() that is not 0230's body" in out.error, out
@@ -130,6 +131,7 @@ def test_the_file_refuses_a_gate_that_is_not_0230s(conn, sc):
 
 def test_the_file_refuses_0230s_body_with_a_line_swallowed_or_a_comment_changed(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0244(s)  # 0244 sits on 0230's gate, which 0238 asks for: off first, in this rolled-back transaction
         src = s.value("select prosrc from pg_proc where oid = %s::regprocedure", [GATE])
         start = src.index("  -- A list of any other shape")
         end = src.index("  -- 0230 (BR-S6-04)")
@@ -147,6 +149,7 @@ def test_the_file_refuses_0230s_body_with_a_line_swallowed_or_a_comment_changed(
 
 def test_the_file_refuses_a_disabled_or_missing_trigger(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0244(s)  # 0244 sits on 0230's gate, which 0238 asks for: off first, in this rolled-back transaction
         s.conn.execute("alter table public.creative_jobs disable trigger creative_jobs_geo_gate")
         out = s.run(MIGRATION.read_text(encoding="utf-8"))
         assert not out.ok and "no enabled BEFORE INSERT OR UPDATE row trigger" in out.error, out
@@ -163,6 +166,7 @@ def test_the_file_refuses_a_disabled_or_missing_trigger(conn, sc):
 
 def test_the_file_refuses_without_the_gate_or_with_another_claim_reader(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0244(s)  # 0244 sits on 0230's gate, which 0238 asks for: off first, in this rolled-back transaction
         src = s.value("select prosrc from pg_proc where oid = 'public.geo_claim_country()'::regprocedure")
         s.conn.execute("create or replace function public.geo_claim_country() returns text language plpgsql stable "
                        "security definer set search_path = public, pg_temp as $body$ begin return 'UZ'; end $body$")
@@ -170,6 +174,7 @@ def test_the_file_refuses_without_the_gate_or_with_another_claim_reader(conn, sc
         assert not out.ok and "0238 found a geo_claim_country()" in out.error, out
         assert src
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0244(s)  # 0244 sits on 0230's gate, which 0238 asks for: off first, in this rolled-back transaction
         s.conn.execute("drop trigger creative_jobs_geo_gate on public.creative_jobs")
         s.conn.execute("drop function public.creative_jobs_geo_gate()")
         out = s.run(MIGRATION.read_text(encoding="utf-8"))
@@ -178,6 +183,7 @@ def test_the_file_refuses_without_the_gate_or_with_another_claim_reader(conn, sc
 
 def test_the_file_names_a_deny_list_only_row_already_on_sale(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0244(s)  # 0244 sits on 0230's gate, which 0238 asks for: off first, in this rolled-back transaction
         s.conn.execute(body(RB0142))                                   # no CHECK at all: the sync goes through
         assert sync(s, sold_spec=DENY_ONLY).ok
         become(s, None)
@@ -193,6 +199,7 @@ def test_the_file_names_a_deny_list_only_row_already_on_sale(conn, sc):
 
 def test_a_replay_changes_nothing(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0244(s)  # 0244 sits on 0230's gate, which 0238 asks for: off first, in this rolled-back transaction
         q = ("select conname, pg_get_constraintdef(oid), convalidated from pg_constraint "
              "where conrelid = 'public.model_registry'::regclass order by conname")
         before = s.rows(q)
@@ -204,6 +211,7 @@ def test_a_replay_changes_nothing(conn, sc):
 
 def test_the_rollback_puts_0142s_exact_check_back(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0244(s)  # 0244 sits on 0230's gate, which 0238 asks for: off first, in this rolled-back transaction
         s.conn.execute(M0142.read_text(encoding="utf-8"))             # a replay of 0142 is 0142's definition
         d142 = the_check(s)
         s.conn.execute(MIGRATION.read_text(encoding="utf-8"))
@@ -243,6 +251,7 @@ def test_the_rollback_refuses_while_a_listed_row_is_on_sale(conn, sc):
 
 def test_the_gates_rollbacks_refuse_while_a_listed_row_is_on_sale(conn, sc):
     with as_superuser(conn, commit=False) as s:
+        sec_db.take_off_0244(s)  # 0244 sits on 0230's gate, which 0238 asks for: off first, in this rolled-back transaction
         off_sale_with(s, BOTH)
         assert put_on_sale(s, sc.operator).ok
         become(s, None)
@@ -263,14 +272,15 @@ def test_the_gates_rollbacks_refuse_while_a_listed_row_is_on_sale(conn, sc):
 def test_the_lab_chain_puts_0238_back_after_0230(conn, sc):
     for name in ("ON_0156", "ON_0139", "ON_0125", "ON_0124"):
         seq = list(getattr(sec_db, name))
-        assert seq[-1] == MIGRATION.name, name
+        # 0244 (which sits on 0230's gate) is the only file after 0238.
+        assert seq[-2:] == [MIGRATION.name, sec_db.MIGRATION_0244.name], name
         assert seq.index(M0230.name) < seq.index(MIGRATION.name), name
     with as_superuser(conn, commit=False) as s:
         sec_db.take_off_0208(s)                                        # 0238's rollback first, then the gate goes
         assert not sec_db.has_0238(s)
         assert s.value("select to_regprocedure(%s) is null", [GATE])
-        sec_db.put_back_0208(s)                                        # 0208, 0230, then 0238 again
-        assert sec_db.has_0238(s)
+        sec_db.put_back_0208(s)                                        # 0208, 0230, then 0238 again (and 0244)
+        assert sec_db.has_0238(s) and sec_db.has_0244(s)
         assert re.search(r"available_countries", the_check(s)[0][0])
 
 

@@ -266,6 +266,7 @@ def _gate_md5(c):
 
 def test_drift_guard_refuses_a_gate_body_nobody_read(db):
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0244(c)  # 0244 replaces 0230's gate, which 0230's guard and rollback refuse: off first, in this rolled-back transaction
         c.execute(_rollback())
         c.execute("create or replace function public.creative_jobs_geo_gate() returns trigger language plpgsql security definer "
                   "set search_path = public, pg_temp as $$ begin return new; end $$")
@@ -279,6 +280,7 @@ def test_drift_guard_refuses_a_gate_whose_comment_swallowed_a_refusal(db):
     # BR-S6-05: 0208's body with the claim refusal folded onto the comment line above it hashes to 0208's folded md5, and has no
     # claim check. 0230's fingerprint cuts comments before folding, so it is "a body nobody read".
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0244(c)  # 0244 replaces 0230's gate, which 0230's guard and rollback refuse: off first, in this rolled-back transaction
         c.execute(_rollback())
         src = c.execute("select prosrc from pg_proc where oid = %s::regprocedure", [GATE_SIG]).fetchone()[0]
         start = src.index("  -- A model with a country list")
@@ -305,6 +307,7 @@ def test_drift_guard_refuses_without_0208(db):
 
 def test_rollback_and_replay(db):
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0244(c)  # 0244 replaces 0230's gate, which 0230's guard and rollback refuse: off first, in this rolled-back transaction
         after = _gate_md5(c)
         assert after != GATE_0208
         c.execute(_migration())                                 # a replay changes nothing
@@ -321,6 +324,7 @@ def test_rollback_and_replay(db):
 def test_after_the_rollback_the_finding_is_back(db):
     # The rollback is a real undo: with 0208's body back, EU is a job again (which is why 0230 exists).
     with psycopg.connect(db.dsn, autocommit=False) as c:
+        sec_db.take_off_0244(c)  # 0244 replaces 0230's gate, which 0230's guard and rollback refuse: off first, in this rolled-back transaction
         c.execute(_rollback())
         c.execute("select set_config('request.jwt.claims', %s, true)", [claims("authenticated", U_A)])
         c.execute("select set_config('request.headers', %s, true)", [json.dumps({"x-nightshift-geo": sign("EU")})])

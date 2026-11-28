@@ -396,6 +396,8 @@ ON_0156 = (*(f for f in ON_0156 if f != "0228_music_per_request_price.sql"), "02
 ON_0156 = (*(f for f in ON_0156 if f != "0230_geo_gate_allow_list.sql"), "0230_geo_gate_allow_list.sql")
 #: 0238 (a country-listed row with an allow-list may go on sale) refuses to apply unless 0230's gate is live: after 0230, last.
 ON_0156 = (*ON_0156, "0238_country_list_sale_needs_allow_list.sql")
+#: 0244 (a film take and a workflow step carry their start's country) replaces 0230's gate and refuses to apply without it: last.
+ON_0156 = (*ON_0156, "0244_geo_claim_carry.sql")
 ON_0155 = (MIGRATION_0156.name, *ON_0156)
 #: Migrations written on 0153's creative_price (or on one that is), which refuse to apply without it: a sequence that leaves 0153 out
 #: leaves these out too, in this order.
@@ -444,6 +446,9 @@ ON_0139 = (*(f for f in ON_0139 if f != "0230_geo_gate_allow_list.sql"), "0230_g
 ON_0139 = (*ON_0139, "0231_cancel_audit.sql")
 #: 0238 asks for 0230's gate: after 0230, last (ON_0156's copy moved here).
 ON_0139 = (*(f for f in ON_0139 if f != "0238_country_list_sale_needs_allow_list.sql"), "0238_country_list_sale_needs_allow_list.sql")
+#: 0244 sits on 0230's gate, 0215's two film starts, 0198's film_take_job and 0226's start_workflow_run, and asks for 0231's step
+#: key: after all of them, last (ON_0156's copy moved here).
+ON_0139 = (*(f for f in ON_0139 if f != "0244_geo_claim_carry.sql"), "0244_geo_claim_carry.sql")
 #: Migrations written on 0125's bodies (or on one that is), which refuse to apply without it: a sequence that leaves 0125 out leaves
 #: these out too, in this order.
 ON_0125 = (MIGRATION_0139.name, *ON_0139)
@@ -475,7 +480,9 @@ ON_0124 = ("0151_model_probe_seconds.sql", "0162_api_creative_models.sql", "0164
            # 0230 replaces 0208's creative_jobs_geo_gate and refuses to apply without 0208: out and back with it.
            "0230_geo_gate_allow_list.sql",
            # 0238 refuses to apply unless 0230's gate is live: out and back with it, last.
-           "0238_country_list_sale_needs_allow_list.sql")
+           "0238_country_list_sale_needs_allow_list.sql",
+           # 0244 sits on 0230's gate and 0198's, 0215's and 0226's film and workflow bodies: out and back with them, last.
+           "0244_geo_claim_carry.sql")
 
 #: 0165 (the referral programme) replaces friend_invite_pay_locked() and my_friend_invite() on 0092's bodies; its guard accepts
 #: 0092's body or its own, so a test that replays 0092 puts 0165 back on afterwards (test_sec_friend_invites.py). It names
@@ -719,6 +726,7 @@ def take_off_0208(conn_or_session) -> None:
     reroute_creative_job() on 0196's, and their replays and rollbacks refuse any other body: taken off first with its own rollback,
     put back with put_back_0208."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0244(conn)  # 0244 replaces 0230's gate (on 0208's) and calls 0208's claim reader, which this rollback drops: off first
     take_off_0238(conn)  # 0238's CHECK lets a country-listed row on sale only behind the gate this rollback drops: off first
     take_off_0218(conn)
     conn.execute(rollback_0208_body())
@@ -748,6 +756,7 @@ def put_back_0230(conn_or_session) -> None:
     if _md5_of(conn, "public.creative_jobs_geo_gate()") == GEO_GATE_0208:
         conn.execute(MIGRATION_0230.read_text(encoding="utf-8"))
     put_back_0238(conn)
+    put_back_0244(conn)
 
 
 MIGRATION_0238 = MIGRATIONS / "0238_country_list_sale_needs_allow_list.sql"
@@ -1369,6 +1378,7 @@ def take_off_0226(conn_or_session) -> None:
     whose bodies it replaced, refuse while it is on, and 0215's rollback drops what it calls: take_off_0215 takes it off first
     (take_off_0198, take_off_0192, take_off_0187 and take_off_0171 reach it through it), and so do the take-offs of the other files."""
     conn = getattr(conn_or_session, "conn", conn_or_session)
+    take_off_0244(conn)  # 0244 replaces 0226's start_workflow_run (and 0215's film starts), which 0226's guard and rollback refuse
     take_off_0231(conn)  # 0231 asks for 0226's cancel_workflow_run: off first
     take_off_0232(conn)  # 0232 sits on 0226's ai_chat_reserve_turn and ai_chat_plan_end, which 0226's guard and rollback refuse
     if has_0226(conn):
@@ -1389,6 +1399,7 @@ def put_back_0226(conn_or_session) -> None:
         conn.execute(MIGRATION_0226.read_text(encoding="utf-8"))
     put_back_0231(conn)
     put_back_0232(conn)
+    put_back_0244(conn)
 
 
 MIGRATION_0231 = MIGRATIONS / "0231_cancel_audit.sql"
@@ -1478,6 +1489,77 @@ def put_back_0232(conn_or_session) -> None:
 
 #: What take_off_0232 found in the film lease table, by database (a take-off and its put-back may use two connections).
 _STASH_0232: dict = {}
+
+
+MIGRATION_0244 = MIGRATIONS / "0244_geo_claim_carry.sql"
+ROLLBACK_0244 = REPO / "docs" / "sql" / "rollback_0244_geo_claim_carry.sql"
+#: 0230's fingerprint (md5 of prosrc with `--` comments cut, then white space folded), the way 0244's guard and rollback read it.
+CUT_MD5 = ("select md5(regexp_replace(regexp_replace(prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', "
+           "'g')) from pg_proc where oid = to_regprocedure(%s)")
+#: The five bodies 0244 replaces: signature, the earlier body's fingerprint, 0244's.
+BODIES_0244 = (
+    ("public.start_film(uuid, text, text)", "4aa8012b7eca6329a0030396bcce92c6", "c74f5b0b9801a28bd12880daf9aee0a2"),
+    ("public.start_film_resume(uuid, text, text)", "4c8892ce1e05a8a547697138c603c118", "192f2cb98924afcc3e99eed13b9536a8"),
+    ("public.film_take_job(uuid, text)", "19a8f09549092d04cdf7af1de227f209", "2fd626ca8e92c9d83069c870b1875bc2"),
+    ("public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)", "b0a9e7fbe96d4ce89ad98698e75ff001",
+     "5004bc19dba5249a2573f4dc0fea1980"),
+    ("public.creative_jobs_geo_gate()", "6a7b6f2b075c4775ee83808932f88bd0", "9168636478a1cbeb1a4de2ff50afaae0"),
+)
+
+#: The same five bodies of 0244, white space folded only (the way the earlier files' own guards and their labs read a body).
+FOLDED_0244 = {
+    "public.start_film(uuid, text, text)": "6d349217df4b2c6603dfbc2f6554da0a",
+    "public.start_film_resume(uuid, text, text)": "24102dfae2c4ff76fb25d203d1e45d63",
+    "public.film_take_job(uuid, text)": "2c9726302a1e9a71a10bc0e50d5aedfd",
+    "public.start_workflow_run(uuid, uuid, integer, jsonb, numeric)": "42fe869f91544e4a6a9b9aabb7eb0d8d",
+    "public.creative_jobs_geo_gate()": "ad88abf3ef2c71bc0817e7dfb9db3acc",
+}
+
+
+def _cut_md5(conn, sig):
+    row = conn.execute(CUT_MD5, [sig]).fetchone()
+    return row[0] if row else None
+
+
+def has_0244(conn_or_session) -> bool:
+    """Any of the five bodies is 0244's, or its table is there. Not all: a replay of 0198, 0073 or 0208 silently puts one body back and
+    leaves the rest, which still has to come off before an earlier rollback runs."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if conn.execute("select to_regclass('public.creative_geo_carry') is not null").fetchone()[0]:
+        return True
+    return any(_cut_md5(conn, sig) == now_ for sig, _was, now_ in BODIES_0244)
+
+
+def rollback_0244_body() -> str:
+    text = ROLLBACK_0244.read_text(encoding="utf-8")
+    return "\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;"))
+
+
+def take_off_0244(conn_or_session) -> None:
+    """0244 (a film take and a workflow step carry the country their start verified) replaces 0230's gate, 0215's start_film and
+    start_film_resume, 0198's film_take_job and 0226's start_workflow_run, whose files' guards and rollbacks refuse its bodies:
+    take_off_0226 (and so take_off_0215, take_off_0198, take_off_0192 ...) and take_off_0208 take it off first. Its rollback takes each
+    body as 0244's or the earlier one, so a mix (one earlier file replayed) comes off too; a gate replaced by a replay of 0208 is made
+    0230's first (0244's rollback asks for 0230's or its own)."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    if not has_0244(conn):
+        return
+    if _md5_of(conn, "public.creative_jobs_geo_gate()") == GEO_GATE_0208:
+        conn.execute(MIGRATION_0230.read_text(encoding="utf-8"))
+    conn.execute(rollback_0244_body())
+
+
+def put_back_0244(conn_or_session) -> None:
+    """0244 again, when its guard would take it and it is not wholly on: each of the five bodies 0244's or the earlier one, 0231's
+    step key in place. A mix (0230 put back under 0244's film bodies by put_back_0208) is completed the same way."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    live = [(_cut_md5(conn, sig), was, now_) for sig, was, now_ in BODIES_0244]
+    if not all(h in (was, now_) for h, was, now_ in live) or all(h == now_ for h, _was, now_ in live):
+        return
+    if not conn.execute("select coalesce((select position('nightshift.workflow_step_key' in prosrc) > 0 from pg_proc "
+                        "where oid = to_regprocedure('public.workflow_advance_locked(uuid, boolean)')), false)").fetchone()[0]:
+        return
+    conn.execute(MIGRATION_0244.read_text(encoding="utf-8"))
 
 
 class SimpleSession:

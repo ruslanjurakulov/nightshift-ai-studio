@@ -172,9 +172,17 @@ class Body(unittest.TestCase):
         self.assertNotRegex(CODE, r"(?i)\b(create table|alter table|drop |insert into|update public|delete from)")
 
     def test_no_later_migration_replaces_the_gate(self):
-        later = [p.name for p in MIG.glob("*.sql") if p.name > "0209" and p.name != "0230_geo_gate_allow_list.sql"
+        # 0244 (a film take and a workflow step carry their start's country) replaces it on 0230's body: its own guard asks for
+        # 0230's fingerprint and its rollback writes 0230's body back, so 0230's replay and rollback refuse 0244's body loudly (a merged
+        # file is never edited to accept a later one) and the lab takes 0244 off first. Any other later file needs the same review.
+        reviewed = ("0230_geo_gate_allow_list.sql", "0244_geo_claim_carry.sql")
+        later = [p.name for p in MIG.glob("*.sql") if p.name > "0209" and p.name not in reviewed
                  and "function public.creative_jobs_geo_gate()" in p.read_text(encoding="utf-8")]
         self.assertEqual(later, [], "a later body of the gate needs its md5 in 0230's guard and the rollback")
+        m0244 = (MIG / "0244_geo_claim_carry.sql").read_text(encoding="utf-8")
+        rb0244 = (MIG.parent.parent / "docs" / "sql" / "rollback_0244_geo_claim_carry.sql").read_text(encoding="utf-8")
+        self.assertIn("'public.creative_jobs_geo_gate()', '6a7b6f2b075c4775ee83808932f88bd0'", m0244)
+        self.assertIn(gate(NEW_TEXT), rb0244)
 
 
 class Registry(unittest.TestCase):

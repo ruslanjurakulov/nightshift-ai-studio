@@ -3134,6 +3134,51 @@ longer delete a draft saved before 0234.
   rolled-back transaction), `command-center/tests/agent-builder-operator-gate.test.tsx`, `agent-drafts-route.test.ts` and
   `security-agent-builder-gate-breach.test.tsx`.
 
+## A film take and a workflow step carry the country their start verified (0244)
+
+0244 (`0244_geo_claim_carry.sql`, stream S10) lets a film or a workflow on a model with a country list (every Google row) run.
+0208 and 0230's `creative_jobs_geo_gate` trusts only `geo_claim_country()`, the claim our web server signs into the visitor's own
+request. A Film Studio take's job is written by the film worker (`film_take_job`, service key) and a later workflow step at an advance
+(`workflow_advance_locked`, the worker's poll or another member's page): neither carries a visitor's claim, so each was refused
+`country_unverified`, after the start had held the money. Measured in the lab before the change: the take raised
+`country_unverified`, step 2 failed `country_unverified`, and a start with no claim or an RU claim was accepted and held.
+
+- **Recorded at the start.** `start_film`, `start_film_resume` and `start_workflow_run` read `geo_claim_country()` once, in the
+  starter's own request, and write the answer (never a parameter, an input or a JSON field) into the new closed table
+  `creative_geo_carry`: one row per film segment or workflow run, the country, `recorded_at` and `recorded_by`. Row security on, no
+  policy, nothing granted to anon, authenticated or service_role; a trigger refuses every UPDATE. No claim, no row.
+- **Refused at the start, by name.** Every model in the plan is asked `creative_geo_refusal(model, country)`, 0230's allow and
+  block rule moved out of the gate (the same words and sentences; the gate asks the same function). The film starts do so right after
+  their re-pricing (`film_price`, `film_resume_price`) and return `{ok: false, reason: country_unverified | country_blocked, code:
+  NS400}` before the rights acknowledgement and the hold (counted, like every refusal after the count). `start_workflow_run` raises it,
+  the step named, right after the adult gate, before the account is read. `film_price` and `film_precheck` (stream S2's) are not
+  touched.
+- **Carried, and only so far.** The gate, on INSERT, asks `creative_geo_carried(new)` first. A take's job carries its segment's
+  country only while `film_take_job` names that take in `nightshift.geo_carry_take` for its one insert, for a running take with no job
+  yet, of the row's model, of a running or draining segment, before `film_segments.deadline_at` (the 20 hours `film_claim_segment`
+  gives it). A step's job carries its run's country only while `workflow_advance_locked` names the step's key in 0231's
+  `nightshift.workflow_step_key`, for that pending step of a running run, made as its starter, within 24 hours of the run's start (the
+  bound at which `workflow_advance_locked` ends a run: `confirmation_expired`). Every other row, and a model change (failover), reads
+  the request's own claim, as before: the API, MCP and a direct `create_creative_job` are still refused.
+- **Replaces** (0230's fingerprint: `--` comments cut, then white space folded; the earlier body or 0244's own): `start_film` and
+  `start_film_resume` (0215's), `film_take_job` (0198's), `start_workflow_run` (0226's), `creative_jobs_geo_gate` (0230's); the md5s
+  are in the file's header. Checks, not changed: `geo_claim_country` is 0208's body; `workflow_advance_locked` and
+  `create_creative_job` carry 0231's step key. Grants restated and asserted (starts: authenticated; `film_take_job`: service_role;
+  the gate and the three new functions: no API role). Every function is SECURITY DEFINER, owned by postgres, `search_path` pinned.
+  No backslash in the file or its rollback.
+- **Replay.** The file replays onto itself (each body is asked on its own). Re-running 0215, 0226, 0230 or 0238 after it fails
+  loudly; re-running 0198, 0073 or 0208 silently puts one older body back (fails closed: the take or step is refused as before 0244):
+  apply 0230 and 0244 again. `rollback_0215`, `rollback_0226` and `rollback_0230` refuse while 0244's bodies are live (the lab's
+  `take_off_0226` and `take_off_0208` take 0244 off first; `put_back_0226` and `put_back_0230` put it back).
+- **The app.** The workflow routes already send the claim (Run now, advance). The film start route does not yet: until it does, a film
+  on a gated model is refused `country_unverified` at the start, with nothing held. Follow-up.
+- **Number.** 0244, S10 (0243 is S10's `creative_price`, a separate PR; 0240 is reserved by S2). Needs 0036, 0073, 0198, 0208, 0215,
+  0226, 0230, 0231. Independent of S2's 0235, 0236, 0239 and 0241 (none replaces these bodies) and of 0243.
+- **Undo.** `docs/sql/rollback_0244_geo_claim_carry.sql` (owner-applied): refuses a body that is neither 0244's nor the earlier one,
+  puts the five earlier bodies back verbatim with their grants, drops the three functions and the table (its countries had no other
+  reader), asserts the end state. Idempotent.
+- **Tests.** `tests/security/test_sec_geo_claim_carry_0244.py` (a real PostgreSQL; contract `tests/security/sec_geo_claim_carry_0244.py`).
+
 ## Only a member spends a workspace's credits, on every path (0226, provisional)
 
 0226 (`0226_org_spender_everywhere.sql`) applies the owner's decision of 22 Nov, which 0215 applied to the film paths, to every other
