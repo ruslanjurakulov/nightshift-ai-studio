@@ -2,7 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
-import { CHAT_MODELS, chatModelConfigured, isChatModelId, type ChatModelId } from "@/lib/server/brain/llm";
+import { CHAT_MODELS, chatModelConfigured, fakeVendorSeam, isChatModelId, type ChatModelId } from "@/lib/server/brain/llm";
 
 /** Shared pieces of the /api/brain routes: refusals, the owner-chosen model's state, a channel's workspace. */
 
@@ -58,7 +58,8 @@ export function machineReason(message: unknown): string {
   return typeof message === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(message) ? message : "unavailable";
 }
 
-export type ModelState = "available" | "not_on_sale" | "not_configured" | "unknown_model";
+/** fake_vendor_unflagged: the lab's fake-vendor address is set on a server that is not the lab (lib/server/brain/llm fakeVendorSeam). */
+export type ModelState = "available" | "not_on_sale" | "not_configured" | "unknown_model" | "fake_vendor_unflagged";
 
 /**
  * The owner's model from ai_chat_quota's model_ref (md5 of a prefix and the id): a member never reads the id itself (it names the
@@ -75,6 +76,8 @@ export function modelFromRef(ref: unknown): ChatModelId | null {
 /** The owner's chosen model: on sale on the web (sellable_models, describe) AND keyed on this server, or why not. Never another. */
 export async function chosenModelState(supabase: SupabaseClient, model: unknown): Promise<{ ok: true; id: ChatModelId | null; state: ModelState } | { ok: false }> {
   if (!isChatModelId(model)) return { ok: true, id: null, state: "unknown_model" };
+  // Refused by name before the cap or the vendor is touched, on every route that asks for the model (rule 6).
+  if (fakeVendorSeam().state === "refused") return { ok: true, id: null, state: "fake_vendor_unflagged" };
   const { data, error } = await supabase.rpc("sellable_models", { p_capability: "describe", p_surface: "web" });
   if (error) return { ok: false };
   const onSale = ((data ?? []) as { id?: unknown }[]).some((r) => String(r.id) === model);

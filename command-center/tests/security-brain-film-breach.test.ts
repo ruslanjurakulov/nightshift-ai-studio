@@ -233,7 +233,10 @@ vi.mock("@/lib/server/brain/llm", async () => {
 });
 
 const { GET, POST } = await import("@/app/api/brain/film/route");
-const turnRoute = await import("@/app/api/brain/turn/route");
+const turnRouteModule = await import("@/app/api/brain/turn/route");
+// The parity suite (tests/helpers/brainStreamParity): JSON as written, or streamed with end.body read as the answer.
+const { viaMode } = await import("./helpers/brainStreamParity");
+const turnRoute = { POST: (r: Request) => viaMode(turnRouteModule.POST, r) };
 const press = (user = "user-1", id: unknown = FILM, session?: unknown) => who.run(user, () =>
   POST(new Request("https://x/api/brain/film", { method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify(session === undefined ? { film: id } : { film: id, session }) })));

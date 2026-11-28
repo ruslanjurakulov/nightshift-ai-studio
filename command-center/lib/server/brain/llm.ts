@@ -65,7 +65,7 @@ export function isChatModelId(v: unknown): v is ChatModelId {
  */
 export type LlmFailure =
   | "not_configured" | "vendor_auth" | "vendor_quota" | "vendor_rate_limited" | "vendor_refused" | "vendor_error" | "timeout" | "output_too_long"
-  | "vendor_region" | "model_not_found";
+  | "vendor_region" | "model_not_found" | "fake_vendor_unflagged";
 
 export type LlmResult =
   | { ok: true; text: string; tokensIn: number | null; tokensOut: number | null }
@@ -73,6 +73,43 @@ export type LlmResult =
 
 export function chatModelConfigured(id: ChatModelId, keys: ChatKeys = chatKeysFromEnv()): boolean {
   return Boolean(keyFor(id, keys));
+}
+
+/**
+ * The lab's fake vendor (docs/studio/LIVE_CREATION_PLAN.md §3.11): NIGHTSHIFT_AI_FAKE_BASE_URL replaces the three vendors' origins,
+ * so a lab run is driven by a scripted vendor and spends nothing. Honoured ONLY on a server that is also NIGHTSHIFT_AI_LAB=1.
+ *
+ * Set without the lab flag, it is a production server pointed at somewhere that is not the vendor: every call is refused by name
+ * ("fake_vendor_unflagged") before anything is sent anywhere, and it is never silently ignored either (a variable that "does
+ * nothing" here would be read as the lab working). The routes refuse the same way before any turn is reserved (chosenModelState).
+ */
+export type FakeVendorSeam = { state: "off" } | { state: "lab"; base: string } | { state: "refused" };
+
+/** Read by literal names, as every server env read is (tests/test_deploy_self_host.py). */
+export function fakeVendorEnv(): Record<string, string | undefined> {
+  return { NIGHTSHIFT_AI_LAB: process.env.NIGHTSHIFT_AI_LAB, NIGHTSHIFT_AI_FAKE_BASE_URL: process.env.NIGHTSHIFT_AI_FAKE_BASE_URL };
+}
+
+export function fakeVendorSeam(env: Record<string, string | undefined> = fakeVendorEnv()): FakeVendorSeam {
+  const raw = (env.NIGHTSHIFT_AI_FAKE_BASE_URL ?? "").trim();
+  if (!raw) return { state: "off" };
+  if ((env.NIGHTSHIFT_AI_LAB ?? "").trim() !== "1") return { state: "refused" };
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return { state: "refused" };
+  }
+  // A user, a password or a query would ride along on every call (and into whatever logs the fake keeps): only a plain base.
+  if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password || url.search || url.hash) return { state: "refused" };
+  return { state: "lab", base: url.toString().replace(/\/+$/, "") };
+}
+
+/** A vendor URL as the lab's fake serves it: `{base}/{provider}{path}`, e.g. `{base}/anthropic/v1/messages`. */
+function viaSeam(url: string, provider: ChatProvider, seam: FakeVendorSeam): string {
+  if (seam.state !== "lab") return url;
+  const u = new URL(url);
+  return `${seam.base}/${provider}${u.pathname}`;
 }
 
 /** A question card is short; two or three whole scenarios (ru and uz run longer than en) are not (Lens on 0199: 1600 cut them off). */
@@ -154,6 +191,8 @@ export async function callChatModel(
   } = {},
 ): Promise<LlmResult> {
   const wire = CHAT_MODELS[id];
+  const seam = fakeVendorSeam();
+  if (seam.state === "refused") return { ok: false, error: "fake_vendor_unflagged", tokensIn: null, tokensOut: null };
   const key = keyFor(id, opts.keys ?? chatKeysFromEnv());
   if (!key) return { ok: false, error: "not_configured", tokensIn: null, tokensOut: null };
   const doFetch = opts.fetchImpl ?? fetch;
@@ -210,7 +249,7 @@ export async function callChatModel(
             },
           };
     // redirect "error": a 3xx would carry the key to wherever it points.
-    const res = await doFetch(req.url, { method: "POST", headers: req.headers, body: JSON.stringify(req.body), signal: ctl.signal, redirect: "error", cache: "no-store" });
+    const res = await doFetch(viaSeam(req.url, wire.provider, seam), { method: "POST", headers: req.headers, body: JSON.stringify(req.body), signal: ctl.signal, redirect: "error", cache: "no-store" });
     const raw = await res.text();
     if (!res.ok) {
       const body = raw.slice(0, 2000);

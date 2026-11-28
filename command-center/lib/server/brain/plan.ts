@@ -5,6 +5,7 @@ import { PLAN, mergePlan, outlineText, planRequestId, planWindows, readWindow, r
 import { PLAN_SYSTEM_PROMPT, planDataBlock } from "@/lib/brain/prompt";
 import { PLAN_CALL_TIMEOUT_MS, callChatModel, type ChatModelId } from "@/lib/server/brain/llm";
 import { brainJson, dbRefusal } from "@/lib/server/brain/session";
+import type { StreamWindowPart } from "@/lib/brain/stream-events";
 
 /**
  * The plan step's calls (S1_GAPS G2): a chosen short outline's storyboard, written window by window by the owner's model, each call
@@ -58,6 +59,19 @@ export interface PlanRun {
   /** How a scene may be heard in this film today (lib/brain/logic speechAllowed, from the film's own voice): told to every call and
    *  checked on every answer. Absent = what a film with no quotable voice can be: wordless. */
   speechAllowed?: readonly SceneSpeech[];
+  /** The plan is begun: its windows are known (the stream's `plan.begun`). Observation only: nothing it does changes the plan. */
+  onBegun?: (plan: { windows: number; chapters: number }) => void;
+  /** One window passed every check and its turn was finished `ok` (the stream's `plan.window`). Observation only, as onBegun. */
+  onWindow?: (w: { n: number; of: number; parts: StreamWindowPart[] }) => void;
+}
+
+/** A listener's own failure (a stream that is gone) never reaches the plan: the plan's outcome is the database's, not the socket's. */
+function observe(f: () => void) {
+  try {
+    f();
+  } catch {
+    // Dropped on purpose (LIVE_CREATION_PLAN §3.2).
+  }
 }
 
 export type PlanResult = { ok: true; scenario: Scenario; quota: Quota | null } | { ok: false; res: Response; reason: string };
@@ -83,6 +97,7 @@ const UNCHARGED = new Set(["not_sent", "not_configured", "vendor_refused", "refu
 export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
   const windows = planWindows(run.outline, run.limits);
   if (!windows) return { ok: false, res: brainJson({ error: "plan_failed", reason: "not_plannable", step: null }, 409), reason: "not_plannable" };
+  observe(() => run.onBegun?.({ windows: windows.length, chapters: run.outline.chapters.length }));
   const now = run.now ?? Date.now;
   const started = run.startedAt ?? now();
   const refs = refsOf(run.outline);
@@ -200,8 +215,14 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
         break;
       }
       const step = await runWindow(w);
-      if (step.ok) answers[w.n - 1] = step.parts;
-      else {
+      if (step.ok) {
+        answers[w.n - 1] = step.parts;
+        // After the window's checks, its re-ask and its finished turn: a window is never shown that the plan could still refuse
+        // on its own. (A later window can still fail the whole plan; `end` says so, and the panel drops what it was shown.)
+        const parts = step.parts;
+        observe(() => run.onWindow?.({ n: w.n, of: windows.length,
+          parts: w.parts.map((p, i) => ({ chapter_id: p.chapter_id, chapter_n: p.chapter_n, title: p.title, part: p.part, parts: p.parts, scenes: parts[i] ?? [] })) }));
+      } else {
         if (step.kind !== "skipped") failures.push({ w, step });
         // One failed chapter fails the plan: nothing more is reserved; calls already running finish and are recorded.
         stop = true;

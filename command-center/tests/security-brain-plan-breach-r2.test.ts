@@ -165,7 +165,10 @@ vi.mock("@/lib/server/brain/llm", async () => {
   };
 });
 
-const { POST } = await import("@/app/api/brain/turn/route");
+const { POST: routePost } = await import("@/app/api/brain/turn/route");
+// The parity suite (tests/helpers/brainStreamParity): JSON as written, or streamed with end.body read as the answer.
+const { viaMode } = await import("./helpers/brainStreamParity");
+const POST = (r: Request) => viaMode(routePost, r);
 const post = (body: unknown) => POST(new Request("https://x/api/brain/turn", {
   method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
 const choose = (rid: string, body: Record<string, unknown> = {}) => post({ action: "choose", session: SESSION, index: 0, request_id: rid, ...body });

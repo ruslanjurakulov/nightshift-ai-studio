@@ -19,6 +19,8 @@ import { coerceQuote, type FilmQuote } from "@/lib/studio/timeline";
 import { pluralForm } from "@/lib/plural";
 // The gate's client-safe vocabulary (#898): the codes and their remedies are the gate's own, never retyped here.
 import { CHAT_GATE_REMEDY, isChatGateError, type ChatGateRemedy, type ChatGateVerdict } from "@/lib/brain/chat-gate";
+import { BrainStreamCut, readBrainAnswer, type BrainPhase, type BrainStreamEvent, type StreamWindowPart } from "@/lib/brain/stream-events";
+import { dispatchBrainCanvas } from "@/lib/brain/canvas-events";
 import "./nightshift-ai-panel.css";
 
 /**
@@ -67,6 +69,18 @@ const gateRemedy = (e: unknown): GateRemedy | null => {
 type Problem = { text: string; retry: (() => void) | null; code?: string; action?: { href: string; label: string } | null;
                  /** The press's own words when they are not "Try again" ("Check again": nothing is re-sent but a question). */
                  retryLabel?: string } | null;
+/** A streamed press so far: the last real phase, the plan's size once begun, and every part of every window that passed its checks. */
+type LivePlan = { phase: BrainPhase | null; chapters: number; windows: number; arrived: number; parts: StreamWindowPart[] };
+const NO_LIVE: LivePlan = { phase: null, chapters: 0, windows: 0, arrived: 0, parts: [] };
+/** The chapters whose every part has arrived, in story order: a chapter split across two windows is written once both are. */
+function writtenChapters(l: LivePlan): { n: number; title: string; scenes: StreamWindowPart["scenes"] }[] {
+  const by = new Map<number, StreamWindowPart[]>();
+  for (const p of l.parts) by.set(p.chapter_n, [...(by.get(p.chapter_n) ?? []), p]);
+  return [...by.entries()]
+    .filter(([, ps]) => new Set(ps.map((p) => p.part)).size === ps[0].parts)
+    .sort(([a], [b]) => a - b)
+    .map(([n, ps]) => ({ n, title: ps[0].title, scenes: [...ps].sort((a, b) => a.part - b.part).flatMap((p) => p.scenes) }));
+}
 /** The server's choice of models for the draft (app/api/brain/turn `models`), by name; a role with none on sale is null. */
 type FilmModels = { clip: { id: string; name: string } | null; keyframe: { id: string; name: string } | null };
 function readModels(v: unknown): FilmModels | null {
@@ -239,6 +253,13 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   const [planning, setPlanning] = useState(false);
   /** The plan being waited on is another tab's (0211's plan_running), said in its own words rather than "writing". */
   const [planOther, setPlanOther] = useState(false);
+  /** What a streamed press has delivered so far (LIVE_CREATION_PLAN §3.5): real phases and checked windows only, dropped at `end`. */
+  const [live, setLiveState] = useState<LivePlan | null>(null);
+  const liveRef = useRef<LivePlan | null>(null);
+  const setLive = (l: LivePlan | null) => {
+    liveRef.current = l;
+    setLiveState(l);
+  };
   /** Aborted when the panel unmounts: a wait started by a press (choose) stops with it, never polls a closed panel (Lens M2). */
   const life = useRef<AbortController | null>(null);
   useEffect(() => {
@@ -268,7 +289,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
 
   const announce = useCallback((sid: string, b: Brief | null) => {
     if (typeof window === "undefined") return;
-    window.dispatchEvent(new CustomEvent("nightshift:brain-brief", { detail: { session_id: sid, updated_at: new Date().toISOString() } }));
+    dispatchBrainCanvas({ kind: "brief", detail: { session_id: sid, updated_at: new Date().toISOString() } });
     const u = new URL(window.location.href);
     if (u.searchParams.get("brain") !== sid) {
       u.searchParams.set("brain", sid);
@@ -592,9 +613,30 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     </div>
   );
 
+  /** One stream event: the panel's own live plan, and the same real event re-sent to the canvas (lib/brain/canvas-events). */
+  const relay = (e: BrainStreamEvent) => {
+    const cur = liveRef.current ?? NO_LIVE;
+    const next: LivePlan | null = e.type === "phase" ? { ...cur, phase: e.phase }
+      : e.type === "plan.begun" ? { ...cur, chapters: e.chapters, windows: e.windows, arrived: 0, parts: [] }
+      : e.type === "plan.window" ? { ...cur, arrived: cur.arrived + 1, parts: [...cur.parts, ...e.parts] }
+      : null;
+    if (!next) return;
+    setLive(next);
+    const sid = sessionRef.current;
+    if (!sid || !next.phase) return;
+    dispatchBrainCanvas({ kind: "activity", detail: { session_id: sid, phase: next.phase,
+      ...(next.windows ? { plan: { windows: next.arrived, of: next.windows, chapters_written: writtenChapters(next).length, chapters: next.chapters } } : {}) } });
+  };
+
   const post = async (body: Record<string, unknown>) => {
-    const res = await fetch("/api/brain/turn", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    const d = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    // Every press asks for the stream; a server with it off answers today's JSON, and readBrainAnswer reads either (§3.1). The
+    // record of a hand-off emits nothing, so it is not asked.
+    const raw = await fetch("/api/brain/turn", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify(body.action === "handoff" ? body : { ...body, stream: true }) });
+    const a = await readBrainAnswer(raw, relay);
+    const res = { ok: a.ok, status: a.status };
+    const d = a.body;
+    if (a.streamed && sessionRef.current) dispatchBrainCanvas({ kind: "activity", detail: { session_id: sessionRef.current, phase: "end" } });
     if (d.quota && typeof d.quota === "object") {
       const q = d.quota as { used: number; limit: number | null; trial_left?: number | null; reserved?: unknown };
       // A turn's own answer says what is held now (0232); without it, what the panel last read stays.
@@ -684,6 +726,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       return false;
     } finally {
       inFlight.current = false;
+      setLive(null);
       setBusy(false);
       // A card's option that was pressed is gone with the card: focus goes back to the box, not to <body> (Pixel P5).
       setTimeout(refocus, 0);
@@ -804,6 +847,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     inFlight.current = true;
     setBusy(true);
     setProblem(null);
+    setLive(null);
     const outline = [...messages].reverse().find((m) => m.role === "assistant")?.scenarios?.[index];
     // Only a short outline with no storyboard yet is written now (lib/server/brain/plan.ts); anything else answers at once.
     const writes = brief?.kind !== "long" && !!outline && !outline.scenes?.length;
@@ -844,10 +888,15 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       setFilm(d.film ? { id: (d.film as { id: string }).id, quote: coerceQuote(d.film_quote), index } : null);
       setModels(readModels(d.models));
       announce(session, d.brief as Brief);
-    } catch {
-      setProblem({ text: c.errors.unavailable, retry: () => void choose(index, rid) });
+    } catch (e) {
+      // The stream was cut before its `end` (a proxy, a phone that slept): the plan goes on on the server (§3.2), so this tab
+      // follows it the way a refresh does, through 0211's lease, instead of saying it failed or pressing again.
+      const p = e instanceof BrainStreamCut ? pendingPlan(session) : null;
+      if (p) waiting = { title: p.title, index: p.index, until: p.at + PLAN_WAIT_MS };
+      else setProblem({ text: c.errors.unavailable, retry: () => void choose(index, rid) });
     } finally {
       inFlight.current = false;
+      setLive(null);
       setPlanning(false);
       setBusy(false);
       setTimeout(refocus, 0);
@@ -1138,10 +1187,43 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     return { id: idFor(p.key), q: p.q, a: p.a, extra };
   });
 
+  /** The storyboard as the stream delivered it: the real chapter count, and each chapter's checked scenes once all its parts
+   *  arrived, labelled "Written" (never a model's raw text, §3.5). Nothing here is chosen or priced: that is `end`'s. */
+  const livePlan = (l: LivePlan) => {
+    const done = writtenChapters(l);
+    const line = l.phase === "pricing" ? c.planPricing
+      : l.phase === "saving" ? c.planSaving
+      : l.chapters > 0 && done.length >= l.chapters ? fmt(c.planAllWritten, { total: l.chapters })
+      : l.chapters > 0 ? fmt(c.planProgress, { n: done.length + 1, total: l.chapters })
+      : null;
+    return (
+      <div className="flex flex-col gap-2" data-live-plan="">
+        {line && <p className="chat-note" aria-live="polite">{line}</p>}
+        {done.map((ch) => (
+          <section key={ch.n} className="flex flex-col gap-1" aria-label={fmt(c.planChapter, { n: ch.n, title: ch.title })}>
+            <p className="text-xs">
+              <span className="font-semibold uppercase tracking-wide text-[var(--color-muted)]">{c.planWritten}</span>{" "}
+              {fmt(c.planChapter, { n: ch.n, title: ch.title })}
+            </p>
+            <ol className="flex list-decimal flex-col gap-1 pl-5 text-xs">
+              {ch.scenes.map((s, i) => (
+                <li key={i}>
+                  {s.title && <span className="font-medium">{s.title}: </span>}
+                  <span className="line-clamp-2 font-mono text-[var(--color-muted)]">{s.visual_prompt}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ))}
+      </div>
+    );
+  };
+
   const notice: ReactNode = problem || planning || (hasTail && turns.length === 0) ? (
     <>
       {hasTail && turns.length === 0 && tail}
       {planning && <p className="chat-note" role="status">{planOther ? c.errors.plan_running : c.planWriting}</p>}
+      {planning && !planOther && live && livePlan(live)}
       {/* After a press: the same block as before one (gateBlock). No ProviderUnavailable: its words name a provider and offer
           another model. */}
       {problem && gateRemedy(problem.code) && gateBlock(gateRemedy(problem.code)!, String(problem.code), problem.retry)}

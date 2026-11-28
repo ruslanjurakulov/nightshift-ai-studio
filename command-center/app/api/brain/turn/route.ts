@@ -54,6 +54,7 @@ import { claimsAuthorship, looksOverLimit, outlineText, planLimits, planTurns, w
 import { brainJson, channelOrg, chosenModelState, dbRefusal, machineReason, modelFromRef, notFound, vendorUser } from "@/lib/server/brain/session";
 import { FILM_PLAN_KEY } from "@/lib/brain/film-plan";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { acceptStream, emit, refreshBeforeStream, streamAllowed, streamEnv, streamable } from "@/lib/server/brain/stream";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -183,6 +184,8 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
   const shortAvailable = open;
   const words = words0;
   called = true;
+  // A real phase, sent as the vendor is called (LIVE_CREATION_PLAN §3.1): also where a streamed turn starts streaming.
+  emit({ type: "phase", phase: "thinking" });
   // Room for two or three whole scenarios on every turn: the answer that fills the last open slot proposes them in the same turn
   // (DATA open_slots / last_open_slot), so the person never has to write again to see them.
   const said = retry ? [...history].reverse().find((m) => m.role === "user")?.content ?? "" : text;
@@ -554,6 +557,18 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
         // A Retry of this same choice after a failed plan: the person's choice is already their last, unanswered message.
         choiceStored: last?.role === "user" && last.content === chosen.title,
         choiceText: chosen.title, outline: chosen, slots, limits, claimNames, speechAllowed: allowed,
+        // The stream's checked units (lib/server/brain/stream): observation only, the plan runs the same with or without a reader.
+        onBegun: (p) => {
+          emit({ type: "phase", phase: "planning" });
+          emit({ type: "plan.begun", windows: p.windows, chapters: p.chapters, at_most: planNeeds?.at_most ?? null, about: planNeeds?.about ?? null });
+        },
+        onWindow: (w) => {
+          // The safety floor below (unsafeBrief) is run on the merged storyboard; a window is shown only if its own words pass it
+          // now, or a refusal would be read on screen before `end` refuses it.
+          const scenes = w.parts.flatMap((p) => p.scenes).map((sc, i) => ({ ...sc, id: `w${w.n}-${i + 1}`, n: i + 1, duration_s: sc.seconds ?? 0 }));
+          if (unsafeBrief({ ...buildBrief(s.id, slots, null, "ready"), scenes })) return;
+          emit({ type: "plan.window", index: w.n - 1, n: w.n, of: w.of, parts: w.parts });
+        },
       });
       if (!run.ok) {
         ending = { state: "failed", reason: run.reason };
@@ -582,6 +597,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     }
     // 5. The storyboard is kept before anything else can fail (Lens M6): a refresh, or a draft save that fails, finds it and choosing
     // again re-reads it without a turn. Unpriced until the quote below says otherwise. Only while this attempt holds the lease.
+    emit({ type: "phase", phase: "saving" });
     if (!(await stillOurs())) return superseded(f.id);
     const kept = await supabase.rpc("ai_chat_save_brief", { p_session: s.id, p_brief: { ...draftBrief, price: { state: "unpriced" } }, p_step: "ready" });
     if (kept.error) return dbRefusal(kept.error) ?? brainJson({ error: "unavailable" }, 503);
@@ -599,6 +615,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     }
     const version = (saved.data as { film?: { version?: number } } | null)?.film?.version ?? v0 + 1;
     // 7. The price.
+    emit({ type: "phase", phase: "pricing" });
     const q = await supabase.rpc("quote_film", { p_film: f.id, p_version: version });
     const quoteRead = q.error ? null : coerceQuote(q.data);
     // 8. The BRIEF with its price, again only while this attempt holds the lease.
@@ -650,7 +667,17 @@ function legacyQuote(quoteRead: ReturnType<typeof coerceQuote>) {
                        refusal: quoteRead.refusal, exempt: quoteRead.exempt } : null;
 }
 
+/**
+ * NDJSON streaming (docs/studio/LIVE_CREATION_PLAN.md §3.1, lib/server/brain/stream.ts). With the switch off this is today's route,
+ * byte for byte, whatever the request asks; with it on, a request that asked for `stream:true` gets the checked units as they land
+ * and today's answer as the last line. The work is the same function either way.
+ */
 export async function POST(request: Request) {
+  if (!streamAllowed(streamEnv())) return answerTurn(request);
+  return streamable(() => answerTurn(request));
+}
+
+async function answerTurn(request: Request) {
   // Off is off: nothing is read, not even the session (Breach on 0199: a 401/403 would say the feature exists).
   if (aiChatMode(aiChatEnv()) === "off") return notFound();
   const cross = rejectCrossOrigin(request);
@@ -666,6 +693,11 @@ export async function POST(request: Request) {
   const requestId = typeof b.request_id === "string" && REQUEST_ID.test(b.request_id) ? b.request_id : null;
   // 0192: someone who said they are under 18 is not served, as on Run now.
   if ((await readAgeState()) === "minor") return brainJson({ error: "adult_only_service" }, 403);
+  // The stream is asked for and allowed: the first event may start it, and the access token is refreshed now, before any byte.
+  if (b.stream === true && streamAllowed(streamEnv())) {
+    await refreshBeforeStream(supabase);
+    acceptStream();
+  }
 
   if (b.action === "start") {
     const channelId = typeof b.channel === "string" && b.channel.trim() ? b.channel.trim() : null;
