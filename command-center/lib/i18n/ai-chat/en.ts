@@ -70,6 +70,7 @@ export const aiChatEn = {
   seePlans: "See plans",
   confirmAge: "Confirm your age",
   openProject: "Open the project",
+  openFilm: "Open the film",
   /** The shared chat shell (components/chat/ChatShell.tsx): the same look as the owner's Nightshift AI. */
   shell: {
     greeting: "Hello, {name}",
@@ -132,6 +133,7 @@ export const aiChatEn = {
     adult_attestation_required: "Confirm that you are 18 or older first. It is asked once, on Create.",
     session_closed: "This plan was already handed off. Press New chat to start another one.",
     card_changed: "That question has changed. Answer the latest one.",
+    film_conversation: "This conversation belongs to a film plan — open the film to continue it there.",
     assistant_unavailable: "Nightshift AI is unavailable right now. Try again later.",
     unavailable: "Nightshift AI could not answer right now. Try again.",
     plan_failed: "The storyboard could not be written: chapter {n} of {total} failed. Nothing was priced. Try again.",

@@ -24,8 +24,18 @@ export async function filmCatalogue(supabase: SupabaseClient): Promise<FilmCatal
   ]);
   if (clip.status !== "ok" || keyframe.status !== "ok" || edit.status !== "ok") return { ok: false };
   const rows = (models: typeof clip.models): OnSaleModel[] =>
-    models.map((m) => ({ id: m.id, name: m.displayName, durations: m.spec.durationsS, maxPromptChars: m.spec.maxPromptChars }));
+    models.map((m) => ({ id: m.id, name: m.displayName, durations: m.spec.durationsS, maxPromptChars: m.spec.maxPromptChars, provider: m.provider }));
   return { ok: true, clip: rows(clip.models), keyframe: rows(keyframe.models), keyframeEdit: rows(edit.models) };
+}
+
+/**
+ * Every model and provider the catalogue sells for a film, by name: what a plan answer may never claim made the film
+ * (lib/brain/plan claimsAuthorship, Breach BR-FILM-04a). Read from the registry, so a model put on sale tomorrow is covered too.
+ */
+export function catalogueClaimNames(catalogue: { clip: OnSaleModel[]; keyframe: OnSaleModel[]; keyframeEdit?: OnSaleModel[] }): string[] {
+  return [...catalogue.clip, ...catalogue.keyframe, ...(catalogue.keyframeEdit ?? [])]
+    .flatMap((m) => [m.name, m.provider ?? ""])
+    .filter((n): n is string => typeof n === "string" && n.trim() !== "");
 }
 
 /**

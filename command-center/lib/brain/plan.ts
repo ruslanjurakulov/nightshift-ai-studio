@@ -13,7 +13,8 @@
  *   - every scene is within the film's 3–30 s, and within what the clip model can make in max_shots shots when that is known;
  *   - scenes are s1..sN in story order, at most 60, and point only at characters, locations and props the outline defines;
  *   - an outline that could not fit 60 scenes is refused before any turn (planWindows null);
- *   - a plan answer carries no vendor's name the outline does not, and never a claim that a vendor made it;
+ *   - a plan answer carries no vendor's name the outline does not, and never a claim that a vendor made it (a chat vendor, a video
+ *     or image model, or any model or provider the catalogue sells: claimsAuthorship);
  *   - a plan with any chapter missing is never returned, so it is never priced.
  *
  * One plan at a time per conversation is the database's (0211's lease, lib/server/brain/plan.ts), not this file's.
@@ -197,19 +198,66 @@ const VENDOR_NAMES: [RegExp, string][] = [
   [/google\s+(?:ai|deepmind)|гугл\s+аи/giu, "google ai"],
 ];
 // "Google Gemini", "Anthropic's Claude", "OpenAI ChatGPT": a maker's name in front of the model's is still the model.
-const VENDOR_ALT = `(?:(?:google|anthropic(?:'s)?|openai(?:'s)?|гугл)\\s+)?(?:${VENDOR_NAMES.map(([r]) => r.source).join("|")})`;
+const MAKER = String.raw`(?:(?:google|anthropic(?:'s)?|openai(?:'s)?|гугл)\s+)?`;
+/**
+ * Names that are a vendor's only when the text says the vendor MADE something (Breach BR-FILM-04a): the video and image models a film
+ * is made with, and chat models whose names are also ordinary words. "A llama crosses the dunes", "the mistral blows" and "Sora looks
+ * at the sky" are a story; "Llama made it", "Made with Sora" and "Directed by MiniMax" are a credit. So they are never in VENDOR_NAMES
+ * (named anywhere), only in the claim below.
+ */
+const CLAIM_ONLY = String.raw`(?<![\p{L}\p{N}])(?:sora|veo|kling|minimax|hailuo|midjourney|dall\s?-?\s?e|stable\s+diffusion|runway|pika|luma|flux|imagen|ideogram|grok|llama|mistral|copilot|qwen)(?![\p{L}])`;
+const VENDOR_ALT = (extra: string) => `${MAKER}(?:${VENDOR_NAMES.map(([r]) => r.source).join("|")}|${CLAIM_ONLY}${extra})`;
+
 /**
  * An authorship claim: the film, a scene or a card saying a vendor made it. Always a failure, whatever the outline says (an outline
- * about OpenAI may show OpenAI; it may not have "written by OpenAI" on screen). en, ru, uz.
+ * about OpenAI may show OpenAI; it may not have "written by OpenAI" on screen). en, ru, uz: the verbs ("made by", "Claude wrote"), and
+ * the credit's own shapes (Breach BR-FILM-04b: "a film by", "brought to you by", "with the help of", "X is the author", "Credits: X").
  */
-const AUTHORSHIP = new RegExp(
-  String.raw`(?:written|made|generated|created|storyboarded|directed|produced|powered|scripted)\s+(?:entirely\s+)?(?:by|with|using|on)\s+(?:the\s+)?(?:${VENDOR_ALT})`
-  + String.raw`|(?:${VENDOR_ALT})(?:'s)?\s+(?:wrote|made|created|generated|storyboarded|directed|produced|scripted)`
-  + String.raw`|(?:написан\p{L}*|создан\p{L}*|сделан\p{L}*|сгенерирован\p{L}*|снят\p{L}*)\s+(?:с\s+помощью\s+|при\s+помощи\s+|нейросетью\s+)?(?:${VENDOR_ALT})`
-  + String.raw`|(?:${VENDOR_ALT})\s+(?:написал\p{L}*|создал\p{L}*|сделал\p{L}*|сгенерировал\p{L}*)`
-  + String.raw`|(?:${VENDOR_ALT})\s+(?:tomonidan|yordamida)\s+(?:yozilgan|yaratilgan|tayyorlangan|ishlangan)`,
-  "iu",
-);
+function authorship(extra: string): RegExp {
+  const V = `(?:${VENDOR_ALT(extra)})`;
+  return new RegExp(
+    String.raw`(?:written|made|generated|created|storyboarded|directed|produced|powered|scripted)\s+(?:entirely\s+)?(?:by|with|using|on)\s+(?:the\s+)?${V}`
+    + String.raw`|${V}(?:'s)?\s+(?:wrote|made|created|generated|storyboarded|directed|produced|scripted)`
+    + String.raw`|(?:film|movie|video|story|script|storyboard)\s+by\s+(?:the\s+)?${V}`
+    + String.raw`|brought\s+to\s+you\s+by\s+(?:the\s+)?${V}`
+    + String.raw`|(?:with|thanks\s+to)\s+(?:the\s+)?help\s+of\s+(?:the\s+)?${V}`
+    + String.raw`|${V}\s+(?:is|was)\s+(?:the\s+)?(?:author|writer|director|creator|maker)`
+    + String.raw`|(?:author|writer|director|credits?)\s*[:\-–—]\s*${V}`
+    + String.raw`|(?:написан\p{L}*|создан\p{L}*|сделан\p{L}*|сгенерирован\p{L}*|снят\p{L}*)\s+(?:с\s+помощью\s+|при\s+помощи\s+|нейросетью\s+)?${V}`
+    + String.raw`|${V}\s+(?:написал\p{L}*|создал\p{L}*|сделал\p{L}*|сгенерировал\p{L}*)`
+    + String.raw`|фильм\s+от\s+${V}`
+    + String.raw`|автор\s*[:\-—]?\s*${V}`
+    + String.raw`|при\s+участии\s+${V}`
+    + String.raw`|${V}\s+(?:tomonidan|yordamida)\s+(?:yozilgan|yaratilgan|tayyorlangan|ishlangan)`
+    + String.raw`|${V}\s+muallif\p{L}*`,
+    "iu",
+  );
+}
+const AUTHORSHIP = authorship("");
+
+/**
+ * The catalogue's own names (a model's display name, its provider) as claim alternatives: a model the registry sells tomorrow is
+ * covered without a code change. Each is matched as a whole word, literally (escaped), and only from 3 letters up: a provider called
+ * "x" would otherwise make every "made with x" a claim.
+ */
+function claimExtra(names: readonly string[]): string {
+  const words = [...new Set(names.map((n) => (typeof n === "string" ? n.normalize("NFKC").trim().toLowerCase() : "")))]
+    .filter((n) => Array.from(n.replace(/[^\p{L}\p{N}]/gu, "")).length >= 3 && n.length <= 60)
+    .slice(0, 64)
+    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, String.raw`\s+`));
+  return words.length ? `|(?<![\\p{L}\\p{N}])(?:${words.join("|")})(?![\\p{L}])` : "";
+}
+
+/**
+ * Whether a text claims that a vendor made it (the AUTHORSHIP test on the text as it is and on its folded copy, look-alike letters
+ * and spaced-out spellings undone). `extraClaimNames`: the catalogue's display names and providers (lib/server/brain/clip).
+ */
+export function claimsAuthorship(text: string, extraClaimNames: readonly string[] = []): boolean {
+  if (!text) return false;
+  const extra = claimExtra(extraClaimNames);
+  const re = extra ? authorship(extra) : AUTHORSHIP;
+  return re.test(text) || re.test(foldForCheck(text));
+}
 
 /** The canonical vendor names a text carries, by the table above, on the text as it is and on its folded copy. */
 export function vendorNames(text: string): Set<string> {
@@ -230,9 +278,9 @@ export function vendorNames(text: string): Set<string> {
  *   - a vendor name the chosen outline does not already carry fails (an injected chapter asked for it);
  *   - a name the outline carries passes: a film about "The rise of OpenAI" may show OpenAI.
  */
-export function planNamesVendor(text: string, outlineText: string): boolean {
+export function planNamesVendor(text: string, outlineText: string, extraClaimNames: readonly string[] = []): boolean {
   if (!text) return false;
-  if (AUTHORSHIP.test(text) || AUTHORSHIP.test(foldForCheck(text))) return true;
+  if (claimsAuthorship(text, extraClaimNames)) return true;
   const allowed = vendorNames(outlineText);
   for (const name of vendorNames(text)) if (!allowed.has(name)) return true;
   // A spelling the table does not know ("Anth-ropic", "Cl aude") that namesVendor still sees: only when the outline names none.
@@ -252,7 +300,7 @@ export function outlineText(o: Scenario): string {
  *  `promptOf` assembles a scene's whole prompt (logic scenePrompt, with the outline's characters, locations and style): a scene
  *  over limits.promptMax is a problem for the one re-ask, never cut. */
 export function readWindow(text: string, w: PlanWindow, refs: SceneRefs, limits: PlanLimits, outline = "",
-                           promptOf?: (s: SceneParts) => string): WindowRead {
+                           promptOf?: (s: SceneParts) => string, extraClaimNames: readonly string[] = []): WindowRead {
   const json = extractJson(text);
   if (!json) return { ok: false, why: "invalid" };
   if (json.refused === true || (typeof json.refused === "string" && json.refused.trim() !== "")) return { ok: false, why: "refused" };
@@ -278,7 +326,7 @@ export function readWindow(text: string, w: PlanWindow, refs: SceneRefs, limits:
     const ok = scenes as SceneParts[];
     // A vendor's name the outline does not carry, or any claim that a vendor made it: the plan fails rather than a picture or a
     // spoken line carrying it (an injected chapter can ask for either).
-    if (ok.some((s) => [s.title, s.visual_prompt, ...s.dialogue.map((d) => d.line)].some((t) => planNamesVendor(t, outline)))) return { ok: false, why: "invalid" };
+    if (ok.some((s) => [s.title, s.visual_prompt, ...s.dialogue.map((d) => d.line)].some((t) => planNamesVendor(t, outline, extraClaimNames)))) return { ok: false, why: "invalid" };
     count += ok.length;
     if (promptOf && longRaw < 0) {
       const over = ok.findIndex((s) => promptOf(s).length > limits.promptMax);

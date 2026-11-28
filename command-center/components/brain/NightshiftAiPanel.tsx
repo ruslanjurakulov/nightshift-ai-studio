@@ -80,6 +80,8 @@ function readModels(v: unknown): FilmModels | null {
 /** A failed plan's reasons a new attempt cannot change (Lens L7): the outline cannot fit, the model is not set up or not allowed. */
 const NO_RETRY_REASONS = new Set(["not_plannable", "vendor_auth", "not_configured", "prompt_too_long", "content_refused", "plan_over_cap",
   "plan_superseded"]);
+/** A film's id as the server sends it: only one of these is ever put into a link. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** 0211's lease, as the history read says it (lib/server/brain/conversation.ts planState). `until` is when a running one ends. */
 type PlanLease = { state: "running" | "failed" | "done" | "unknown"; reason: string | null; until: number; index: number | null; proposal: number | null };
 function readLease(v: unknown): PlanLease | null {
@@ -98,6 +100,8 @@ const NO_RETRY = [
   "forbidden", "content_refused", "output_too_long",
   // The plan step's refusals another press cannot change (lib/server/brain/plan, 0211's lease).
   "plan_over_cap", "plan_running", "plan_unavailable", "plan_superseded", "proposal_outdated",
+  // A project's own storyboard conversation (lib/server/brain/film-plan): it is continued in the project, never here.
+  "film_conversation",
   // A scene over the models' prompt limit was already asked again once: another press spends turns on the same outline.
   "prompt_too_long",
   // The account's own 18+ answer (0192): a Retry would meet the same refusal; the remedy is where the age is answered (Pixel on #900).
@@ -452,6 +456,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (e === "adult_attestation_required") return c.errors.adult_attestation_required;
     if (e === "session_closed") return c.errors.session_closed;
     if (e === "card_changed") return c.errors.card_changed;
+    // A film editor's storyboard conversation opened here (a link, the history): its own words and a link to that project.
+    if (e === "film_conversation") return c.errors.film_conversation;
     // The gate's other refusals are worded by their REMEDY, the same words as before a press.
     const remedy = gateRemedy(e);
     if (remedy) return gateWords(remedy);
@@ -492,6 +498,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     // own (0199's per_user_daily, one global setting): no plan raises it, so a "See plans" key would name a remedy that is not one
     // (Lens round 3). The words say to wait instead.
     if (e === "plan_over_cap") return d?.scope === "person" ? null : { href: plans, label: c.seePlans };
+    if (e === "film_conversation" && typeof d?.film_id === "string" && UUID_RE.test(d.film_id)) return { href: editorHref(d.film_id), label: c.openFilm };
     return null;
   };
 
@@ -580,7 +587,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
         const taken = !!d.quota && !!sid;
         setProblem({
           text: explain(res.status, d),
-          code: String(d.error ?? ""),
+          // A project's conversation is said in words only: its code is never put on the page, not even as a data attribute.
+          code: d.error === "film_conversation" ? "" : String(d.error ?? ""),
           retry: retryable ? (taken ? () => void run(label, { action: "retry", session: sid }) : () => void run(label, body)) : null,
           action: actionFor(String(d.error), d),
         });
@@ -737,7 +745,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
         // A failure no new attempt can change (the outline cannot fit, the model is not set up here) offers none (Lens L7).
         const noRetry = res.status === 401 || NO_RETRY.includes(String(d.error)) || (d.error === "plan_failed" && NO_RETRY_REASONS.has(String(d.reason)));
         const checkAgain = d.error === "plan_unavailable";
-        setProblem({ text: explain(res.status, d), code: String(d.error ?? ""),
+        setProblem({ text: explain(res.status, d), code: d.error === "film_conversation" ? "" : String(d.error ?? ""),
                      retry: checkAgain ? () => void choose(index) : noRetry ? null : () => void choose(index),
                      retryLabel: checkAgain ? c.checkAgain : undefined,
                      action: d.error === "plan_superseded" && typeof d.film_id === "string"
