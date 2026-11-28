@@ -6,7 +6,7 @@ import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
 import { blockedModelsHere, geoRefusal } from "@/lib/server/geo";
 import { geoClaimHeaders } from "@/lib/server/geo-claim";
-import { missingWords, sellableFor } from "@/lib/creative/route-around";
+import { missingWords, sellableFor, wordsNotTaken } from "@/lib/creative/route-around";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,6 +53,9 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   // A routed create names the model its quote picked (0075), so this one check covers every mode.
   const blocked = parsed.input.model ? geoRefusal(parsed.input.model, request.headers) : null;
   if (blocked) return NextResponse.json(blocked.body, { status: blocked.status });
+  // Rule 6: refused before anything is held when the tool takes no words and some were sent (picture upscale).
+  const unworded = wordsNotTaken(parsed.input.capability, parsed.input.params);
+  if (unworded) return NextResponse.json(unworded.body, { status: unworded.status });
   // Rule 6: refused before anything is held when the model needs words that were not sent (registry inputs.prompt_required).
   const words = await missingWords(session.db, parsed.input.capability, parsed.input.model, parsed.input.params);
   if (words) return NextResponse.json(words.body, { status: words.status });

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { cancelRun } from "@/lib/workflows-operations";
 import { workflowSession } from "@/lib/server/workflows";
-import { logAudit } from "@/lib/server/audit";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 
 export const runtime = "nodejs";
@@ -18,6 +17,7 @@ export const POST = requireSameOrigin(async function POST(_request: Request, { p
   if (!session.ok) return NextResponse.json(session.result.body, { status: session.result.status });
   const { id } = await params;
   const out = await cancelRun(session.db, id);
-  if (out.status === 200) await logAudit({ action: "workflow.cancel", target: id, detail: {} });
+  // The workflow.cancel audit row is written by cancel_workflow_run itself (migration 0226), for this route and every direct call
+  // alike: one row per cancel, naming the person, never a second one from here.
   return NextResponse.json(out.body, { status: out.status });
 });

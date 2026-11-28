@@ -204,11 +204,13 @@ describe("the canvas", () => {
     expect(dock.textContent).not.toMatch(/cr\b|credit|\$/i);
   });
 
-  it("the AI writer is off with its reason; the storyboard is written by hand", () => {
+  it("the AI writer is off over a project that has scenes, with its reason, and asks the server nothing", () => {
     canvas();
     const ai = screen.getByTestId("fs-ai") as HTMLButtonElement;
-    expect(ai.disabled).toBe(true);
-    expect(document.getElementById(ai.getAttribute("aria-describedby")!)?.textContent).toBe(t.canvas.aiWriteReason);
+    // Off as aria-disabled (never `disabled`: focus is kept), described by its reason first.
+    expect(ai.getAttribute("aria-disabled")).toBe("true");
+    expect(document.getElementById(ai.getAttribute("aria-describedby")!.split(" ")[0])?.textContent).toBe(t.canvas.ai.hasScenes);
+    expect(calls.some((c) => c.url.includes("/api/brain/film"))).toBe(false);
   });
 
   it("an empty storyboard says so and adds a first scene", () => {
@@ -245,7 +247,8 @@ describe("the canvas", () => {
     expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: t.canvas.reload }));
     await waitFor(() => expect(screen.queryByTestId("fs-conflict")).toBeNull());
-    expect(calls.at(-1)).toMatchObject({ method: "GET", url: `/api/films/${FILM}` });
+    // The latest project read is the reload (an emptied project may also ask the AI writer's /api/brain/film afterwards).
+    expect(calls.filter((c) => c.url.startsWith("/api/films")).at(-1)).toMatchObject({ method: "GET", url: `/api/films/${FILM}` });
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Their title");
   });
 

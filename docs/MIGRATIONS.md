@@ -2800,3 +2800,118 @@ The audit allow-list adds `model.terms_accept` and `model.terms_revoke`.
 
 Apply as one transaction after 0018 (platform role), 0035 (registry), 0107 (operator MFA) and 0145 (audit allow-list).
 The owner-applied rollback is `docs/sql/rollback_0227_owner_model_terms_acceptance.sql`.
+
+## The country gate reads an allow-list vendor's own list (0230)
+
+0230 (`0230_geo_gate_allow_list.sql`, BR-S6-04 and BR-S6-05 in `docs/security/LEDGER.md`) changes no answer for a model on sale
+today (every Google model carries `blocked_countries`, and 0142 keeps every such model off sale). It closes the database half of
+BR-S6-03; the web half is PR #951.
+
+- **The finding.** Google's terms are an allow-list, but the registry carried only its complement (`blocked_countries` = every ISO
+  code Google does not list), and 0208's `creative_jobs_geo_gate` refused a signed claim only when its code was on that list. A code
+  on neither list (EU, AP, ZZ, any two capital letters) started a job on a Google model (BR-S6-04). Breach then found that 0208's
+  early return, which asks `blocked_countries` alone whether a model has a country list, ran before the allow-list: a row with
+  `available_countries` and no (or an empty) `blocked_countries`, which 0142 lets go on sale, took any code and no claim at all
+  (BR-S6-05).
+- **Registry.** Every `provider = 'google'` row in `schemas/model_registry.json` carries `available_countries`, Google's own list
+  (ISO codes plus XK), equal to `GOOGLE_AVAILABLE_REGIONS` in `command-center/lib/geo/blocked.ts` (`tests/geo-block.test.ts`). The
+  schema adds the optional key; `modules/model_registry.py` refuses it without `blocked_countries`, a code on both lists, and a
+  Google row with `blocked_countries` but no `available_countries`. The registry sync copies it into `spec` unchanged (no change to
+  `sync_rows` or `sync_model_registry`).
+- **The gate.** 0208's body with 0230's lines marked. A model is left unasked only when its spec has no deny-list AND no key
+  `available_countries` (any value; a JSON null fails closed below). 0208's two refusals stay in order: no claim is
+  `country_unverified`, and a code on a non-empty deny-list (or a deny-list that is not an array) is `country_blocked`, asked only of
+  a row that has a deny-list. Then a row whose spec carries `available_countries`, or any `provider = 'google'` row with a country
+  list, refuses a code not on `available_countries` (or a list that is missing or not an array) as NS400 `country_unverified`, the
+  chat gate's word. So a row with an allow-list alone is answered by it. A non-Google deny-list-only model (grounded-image-1.0) and a
+  model with no list are unchanged. No model id is written in the SQL.
+- **Replaces** `creative_jobs_geo_gate()`: 0208's `1715dc38085e3a98cc21ceba95f85d5f` -> 0230's
+  `6a7b6f2b075c4775ee83808932f88bd0`, and checks `geo_claim_country()` is 0208's `6cb8abcd7ab3dff8fb2a4ce33afa58d6`. These are md5s
+  of prosrc with `--` comments cut to the end of the line (chr(10) / chr(13)) and then white space folded with `[[:space:]]+`:
+  folding alone, as 0208's and 0218's guards do, hashes a line of code and the same line swallowed by the comment above it alike
+  (BR-S6-05; those merged guards are not edited). Folded only, as 0208 pins them: gate `71468a6f60d2659cd44199a3c834dc69` ->
+  `6d28388da6b6b927b0da500524fe0325`, claim reader `add85b6752c03be6882a59a0ff8017ba`. Refuses any other body, and refuses without
+  0208. No backslash in the file. Grants unchanged (no API role); the trigger is not recreated.
+- **Owner step: the registry sync** (`python tools/probe_models.py --sync`, which spends nothing) writes `available_countries` into
+  each Google row's spec. It may run before or after applying 0230; syncing first avoids a window in which every job on a Google
+  model is refused `country_unverified` (that window fails closed, and none is on sale). The file raises a NOTICE while an enabled
+  Google row is not yet synced, and its Verify block has a `google_rows_synced` column; both leave out `disabled` rows (removed from
+  the registry file), which the sync never rewrites.
+- **Replay.** `create or replace` on a guarded body: a replay changes nothing. Replaying 0208 over it puts 0208's body back (0208
+  does not guard the gate); apply 0230 again after it (the lab's `put_back_0208` does).
+- **Number.** 0230, assigned by the S6 lead. Needs 0208 and 0036. Independent of 0218, 0219, 0224, 0227 and 0228.
+- **Undo.** `docs/sql/rollback_0230_geo_gate_allow_list.sql` (owner-applied): refuses a gate that is neither 0230's nor 0208's
+  (same fingerprint), puts 0208's body back verbatim and asserts it; keeps `available_countries` in the registry rows (0208's body
+  never reads it). BR-S6-04 and BR-S6-05's gate half are then open again.
+- **Tests.** `tests/test_geo_gate_allow_list_migration.py`, `tests/security/test_sec_geo_allowlist_0230.py` and
+  `tests/security/test_sec_geo_allowlist_0230_breach.py` (a real PostgreSQL; contract `tests/security/sec_geo_allowlist_0230.py`),
+  `command-center/tests/geo-block.test.ts`.
+## Only a member spends a workspace's credits, on every path (0226, provisional)
+
+0226 (`0226_org_spender_everywhere.sql`) applies the owner's decision of 22 Nov, which 0215 applied to the film paths, to every other
+path that spends a workspace's credits. 0043's `accessible_org_ids` makes a platform owner or admin an admin of every organization;
+that stays read-only support access. Spending takes a seat in `org_members` (0215's `is_org_spender(org, role)`); in the exempt
+organization, whose credits are the platform's own, a platform owner or admin may, as before. A read-only check before this file
+found no non-member staff activity on any of these paths in production.
+
+- **Twenty-eight bodies, one marked hunk each, nothing else changed** (md5 guard: the earlier body or 0226's own). Sixteen spend paths
+  ask `is_org_spender` right after their own who-may-call check, with the role they already asked of a member, and refuse
+  `not_a_member` (NS400; `api_err` 403 for the API and connected apps) before anything is counted, priced, held or written:
+  `reserve_credits` (admin; the platform's own caller is still trusted), `create_creative_job` (any member), `start_workflow_run`
+  and `advance_workflow_run` (editor), `approve_storyboard`, `request_scene_regenerate`, `request_repurpose`,
+  `start_series_episode` (admin), the paid four-argument `request_editor_export`, `request_brand_scan`, `request_character_swap`,
+  `request_download` (editor; its exempt organization is not asked, as it has no platform-admin rule there),
+  `render_jobs_payment_guard` (a signed-in browser's row, admin), `create_api_key` (admin; `create_scoped_api_key` calls it first),
+  and at use time `api_begin` (the key's maker) and `oauth_ctx` (the connected app's person), both before the request is counted.
+- **Row locks.** Two paths take a row lock first, to ask who may call: `approve_storyboard` (`storyboard_lock_for_runner`'s FOR
+  UPDATE on the storyboard) and the paid `request_editor_export` (0054's FOR UPDATE on the project). The refusal is an exception,
+  so it aborts the transaction: the lock goes with it and nothing persists.
+- **The API doors** (`api_begin`, `oauth_ctx`) ask `is_org_spender` first, so a seated member pays one index probe and passes;
+  `is_org_member` is asked only to tell a refusal from the old one. The check sits in its own `begin … exception when others`
+  block (an unexpected error answers `internal_error` 500, like the block after it, never a raw SQL error), before the rate
+  counter.
+- **The confirmer** (Breach 0226-1). `workflow_confirmer_may_spend` (0074), which a workflow's later step asks of the member who
+  pressed Run now, answered yes from the platform role in every organization: a platform admin with only a viewer seat kept spending
+  on later steps. Its non-exempt branch now asks only for a seat of editor or above (0074's platform arm and its dead
+  `p_org = default_org_id()` arm go); the exempt branch keeps its platform owner or admin arm. Such a step stops with
+  `confirmation_revoked` and holds nothing.
+- **The owner's five** (27 Nov). `ai_chat_start` and `ai_chat_reserve_turn` (Nightshift AI: the workspace's trial and daily cap)
+  ask `is_org_spender(org, 'editor')` before the cap or the trial is read or counted; `set_api_key_access`, `set_api_key_limit`
+  and `api_activate` ask `is_org_spender(org, 'admin')` before anything is written. A platform owner or admin without a seat no
+  longer chats on a customer's trial, widens a key or accepts the API terms. The chat route and the Developer console name the
+  refusal (en / ru / uz, `tests/not-a-member-chat-api.test.ts`). `api_set_monthly_limit` (the workspace's own API limit) was not in
+  the owner's list and is unchanged.
+- **Round three** (owner and Atlas, 27 Nov). Nightshift AI's plan step (0211): `ai_chat_plan_session` (the helper both plan calls
+  open with, after its row lock on the conversation), `ai_chat_plan_begin` and `ai_chat_plan_end` ask `is_org_spender(org,
+  'editor')`: a refused call writes no lease and closes no call. `ai_chat_plan_state` is a stable read that moves no counter:
+  unchanged. `api_set_monthly_limit` (the workspace's API limit) and `oauth_decide_authorization` (a connected app's consent, the
+  counterpart of `create_api_key`; it answers `{ok: false, error: not_a_member}`, its own refusal shape, after taking the pending
+  request as every answer does) ask `is_org_spender(org, 'admin')`. Platform staff may restrict, never widen: `cancel_workflow_run`
+  stays open to them and now writes its `workflow.cancel` audit row (the actor, the run's organization) in the database for every
+  caller (the route no longer writes a second one); `revoke_api_key` already recorded `revoked_by` and its `api_key.revoke` row
+  and is unchanged.
+- **No backslash** in the file or its rollback (an apply tool can rewrite escape sequences): the md5 fold is
+  `regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')`, which the lab compares with the `\s+` shorthand on every body. The two
+  earlier bodies that hold a backslash, at three sites (`request_brand_scan`'s position test, `ai_chat_reserve_turn`'s two `E''`
+  character lists), are written as an EXECUTE whose backslashes are a token that `replace()` turns back into `chr(92)`: each source, and its md5, is
+  the earlier text plus the hunk.
+- **Refused as before**: a member of another organization, a viewer where an editor is asked, a key whose maker is no admin at all
+  (`key_owner_not_admin`), a connection whose person lost access (`workspace_access_lost`). The new check never answers first.
+- **Covered without a body of their own**: every API endpoint (through `api_begin`) and MCP tool (through `oauth_ctx`);
+  `request_reply_draft` already asks `inbox_real_member`. Free paths (the free editor exports, `request_series_plan`) and every
+  quote are not asked.
+- **Accepted, not changed** (DB review): a `not_a_member` answer of `api_begin` / `oauth_ctx` is not logged through `api_finish`
+  (L4: the request context is not built yet, as for `api_not_activated`), and the review's I1, both left as they are.
+- **The app** reads `not_a_member` as its own word (403) in each path's map, with en / ru / uz copy (`tests/not-a-member.test.ts`):
+  the run's hold, downloads, storyboard approval, scene repair, repurpose, series start, paid export, brand scan, character swap,
+  generations and workflows, the Developer console's key creation, the API spec and the connected assistant's sentence.
+- **Publishing and privacy**: untouched (CLAUDE.md rule 2). No browser path gains anything; each may only refuse more.
+- **Replay.** The file replays onto itself. Any earlier file that defines one of these twenty-eight functions restores its older body
+  when it is re-run, unless it carries an md5 guard that refuses a body it was not written on. Measured on the lab with 0226 applied
+  (`tests/security/test_sec_org_spender_0226.py` pins both lists): re-running 0120, 0122, 0129, 0132, 0133, 0136, 0137, 0147, 0174
+  or 0192 fails loudly (take 0226, and whatever else sits on that file, out first), and so does 0020 on a database that holds
+  ledger rows of a later kind; re-running 0030, 0031, 0036, 0040, 0041, 0042, 0057, 0060, 0062, 0070, 0073, 0074, 0075, 0076, 0080,
+  0085, 0093, 0094, 0111, 0199 or 0211 applies silently and puts an older body back (apply 0226 again after).
+- **Requires** 0215 (`is_org_spender`) and the files above.
+- **Undo.** `docs/sql/rollback_0226_org_spender_everywhere.sql` (owner-applied): the twenty-eight earlier bodies back, verbatim, with
+  their grants. It adds nothing else, so nothing else is undone.

@@ -35,7 +35,18 @@ export function dbRefusal(error: { code?: string; message?: string; details?: st
   if (code === "nothing_to_retry") return brainJson({ error: "nothing_to_retry" }, 409);
   if (code === "session_not_found" || code === "channel_not_found" || code === "call_not_found") return notFound();
   if (code === "forbidden") return brainJson({ error: "forbidden" }, 403);
+  // 0226: the workspace's trial and daily cap are spent only by a member (a platform admin who holds no seat reads, never chats).
+  if (code === "not_a_member") return brainJson({ error: "not_a_member" }, 403);
   return brainJson({ error: "unavailable" }, 503);
+}
+
+/**
+ * A database refusal's message as a `reason` the browser may see: only a machine word (creative_refuse's codes are), else
+ * "unavailable". A Postgres error's own text is not one (Breach BR-FILM-05: a unique violation names the constraint and the table, a
+ * cast error quotes the value), and the panel has no words for it anyway.
+ */
+export function machineReason(message: unknown): string {
+  return typeof message === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(message) ? message : "unavailable";
 }
 
 export type ModelState = "available" | "not_on_sale" | "not_configured" | "unknown_model";
@@ -66,6 +77,12 @@ export async function channelOrg(supabase: SupabaseClient, channelId: string) {
   if (error) return { state: "failed" as const };
   if (!data || typeof data.org_id !== "string") return { state: "missing" as const };
   return { state: "ok" as const, orgId: data.org_id as string, name: typeof data.name === "string" ? data.name : channelId };
+}
+
+/** An opaque id for the vendor's abuse tooling: the workspace, hashed as the worker does (never the person's own user id). */
+export async function vendorUser(orgId: string): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`nightshift-org:${orgId}`));
+  return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
 }
 
 export { CHAT_MODELS };

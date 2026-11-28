@@ -255,13 +255,17 @@ describe("what should change", () => {
     expect(send(dialog).tagName).toBe("A");
   });
 
-  it("is optional where words help (upscale), and off where the tool takes none (cut out): nothing is carried", () => {
+  it("is optional where words help (animate), and off where the tool takes none (upscale, cut out): nothing is carried", () => {
     mount(<ImproveWithAi assetId={FILE} kind="image" available={null} models={MODELS} />);
     const dialog = openPanel();
+    // Upscale (the default) takes no words: its one model refuses them, so the box does not invite any.
+    expect(words(dialog).disabled).toBe(true);
+    expect(query(dialog).has("prompt")).toBe(false);
+    pick(dialog, "i2v");
     expect(words(dialog).required).toBe(false);
     expect(send(dialog).tagName).toBe("A");
-    fireEvent.change(words(dialog), { target: { value: "keep the small text crisp" } });
-    expect(query(dialog).get("prompt")).toBe("keep the small text crisp");
+    fireEvent.change(words(dialog), { target: { value: "a slow push-in" } });
+    expect(query(dialog).get("prompt")).toBe("a slow push-in");
     pick(dialog, "remove_bg");
     expect(words(dialog).disabled).toBe(true);
     expect(query(dialog).has("prompt")).toBe(false);

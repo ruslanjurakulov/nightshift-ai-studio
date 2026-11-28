@@ -14,6 +14,8 @@ const ERROR_CODES = [
   "invalid_api_key",
   "api_not_activated",
   "key_owner_not_admin",
+  // 0226: the key's maker (or the connected app's person) holds no seat in its organization: only a member spends its credits.
+  "not_a_member",
   "rate_limit_exceeded",
   "concurrency_limit_exceeded",
   "insufficient_balance",

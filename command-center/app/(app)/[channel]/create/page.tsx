@@ -13,7 +13,7 @@ import { atLeast } from "@/lib/auth/roles";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
 import { isOperatorOrg } from "@/lib/channel-tokens";
 import { getOrgContext } from "@/lib/orgs-server";
-import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels } from "@/lib/server/creative";
+import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels, readStudioModels } from "@/lib/server/creative";
 import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery, withPreviews, type StudioPrefill } from "@/lib/creative/studio";
@@ -45,11 +45,13 @@ import { OWNER_MODE_COOKIE, ownerFrame } from "@/lib/owner-mode";
 import { isPlatformOwner } from "@/lib/server/owner-view";
 import { KIND_TOOL, SLUG_RE, cleanLinkPrompt, drawsCreateScreen, isCreateKind } from "@/lib/customer/create";
 import { aiChatEnv, aiChatOpenFor } from "@/lib/brain/flag";
-import { readToolAvailability } from "@/lib/server/tool-availability";
+import { readCatalogStates, readToolAvailability } from "@/lib/server/tool-availability";
 import { startAvailability } from "@/lib/start-box";
 import { SAMPLE_PARAM, resolveSampleSource } from "@/lib/site/sample-source";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
+import type { ExploreData } from "@/lib/creative/explore";
+import { buildExploreData } from "@/lib/creative/explore-server";
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -69,7 +71,7 @@ export default async function CreatePage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const { selection, channels } = await getChannelContext();
   const scopedChannel = isScoped(selection)
     ? channels.find((c) => c.channel_id === selection)
@@ -230,6 +232,21 @@ export default async function CreatePage({
         })()
       : null;
 
+  // The explore grid under the customer's Create screen (lib/creative/explore-server.ts). Its catalogue is the composer's models filtered the
+  // way the Studio's availability marks filter them (lib/server/tool-availability.ts): priced, open to some organization, no operator
+  // preview, no lock. A registry or a price list that could not be read is "unread", never "nothing on sale yet" (rule 5): loadStudioModels answers []
+  // for both, so the cached readStudioModels() is asked which it was (the same request's read, no second query). Nothing is written.
+  const exploreData: ExploreData | null = !createScreen
+    ? null
+    : !genOrgId
+      ? { state: "unread" }
+      : await (async (): Promise<ExploreData> => {
+          const [read, catalog] = await Promise.all([readStudioModels(), readCatalogStates(genOrgId)]);
+          // A price list that could not be read (readCatalogStates: an error, or prices not read) is unread too: onlyPriced would
+          // keep every model on a guess, and a card would open a form whose quote is refused.
+          return buildExploreData({ registryRead: read !== null, models, catalog, entries: SHOWCASE_ENTRIES, files: SHOWCASE_FILES, locale });
+        })();
+
   // 0192: the 18+ confirmation, asked once of an account with none. Someone who said they are under 18 gets the honest notice
   // instead of the composer (the database refuses their quotes too); an unknown state stops no one.
   const age = await readAgeState();
@@ -265,6 +282,7 @@ export default async function CreatePage({
             initialKind={isCreateKind(one(q.kind)) ? (one(q.kind) as "video" | "image" | "audio") : "video"}
             initialPrompt={cleanLinkPrompt(one(q.prompt))}
             idea={ideaPickup}
+            explore={exploreData}
             templateSlug={(() => {
               const slug = one(q.template);
               return typeof slug === "string" && SLUG_RE.test(slug) ? slug : null;
