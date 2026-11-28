@@ -45,12 +45,16 @@ const NODE_TYPES = { plan: CardNodeView };
 export function planCards(
   t: T,
   items: PlanItems,
-  opts: { selected: string | null; onOpen: (id: string) => void; enter: ReadonlyMap<string, number>; reasons?: (n: LiveNode) => string | null },
+  opts: { selected: string | null; onOpen: (id: string) => void; enter: ReadonlyMap<string, number>; reasons?: (n: LiveNode) => string | null; live?: boolean },
 ): LiveNodeProps[] {
+  const words = t.studioLive.plan.card.states;
+  // Only the states a step moves through while it is made; ghost, unknown and disabled already say themselves on the card.
+  const word = (s: ReturnType<typeof cardState>) => (opts.live && (s === "queued" || s === "working" || s === "arrived" || s === "failed") ? words[s] : null);
   const step = (n: LiveNode): LiveNodeProps => ({
     id: n.id,
     kind: n.kind,
     state: cardState(n),
+    stateWord: word(cardState(n)),
     title: nodeName(t, n),
     // The idea's words, the script's first line: what this card stands for, not a status word.
     summary: n.kind === "idea" || n.kind === "script" || n.kind === "topic" ? (n.text?.split(/\r?\n/).find((l) => l.trim())?.trim() ?? null) : null,
@@ -67,6 +71,7 @@ export function planCards(
       kind: "scene",
       scene: s.n,
       state: cardState(s.keyframe),
+      stateWord: word(cardState(s.keyframe)),
       title: s.title ?? fmt(t.studioLive.plan.card.scene, { n: s.n }),
       summary: s.summary,
       durationS: s.seconds,
@@ -81,10 +86,22 @@ export function planCards(
   ];
 }
 
-function Inner({ cards, items, width, height }: { cards: LiveNodeProps[]; items: PlanItems; width: number; height: number }) {
+function Inner({ cards, items, width, height, fitOn }: { cards: LiveNodeProps[]; items: PlanItems; width: number; height: number; fitOn?: string | null }) {
   const { t } = useI18n();
   const w = t.studioLive.plan.controls;
-  const { setViewport, getViewport } = useReactFlow();
+  const { setViewport, getViewport, fitView } = useReactFlow();
+  // Once per `fitOn` (the film, when the board turns to it): the whole board in view, never above zoom 1, so no row is cut where the
+  // lane took its height (Pixel M2). The person's own zoom and scroll are never touched again for the same film.
+  const fitted = useRef<string | null>(null);
+  useEffect(() => {
+    if (!fitOn || fitted.current === fitOn || !height) return;
+    // After the lane under the board has taken its height (its entrance is 200 ms): a height change restarts the wait.
+    const id = setTimeout(() => {
+      fitted.current = fitOn;
+      void fitView({ padding: 0.04, maxZoom: 1, duration: reduced() ? 0 : 200 });
+    }, 260);
+    return () => clearTimeout(id);
+  }, [fitOn, height, fitView]);
   // React Flow's measured card heights, so a taller card (a longer title, S5's card) widens its row instead of overlapping the next.
   const heightsKey = useStore((s) => {
     let k = "";
@@ -197,7 +214,7 @@ function sameCard(a: LiveNodeProps, b: LiveNodeProps): boolean {
   return true;
 }
 
-export function PlanBoard({ cards, items }: { cards: LiveNodeProps[]; items: PlanItems }) {
+export function PlanBoard({ cards, items, fitOn = null }: { cards: LiveNodeProps[]; items: PlanItems; fitOn?: string | null }) {
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   useEffect(() => {
@@ -214,7 +231,7 @@ export function PlanBoard({ cards, items }: { cards: LiveNodeProps[]; items: Pla
     <div ref={ref} className="lv-board plan-board" data-testid="plan-board">
       {size.w > 0 ? (
         <ReactFlowProvider>
-          <Inner cards={cards} items={items} width={size.w} height={size.h} />
+          <Inner cards={cards} items={items} width={size.w} height={size.h} fitOn={fitOn} />
         </ReactFlowProvider>
       ) : null}
     </div>

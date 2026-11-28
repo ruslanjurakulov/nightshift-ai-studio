@@ -78,9 +78,14 @@ export function nodeOfPiece(id: string, master: MasterCell | null = null, sceneN
 
 /** A card's box on the BOARD only: at list width there is no board, and a tag dropping in from above is the honest start. */
 function boardCard(nodeId: string): DOMRect | null {
-  const el = Array.from(document.querySelectorAll<HTMLElement>(".lv-board [data-node-id]")).find((e) => e.dataset.nodeId === nodeId);
+  const all = Array.from(document.querySelectorAll<HTMLElement>(".lv-board [data-node-id]"));
+  // The Plan column folds a scene's picture and clip into one card, `scene#<n>` (planGrid): a step of it lands on that card (Lens M5).
+  const scene = /^(scene#\d+):(keyframe|clip)$/.exec(nodeId)?.[1];
+  const el = all.find((e) => e.dataset.nodeId === nodeId) ?? (scene ? all.find((e) => e.dataset.nodeId === scene) : undefined);
   return el ? el.getBoundingClientRect() : null;
 }
+/** A scene's two steps are one row on the lane's side: either one selected selects that scene's clip row. */
+const sceneOf = (nodeId: string | null) => (nodeId ? (/^(scene#\d+):(keyframe|clip)$/.exec(nodeId)?.[1] ?? nodeId) : null);
 
 /** A pill (or the master) by its piece id, compared as data: no selector string to escape. */
 function pillEl(id: string): HTMLElement | undefined {
@@ -94,6 +99,8 @@ export function LiveLane({
   selected,
   onOpen,
   retry,
+  storageKey = LANE_OPEN_KEY,
+  defaultOpen,
 }: {
   load: LiveLoad;
   /** The plan on screen: a reading of another plan (one render after a switch) is not drawn. */
@@ -104,6 +111,9 @@ export function LiveLane({
   onOpen: (nodeId: string | null) => void;
   /** useLiveGraph's own "read again now" (a GET of the read-only route). */
   retry: () => void;
+  /** Where the Timeline's open/closed choice is kept, and its state before the person chooses (the Plan column's own). */
+  storageKey?: string;
+  defaultOpen?: boolean;
 }) {
   const { t, locale } = useI18n();
   const c = t.studioLive;
@@ -178,7 +188,12 @@ export function LiveLane({
     },
     [sceneNo],
   );
-  const selectedRow = selected ? ([...rows, ...(master ? [master] : [])].find((r) => nodeOfPiece(r.id, cell, sceneNo) === selected)?.id ?? null) : null;
+  const selectedRow = selected
+    ? ([...rows, ...(master ? [master] : [])].find((r) => {
+        const n = nodeOfPiece(r.id, cell, sceneNo);
+        return n === selected || (n !== null && sceneOf(n) === sceneOf(selected) && sceneOf(n) !== n);
+      })?.id ?? null)
+    : null;
 
   if (!reading || !lane) {
     if (load.state === "loading" || (load.state === "ready" && !reading)) {
@@ -283,7 +298,8 @@ export function LiveLane({
           phone={phone}
           landedIds={fly.of === base ? fly.ids : []}
           flightFrom={flightFrom}
-          storageKey={LANE_OPEN_KEY}
+          storageKey={storageKey}
+          defaultOpen={defaultOpen}
           testId="live-lane-strip"
           label={w.label}
           showTotal={false}

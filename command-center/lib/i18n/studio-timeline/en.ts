@@ -161,6 +161,7 @@ export const studioTimelineEn = {
     retryIn: "Try again in about {n} min.",
     requoteFailed: "A new price could not be read. Nothing was held.",
     startedNote: "Started. The project is queued.",
+    startedInPlace: "Started. It is being made on the board beside this chat.",
     openProgress: "Open progress",
     confirmExempt: "Start",
     seePlans: "See plans",

@@ -18,6 +18,8 @@ import { Details } from "./Details";
 import { LiveLane } from "./LiveLane";
 import { useLiveGraph, type LiveTarget } from "./useLiveGraph";
 import { PlanBoard, PlanList, planCards } from "./PlanBoard";
+import { ActivityPanel } from "./ActivityPanel";
+import type { Activity } from "@/lib/studio/liveGraph";
 import { SegTabs, tabPanelProps } from "./SegTabs";
 import { reduced } from "./StoryBoard";
 import { StudioSplitContext } from "./StudioSplit";
@@ -32,6 +34,39 @@ const PHONE = "(max-width: 767px)";
 const STAGGER_MS = 40;
 const REVEAL_MS = 480;
 const STILL_WORKING_MS = 10_000;
+/** The Plan column's own lane open/closed choice: folded by default on a short window, unlike the live page's. */
+const PLAN_LANE_KEY = "ns.studio.plan.lane";
+const FAILED_WORDS = new Set(["take_failed", "assembly_failed"]);
+
+/**
+ * The film's activity log under its lane, folded (Pixel's proposal: the board keeps its rows). The summary counts lines that arrived
+ * since the person last looked; the first reading is not news. A failed step opens it, so a failure is never only behind a fold.
+ */
+function PlanActivity({ activity }: { activity: Activity }) {
+  const { t } = useI18n();
+  const w = t.studioLive.plan.activity;
+  const [open, setOpen] = useState(false);
+  const [seen, setSeen] = useState<ReadonlySet<string> | null>(null);
+  const ids = activity.items.map((i) => i.id);
+  const key = ids.join("|");
+  useEffect(() => {
+    setSeen((s) => (s === null || open ? new Set(key ? key.split("|") : []) : s));
+  }, [key, open]);
+  const fresh = seen ? activity.items.filter((i) => !seen.has(i.id)) : [];
+  const failedNew = fresh.some((i) => FAILED_WORDS.has(i.word));
+  useEffect(() => {
+    if (failedNew) setOpen(true);
+  }, [failedNew]);
+  return (
+    <details className="plan-activity" open={open} onToggle={(e) => setOpen(e.currentTarget.open)} data-testid="plan-activity">
+      <summary className="ds-t-body-sm plan-activity-summary">
+        {w.label}
+        <span aria-live="polite" data-testid="plan-activity-new">{fresh.length > 0 ? ` · ${fmt(w.fresh, { n: fresh.length })}` : ""}</span>
+      </summary>
+      <ActivityPanel activity={activity} run={false} />
+    </details>
+  );
+}
 
 function readMemory(): ViewMemory | null {
   try {
@@ -95,6 +130,9 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
   const c = t.studioLive;
   const p = c.plan;
   const phone = usePhone();
+  // A short window (1440×900) keeps the board's rows: the film's Timeline starts folded under it (Pixel M2).
+  const [tall, setTall] = useState(false);
+  useEffect(() => setTall(window.innerHeight >= 1000), []);
   const path = useChannelPath();
   const split = useContext(StudioSplitContext);
 
@@ -201,10 +239,26 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
       onBrainHandoff((h) => {
         if (h.session_id !== sessionRef.current) return;
         setHeard(h);
-        setView(viewOnSend(readMemory(), h.session_id));
+        // As a send does: shown and said, and remembered for this conversation.
+        const v = viewOnSend(readMemory(), h.session_id);
+        setView((was) => {
+          if (was !== v && v === "plan") setAnnounce(autoShown.current);
+          return v;
+        });
+        writeMemory({ session: h.session_id, view: v });
+        // Focus goes to the board's title, never to a key that would leave for another page (Pixel H1, M4).
+        if (v === "plan") setFocusTitle((n) => n + 1);
       }),
     [],
   );
+
+  const [focusTitle, setFocusTitle] = useState(0);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (!focusTitle) return;
+    const id = requestAnimationFrame(() => titleRef.current?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(id);
+  }, [focusTitle]);
 
   const [selected, setSelected] = useState<string | null>(null);
   // Another conversation is a first reading (nothing "new" on it) unless this column started it from a send.
@@ -233,16 +287,36 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
   const [heard, setHeard] = useState<BrainHandoff | null>(null);
   const urlFilmRaw = params?.get("film") ?? null;
   const urlFilm = url !== null && url === session && urlFilmRaw && SESSION.test(urlFilmRaw) ? urlFilmRaw.toLowerCase() : null;
-  const briefFilm = brief?.handoff?.kind === "film" ? brief.handoff.filmId : null;
-  const filmId = (heard && heard.session_id === session ? heard.film_id : null) ?? briefFilm ?? urlFilm;
-  const target = useMemo<LiveTarget | null>(() => (filmId ? { kind: "film", id: filmId } : null), [filmId]);
+  const briefFilm = brief?.handoff?.kind === "film" ? brief.handoff.filmId.toLowerCase() : null;
+  const heardFilm = heard && heard.session_id === session ? heard.film_id : null;
+  // The URL's film only while the brief is not read: once it is, the brief (or what this page heard) is the answer, and a URL film it
+  // does not name is never drawn (Lens M1: a hand-edited or stale &film= drew a film this conversation never became).
+  const briefRead = read.load.state === "ready";
+  const filmId = heardFilm ?? (briefRead ? briefFilm : urlFilm);
+  useEffect(() => {
+    if (!briefRead || !session || !urlFilmRaw) return;
+    const keep = heardFilm ?? briefFilm;
+    if (urlFilmRaw.toLowerCase() === keep) return;
+    const u = new URL(window.location.href);
+    if (keep) u.searchParams.set("film", keep);
+    else u.searchParams.delete("film");
+    window.history.replaceState(null, "", u.toString());
+  }, [briefRead, session, urlFilmRaw, heardFilm, briefFilm]);
+  // Read only while the plan is on screen: behind My canvas or the Chat tab nothing is polled; the last reading stays, and reading
+  // resumes when the plan is shown again (useLiveGraph keeps a reading of the same film across the pause).
+  const onScreen = split ? split.tab === "plan" : view === "plan";
+  const target = useMemo<LiveTarget | null>(() => (filmId && onScreen ? { kind: "film", id: filmId } : null), [filmId, onScreen]);
   const live = useLiveGraph(target);
   const filmKey = filmId ? `film:${filmId}` : null;
-  const liveGraph = live.load.state === "ready" && live.load.key === filmKey ? live.load.graph : null;
+  // A film from the URL is read at once, beside the brief, but drawn only once the brief has had its say (Lens M1, M3): a reading of a
+  // film the brief does not name never reaches the board, and the brief's cast is there when the film is drawn. A brief that cannot be
+  // read leaves the URL's film as the only answer; the film's own route still decides who may read it.
+  const filmTrusted = !!heardFilm || read.load.state !== "loading";
+  const liveGraph = filmTrusted && live.load.state === "ready" && live.load.key === filmKey ? live.load.graph : null;
 
   // One model across Create (`plan` stays the conversation): the film's reading folds into the brief's board, the same cards by id.
   const boardInput = useMemo<BoardInput | null>(
-    () => (liveGraph ? { source: "live", graph: liveGraph } : brief ? { source: "brief", brief, writing: phase === "planning" } : null),
+    () => (liveGraph ? { source: "live", graph: liveGraph, brief } : brief ? { source: "brief", brief, writing: phase === "planning" } : null),
     [liveGraph, brief, phase],
   );
   const model = useBoardModel(boardInput, session);
@@ -285,11 +359,15 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
   // A card's id is the step it opens: a scene card (`scene#n`) opens its picture step.
   const onOpen = useCallback((id: string) => setSelected(/^scene#\d+$/.test(id) ? `${id}:keyframe` : id), []);
   const sel = graph?.nodes.find((n) => n.id === selected) ?? null;
-  const cards = useMemo(() => (items ? planCards(t, items, { selected, onOpen, enter }) : []), [t, items, selected, onOpen, enter]);
+  const cards = useMemo(() => (items ? planCards(t, items, { selected, onOpen, enter, live: making }) : []), [t, items, selected, onOpen, enter, making]);
 
   // The timing harness's marks (tools/visual-qa/timing): taken once the state that draws the thing is committed.
   const hasCards = cards.length > 0;
-  const lit = making && !!graph && hasLitStep(graph);
+  // What the film's first reading already had done is not "lit": only a step that turned working or done since (Lens nit).
+  const firstDone = useRef<{ key: string; ids: Set<string> } | null>(null);
+  if (liveGraph && filmKey && firstDone.current?.key !== filmKey)
+    firstDone.current = { key: filmKey, ids: new Set(liveGraph.nodes.filter((n) => n.status === "done").map((n) => n.id)) };
+  const lit = making && !!graph && hasLitStep(graph, firstDone.current?.ids);
   useEffect(() => {
     if (hasCards) nsMarkOnce(making ? "ns:live:first-card" : "ns:plan:first-card");
   }, [hasCards, making]);
@@ -361,34 +439,38 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
     </div>
   );
 
-  // The film named but not read yet, or not readable: the brief's board stays, and this line says why it has not lit.
+  // One line under the title, the same element in every state, so the board never moves when its words change (Pixel H3, M1): the
+  // plan before Create; once started, the film's progress being read, or why it cannot be; while it is made, how it is followed.
   const ls = live.load.state;
-  const filmLine: ReactNode =
-    ls === "loading" ? (
-      <p className="ds-t-caption plan-quiet" role="status" data-testid="plan-live-loading">{c.loading}</p>
-    ) : ls === "error" ? (
-      <p className="ds-t-caption" role="alert" data-testid="plan-live-error">
-        {c.readFailed}{" "}
-        <button type="button" className="cv-kbtn plan-key" onClick={live.retry}>
-          {c.retry}
-        </button>
-      </p>
-    ) : ls === "expired" ? (
-      <p className="ds-t-caption" role="alert" data-testid="plan-live-expired">
-        {c.expired}{" "}
-        <Link href={`/login?next=${encodeURIComponent(typeof window === "undefined" ? "/" : window.location.pathname + window.location.search)}`}>{c.signIn}</Link>
-      </p>
-    ) : ls === "notFound" ? (
-      <p className="ds-t-caption" role="status" data-testid="plan-live-notfound">{c.notFound}</p>
-    ) : ls === "unavailable" ? (
-      <p className="ds-t-caption" role="status" data-testid="plan-live-unavailable">{c.unavailable}</p>
-    ) : null;
+  const loginHref = `/login?next=${encodeURIComponent(typeof window === "undefined" ? "/" : window.location.pathname + window.location.search)}`;
+  let statusLine: { text: ReactNode; id: string; alert?: boolean } | null = null;
+  if (filmId) {
+    if (making && graph) statusLine = { text: live.stale ? c.stale : graph.settled ? c.settled : p.making, id: live.stale ? "plan-live-stale" : "plan-making" };
+    else if (ls === "error") {
+      statusLine = {
+        id: "plan-live-error",
+        alert: true,
+        text: (
+          <>
+            {p.film.readFailed}{" "}
+            <button type="button" className="plan-inline-key" onClick={live.retry}>
+              {c.retry}
+            </button>
+          </>
+        ),
+      };
+    } else if (ls === "expired")
+      statusLine = { id: "plan-live-expired", alert: true, text: <>{p.film.expired} <Link href={loginHref}>{c.signIn}</Link></> };
+    else if (ls === "notFound") statusLine = { id: "plan-live-notfound", text: p.film.notFound };
+    else if (ls === "unavailable") statusLine = { id: "plan-live-unavailable", text: p.film.unavailable };
+    else statusLine = { id: "plan-started", text: p.started };
+  } else if (graph) statusLine = { id: "plan-note", text: p.headerNote };
 
   let body: ReactNode = null;
   if (items) {
     body = (
       <div className={`lv-main plan-stage${sel ? " has-details" : ""}`} data-stage={model?.stage}>
-        {phone ? <PlanList cards={cards} /> : <PlanBoard cards={cards} items={items} />}
+        {phone ? <PlanList cards={cards} /> : <PlanBoard cards={cards} items={items} fitOn={making ? filmKey : null} />}
         {sel ? <Details node={sel} run={false} filmId={making ? filmId : null} video={making ? graph?.video : undefined} onClose={close} /> : null}
       </div>
     );
@@ -439,7 +521,9 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
   // What is on screen: the page's tabs below 1024 px, this column's own switch at a desk.
   const shown: ColumnView = split ? (split.tab === "canvas" ? "canvas" : "plan") : view;
   const absent = items?.absent ?? [];
-  const absentLine = absent.length === 2 ? p.absent.voiceMusic : absent[0] === "voice" ? p.absent.voice : absent[0] === "music" ? p.absent.music : null;
+  // "…in this plan" before Create, "…in this film" once it is being made (Pixel L2).
+  const ab = making ? p.absentFilm : p.absent;
+  const absentLine = absent.length === 2 ? ab.voiceMusic : absent[0] === "voice" ? ab.voice : absent[0] === "music" ? ab.music : null;
 
   return (
     <div className="plan-col" data-view={shown} data-testid="studio-plan-column">
@@ -466,14 +550,14 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
         {shown === "plan" ? (
           <section {...tabPanelProps("plan-col", "plan")} className="cv-root lv-root plan-root" data-testid="plan-board-pane" data-phase={phase ?? "end"} data-stage={model?.stage}>
             <header className="plan-head">
-              <h2 className="ds-t-heading-xl plan-title">{brief?.title || p.title}</h2>
-              {graph ? (
-                <p className="ds-t-caption" data-testid={making ? "plan-making" : undefined}>
-                  {making ? (graph.settled ? c.settled : p.making) : p.headerNote}
+              <h2 className="ds-t-heading-xl plan-title" ref={titleRef} tabIndex={-1}>
+                {brief?.title || p.title}
+              </h2>
+              {statusLine ? (
+                <p className="ds-t-caption plan-status" role={statusLine.alert ? "alert" : "status"} data-testid={statusLine.id}>
+                  {statusLine.text}
                 </p>
               ) : null}
-              {filmId && !liveGraph ? filmLine : null}
-              {making && live.stale ? <p className="ds-t-caption lv-stale" data-testid="plan-live-stale">{c.stale}</p> : null}
               {graph && phase === "thinking" ? (
                 <p className="ds-t-caption plan-quiet" data-testid="plan-thinking">
                   {elapsed >= STILL_WORKING_MS ? p.stillWorking : p.planning}
@@ -513,7 +597,11 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
             ) : null}
             {body}
             {making && filmKey ? (
-              <LiveLane load={live.load} planKey={filmKey} stale={live.stale} selected={selected} onOpen={setSelected} retry={live.retry} />
+              <div className="plan-live-below" data-testid="plan-live-below">
+                <LiveLane load={live.load} planKey={filmKey} stale={live.stale} selected={selected} onOpen={setSelected} retry={live.retry}
+                  storageKey={PLAN_LANE_KEY} defaultOpen={tall && !phone} />
+                {graph?.activity ? <PlanActivity activity={graph.activity} /> : null}
+              </div>
             ) : null}
             {items && absentLine ? <p className="ds-t-caption plan-absent">{absentLine}</p> : null}
           </section>

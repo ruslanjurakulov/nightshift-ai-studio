@@ -185,6 +185,23 @@
 .plan-controls .react-flow__controls-button svg { fill: currentColor; max-width: 14px; max-height: 14px; }
 .plan-controls .react-flow__controls-button:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: -2px; }
 
+/* Create in place: one status line under the title in every state (the board never moves when its words change), the film's lane
+   and activity under the board, and the board's title as the focus target after Create. */
+.plan-head .plan-status { min-height: 1.5em; }
+.plan-inline-key { display: inline; min-height: 24px; padding: 0 2px; border: 0; background: none; font: inherit; color: var(--ds-accent); text-decoration: underline; cursor: pointer; }
+.plan-inline-key:focus-visible, .plan-title:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: 2px; }
+.plan-title:focus:not(:focus-visible) { outline: none; }
+.plan-live-below { display: grid; gap: var(--ds-space-2); min-width: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .plan-live-below { animation: plan-below-in 200ms var(--ds-ease-out); }
+}
+@keyframes plan-below-in { from { opacity: 0; max-height: 0; overflow: hidden; } to { opacity: 1; max-height: 640px; overflow: hidden; } }
+.plan-activity { min-width: 0; border: 1px solid var(--ds-border); border-radius: var(--ds-r-key); background: var(--ds-surface-1); }
+.plan-activity-summary { display: flex; align-items: center; min-height: 44px; padding: 0 var(--ds-space-3); font-weight: 600; cursor: pointer; }
+.plan-activity-summary:focus-visible { outline: 2px solid var(--ds-focus); outline-offset: -2px; }
+.plan-activity[open] > :not(summary) { max-height: 240px; overflow: auto; }
+.psc-state { font-weight: 600; }
+
 /* The Studio page: chat and plan side by side from 1024 px; below, one at a time as tabs (StudioSplit). */
 .studio-split-chip { justify-self: start; margin-bottom: var(--ds-space-2); min-height: 44px; }
 /* The unread mark on the Chat tab: a dot for the eye, the words for a screen reader (SegTabs). */

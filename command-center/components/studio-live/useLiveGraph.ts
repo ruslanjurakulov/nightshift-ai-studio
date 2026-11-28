@@ -93,7 +93,8 @@ export function useLiveGraph(target: LiveTarget | null) {
   useEffect(() => {
     if (!key) return;
     gen.current += 1;
-    setLoad({ state: "loading" });
+    // The same plan again (a reader that paused while hidden, then resumed): its last reading stays on screen until the next lands.
+    setLoad((l) => (l.state === "ready" && l.key === key ? l : { state: "loading" }));
     setStale(false);
     let ended = false;
     const poll = startPolling(read, POLL_MS);

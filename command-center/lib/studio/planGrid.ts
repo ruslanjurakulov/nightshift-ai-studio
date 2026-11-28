@@ -12,10 +12,16 @@ import type { LiveGraph, LiveNode, LiveStatus } from "./liveGraph";
 export type CardState = "ghost" | "queued" | "working" | "arrived" | "failed" | "disabled" | "insufficient" | "unknown";
 
 /**
- * A step's status as a card state (S5's contract). A finished step with no file is "unknown", not "queued": done is what a file says,
- * and without one we do not know (CLAUDE.md rule 5).
+ * Steps a film has done the moment it exists, with no file of their own: the idea and the script are the plan's own words (filmGraph
+ * marks them done at once), and the cast is the brief's. Pixel H2: a made film's idea card read "Unknown".
  */
-export function cardState(n: Pick<LiveNode, "status" | "assetId">): CardState {
+export const DONE_AT_ONCE: ReadonlySet<string> = new Set(["idea", "script", "topic", "character", "location", "prop"]);
+
+/**
+ * A step's status as a card state (S5's contract). A finished step with no file is "unknown", not "queued": done is what a file says,
+ * and without one we do not know (CLAUDE.md rule 5). The exception is a step whose result is text, never a file (DONE_AT_ONCE).
+ */
+export function cardState(n: Pick<LiveNode, "status" | "assetId"> & { kind?: string }): CardState {
   const s: LiveStatus = n.status;
   switch (s) {
     case "draft":
@@ -26,7 +32,7 @@ export function cardState(n: Pick<LiveNode, "status" | "assetId">): CardState {
     case "working":
       return "working";
     case "done":
-      return n.assetId ? "arrived" : "unknown";
+      return n.assetId || (n.kind !== undefined && DONE_AT_ONCE.has(n.kind)) ? "arrived" : "unknown";
     case "failed":
       return "failed";
     case "skipped":

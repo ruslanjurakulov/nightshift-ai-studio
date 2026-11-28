@@ -39,6 +39,8 @@ export interface LiveNodeProps {
   reason?: string | null;
   /** Shown but not final yet (a scene still being checked): labelled "Checking". */
   provisional?: boolean;
+  /** While the film is being made: the state in words, so it is never told by the border alone (Pixel M3). */
+  stateWord?: string | null;
 }
 
 export const PlanSceneCard = memo(function PlanSceneCard(p: LiveNodeProps) {
@@ -74,6 +76,7 @@ export const PlanSceneCard = memo(function PlanSceneCard(p: LiveNodeProps) {
       </H>
       {p.summary ? <p className="ds-t-body-sm psc-summary">{p.summary}</p> : null}
       {p.provisional ? <p className="ds-t-label psc-flag">{w.checking}</p> : null}
+      {p.stateWord ? <p className="ds-t-caption psc-flag psc-state" data-testid={`plan-card-state-${p.id}`}>{p.stateWord}</p> : null}
       {p.state === "unknown" ? <p className="ds-t-caption psc-flag">{p.reason ? `${w.unknown} · ${p.reason}` : w.unknown}</p> : null}
       {p.state === "disabled" && p.reason ? <p className="ds-t-caption psc-flag">{p.reason}</p> : null}
       {p.state === "failed" && (p.failureCause || p.failureRemedy) ? (

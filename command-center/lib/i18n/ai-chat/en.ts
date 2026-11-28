@@ -283,6 +283,8 @@ export const aiChatEn = {
     plan_over_cap_person: "This is your own daily limit, counted across all your workspaces.",
     plan_over_cap_trial: "To be sure it can finish, writing this storyboard needs at least {needed}, and your free trial has {left}. It was not started and nothing was used. Choose a plan to write it.",
   },
+  handoffFailed: "The film started, but this conversation could not record it, so a refresh may not find it here.",
+  handoffRetry: "Try again",
 };
 
 export type AiChatDictionary = typeof aiChatEn;

@@ -180,6 +180,7 @@ export const studioTimelineRu: StudioTimelineDictionary = {
     retryIn: "Повторите примерно через {n} мин.",
     requoteFailed: "Не удалось получить новую цену. Ничего не удержано.",
     startedNote: "Запущено. Проект в очереди.",
+    startedInPlace: "Запущено. Фильм создаётся на доске рядом с этим чатом.",
     openProgress: "Открыть ход работы",
     confirmExempt: "Начать",
     seePlans: "Посмотреть тарифы",

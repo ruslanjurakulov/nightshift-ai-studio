@@ -40,7 +40,12 @@ export function StudioSplit({
   const { t } = useI18n();
   const p = t.studioLive.plan;
   const [narrow, setNarrow] = useState(false);
-  const [tab, setTabState] = useState<SplitTab>("chat");
+  const params = useSearchParams();
+  // A refresh after Create (?brain=&film= of this conversation): the film is made on the Plan tab, so the page opens there (Pixel M5).
+  const [tab, setTabState] = useState<SplitTab>(() => {
+    const film = params?.get("film") ?? null;
+    return initialSession && params?.get("brain") === initialSession && film && SESSION.test(film) ? "plan" : "chat";
+  });
   const tabRef = useRef(tab);
   tabRef.current = tab;
   const [phase, setPhase] = useState<BrainPhase | null>(null);
@@ -52,7 +57,6 @@ export function StudioSplit({
     if (next === "chat") setUnread(false);
   };
   // New chat takes ?brain= off the page (the panel's router.replace): nothing of the last conversation stays on the chip or the tab.
-  const params = useSearchParams();
   const brain = params?.get("brain") ?? null;
   const lastBrain = useRef(brain);
   useEffect(() => {

@@ -92,6 +92,9 @@ useEffect(() => {
 }, [hasCard]);
 ```
 
+In app code use the one helper, `nsMarkOnce` (`command-center/lib/studio/nsMark.ts`): each name fires **at most once per document**
+(a mark repeated on every re-render would only move "first seen" to whichever render the sampler caught), and it never throws.
+
 The harness collects them with `performance.getEntriesByType("mark")` every 100 ms and converts `timeOrigin + startTime` to its
 own clock, so marks from the page before and after a reload line up. It works with zero marks (today) and lists every mark it
 sees; to make a mark count towards a target, add its name to the window's `expect` list in the scenario.

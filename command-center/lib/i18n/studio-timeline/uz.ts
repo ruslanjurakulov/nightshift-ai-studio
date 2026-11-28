@@ -180,6 +180,7 @@ export const studioTimelineUz: StudioTimelineDictionary = {
     retryIn: "Taxminan {n} daqiqadan soʻng qayta urinib koʻring.",
     requoteFailed: "Yangi narxni oʻqib boʻlmadi. Hech narsa band qilinmadi.",
     startedNote: "Boshlandi. Loyiha navbatda.",
+    startedInPlace: "Boshlandi. Film shu chat yonidagi doskada tayyorlanmoqda.",
     openProgress: "Jarayonni ochish",
     confirmExempt: "Boshlash",
     seePlans: "Tariflarni koʻrish",

@@ -14,6 +14,7 @@
  *   - the character, place and prop cards the brief drew stay after Create, with the brief's data, until the film carries its own.
  */
 import { briefGraph, type Brief, type LiveEdge, type LiveGraph, type LiveNode } from "./liveGraph";
+import { DONE_AT_ONCE } from "./planGrid";
 
 export const BOARD_STAGES = ["proposing", "planning", "ready", "making", "assembled"] as const;
 export type BoardStage = (typeof BOARD_STAGES)[number];
@@ -21,8 +22,12 @@ export type BoardStage = (typeof BOARD_STAGES)[number];
 export type BoardInput =
   /** The conversation's brief; `writing`: the panel is writing its storyboard right now. */
   | { source: "brief"; brief: Brief; writing?: boolean }
-  /** A live reading of what Create made (filmGraph or runGraph). */
-  | { source: "live"; graph: LiveGraph };
+  /**
+   * A live reading of what Create made (filmGraph or runGraph). `brief`: the conversation's plan, when it is read: its cast cards
+   * and each scene's cast and planned length are carried onto the film's cards (Lens M2, M3: taken from the brief itself, so a
+   * refresh whose film reading lands first still gets them when the brief arrives).
+   */
+  | { source: "live"; graph: LiveGraph; brief?: Brief | null };
 
 export interface BoardModel {
   stage: BoardStage;
@@ -92,21 +97,37 @@ export function reuseGraph(prev: LiveGraph | null, next: LiveGraph): LiveGraph {
   return { ...next, nodes, edges };
 }
 
+/** What the film's reading does not say about a scene card that the plan did: its cast and its planned length. */
+function carryPlan(plan: LiveGraph | null, next: LiveGraph): LiveGraph {
+  if (!plan) return next;
+  const byId = new Map(plan.nodes.map((n) => [n.id, n]));
+  let changed = false;
+  const nodes = next.nodes.map((n) => {
+    const p = byId.get(n.id);
+    if (!p) return n;
+    const cast = (!n.cast || n.cast.length === 0) && p.cast?.length ? p.cast : n.cast;
+    const seconds = (typeof n.seconds !== "number" || n.seconds <= 0) && typeof p.seconds === "number" && p.seconds > 0 ? p.seconds : n.seconds;
+    if (cast === n.cast && seconds === n.seconds) return n;
+    changed = true;
+    return { ...n, cast, seconds };
+  });
+  return changed ? { ...next, nodes } : next;
+}
+
 export function reduceBoard(prev: BoardModel | null, input: BoardInput): BoardModel {
-  const raw = input.source === "brief" ? briefGraph(input.brief) : keepRefs(prev?.graph ?? null, input.graph);
+  const plan = input.source === "live" ? (input.brief ? briefGraph(input.brief) : (prev?.graph ?? null)) : null;
+  const raw = input.source === "brief" ? briefGraph(input.brief) : carryPlan(plan, keepRefs(plan, input.graph));
   const graph = reuseGraph(prev?.graph ?? null, raw);
   const stage = stageOf(input, graph);
   if (prev && prev.graph === graph && prev.stage === stage) return prev;
   return { stage, graph };
 }
 
-/** Steps a film reading marks done the moment it exists (filmGraph: the idea and the script are the plan itself). */
-const DONE_AT_ONCE = new Set(["idea", "script", "character", "location", "prop"]);
-
 /**
- * A live reading with a step lit: one working, or one finished beyond what a film has the moment it is created. The `ns:live:first-lit`
- * mark's condition; a board of only "waiting" steps and a done idea is not lit.
+ * A live reading with a step lit: one working, or one that turned done since the film's first reading. The `ns:live:first-lit` mark's
+ * condition. Done at the first reading is not lit (Lens nit): the idea and script, and a key frame taken from an existing file, are
+ * done the moment the film exists. `doneAtFirst`: the ids done in the first reading; without it, only DONE_AT_ONCE kinds are excluded.
  */
-export function hasLitStep(g: LiveGraph): boolean {
-  return g.nodes.some((n) => n.status === "working" || (n.status === "done" && !DONE_AT_ONCE.has(n.kind)));
+export function hasLitStep(g: LiveGraph, doneAtFirst?: ReadonlySet<string>): boolean {
+  return g.nodes.some((n) => n.status === "working" || (n.status === "done" && !DONE_AT_ONCE.has(n.kind) && !doneAtFirst?.has(n.id)));
 }

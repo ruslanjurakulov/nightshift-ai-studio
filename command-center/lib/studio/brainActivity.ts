@@ -39,6 +39,9 @@ export type BrainActivity =
   | { session_id: null; phase: "end"; reason: "failed"; plan?: never };
 
 /**
+ * MIRROR IN #989 (lib/brain/canvas-events.ts): this event, its type, isBrainHandoff and the "handoff" case of dispatchBrainCanvas are
+ * S3's addition to the contract and are not yet in S1's file; when #989 lands, this block must come from there unchanged.
+ *
  * S3's addition to the contract (LIVE_CREATION_PLAN item 9, "Create in place"), for #989 to mirror: the person's confirmed Create went
  * through (S2's start route answered ok) and this conversation became this film. Sent once per start, before the panel records the
  * handoff on the server, so the board beside it reads the film at once instead of after a page reload. It carries ids only (no
