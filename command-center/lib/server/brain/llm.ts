@@ -28,6 +28,9 @@ export const CHAT_MODELS: Record<ChatModelId, ModelWire> = {
   "gemini-3.6-flash": { provider: "google", vendorModel: "gemini-3.6-flash" },
 };
 
+/** The model the owner's picker starts on when its key is set (else the first configured one): passed to the page as a prop. */
+export const OWNER_PICKER_DEFAULT: ChatModelId = "gemini-3.6-flash";
+
 /** Legacy owner turn default for callers that omit the model. Customer turns use ai_chat_settings.model. */
 export const OWNER_CHAT_MODEL: ChatModelId = "anthropic-claude-sonnet-5-5";
 
