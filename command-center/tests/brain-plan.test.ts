@@ -3,6 +3,7 @@ import { buildBrief, filmFromBrief, readModelAnswer, readScenario, shotCount, ty
 import { PLAN, mergePlan, planLimits, planRequestId, planTurns, planWindows, readWindow, refsOf, withPlanTurns } from "@/lib/brain/plan";
 import { FILM_MODEL_PREFERENCE, pickFilmModel } from "@/lib/brain/film-models";
 import { PLAN_SYSTEM_PROMPT, SYSTEM_PROMPT, planDataBlock } from "@/lib/brain/prompt";
+import { storyOutline } from "./helpers/storyFixtures";
 
 /**
  * The plan step (S1_GAPS G1–G4), the pure half. What breaks if these fail: a person who asked for 3 minutes is quoted for 30 s; a
@@ -24,11 +25,12 @@ const scene = (seconds: number, o: Record<string, unknown> = {}) => ({ title: "s
 
 describe("G1: the person's length is the plan's length", () => {
   it("a 180 s ask never becomes a 30 s film: the outline keeps 180, a 30 s outline is not proposed", () => {
-    const good = readModelAnswer(JSON.stringify({ reply: "Here", scenarios: [outlineRaw([60, 60, 60]), outlineRaw([90, 90])] }), SHORT(180), "q");
+    // Story outlines (S1 grammar: beats, a hook, looks), as a fresh short proposal must be.
+    const good = readModelAnswer(JSON.stringify({ reply: "Here", scenarios: [storyOutline([45, 45, 45, 45]), storyOutline([30, 50, 50, 50])] }), SHORT(180), "q");
     expect(good?.step).toBe("proposing");
     expect(good?.scenarios.map((s) => s.target_seconds)).toEqual([180, 180]);
     // Five 6 s chapters: the old reader made this a 30 s film. Now it is not an outline of a 180 s film at all.
-    const short = readModelAnswer(JSON.stringify({ reply: "Here", scenarios: [outlineRaw([6, 6, 6, 6, 6]), outlineRaw([6, 6, 6, 6, 6])] }), SHORT(180), "q");
+    const short = readModelAnswer(JSON.stringify({ reply: "Here", scenarios: [storyOutline([6, 6, 6, 6, 6]), storyOutline([6, 6, 6, 6, 6])] }), SHORT(180), "q");
     expect(short?.scenarios).toEqual([]);
     expect(short?.step).toBe("asking");
     // A stored payload from before the plan step whose scenes add up to 30 s is not a 180 s storyboard either.

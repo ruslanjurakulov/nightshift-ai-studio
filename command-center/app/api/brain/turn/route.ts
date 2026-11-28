@@ -23,7 +23,14 @@ import {
   readModelAnswer,
   readScenario,
   readSlots,
+  speechBlocks,
+  speechVoice,
+  changeOptions,
+  isInferable,
+  mergeSlots,
   type Brief,
+  type BrainSlots,
+  type InferableSlot,
   type BrainCard,
   type BriefPrice,
   type Scenario,
@@ -111,7 +118,8 @@ async function kindChoices(s: Session) {
   return { words, open, kindOptions: [...(s.channel_id ? [words.kindLong] : []), ...(open ? [words.kindShort] : [])] };
 }
 
-async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry = false, requestId: string | null = null): Promise<Response> {
+async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry = false, requestId: string | null = null,
+                       force?: Partial<Pick<BrainSlots, InferableSlot>>): Promise<Response> {
   // The owner's model as it is now (0199 hands a member only a reference to it, never the id).
   const q0 = await supabase.rpc("ai_chat_quota", { p_org: s.org_id });
   if (q0.error) return dbRefusal(q0.error) ?? brainJson({ error: "unavailable" }, 503);
@@ -134,7 +142,7 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
 
   const reserve = await supabase.rpc("ai_chat_reserve_turn", { p_session: s.id, p_text: retry ? "" : text, p_retry: retry, p_request_id: requestId });
   if (reserve.error) return dbRefusal(reserve.error) ?? brainJson({ error: "unavailable" }, 503);
-  const r = reserve.data as { call_id: string; used: number; limit: number | null; trial_left?: number | null };
+  const r = { ...(reserve.data as { call_id: string; used: number; limit: number | null; trial_left?: number | null }) };
   const quota = { used: r.used, limit: r.limit, trial_left: typeof r.trial_left === "number" ? r.trial_left : null };
   const finish = (outcome: string, tokensIn: number | null, tokensOut: number | null,
                   extra?: { text: string; payload: unknown; slots: unknown; step: string; brief: unknown; card: unknown }) =>
@@ -169,9 +177,32 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
   const shortAvailable = open;
   const words = words0;
   called = true;
-  // Room for two or three whole scenarios on every turn: the answer to the last question is the one that proposes them.
-  const llm = await callChatModel(model.id, SYSTEM_PROMPT, dataBlock({ history, slots: prev, askNext: nextSlot(prev), facts, locale, shortAvailable }),
-                                  { endUser: await vendorUser(s.org_id), size: "proposal" });
+  // Room for two or three whole scenarios on every turn: the answer that fills the last open slot proposes them in the same turn
+  // (DATA open_slots / last_open_slot), so the person never has to write again to see them.
+  const said = retry ? [...history].reverse().find((m) => m.role === "user")?.content ?? "" : text;
+  const rules = { freezeSlots: isSmallTalk(said), shortAvailable, longAvailable: !!s.channel_id, kindOptions, identityReply: words.identityReply, force };
+  let llm = await callChatModel(model.id, SYSTEM_PROMPT, dataBlock({ history, slots: prev, askNext: nextSlot(prev), facts, locale, shortAvailable }),
+                                { endUser: await vendorUser(s.org_id), size: "proposal" });
+  let answer = llm.ok ? readModelAnswer(llm.text, prev, crypto.randomUUID(), rules) : null;
+  // Every slot known, but too few outlines kept the story grammar: asked again ONCE with the server's reason, as a turn of its own
+  // (0199's p_retry: the person's message is still the last, unanswered), then refused by name. Never proposed half-made.
+  if (llm.ok && answer && !answer.refused && answer.storyProblem) {
+    const problem = answer.storyProblem;
+    await finish("invalid_output", llm.tokensIn, llm.tokensOut);
+    const again = await supabase.rpc("ai_chat_reserve_turn", { p_session: s.id, p_text: "", p_retry: true,
+                                                               p_request_id: requestId ? `${requestId.slice(0, 62)}-r` : null });
+    if (again.error) return dbRefusal(again.error) ?? brainJson({ error: "unavailable", quota }, 503);
+    const r2 = again.data as { call_id: string; used: number; limit: number | null; trial_left?: number | null };
+    r.call_id = r2.call_id;
+    Object.assign(quota, { used: r2.used, limit: r2.limit, trial_left: typeof r2.trial_left === "number" ? r2.trial_left : null });
+    llm = await callChatModel(model.id, SYSTEM_PROMPT, dataBlock({ history, slots: prev, askNext: nextSlot(prev), facts, locale, shortAvailable, problem }),
+                              { endUser: await vendorUser(s.org_id), size: "proposal" });
+    answer = llm.ok ? readModelAnswer(llm.text, prev, crypto.randomUUID(), rules) : null;
+    if (llm.ok && answer && !answer.refused && answer.storyProblem) {
+      await finish("invalid_output", llm.tokensIn, llm.tokensOut);
+      return brainJson({ error: "story_arc_invalid", quota }, 422);
+    }
+  }
   if (!llm.ok) {
     if (llm.error === "vendor_refused") {
       // The vendor's own safety refusal: said as that, not "unavailable", not retried, and not charged to the person.
@@ -190,14 +221,6 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
     // The reason names the remedy for the owner; the panel says only "unavailable right now" to a customer (the model is hidden).
     return brainJson({ error: "model_failed", reason: llm.error, quota }, 502);
   }
-  const said = retry ? [...history].reverse().find((m) => m.role === "user")?.content ?? "" : text;
-  const answer = readModelAnswer(llm.text, prev, crypto.randomUUID(), {
-    freezeSlots: isSmallTalk(said),
-    shortAvailable,
-    longAvailable: !!s.channel_id,
-    kindOptions,
-    identityReply: words.identityReply,
-  });
   if (!answer) {
     await finish("invalid_output", llm.tokensIn, llm.tokensOut);
     return brainJson({ error: "model_answer_invalid", quota }, 502);
@@ -337,9 +360,11 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
 
   // The longest whole scene prompt the picked models take, from their registry rows (S9, 0218), else the film's own 2000.
   const promptLimit = promptLimitOf(catalogue, pick.clip?.id, pick.keyframe?.id);
+  // A story outline (one that picked a format) is paced at about 3 s a shot (lib/brain/plan STORY); any other keeps 3-30 s scenes.
+  const storyTarget = chosen.format ? chosen.target_seconds : null;
   // A storyboard that already exists (stored, or chosen again) is measured before the draft or any turn: said before any spend.
   if (planned) {
-    const over = overLimit(planned, planLimits(null, promptLimit).promptMax);
+    const over = overLimit(planned, planLimits(null, promptLimit, storyTarget).promptMax);
     if (over) return brainJson({ error: "prompt_too_long", scene: over.scene, limit: over.limit }, 422);
   }
 
@@ -379,7 +404,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     return brainJson({ error: "plan_superseded", ...(filmId ? { film_id: filmId } : {}), ...(quota !== undefined ? { quota } : {}) }, 409);
   };
   try {
-    let limits = planLimits(null, promptLimit);
+    let limits = planLimits(null, promptLimit, storyTarget);
     let model: ChatModelId | null = null;
     if (!planned) {
       const q0 = await supabase.rpc("ai_chat_quota", { p_org: s.org_id });
@@ -395,7 +420,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
       model = state.id;
       // The longest scene is the picked clip model's longest shot × max_shots (G4), told to every window up front. No clip model:
       // the film's own 3–30 s, and the quote's "model_not_set" says the rest.
-      limits = planLimits(pick.clip ? { durations: pick.clip.durations, maxShots: FILM.maxShots } : null, promptLimit);
+      limits = planLimits(pick.clip ? { durations: pick.clip.durations, maxShots: FILM.maxShots } : null, promptLimit, storyTarget);
       const turns = planTurns(chosen, limits);
       // An outline no answer could fit into 60 scenes, or two short chapters no call had room for (Lens M2): said before any turn.
       if (!turns) return brainJson({ error: "plan_failed", reason: "not_plannable", step: null }, 409);
@@ -420,7 +445,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
       return brainJson({ error: "film_refused", reason: machineReason(created.error.message) }, 409);
     }
     const cd = (created.data ?? null) as {
-      film?: { id?: string; version?: number; clip_model?: unknown; keyframe_model?: unknown };
+      film?: { id?: string; version?: number; clip_model?: unknown; keyframe_model?: unknown; voice?: unknown };
       limits?: { max_shots?: unknown }; totals?: { scenes?: unknown }; scenes?: unknown;
     } | null;
     const f = cd?.film;
@@ -432,6 +457,16 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     const drafted = { clip: modelId(f.clip_model, pick.clip?.id ?? null), keyframe: modelId(f.keyframe_model, pick.keyframe?.id ?? null) };
     const draftedLimit = planLimits(null, promptLimitOf(catalogue, drafted.clip, drafted.keyframe)).promptMax;
     const models = { clip: nameOf(catalogue.clip, drafted.clip), keyframe: nameOf(keyframeAll, drafted.keyframe) };
+    // How the film is heard, and what stops it at Create today (lib/brain/logic speechBlocks): a voice-over needs a film voice a quote
+    // can price (only a creative_tts voice is one; the draft has none, and no film voice can be chosen yet), and a scene spoken in its
+    // clip needs the cut to keep clip sound (CLIP_SOUND_IN_CUT). Said on the plan by name; Create is not offered while either holds.
+    const filmVoice = f.voice && typeof f.voice === "object" ? (f.voice as { source?: unknown }) : null;
+    const voiceReady = filmVoice?.source === "creative_tts";
+    const heard = (b: Brief): Brief => {
+      if (b.kind !== "short" || !b.scenes?.length) return b;
+      const blocked = speechBlocks(b.scenes, voiceReady);
+      return { ...b, voice: { ...speechVoice(b.scenes), ...(blocked.length ? { blocked } : {}) } };
+    };
     // The draft already has a storyboard: this outline's, kept from an earlier choice, and perhaps edited by the person since (Lens
     // H1). It is never written over: choosing again only prices the film as it is now.
     const hasScenes = Array.isArray(cd?.scenes) ? cd!.scenes.length > 0 : typeof cd?.totals?.scenes === "number" && cd.totals.scenes > 0;
@@ -440,7 +475,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
       if (!planned) return superseded(f.id);
       const q = await supabase.rpc("quote_film", { p_film: f.id, p_version: v0 });
       const quoteRead = q.error ? null : coerceQuote(q.data);
-      const brief: Brief = { ...buildBrief(s.id, slots, planned, "ready"), price: priceOf(quoteRead) };
+      const brief: Brief = { ...heard(buildBrief(s.id, slots, planned, "ready")), price: priceOf(quoteRead) };
       // Nothing is written: the conversation's BRIEF and the film are left as they are (Lens L3: a re-price takes no lease).
       return brainJson({ brief, film: { id: f.id, version: v0 }, models, quote: legacyQuote(quoteRead), film_quote: q.error ? null : q.data });
     }
@@ -473,7 +508,7 @@ async function choose(supabase: SupabaseClient, s: Session, index: unknown): Pro
     // BRIEF v1's own fields: "a model id the server checked is on sale" (docs/studio/NIGHTSHIFT_AI.md). The film keeps them as its
     // defaults, so every scene's own model stays unset and follows the film.
     planned = { ...planned, scenes: planned.scenes.map((sc) => ({ ...sc, clip_model: drafted.clip, keyframe_model: drafted.keyframe })) };
-    const draftBrief = buildBrief(s.id, slots, planned, "ready");
+    const draftBrief = heard(buildBrief(s.id, slots, planned, "ready"));
     // The whole storyboard through the same floor: a chapter's own words could carry what the outline did not.
     if (unsafeBrief(draftBrief)) {
       ending = { state: "failed", reason: "content_refused" };
@@ -630,6 +665,22 @@ export async function POST(request: Request) {
     const text = own || pick;
     if (!text) return brainJson({ error: "bad_request" }, 400);
     return runTurn(supabase, s, text, false, requestId);
+  }
+  if (b.action === "change") {
+    // An inferred slot the person corrects (a chip): their answer is merged as said, whatever the model writes, and the turn goes on
+    // from there (it proposes again when every slot is known). Only a slot that IS an inference, before a plan is chosen.
+    const slot = b.slot;
+    const prev = readSlots(s.slots);
+    if (!isInferable(slot) || !(prev.inferred ?? []).includes(slot) || s.step === "ready" || s.step === "created") return brainJson({ error: "card_changed" }, 409);
+    const options = changeOptions(slot);
+    const own = typeof b.own === "string" ? plain(b.own, 200) : "";
+    const value = typeof b.choice === "number" && Number.isInteger(b.choice) ? options[b.choice - 1] : own;
+    if (!value) return brainJson({ error: "bad_request" }, 400);
+    // Read on its own (from the kind alone): merged into prev, an unusable value would leave the old inference standing.
+    const forced = mergeSlots({ kind: prev.kind }, { [slot]: value }).slots[slot];
+    if (forced === undefined) return brainJson({ error: "bad_request" }, 400);
+    const label = (await kindChoices(s)).words.slotNames[slot];
+    return runTurn(supabase, s, `${label}: ${value}`, false, requestId, { [slot]: forced } as Partial<Pick<BrainSlots, InferableSlot>>);
   }
   if (b.action === "choose") return choose(supabase, s, b.index);
   if (b.action === "handoff") {

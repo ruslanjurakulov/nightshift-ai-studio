@@ -7,7 +7,7 @@ import { TriangleAlert } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { takeLandingIdea } from "@/lib/brain/handoff";
 import { pluralText } from "@/lib/plural";
-import { runLink, type Brief, type BrainCard, type BrainSlots, type Scenario } from "@/lib/brain/logic";
+import { changeOptions, isInferable, readSlots, runLink, speechOf, type Brief, type BrainCard, type BrainSlots, type InferableSlot, type Scenario } from "@/lib/brain/logic";
 import { CONTACT_HREF, LEGAL } from "@/lib/legal";
 import { formatCredits } from "@/lib/credits";
 import { ChatShell, type ChatTurn } from "@/components/chat/ChatShell";
@@ -194,6 +194,10 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   }, []);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [card, setCard] = useState<BrainCard | null>(null);
+  /** The slots as the server stored them: the inferred ones are drawn as chips the person can change. */
+  const [slots, setSlots] = useState<BrainSlots>({});
+  /** The inferred slot whose chip was pressed: its card of the server's own options (or the box, for the audience). */
+  const [changing, setChanging] = useState<InferableSlot | null>(null);
   const [brief, setBrief] = useState<Brief | null>(null);
   const [step, setStep] = useState<string>("asking");
   const [film, setFilm] = useState<FilmReady | null>(null);
@@ -260,6 +264,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     setSession(null);
     setMessages([]);
     setCard(null);
+    setSlots({});
+    setChanging(null);
     setBrief(null);
     setFilm(null);
     setModels(null);
@@ -329,6 +335,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       setSession(sid);
       setStep(d.session?.step ?? "asking");
       setCard(d.card ?? null);
+      setSlots(readSlots((d.session as { slots?: unknown } | undefined)?.slots));
+      setChanging(null);
       setBrief(d.brief && d.brief.version === 1 ? d.brief : null);
       setMessages((d.messages ?? []).map((m) => ({
         key: `m${m.id}`, role: m.role, content: m.content, scenarios: m.payload?.scenarios, factsState: m.payload?.factsState,
@@ -465,6 +473,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     // Which chapter failed is the server's count, not the model's words; nothing was priced either way.
     const step = d.step && typeof d.step === "object" ? (d.step as { chapter?: unknown; chapters?: unknown }) : null;
     const at = step && typeof step.chapter === "number" && typeof step.chapters === "number" ? { n: step.chapter, total: step.chapters } : null;
+    if (e === "story_arc_invalid") return c.errors.story_arc_invalid;
+    if (e === "narration_too_long") return fmt(c.errors.narration_too_long, { chapter: typeof d.chapter === "number" ? d.chapter : "?" });
+    if (e === "plan_failed" && d.reason === "shot_rules") return c.errors.plan_shot_rules;
     if (e === "plan_failed") return at ? fmt(c.errors.plan_failed, at) : c.errors.plan_failed_plain;
     if (e === "plan_length_mismatch") return at ? fmt(c.errors.plan_length_mismatch, at) : c.errors.plan_length_mismatch_plain;
     if (e === "plan_over_cap" && typeof d.needed === "number" && typeof d.left === "number") {
@@ -598,6 +609,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       if (d.reply && sid) {
         setStep(String(d.step ?? "asking"));
         setCard((d.card as BrainCard | null) ?? null);
+        if (d.slots && typeof d.slots === "object") setSlots(readSlots(d.slots));
+        setChanging(null);
         setMessages((m) => [
           ...m,
           ...(label ? [{ key: localKey("u"), role: "user" as const, content: label }] : []),
@@ -624,9 +637,18 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (!label) return Promise.resolve(false);
     return run(label, { action: "answer", session, card: card.id, request_id: pressId(), ...(choice ? { choice } : { own: label }) });
   };
+  /** A chip's change: one of the server's own options, or (the audience) the person's own words. A turn like any answer. */
+  const change = (slot: InferableSlot, choice: number | null, ownWords = ""): Promise<boolean> => {
+    if (!session) return Promise.resolve(false);
+    const value = choice ? changeOptions(slot)[choice - 1] : ownWords.trim();
+    if (!value) return Promise.resolve(false);
+    return run(`${c.slotNames[slot]}: ${value}`, { action: "change", session, slot, request_id: pressId(), ...(choice ? { choice } : { own: value }) });
+  };
   const send = (raw: string): Promise<boolean> => {
     const words = raw.trim();
     if (!words || capped) return Promise.resolve(false);
+    // While a chip's change is open, the box is its own answer (the audience has no options).
+    if (changing && session) return change(changing, null, words);
     // While a question card is open the box is its "own answer" (the card's options are buttons above it).
     if (card && step === "asking" && session) return answer(null, words);
     const request_id = pressId();
@@ -945,8 +967,34 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   const isLast = (m: Msg | null) => !!m && m === lastAssistant;
 
   // Under the newest answer: its question card, or the plan with its price and its one way on.
+  const inferred = (slots.inferred ?? []).filter(isInferable).filter((k) => slots[k] !== undefined);
+  const chipValue = (k: InferableSlot) => String(slots[k] ?? "");
   const tail: ReactNode = (
     <>
+      {inferred.length > 0 && step !== "ready" && step !== "created" && (
+        <div className="flex flex-wrap items-center gap-2" data-testid="inferred-chips">
+          <span className="text-xs text-[var(--color-muted)]">{c.inferredHeading}</span>
+          {inferred.map((k) => (
+            <button key={k} type="button" className="btn-quiet min-h-11 px-3 text-xs" data-slot={k} disabled={disabled}
+              aria-pressed={changing === k} aria-label={fmt(c.inferredChipLabel, { slot: c.slotNames[k], value: chipValue(k) })}
+              onClick={() => setChanging(changing === k ? null : k)}>
+              {fmt(c.inferredChip, { slot: c.slotNames[k], value: chipValue(k) })}
+            </button>
+          ))}
+        </div>
+      )}
+      {changing && step !== "ready" && (
+        <fieldset className="studio-field flex min-w-0 flex-col gap-2 p-3" disabled={disabled} data-testid="change-card">
+          <p className="text-sm font-semibold">{fmt(c.changeQuestion, { slot: c.slotNames[changing] })}</p>
+          {changeOptions(changing).map((o, i) => (
+            <button key={o} type="button" className="btn-quiet flex min-h-11 !items-start !justify-start gap-2 px-3 text-left text-sm" onClick={() => void change(changing, i + 1)}>
+              <span className="font-semibold">{i + 1}</span> <span className="break-words">{o}</span>
+            </button>
+          ))}
+          {changeOptions(changing).length === 0 && <p className="text-xs text-[var(--color-muted)]">{fmt(c.changeOwn, { slot: c.slotNames[changing].toLowerCase() })}</p>}
+          <button type="button" className="btn-quiet min-h-11 self-start px-3 text-sm" onClick={() => setChanging(null)}>{c.changeCancel}</button>
+        </fieldset>
+      )}
       {card && step === "asking" && (
         <fieldset className="studio-field flex min-w-0 flex-col gap-2 p-3" disabled={disabled}>
           {card.thread_title && <legend className="studio-label">{card.thread_title}</legend>}
@@ -961,6 +1009,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       )}
       {step === "ready" && brief && (
         <ReadyBlock brief={brief} film={film} models={models} channelSlug={channelSlug} lengthLabel={lengthLabel} canRun={ready && load.canRun}
+          fixHref={film ? editorHref(film.id) : undefined}
           create={brief.kind === "short" && film ? (
             // No `requote`: S2's own requoteFilm prices the film's CURRENT version and writes nothing (Lens H1). No
             // `onChooseAnother`: choosing again here would draft the same models again (Lens M1); S2 offers support instead.
@@ -970,7 +1019,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       )}
     </>
   );
-  const hasTail = (card && step === "asking") || (step === "ready" && brief);
+  // The chips of what was guessed stay under the newest answer until a plan is chosen, with or without a card.
+  const hasTail = (card && step === "asking") || (step === "ready" && brief) || (inferred.length > 0 && step !== "ready" && step !== "created");
 
   const turns: ChatTurn[] = paired.map((p, i) => {
     const m = p.msg;
@@ -1033,7 +1083,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
         newChat: c.shell.newChat,
         greeting: greetingName ? fmt(c.shell.greeting, { name: greetingName }) : c.shell.greetingNoName,
         label: c.shell.label,
-        placeholder: card && step === "asking" ? c.shell.ownAnswer : c.shell.placeholder,
+        placeholder: (card && step === "asking") || changing ? c.shell.ownAnswer : c.shell.placeholder,
         send: c.send,
         sending: c.sending,
         you: c.you,
@@ -1105,8 +1155,10 @@ function StatusWithAction({ text, label, onPress }: { text: string; label: strin
   );
 }
 
-function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, create }: {
+function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, create, fixHref }: {
   brief: Brief; film: FilmReady | null; models: FilmModels | null; channelSlug: string; lengthLabel: (s: number) => string; canRun: boolean;
+  /** The film's editor, where its saved storyboard is, when Create is not offered. */
+  fixHref?: string;
   /** S2's Create for a short film's draft; its own states say a short film's credits, blocks and refusals. */
   create: ReactNode;
 }) {
@@ -1114,6 +1166,9 @@ function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, cre
   const c = t.aiChat;
   const p = brief.price;
   const slots: BrainSlots = { kind: brief.kind ?? undefined };
+  const speech = new Set((brief.scenes ?? []).map(speechOf));
+  // What stops this film at Create today, by name (lib/brain/logic speechBlocks): no Create is offered then, never a silent film.
+  const blocked = brief.kind === "short" && film ? brief.voice?.blocked ?? [] : [];
   // The number printed the way every price in the app is (lib/credits formatCredits), with its own plural word.
   const credits = (n: number) => fmt(pluralForm(c.price, n, locale), { n: formatCredits(n, locale) });
   return (
@@ -1121,7 +1176,10 @@ function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, cre
       <h3 className="text-sm font-semibold text-[var(--color-fg)]">{brief.title}</h3>
       <p className="text-sm">{brief.idea}</p>
       <p className="text-xs text-[var(--color-muted)]">{fmt(c.scenarioFacts, { len: lengthLabel(brief.target_seconds ?? 0), scenes: brief.scenes?.length ?? 0, characters: brief.characters?.length ?? 0 })}</p>
-      {brief.voice.mode === "clip_audio" && <p className="text-xs text-[var(--color-muted)]">{c.clipAudioNote}</p>}
+      {brief.kind === "short" && speech.has("voice_over") && <p className="text-xs text-[var(--color-muted)]">{c.voiceOverNote}</p>}
+      {brief.kind === "short" && speech.has("in_clip") && <p className="text-xs text-[var(--color-muted)]">{c.inClipNote}</p>}
+      {brief.kind === "short" && (brief.scenes?.length ?? 0) > 0 && speech.size === 1 && speech.has("none") && <p className="text-xs text-[var(--color-muted)]">{c.wordlessNote}</p>}
+      {(brief.text_layers?.length ?? 0) > 0 && <p className="text-xs text-[var(--color-muted)]">{pluralText(c.textLayersNote, brief.text_layers!.length, locale)}</p>}
       {/* What the film is made with, as the server chose it (lib/brain/film-models): said, never hidden behind the price. A role
           with no model on sale shows no line; the quote's own "choose a model" says what to do. */}
       {brief.kind === "short" && film && models?.clip && <p className="text-xs" data-model="clip">{fmt(c.modelVideo, { name: models.clip.name })}</p>}
@@ -1162,7 +1220,15 @@ function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, cre
         </>
       )}
       {brief.kind === "short" && !film && <p className="text-sm">{c.chooseAgain}</p>}
-      {create}
+      {blocked.length > 0 ? (
+        <div className="flex flex-col gap-2" role="note" data-speech-blocked={blocked.join(" ")}>
+          {blocked.map((b) => <p key={b} className="text-sm">{c.speechBlocked[b]}</p>)}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn-primary min-h-11 px-4 text-sm" disabled aria-disabled="true">{c.createBlocked}</button>
+            {fixHref && <Link className="btn-quiet inline-flex min-h-11 items-center px-4 text-sm" href={fixHref}>{c.openProject}</Link>}
+          </div>
+        </div>
+      ) : create}
     </section>
   );
 }

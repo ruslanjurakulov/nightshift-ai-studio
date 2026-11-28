@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildBrief,
+  clipPrompt,
   filmFromBrief,
   mergeSlots,
   modelText,
@@ -15,6 +16,7 @@ import {
 } from "@/lib/brain/logic";
 import { aiChatMode, aiChatOpenFor } from "@/lib/brain/flag";
 import { SYSTEM_PROMPT, dataBlock } from "@/lib/brain/prompt";
+import { storyOutline } from "./helpers/storyFixtures";
 
 const LONG: BrainSlots = { kind: "long", target_seconds: 300, aspect: "16:9", style: "noir", language: "English", audience: "history fans" };
 const SHORT: BrainSlots = { kind: "short", target_seconds: 60, aspect: "9:16", style: "desert action", language: "Uzbek", audience: "teens" };
@@ -67,8 +69,11 @@ describe("the server decides what is asked, in order, kind first", () => {
   });
 
   it("proposes only with every slot and at least two usable scenarios, at most three", () => {
-    expect(readModelAnswer(JSON.stringify({ reply: "x", scenarios: [scen()] }), SHORT, "q")?.step).toBe("asking");
-    const a = readModelAnswer(JSON.stringify({ reply: "x", scenarios: [scen(), scen(), scen(), scen()] }), SHORT, "q");
+    // A short film's outlines keep the story grammar (S1): the old fixture's one untagged chapter is no longer an outline.
+    expect(readModelAnswer(JSON.stringify({ reply: "x", scenarios: [scen(), scen(), scen()] }), SHORT, "q")?.step).toBe("asking");
+    const story = () => storyOutline([15, 15, 15, 15]);
+    expect(readModelAnswer(JSON.stringify({ reply: "x", scenarios: [story()] }), SHORT, "q")?.step).toBe("asking");
+    const a = readModelAnswer(JSON.stringify({ reply: "x", scenarios: [story(), story(), story(), story()] }), SHORT, "q");
     expect(a?.step).toBe("proposing");
     expect(a?.scenarios).toHaveLength(3);
   });
@@ -92,7 +97,7 @@ describe("a scenario becomes BRIEF parts, checked", () => {
     expect(cut.target_seconds).toBe(60);
   });
 
-  it("dialogue is kept only for known characters, and becomes words the video model speaks", () => {
+  it("dialogue is kept only for known characters, and is spoken in the clip prompt only (never the key frame)", () => {
     const s = readScenario(scen(), SHORT)!;
     expect(s.scenes[0].dialogue).toEqual([{ character_id: "c1", line: "Hold the line!" }]);
     const b = buildBrief("sess", SHORT, s, "ready");
@@ -100,7 +105,11 @@ describe("a scenario becomes BRIEF parts, checked", () => {
     const f = filmFromBrief(b)!;
     expect(f.settings).toMatchObject({ language: "uz", aspect: "9:16", target_seconds: 60 });
     expect(f.scenes[0]).toMatchObject({ narration: "", planned_seconds: 30 });
-    expect(String(f.scenes[0].visual_prompt)).toContain('Aziz says: "Hold the line!"');
+    // Spoken inside the clip (a stored scene with lines is "in_clip"): the lines reach the CLIP prompt only, never the saved one
+    // that also makes the key frame (S1 story grammar), and the clip is asked for its sound.
+    expect(String(f.scenes[0].visual_prompt)).not.toContain("says:");
+    expect(clipPrompt(b, b.scenes![0])).toContain('Aziz says: "Hold the line!"');
+    expect(f.scenes[0]).toMatchObject({ clip_params: { audio: true } });
   });
 
   it("a long video has no film, keeps Run now's own voice, and opens Run now prefilled, never a spend endpoint", () => {
