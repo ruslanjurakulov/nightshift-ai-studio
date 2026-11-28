@@ -88,6 +88,17 @@ poster of the first frame; a picture gets the two posters), appends the entry to
 `command-center/lib/site/showcase.json` and regenerates `command-center/components/site/showcase-assets.ts`. The output is not
 graded or retouched.
 
+`showcase.json` names the vendor, the vendor's model, the cost and the maker's credit, so only server code reads it
+(`lib/site/showcase.ts` is `server-only`). `showcase-assets.ts` also holds `SHOWCASE_CARDS`, the slice client code reads: the job
+id, model id, tool, kind, size, slot and source sample, nothing else. The Frontend workflow checks the built chunks for the
+manifest's fields and values (`command-center/scripts/showcase-bundle-check.mjs`): every chunk under `.next/static`, and the
+prerendered pages' `.rsc` / `.html` under `.next/server/app`.
+
+**Follow-up (not covered yet):** a page rendered per request has no file in the build, so its RSC payload, where a Server
+Component's props to a Client Component travel, is not scanned in CI. On 2026-11-27 that is every public page (none is
+prerendered). The fix is a CI step that runs `next start`, fetches `/`, `/login` and `/signup` with the `RSC: 1` header and runs the
+same value scan over the responses.
+
 Cost: what `creative_job_costs` recorded, summed in USD with its price source, or **unknown** when there is no row or a row
 has no figure (never 0); and the vendor's own measure per row (for example Runway credits).
 

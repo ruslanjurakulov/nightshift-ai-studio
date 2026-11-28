@@ -1,4 +1,6 @@
-import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
+// The client-safe slice: this module is in the browser through components/site/slots.ts (the sign-in stages), and a sample's
+// recorded input is all toolSource reads.
+import { SHOWCASE_CARDS } from "@/components/site/showcase-assets";
 
 /**
  * What each tool on the landing's "What Nightshift can make" wall shows (components/landing/CapabilityWall.tsx), one line per tool:
@@ -64,7 +66,7 @@ export function studioToolsOpen(): boolean {
  * checked back to its first picture by the export), else null. Derived, so the before and after on the wall can never disagree.
  */
 export function toolSource(job: string | null): string | null {
-  const e = job ? SHOWCASE_ENTRIES.find((x) => x.jobId === job) : undefined;
+  const e = job ? SHOWCASE_CARDS.find((x) => x.jobId === job) : undefined;
   return e && e.kind === "video" && e.input.kind === "operator_job" ? e.input.jobId : null;
 }
 

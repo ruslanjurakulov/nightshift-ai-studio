@@ -280,13 +280,15 @@ def test_the_labs_take_off_helpers_take_0218_off_first_and_put_it_back(lab):
     try:
         sec_db.apply_files(base, sec_db.build_sequence())
         d = Db(base)
-        assert _md5s(d) == AFTER
+        # The full chain ends at 0224 on 0218: 0218's creative_price plus 0224's one line.
+        after = {**AFTER, "creative_price": sec_db.CREATIVE_PRICE_0224}
+        assert _md5s(d) == after
         with psycopg.connect(base, autocommit=False) as c:
             sec_db.take_off_0171(c)
             assert c.execute("select to_regprocedure('public.film_price(public.films)')").fetchone()[0] is None
             sec_db.put_back_0171(c)
             c.commit()
-        assert _md5s(d) == AFTER
+        assert _md5s(d) == after
         with psycopg.connect(base, autocommit=False) as c:
             class S:
                 conn = c
@@ -294,7 +296,7 @@ def test_the_labs_take_off_helpers_take_0218_off_first_and_put_it_back(lab):
             assert sec_db.has_0156(c) and not sec_db.has_0218(c)
             sec_db.put_back_0159(S)
             c.commit()
-        assert _md5s(d) == AFTER
+        assert _md5s(d) == after
     finally:
         sec_db.drop_database(admin, name)
 
@@ -318,7 +320,9 @@ def test_on_0224s_base_the_file_keeps_0224s_line_its_rollback_puts_it_back_and_t
     name = f"ns_prompt_limits_0224_{uuid.uuid4().hex[:8]}"
     base = sec_db.create_database(admin, name)
     try:
-        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name not in (sec_db.MIGRATION_0218.name, sec_db.MIGRATION_0219.name)])
+        sec_db.apply_files(base, [f for f in sec_db.build_sequence()
+                               if f.name not in (sec_db.MIGRATION_0218.name, sec_db.MIGRATION_0219.name,
+                                                 sec_db.MIGRATION_0224.name)])
         d = Db(base)
         assert _md5s(d) == BEFORE
         d.su("create function public.credits_per_unit_now(p_unit text) returns numeric language sql stable "
@@ -393,7 +397,9 @@ def test_the_file_refuses_a_registry_synced_from_a_ref_without_0218(lab):
     name = f"ns_prompt_limits_sync_{uuid.uuid4().hex[:8]}"
     base = sec_db.create_database(admin, name)
     try:
-        sec_db.apply_files(base, [f for f in sec_db.build_sequence() if f.name not in (sec_db.MIGRATION_0218.name, sec_db.MIGRATION_0219.name)])
+        sec_db.apply_files(base, [f for f in sec_db.build_sequence()
+                               if f.name not in (sec_db.MIGRATION_0218.name, sec_db.MIGRATION_0219.name,
+                                                 sec_db.MIGRATION_0224.name)])
         d = Db(base)
         d.su("insert into public.model_registry (id, display_name, provider, adapter, capabilities, spec, credit_unit) values "
              "('lab-old', 'old', 'lab', 'image.lab', array['t2i'], '{\"output\": \"image\"}'::jsonb, 'model_lab_old_image')")

@@ -256,14 +256,16 @@ def set_platform_role(db, user, role):
 
 def test_with_no_platform_roster_the_operators_own_members_are_platform_owners(db):
     # 0018/0043's bootstrap: while app_members is empty, a bound member of the operator's
-    # organization is platform owner (everywhere); nobody else has a platform role.
+    # organization is platform owner (everywhere); nobody else has a platform role. Since 0226 the
+    # platform role confirms spending only in the operator's (exempt) organization: a customer's
+    # later steps spend on a seat there of editor or above.
     assert db.su("select public.app_members_empty()")[0][0] is True
     c = db.new_org()
     boot, stranger = person(db), person(db)
     db.su("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, 'boot@x.io', 'viewer')",
           [DEFAULT_ORG, boot])
     try:
-        assert may(db, boot, c.org) is True and may(db, boot, DEFAULT_ORG) is True
+        assert may(db, boot, c.org) is False and may(db, boot, DEFAULT_ORG) is True
         assert may(db, stranger, c.org) is False and may(db, stranger, DEFAULT_ORG) is False
         assert may(db, c.editor, c.org) is True and may(db, c.viewer, c.org) is False
         assert may(db, c.editor, DEFAULT_ORG) is False
@@ -277,26 +279,23 @@ def roster(db):
     return person(db, platform="owner")
 
 
-def test_a_platform_admin_confirms_in_a_customer_org_only_while_still_admin(db, roster):
+def test_a_platform_admin_without_a_seat_neither_starts_nor_carries_on_a_run_in_a_customer_org(db, roster):
+    """0226 (the owner's decision, 22 Nov): a platform admin with no seat in an organization reads it but never spends its credits.
+    Before 0226 such an admin started runs there and their confirmation kept spending while they stayed admin."""
     c = db.new_org()
     p = person(db, platform="admin")  # no org_members row in c at all
-    assert may(db, p, c.org) is True
     wf = flow(db, c)
     run = str(uuid.uuid4())
-    out = db.start(p, run, wf["id"], wf["version"], VALUES, TOTAL)
-    assert out["run"]["started_by"] == p
+    assert err(lambda: db.start(p, run, wf["id"], wf["version"], VALUES, TOTAL)) == ("NS400", "not_a_member")
+    assert run_holds(db, run) == (0, 0)
+    # A run whose confirmer is such an admin (one confirmed before 0226): the confirmer rule refuses its next step, nothing held.
+    out = db.start(c.owner, run, wf["id"], wf["version"], VALUES, TOTAL)
     db.worker(db.steps(run)[0][2], charge=4)
-    # Still admin: a member of c carries the run on.
+    db.su("update public.workflow_runs set started_by = %s where id = %s", [p, run])
     out = db.advance(c.owner, run)
-    assert statuses(out) == ["completed", "running", "pending"]
-    db.worker(out["steps"][1]["job_id"], charge=10)
-    # Demoted to platform editor: no organization role in c, so no longer allowed to spend there.
-    set_platform_role(db, p, "editor")
-    assert may(db, p, c.org) is False
-    out = db.advance(c.owner, run)
-    assert statuses(out) == ["completed", "completed", "failed"]
-    assert out["steps"][2]["error_code"] == "confirmation_revoked" and out["steps"][2]["job_id"] is None
-    assert out["run"]["status"] == "failed" and out["run"]["charged_credits"] == 14
+    assert statuses(out) == ["completed", "failed", "skipped"], statuses(out)  # the third step is skipped, never started
+    assert out["steps"][1]["error_code"] == "confirmation_revoked" and out["steps"][1]["job_id"] is None
+    assert out["run"]["status"] == "failed" and out["run"]["charged_credits"] == 4  # only the first step, made before, is charged
     assert run_holds(db, run) == (0, 0)
 
 
@@ -335,7 +334,8 @@ def test_an_invited_platform_row_counts_only_for_a_confirmed_email(db, roster):
     u = person(db, email="Invited.Admin@x.io", confirmed=False, platform="admin", bound=False)
     assert may(db, u, c.org) is False and may(db, u, DEFAULT_ORG) is False
     db.su("update auth.users set email_confirmed_at = now() where id = %s", [u])
-    assert may(db, u, c.org) is True and may(db, u, DEFAULT_ORG) is True
+    # 0226: the platform role counts in the operator's organization only; in c it has no seat.
+    assert may(db, u, c.org) is False and may(db, u, DEFAULT_ORG) is True
     db.su("update public.app_members set role = 'viewer' where lower(email) = 'invited.admin@x.io'")
     assert may(db, u, c.org) is False and may(db, u, DEFAULT_ORG) is False
     assert may(db, None, c.org) is False and may(db, c.editor, None) is False
@@ -344,7 +344,8 @@ def test_an_invited_platform_row_counts_only_for_a_confirmed_email(db, roster):
 def test_the_helper_answers_exactly_what_the_routes_check_for_that_member(db, roster):
     # Differential: for every account and every organization in this database, the helper with
     # the user passed in equals the start/advance rule evaluated in that user's own session:
-    # editor in the org (platform roles included) and, in the operator's org, a platform admin.
+    # since 0226 a seat of editor or above (is_org_spender, platform roles excluded) and, in the
+    # operator's org, a platform admin.
     person(db, platform="editor")
     person(db, platform="viewer")
     pe = person(db, platform="editor")
@@ -358,7 +359,8 @@ def test_the_helper_answers_exactly_what_the_routes_check_for_that_member(db, ro
             c.execute("select set_config('request.jwt.claims', %s, false)", [claims("authenticated", u)])
             for org, helper, route in c.execute(
                     "select o.id::text, public.workflow_confirmer_may_spend(%s::uuid, o.id), "
-                    "public.is_org_member(o.id, 'editor') and (not public.credits_exempt(o.id) or public.is_platform_admin()) "
+                    "public.is_org_member(o.id, 'editor') and public.is_org_spender(o.id, 'editor') "
+                    "and (not public.credits_exempt(o.id) or public.is_platform_admin()) "
                     "from public.organizations o", [u]).fetchall():
                 checked += 1
                 if helper is not route:

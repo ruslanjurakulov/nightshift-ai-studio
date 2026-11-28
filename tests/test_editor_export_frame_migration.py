@@ -245,11 +245,12 @@ class TheFile(unittest.TestCase):
         # (tests/test_editor_hires_export_migration.py strips them and compares the rest with this file's body). 0136 (exports up to 1080p
         # sold by the minute) replaces 0132's request bodies the same way and writes no frame of its own (the list stays 0132's).
         for p in sorted(MIG.glob("*.sql")):
-            if p.name[:4] > "0054" and not p.name.startswith(("0129_", "0132_", "0136_")):
+            # 0226 (only a member spends) replaces 0136's four-argument body with one marked hunk and writes no frame of its own.
+            if p.name[:4] > "0054" and not p.name.startswith(("0129_", "0132_", "0136_", "0226_")):
                 text = p.read_text(encoding="utf-8")
                 self.assertNotIn("function public.request_editor_export(", text, p.name)
                 self.assertNotIn("function public.editor_export_frame(", text, p.name)
-            if p.name[:4] > "0129" and not p.name.startswith(("0132_", "0136_")):
+            if p.name[:4] > "0129" and not p.name.startswith(("0132_", "0136_", "0226_")):
                 self.assertNotIn("frame_preset", p.read_text(encoding="utf-8"), p.name)
         later = (MIG / "0132_editor_hires_export.sql").read_text(encoding="utf-8")
         self.assertEqual(later.count(REQ3), 1)

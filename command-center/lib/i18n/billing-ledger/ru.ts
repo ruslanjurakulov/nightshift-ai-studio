@@ -40,6 +40,7 @@ export const billingLedgerRu: BillingLedgerDictionary = {
   usdUnknown: "{qty} {unit}, цена в USD неизвестна",
   rowsUsdUnknown: "{unit}: строк {n}, цена в USD неизвестна",
   billingUnknown: "неудачных проб, которые могли быть оплачены: {n}",
+  // The vendor-named units (gemini_*, pexels_*) are in lib/server/ledger-unit-labels.ts: this dictionary ships to the browser.
   units: {
     second: "с",
     image: "изобр.",
@@ -49,8 +50,6 @@ export const billingLedgerRu: BillingLedgerDictionary = {
     tokens: "токенов",
     probe: "проб",
     tts_characters: "симв.",
-    gemini_input_tokens: "токенов",
-    gemini_output_tokens: "токенов",
     video_gen_clips: "клипов",
     image_generations: "изобр.",
   },

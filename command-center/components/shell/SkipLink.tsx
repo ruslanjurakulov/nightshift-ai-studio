@@ -40,8 +40,9 @@ export function isCreatePath(pathname: string): boolean {
 /**
  * Focus the first field of the composer (every /create layout marks its composer `id="prompt"`), not the box around it, so typing
  * can start at once. Without one (no organization, a desk that has no form) the page itself takes focus: never a skip to nowhere.
+ * Also the Studio explore grid's "write your own" link (components/studio/StudioExplore.tsx).
  */
-function focusPrompt(e: MouseEvent<HTMLAnchorElement>) {
+export function focusPrompt(e: MouseEvent<HTMLAnchorElement>) {
   const box = document.getElementById("prompt");
   const field = box?.querySelector<HTMLElement>("textarea:not([disabled]), input:not([type=hidden]):not([disabled])") ?? null;
   const target = field ?? document.getElementById("main");

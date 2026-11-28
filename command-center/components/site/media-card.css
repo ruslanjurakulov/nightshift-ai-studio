@@ -19,7 +19,8 @@
 .mf-card::after {
   content: ""; position: absolute; inset: 0; z-index: 4; border-radius: inherit; pointer-events: none; box-shadow: none;
 }
-.mf-card:has(.mf-card-link:focus-visible)::after { box-shadow: inset 0 0 0 3px #ffa940; }
+/* The amber ring with a dark band inside it: on a warm picture (an orange poster) amber alone disappeared into the picture. */
+.mf-card:has(.mf-card-link:focus-visible)::after { box-shadow: inset 0 0 0 3px #ffa940, inset 0 0 0 5px rgba(0, 0, 0, 0.75); }
 
 /* The mark: always there, never covering the picture. Labelling generated media is a duty (synthetic-media transparency rules
    and the platforms' own), and it is not a model name, so it does not undo the media-first rule. It reads "AI" in every language

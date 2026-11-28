@@ -6,7 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
-import { EFFECTS_DESK_SECTION, SUBJECT_MAX, type Effect, type EffectAvailability } from "@/lib/effects/catalog";
+import { EFFECTS_DESK_SECTION, SUBJECT_MAX, type EffectChoice, type EffectFace } from "@/lib/effects/shared";
 import { EffectFrame } from "@/components/effects/EffectFrame";
 import { shapeText } from "@/components/effects/EffectsDesk";
 import "@/components/effects/effects.css";
@@ -17,9 +17,10 @@ import "@/components/effects/effects.css";
  * or the picture (picked in the composer below). The composer under it is the ordinary one: its price and its Generate.
  *
  * With no model of the effect open here it says so and the page shows no composer filled for it (app/(app)/[channel]/create):
- * the effect is never quietly run on some other model (CLAUDE.md #4, #5).
+ * the effect is never quietly run on some other model (CLAUDE.md #4, #5). It is handed the effect's face (effectFace): the page
+ * resolved the model and filled the composer on the server, so the effect's prompt and model order are not in its props.
  */
-export function EffectBanner({ effect, availability, subject }: { effect: Effect; availability: EffectAvailability; subject: string }) {
+export function EffectBanner({ effect, availability, subject }: { effect: EffectFace; availability: EffectChoice; subject: string }) {
   const { t } = useI18n();
   const fx = t.effects;
   const copy = fx.items[effect.id];
@@ -75,7 +76,7 @@ export function EffectBanner({ effect, availability, subject }: { effect: Effect
             <span className="fx-chip-key">{fx.desk.length}</span> {fmt(fx.desk.seconds, { n: effect.duration })}
           </li>
         </ul>
-        {availability.rank > 0 && <p className="fx-note">{fx.desk.nextChoice}</p>}
+        {availability.nextChoice && <p className="fx-note">{fx.desk.nextChoice}</p>}
         {effect.input === "none" ? (
           // A GET form: it only reopens this page with the words in the address, which fills the description. Nothing is sent anywhere else.
           <form method="get" action={path("/create")} className="fx-banner-form">

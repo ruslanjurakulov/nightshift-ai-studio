@@ -28,6 +28,8 @@ export const ownerRpcUz: OwnerRpcDictionary = {
     no_such_history: "Tarixda bunday yozuv yoʻq. Hech narsa oʻzgarmadi.",
     price_changed:
       "Bu xizmat narxi sahifa yuklangandan keyin oʻzgargan, shuning uchun qaytarilmadi. Sahifani yangilab, avval narxlar tarixini koʻring. Hech narsa oʻzgarmadi.",
+    dated_price_scheduled:
+      "Bu xizmat uchun sanali narx amalda yoki rejalashtirilgan, shuning uchun uning narxi bu yerda oʻzgartirilmaydi: egasi bazaga sanali narx qatorini (hozirdan boshlab) qoʻshadi. Ustama va izohni oʻzgartirish mumkin. Hech narsa oʻzgarmadi.",
     confirm_required:
       "Bu narxning katta oʻzgarishi (narx {rate}, mijoz toʻlovi {charged}; odatiy chegara — {max} martagacha oshish yoki kamayish). Eski va yangi raqamlarni tekshirib, aniq tasdiqlang.",
     bad_role: "Rol owner, admin, editor yoki viewer boʻlishi kerak. Hech narsa oʻzgarmadi.",

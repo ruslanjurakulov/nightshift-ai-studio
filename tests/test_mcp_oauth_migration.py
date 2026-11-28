@@ -56,7 +56,8 @@ class ApiBeginIsTheLatestBodyPlusOneChange(unittest.TestCase):
 
     def test_no_later_migration_replaces_api_begin_after_0062(self):
         later = [p.name for p in sorted(MIGRATIONS.glob("*.sql"))
-                 if p.name[:4] > "0062" and p.name != "0093_mcp_oauth.sql"
+                 # 0226 (only a member spends) is 0093's body plus one marked hunk (tests/security/test_sec_org_spender_0226.py).
+                 if p.name[:4] > "0062" and p.name not in ("0093_mcp_oauth.sql", "0226_org_spender_everywhere.sql")
                  and "create or replace function public.api_begin" in p.read_text(encoding="utf-8")]
         self.assertEqual(later, [], "0093 is built on 0062's api_begin; a newer one must be merged in")
 

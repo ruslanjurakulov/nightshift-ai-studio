@@ -2660,6 +2660,7 @@ exactly) and `film_price` (0171's body plus four hunks). Apply order: 0208, then
 - **Not covered.** The queue worker does not re-check availability before it submits a job (a follow-up). None can be queued on
   this model today, because it is terms-gated and not a preview; the file names any job that is not finished.
 - **Tests.** `tests/test_retire_omni_1_1_migration.py`, `tests/security/test_sec_retire_omni_1_1.py`.
+
 ## Film Studio: the sweep runs without the worker, and every run is recorded (0212)
 
 0212 (`0212_film_sweep.sql`, provisional number; `docs/studio/S2_GAPS.md` also pencils 0212 in for the archive branch, and
@@ -2800,6 +2801,257 @@ The audit allow-list adds `model.terms_accept` and `model.terms_revoke`.
 
 Apply as one transaction after 0018 (platform role), 0035 (registry), 0107 (operator MFA) and 0145 (audit allow-list).
 The owner-applied rollback is `docs/sql/rollback_0227_owner_model_terms_acceptance.sql`.
+## One storyboard plan per film, its turns reserved when it begins (0232, provisional)
+
+0232 (`0232_ai_chat_film_plan_leases.sql`) closes Breach BR-FILM-01/02/03 on #953. 0211's lease is per conversation, so two
+conversations planning one film (one person's racing presses, two editors, the chat's draft and the film editor's button) both
+ran, and the up-front cap check was a read that reserved nothing, so two plans at the cap both started and the second stopped
+halfway with its turns spent. Its fix round closes Breach BR-LEASE-01/02/03 on 0232 itself (Sentinel's list).
+
+- **`ai_chat_film_plan_leases`**: one row per film (which conversation and 0211 attempt plans it, `reserved` 1 to 15, `taken`,
+  `released`, running | failed | done, the same `expires_at` as 0211's lease). RLS on, an author-only SELECT policy as a second
+  wall, no grant to any API role. A partial unique index keeps one running film plan per conversation; full indexes on
+  `session_id` and `org_id` (the cascading keys); the end state asserts its columns and indexes.
+- **`ai_chat_film_plan_begin(session, film, at_most)`** (new, `authenticated`): called by both routes right after 0211's
+  `ai_chat_plan_begin` and before the first turn. The caller is the conversation's author, an editor with a seat
+  (`is_org_spender`, else `not_a_member`); the film of the conversation's own workspace (any channel: save_film may move it; else
+  `film_not_found`) and one a plan could write into (editable, not archived, no scene; else `film_not_plannable`, NS409); 0211's
+  lease running (else `plan_not_current`). Another running plan of the film: `plan_running` (detail: its end). The same attempt
+  asking again gets the reservation it holds. `at_most` is bounded by the film: `ai_chat_film_plan_max_turns(target_seconds)` =
+  `least(15, 1 + 2 x ceil(t / 24))` (60 s 7, 90 s 9, 180 s and longer 15); above it `plan_too_long` (NS409, "at most N turns for
+  this film": the length changed while the plan was set up; the routes answer 409 `plan_too_long` with "check again"), never cut.
+  Then, under the workspace's advisory lock (`ai_chat_reserve_turn`'s) and last the person's, on CHARGED numbers in a turn's
+  order: `chat_plan_required`, `chat_daily_cap` (used=N limit=M), and when short of `at_most`: `chat_reserved` (used=N reserved=R
+  limit=M until=T scope=workspace|trial|person) if it would fit once the other holds end, else `plan_over_cap` (left=N needed=M
+  scope=workspace|trial|person). Nothing is written by a refusal. The platform's global limit is not reserved.
+- **A new function, not a new argument on `ai_chat_plan_begin`**: a new argument is a new signature (two PostgREST overloads, or
+  the old one dropped under a running app). Riding on 0211's attempt lets 0211's own `plan_end` close both with one added
+  statement.
+- **"Used" means charged.** `ai_chat_used` and `ai_chat_trial_left` keep 0199's bodies. What running plans hold is
+  `ai_chat_reserved(org)` (internal; a lease counts only while running, unexpired, with something left, and while its author is
+  still an editor or above of the workspace, or the workspace is the exempt one, where every running lease counts), with
+  `ai_chat_reserved_until(org)`, `ai_chat_reserved_by(user)` and `ai_chat_reserved_by_until(user)`.
+- **Three bodies replaced** (md5 guard: the earlier body or 0232's own; a body 0226 replaces is refused with "apply 0226 first",
+  anything else as "an unknown body ... changed by hand? compare with 0226 before applying"):
+  `ai_chat_reserve_turn` e105fa93… (0226) -> 3a54f4b6… (a turn of a conversation whose film plan runs is taken out of its
+  reservation before the caps are read, so it is counted once; a turn that finds the rest held is `chat_reserved`; the person's
+  limit, held only by their own storyboard, is `chat_reserved` scope=person with `ai_chat_reserved_by_until`, and charged at it
+  stays `chat_daily_cap`; the answer adds `reserved`), `ai_chat_plan_end` 4df6a1c4… (0226) -> 71c2feb9… (the
+  film lease of the attempt ends with it; `released` = what was not taken), `ai_chat_quota` 7c17f974… (0199) -> 09b69b04… (adds
+  `reserved` and `reserved_until`; `used` stays charged). Relied on unchanged and guarded: `ai_chat_plan_session` 75c67929…,
+  `ai_chat_plan_begin` 2002d73e… (0226), `ai_chat_plan_state` c2aede96… (0211).
+- **Release.** At `plan_end`, done or failed. At expiry, at once: an expired lease is not counted, so a crashed plan's unused
+  turns come back without anything being run; the next film begin in the workspace sweeps it (failed / expired, `released`) and
+  closes its own pending calls as `vendor_error` with unknown tokens (0211's rule: the vendor may have been paid, they stay counted).
+- **Locks**, in one order everywhere: the workspace's advisory lock, the conversation's row, 0211's lease, the film lease, calls
+  (another transaction's lease or call SKIP LOCKED), and the person's advisory lock last. `ai_chat_reserve_turn` now locks the
+  conversation's row right after the workspace's lock, because `plan_end` takes the conversation and then the film lease.
+- **Known, not closed** (0232's header, docs/studio/NIGHTSHIFT_AI.md): a forgiven plan turn goes to the workspace's pool (F); the
+  chat's stored-storyboard save takes no film lease (G); an expired lease skipped by the SKIP LOCKED sweep and then overwritten
+  keeps its pending calls pending (I); a person's holds across films are bounded only by their own daily limit.
+- **The app** degrades honestly: before 0232 the function is missing (PGRST202 / 42883) and both routes plan as with #953 (the
+  per-person yield, the read-only cap check), the film route's answer claims no `reserved`, and `ai_chat_quota` has no `reserved`
+  (read as none held). The prechecks subtract `reserved` from what is left. The panel shows the held part in the meter, says
+  `chat_reserved` with its time (Retry, no plans link), and `plan_over_cap` on the trial with a plan as its remedy (en / ru / uz,
+  never "24 hours" for a hold). `film_not_plannable` reads as `film_not_editable`.
+- **No backslash** in the file or its rollback: `ai_chat_reserve_turn`'s two `E''` lists go through EXECUTE with a token, as in
+  0226; the fold is `regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')`.
+- **Publishing and privacy**: untouched (CLAUDE.md rule 2). A lease spends no credit, starts and publishes nothing.
+- **Replay.** The file replays onto itself. Re-running 0199 or 0211 applies silently and puts the older bodies back (apply 0226
+  and then 0232 again after). Re-running 0226 fails loudly (its guard refuses 0232's `ai_chat_reserve_turn` and `ai_chat_plan_end`):
+  take 0232 out with its rollback first, then 0226, then 0232. The lab's `take_off_0226` takes 0232 off first and `put_back_0226`
+  puts it back (`tests/security/test_sec_film_lease_0232.py`).
+- **Requires** 0166 (films, `film_is_editable`, `film_scenes`), 0199, 0211, 0215 (`is_org_spender`) and 0226.
+- **Undo.** `docs/sql/rollback_0232_ai_chat_film_plan_leases.sql` (owner-applied): the three earlier bodies back verbatim with
+  their grants; the new function, the five helpers and the table dropped (which plans held which film; it references films, so a
+  kept one would stop 0166's rollback, and nothing else depends on it). Plans running at that moment lose their lease and
+  reservation at once. Turns, calls and conversations are 0199's and stay.
+
+## Only a member spends a workspace's credits, on every path (0226, provisional)
+
+0226 (`0226_org_spender_everywhere.sql`) applies the owner's decision of 22 Nov, which 0215 applied to the film paths, to every other
+path that spends a workspace's credits. 0043's `accessible_org_ids` makes a platform owner or admin an admin of every organization;
+that stays read-only support access. Spending takes a seat in `org_members` (0215's `is_org_spender(org, role)`); in the exempt
+organization, whose credits are the platform's own, a platform owner or admin may, as before. A read-only check before this file
+found no non-member staff activity on any of these paths in production.
+
+- **Twenty-eight bodies, one marked hunk each, nothing else changed** (md5 guard: the earlier body or 0226's own). Sixteen spend paths
+  ask `is_org_spender` right after their own who-may-call check, with the role they already asked of a member, and refuse
+  `not_a_member` (NS400; `api_err` 403 for the API and connected apps) before anything is counted, priced, held or written:
+  `reserve_credits` (admin; the platform's own caller is still trusted), `create_creative_job` (any member), `start_workflow_run`
+  and `advance_workflow_run` (editor), `approve_storyboard`, `request_scene_regenerate`, `request_repurpose`,
+  `start_series_episode` (admin), the paid four-argument `request_editor_export`, `request_brand_scan`, `request_character_swap`,
+  `request_download` (editor; its exempt organization is not asked, as it has no platform-admin rule there),
+  `render_jobs_payment_guard` (a signed-in browser's row, admin), `create_api_key` (admin; `create_scoped_api_key` calls it first),
+  and at use time `api_begin` (the key's maker) and `oauth_ctx` (the connected app's person), both before the request is counted.
+- **Row locks.** Two paths take a row lock first, to ask who may call: `approve_storyboard` (`storyboard_lock_for_runner`'s FOR
+  UPDATE on the storyboard) and the paid `request_editor_export` (0054's FOR UPDATE on the project). The refusal is an exception,
+  so it aborts the transaction: the lock goes with it and nothing persists.
+- **The API doors** (`api_begin`, `oauth_ctx`) ask `is_org_spender` first, so a seated member pays one index probe and passes;
+  `is_org_member` is asked only to tell a refusal from the old one. The check sits in its own `begin … exception when others`
+  block (an unexpected error answers `internal_error` 500, like the block after it, never a raw SQL error), before the rate
+  counter.
+- **The confirmer** (Breach 0226-1). `workflow_confirmer_may_spend` (0074), which a workflow's later step asks of the member who
+  pressed Run now, answered yes from the platform role in every organization: a platform admin with only a viewer seat kept spending
+  on later steps. Its non-exempt branch now asks only for a seat of editor or above (0074's platform arm and its dead
+  `p_org = default_org_id()` arm go); the exempt branch keeps its platform owner or admin arm. Such a step stops with
+  `confirmation_revoked` and holds nothing.
+- **The owner's five** (27 Nov). `ai_chat_start` and `ai_chat_reserve_turn` (Nightshift AI: the workspace's trial and daily cap)
+  ask `is_org_spender(org, 'editor')` before the cap or the trial is read or counted; `set_api_key_access`, `set_api_key_limit`
+  and `api_activate` ask `is_org_spender(org, 'admin')` before anything is written. A platform owner or admin without a seat no
+  longer chats on a customer's trial, widens a key or accepts the API terms. The chat route and the Developer console name the
+  refusal (en / ru / uz, `tests/not-a-member-chat-api.test.ts`). `api_set_monthly_limit` (the workspace's own API limit) was not in
+  the owner's list and is unchanged.
+- **Round three** (owner and Atlas, 27 Nov). Nightshift AI's plan step (0211): `ai_chat_plan_session` (the helper both plan calls
+  open with, after its row lock on the conversation), `ai_chat_plan_begin` and `ai_chat_plan_end` ask `is_org_spender(org,
+  'editor')`: a refused call writes no lease and closes no call. `ai_chat_plan_state` is a stable read that moves no counter:
+  unchanged. `api_set_monthly_limit` (the workspace's API limit) and `oauth_decide_authorization` (a connected app's consent, the
+  counterpart of `create_api_key`; it answers `{ok: false, error: not_a_member}`, its own refusal shape, after taking the pending
+  request as every answer does) ask `is_org_spender(org, 'admin')`. Platform staff may restrict, never widen: `cancel_workflow_run`
+  stays open to them and now writes its `workflow.cancel` audit row (the actor, the run's organization) in the database for every
+  caller (the route no longer writes a second one); `revoke_api_key` already recorded `revoked_by` and its `api_key.revoke` row
+  and is unchanged.
+- **No backslash** in the file or its rollback (an apply tool can rewrite escape sequences): the md5 fold is
+  `regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')`, which the lab compares with the `\s+` shorthand on every body. The two
+  earlier bodies that hold a backslash, at three sites (`request_brand_scan`'s position test, `ai_chat_reserve_turn`'s two `E''`
+  character lists), are written as an EXECUTE whose backslashes are a token that `replace()` turns back into `chr(92)`: each source, and its md5, is
+  the earlier text plus the hunk.
+- **Refused as before**: a member of another organization, a viewer where an editor is asked, a key whose maker is no admin at all
+  (`key_owner_not_admin`), a connection whose person lost access (`workspace_access_lost`). The new check never answers first.
+- **Covered without a body of their own**: every API endpoint (through `api_begin`) and MCP tool (through `oauth_ctx`);
+  `request_reply_draft` already asks `inbox_real_member`. Free paths (the free editor exports, `request_series_plan`) and every
+  quote are not asked.
+- **Accepted, not changed** (DB review): a `not_a_member` answer of `api_begin` / `oauth_ctx` is not logged through `api_finish`
+  (L4: the request context is not built yet, as for `api_not_activated`), and the review's I1, both left as they are.
+- **The app** reads `not_a_member` as its own word (403) in each path's map, with en / ru / uz copy (`tests/not-a-member.test.ts`):
+  the run's hold, downloads, storyboard approval, scene repair, repurpose, series start, paid export, brand scan, character swap,
+  generations and workflows, the Developer console's key creation, the API spec and the connected assistant's sentence.
+- **Publishing and privacy**: untouched (CLAUDE.md rule 2). No browser path gains anything; each may only refuse more.
+- **Replay.** The file replays onto itself. Any earlier file that defines one of these twenty-eight functions restores its older body
+  when it is re-run, unless it carries an md5 guard that refuses a body it was not written on. Measured on the lab with 0226 applied
+  (`tests/security/test_sec_org_spender_0226.py` pins both lists): re-running 0120, 0122, 0129, 0132, 0133, 0136, 0137, 0147, 0174
+  or 0192 fails loudly (take 0226, and whatever else sits on that file, out first), and so does 0020 on a database that holds
+  ledger rows of a later kind; re-running 0030, 0031, 0036, 0040, 0041, 0042, 0057, 0060, 0062, 0070, 0073, 0074, 0075, 0076, 0080,
+  0085, 0093, 0094, 0111, 0199 or 0211 applies silently and puts an older body back (apply 0226 again after).
+- **Requires** 0215 (`is_org_spender`) and the files above.
+- **Undo.** `docs/sql/rollback_0226_org_spender_everywhere.sql` (owner-applied): the twenty-eight earlier bodies back, verbatim, with
+  their grants. It adds nothing else, so nothing else is undone.
+
+## Dated credit prices (0224)
+
+0224 (`0224_dated_credit_price.sql`) lets a credit price change at an exact moment, so our price rises when a vendor's does, not
+when someone remembers (owner decision D7, 2026-11-22). By itself it changes no quote: the table starts empty and no price is
+inserted. Prices are the owner's. Apply order: 0208, then 0218, then 0224.
+
+- **`credit_price_schedule`** (unit, credits_per_unit, effective_at, reason, created_by, created_at). Append-only: update, delete
+  and truncate are refused by trigger, so a mistake is corrected by a new row (the same `effective_at`: the later row wins).
+  `credits_per_unit > 0`, never NaN or Infinity, and never below a tenth of the rate in force (a slipped decimal point: 0.0000004
+  for 0.4 would quote 0 credits; a cut that deep is a list-price decision, made before scheduling). `created_by` / `created_at`
+  are stamped by the database. RLS on, no policy, no privilege for anon,
+  authenticated or service_role: written in the SQL editor only. A row is accepted only for a model's credit unit (or a variant of
+  it) that already has a `credit_prices` row. Refused, each with the reason:
+  - any other unit (job_minimum, video_minute, downloads, reply_draft …), because nothing reads a dated price for it;
+  - the **base** unit of a model sold by variant (`pricing.variants.by` quality, image_size, upscale_target, audio or
+    resolution_audio, or resolution on a model that pins a `default_resolution`: the same test `creative_price` uses). Such a model
+    is quoted at `<credit_unit>_<variant>`, so a dated base row would change no quote. Schedule each variant unit instead.
+- **`credits_per_unit_now(unit)`**: the latest row with `effective_at <= now()`, else `credit_prices.credits_per_unit`, else null
+  (never 0). No API role may call it.
+- **`credit_prices_dated_guard`** (BEFORE INSERT OR UPDATE on `credit_prices`): once a unit has a dated row, in force or pending, a
+  change of its `credits_per_unit` is refused NS428 `dated_price_scheduled`: "add a credit_price_schedule row (effective_at =
+  now()) instead of editing the list price". A margin or note edit is allowed. Deleting the list row is allowed (an admin may take
+  a model off sale; it is then unpriced, never cheaper), and the row comes back only at the rate it had when it was deleted (the
+  unit's newest `credit_price_history` row, which the delete writes): the Credits page's restore does exactly that. A delete and an
+  insert at another rate, in one statement or two, are refused. The Credits
+  page shows that refusal in the owner's language (`dated_price_scheduled` in `lib/i18n/owner-rpc`), through the server route and
+  the direct editor both.
+- **`creative_price`**: 0218's body plus one line, `rate.credits_per_unit := public.credits_per_unit_now(rate.unit);`, right after
+  it reads the `credit_prices` row. The margin, the job minimum and every refusal are unchanged. md5 guard: 0218's
+  `59c5c289009a874af043c534b29934ee` → `ea2b58e88fe34ae18b261e5a0fbef435`, the same body 0218's own 0224 branch writes.
+  A job held before `effective_at` keeps its hold.
+- Lab: `tests/security/test_sec_dated_price_0224.py`; pins: `tests/test_dated_credit_price_migration.py`; registry check:
+  `tests/test_dated_vendor_prices.py`. Rollback: `docs/sql/rollback_0224_dated_credit_price.sql`. It puts 0218's `creative_price`
+  back and drops the reader and the list guard. The table and its rows are kept, and they change no quote afterwards. After an
+  `effective_at` has passed, set `credit_prices` to the rate in force right after rolling back (the guard is gone by then).
+  Applying 0224 again later never lowers a price by itself. While 0224 was off nothing read the schedule (and the tenth rule, which
+  asks 0224's reader, was not asked), so before it is on again:
+  - a unit whose dated row in force differs from its list rate (the list moved while 0224 was off) gets a dated row at the list
+    rate, effective at once, with a NOTICE. If that list rate is below a tenth of the dated one, the file stops and says so: check
+    the list price, or, if it is meant, insert that dated row yourself (accepted while 0224 is off), then apply again;
+  - a pending row below a tenth of the rate it would replace (a slipped decimal point) is kept at the replaced rate by a row at the
+    same moment, with a NOTICE; schedule a deliberate cut again once 0224 is on;
+  - a pending row below the list rate as it is then is kept and named in a NOTICE: read it before its moment.
+- **No backslash in either file.** The live apply path (Supabase MCP `apply_migration`) rewrote backslash escapes in SQL text when
+  0218 went live. The md5 folds use `[[:space:]]+` (the same class as the backslash-s form in Postgres' regular expressions; the lab
+  checks both give one md5 on every function), and `creative_price` (0218's prompt regexes carry backslashes) is built as text with
+  each backslash written `@@0224_BACKSLASH@@`, turned back by `replace(..., chr(92))` and executed. The end state checks the md5.
+- **Not covered** (follow-ups):
+  - `credit_rates()` and `sellable_models()` still show the list rate after a dated row is in force: the catalog's per-unit figure
+    is the earlier rate while the quote the person confirms, and the hold, are the dated one (a CLAUDE.md #5 display gap). One line
+    in each body, in a later migration.
+  - A film's takes are paid from the hold `start_film` made for the whole film, and a film may run up to about 20 hours
+    (`film_money_limits`: the 20-hour deadline plus its grace). A film started just before a rise on a scheduled unit its takes use
+    (an i2v or a voice unit) keeps the earlier rate for every take. D7 (describe) is not a film unit and is unaffected.
+  - `created_by` reads `postgres` for a row written in the SQL editor: it says which database role wrote it, not which person. The
+    `reason` text is the record of who decided and why.
+
+### D7: gemini-3.6-flash doubles on 2027-01-01
+
+Google's paid tier (aistudio.google.com/docs/pricing, read 2026-11-22), per 1M tokens: input $0.75 → $1.50, output (thinking
+included) $3.75 → $7.50. The registry records this as `pricing.changes` on `gemini-3.6-flash`. The Studio's describe tool on that
+model is quoted from `model_gemini_3_6_flash_request`, one request per job. The Studio's Nightshift AI chat (0199) runs on the same
+model but is not charged per turn (plan daily caps only), so nothing here prices it.
+
+The formula (1 credit = 1 US cent, the convention of `docs/sql/prices_2026_10_01.sql`):
+
+    vendor cost per request (credits) = 100 × (T_in × P_in + T_out × P_out) / 1,000,000
+    customer price per request        = max(job_minimum, round_up(credits_per_unit × (1 + margin)))
+
+T_in and T_out are a request's tokens. P_in and P_out are the vendor's prices per 1M tokens. Both P_in and P_out double, so the cost
+doubles whatever the token mix (2 = 1.50/0.75 = 7.50/3.75). So **new credits_per_unit = live credits_per_unit × 2**, with the margin
+unchanged, keeps price/cost exactly as it is today: if the live rate covers today's cost, the new one covers the new cost. The SQL
+below computes the new rate from the live row, pinned to the figure you read, so it does not depend on a number typed into this
+document. `tests/test_dated_vendor_prices.py` fails if the factor written here is ever smaller than the largest to/from ratio in the
+registry, or if the moment is after the vendor's.
+
+**The moment: 2026-12-31T22:00:00Z, two hours before Google's date.** A creative job's hold lives for two hours
+(`creative_jobs.expires_at`, 0036), so a job held just before the vendor's change, and called after it, is already held at the new
+price. Google's page names a date, not a time zone (not verified), and early is the safe side: for two hours a describe costs the
+customer the new price while the vendor still bills the old one. A workflow that is mid-run when that instant passes is refused
+`price_changed` (NS409) on its next step, as on any price change (`create_creative_job` refuses a step priced above the quote the
+person confirmed), and is run again at the new price.
+
+Read the live row first. The note on the row written by `docs/sql/prices_corrections_2026_10_01.sql` says its 0.4 was already
+sized to the 2027 cost of an estimated 1.5K-input + 200-output request: 100 × (1500 × 1.50 + 200 × 7.50) / 10⁶ = 0.375 credits.
+If that is the live row, today's rate already covers the 2027 cost estimate (an estimate: those token counts are not measured), and
+doubling keeps today's margin over cost instead of restoring a lost one. D7 says raise it, so the row below doubles the rate.
+
+Step 2 is safe to run twice and never compounds: it schedules from the rate you read in step 1 (type that figure in place of
+`<RATE_FROM_STEP_1>`; left as it is, the statement does not run), and only when no row is scheduled for that unit at that moment.
+**INSERT 0 1** is the row. **INSERT 0 0** means it is already scheduled, or the live rate is not the one you read: stop, and run
+step 1 again. Do not edit `credit_prices` for this unit afterwards: the list guard refuses it (add a dated row instead).
+
+```sql
+-- 1. Read first: the live rate and margin, and what one describe is sold at today.
+select unit, credits_per_unit, margin, credits_per_unit * (1 + margin) as sold_per_request, note
+  from public.credit_prices where unit = 'model_gemini_3_6_flash_request';
+
+-- 2. The dated rise, from the rate read in step 1. INSERT 0 1 = scheduled; INSERT 0 0 = already scheduled, or the live rate is not
+--    the one you read: stop and re-read.
+insert into public.credit_price_schedule (unit, credits_per_unit, effective_at, reason)
+select cp.unit, cp.credits_per_unit * (1.50 / 0.75), '2026-12-31T22:00:00Z',
+       'D7: Google doubles gemini-3.6-flash on 2027-01-01 (input $0.75->$1.50, output $3.75->$7.50 per 1M tokens; aistudio.google.com/docs/pricing, read 2026-11-22); 2 h early = the hold lifetime'
+  from public.credit_prices cp
+ where cp.unit = 'model_gemini_3_6_flash_request'
+   and cp.credits_per_unit = <RATE_FROM_STEP_1>
+   and not exists (select 1 from public.credit_price_schedule s
+                    where s.unit = cp.unit and s.effective_at = '2026-12-31T22:00:00Z');
+
+-- 3. Check: the list rate, the rate in force now (until 2026-12-31T22:00:00Z the same), and what is scheduled.
+select s.unit, cp.credits_per_unit as list_rate, public.credits_per_unit_now(s.unit) as rate_now,
+       s.credits_per_unit as scheduled_rate, s.effective_at
+  from public.credit_price_schedule s join public.credit_prices cp using (unit)
+ where s.unit = 'model_gemini_3_6_flash_request';
+```
 
 ## The country gate reads an allow-list vendor's own list (0230)
 
@@ -2846,3 +3098,72 @@ BR-S6-03; the web half is PR #951.
 - **Tests.** `tests/test_geo_gate_allow_list_migration.py`, `tests/security/test_sec_geo_allowlist_0230.py` and
   `tests/security/test_sec_geo_allowlist_0230_breach.py` (a real PostgreSQL; contract `tests/security/sec_geo_allowlist_0230.py`),
   `command-center/tests/geo-block.test.ts`.
+## Only a member spends a workspace's credits, on every path (0226, provisional)
+
+0226 (`0226_org_spender_everywhere.sql`) applies the owner's decision of 22 Nov, which 0215 applied to the film paths, to every other
+path that spends a workspace's credits. 0043's `accessible_org_ids` makes a platform owner or admin an admin of every organization;
+that stays read-only support access. Spending takes a seat in `org_members` (0215's `is_org_spender(org, role)`); in the exempt
+organization, whose credits are the platform's own, a platform owner or admin may, as before. A read-only check before this file
+found no non-member staff activity on any of these paths in production.
+
+- **Twenty-eight bodies, one marked hunk each, nothing else changed** (md5 guard: the earlier body or 0226's own). Sixteen spend paths
+  ask `is_org_spender` right after their own who-may-call check, with the role they already asked of a member, and refuse
+  `not_a_member` (NS400; `api_err` 403 for the API and connected apps) before anything is counted, priced, held or written:
+  `reserve_credits` (admin; the platform's own caller is still trusted), `create_creative_job` (any member), `start_workflow_run`
+  and `advance_workflow_run` (editor), `approve_storyboard`, `request_scene_regenerate`, `request_repurpose`,
+  `start_series_episode` (admin), the paid four-argument `request_editor_export`, `request_brand_scan`, `request_character_swap`,
+  `request_download` (editor; its exempt organization is not asked, as it has no platform-admin rule there),
+  `render_jobs_payment_guard` (a signed-in browser's row, admin), `create_api_key` (admin; `create_scoped_api_key` calls it first),
+  and at use time `api_begin` (the key's maker) and `oauth_ctx` (the connected app's person), both before the request is counted.
+- **Row locks.** Two paths take a row lock first, to ask who may call: `approve_storyboard` (`storyboard_lock_for_runner`'s FOR
+  UPDATE on the storyboard) and the paid `request_editor_export` (0054's FOR UPDATE on the project). The refusal is an exception,
+  so it aborts the transaction: the lock goes with it and nothing persists.
+- **The API doors** (`api_begin`, `oauth_ctx`) ask `is_org_spender` first, so a seated member pays one index probe and passes;
+  `is_org_member` is asked only to tell a refusal from the old one. The check sits in its own `begin … exception when others`
+  block (an unexpected error answers `internal_error` 500, like the block after it, never a raw SQL error), before the rate
+  counter.
+- **The confirmer** (Breach 0226-1). `workflow_confirmer_may_spend` (0074), which a workflow's later step asks of the member who
+  pressed Run now, answered yes from the platform role in every organization: a platform admin with only a viewer seat kept spending
+  on later steps. Its non-exempt branch now asks only for a seat of editor or above (0074's platform arm and its dead
+  `p_org = default_org_id()` arm go); the exempt branch keeps its platform owner or admin arm. Such a step stops with
+  `confirmation_revoked` and holds nothing.
+- **The owner's five** (27 Nov). `ai_chat_start` and `ai_chat_reserve_turn` (Nightshift AI: the workspace's trial and daily cap)
+  ask `is_org_spender(org, 'editor')` before the cap or the trial is read or counted; `set_api_key_access`, `set_api_key_limit`
+  and `api_activate` ask `is_org_spender(org, 'admin')` before anything is written. A platform owner or admin without a seat no
+  longer chats on a customer's trial, widens a key or accepts the API terms. The chat route and the Developer console name the
+  refusal (en / ru / uz, `tests/not-a-member-chat-api.test.ts`). `api_set_monthly_limit` (the workspace's own API limit) was not in
+  the owner's list and is unchanged.
+- **Round three** (owner and Atlas, 27 Nov). Nightshift AI's plan step (0211): `ai_chat_plan_session` (the helper both plan calls
+  open with, after its row lock on the conversation), `ai_chat_plan_begin` and `ai_chat_plan_end` ask `is_org_spender(org,
+  'editor')`: a refused call writes no lease and closes no call. `ai_chat_plan_state` is a stable read that moves no counter:
+  unchanged. `api_set_monthly_limit` (the workspace's API limit) and `oauth_decide_authorization` (a connected app's consent, the
+  counterpart of `create_api_key`; it answers `{ok: false, error: not_a_member}`, its own refusal shape, after taking the pending
+  request as every answer does) ask `is_org_spender(org, 'admin')`. Platform staff may restrict, never widen: `cancel_workflow_run`
+  stays open to them and now writes its `workflow.cancel` audit row (the actor, the run's organization) in the database for every
+  caller (the route no longer writes a second one); `revoke_api_key` already recorded `revoked_by` and its `api_key.revoke` row
+  and is unchanged.
+- **No backslash** in the file or its rollback (an apply tool can rewrite escape sequences): the md5 fold is
+  `regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')`, which the lab compares with the `\s+` shorthand on every body. The two
+  earlier bodies that hold a backslash, at three sites (`request_brand_scan`'s position test, `ai_chat_reserve_turn`'s two `E''`
+  character lists), are written as an EXECUTE whose backslashes are a token that `replace()` turns back into `chr(92)`: each source, and its md5, is
+  the earlier text plus the hunk.
+- **Refused as before**: a member of another organization, a viewer where an editor is asked, a key whose maker is no admin at all
+  (`key_owner_not_admin`), a connection whose person lost access (`workspace_access_lost`). The new check never answers first.
+- **Covered without a body of their own**: every API endpoint (through `api_begin`) and MCP tool (through `oauth_ctx`);
+  `request_reply_draft` already asks `inbox_real_member`. Free paths (the free editor exports, `request_series_plan`) and every
+  quote are not asked.
+- **Accepted, not changed** (DB review): a `not_a_member` answer of `api_begin` / `oauth_ctx` is not logged through `api_finish`
+  (L4: the request context is not built yet, as for `api_not_activated`), and the review's I1, both left as they are.
+- **The app** reads `not_a_member` as its own word (403) in each path's map, with en / ru / uz copy (`tests/not-a-member.test.ts`):
+  the run's hold, downloads, storyboard approval, scene repair, repurpose, series start, paid export, brand scan, character swap,
+  generations and workflows, the Developer console's key creation, the API spec and the connected assistant's sentence.
+- **Publishing and privacy**: untouched (CLAUDE.md rule 2). No browser path gains anything; each may only refuse more.
+- **Replay.** The file replays onto itself. Any earlier file that defines one of these twenty-eight functions restores its older body
+  when it is re-run, unless it carries an md5 guard that refuses a body it was not written on. Measured on the lab with 0226 applied
+  (`tests/security/test_sec_org_spender_0226.py` pins both lists): re-running 0120, 0122, 0129, 0132, 0133, 0136, 0137, 0147, 0174
+  or 0192 fails loudly (take 0226, and whatever else sits on that file, out first), and so does 0020 on a database that holds
+  ledger rows of a later kind; re-running 0030, 0031, 0036, 0040, 0041, 0042, 0057, 0060, 0062, 0070, 0073, 0074, 0075, 0076, 0080,
+  0085, 0093, 0094, 0111, 0199 or 0211 applies silently and puts an older body back (apply 0226 again after).
+- **Requires** 0215 (`is_org_spender`) and the files above.
+- **Undo.** `docs/sql/rollback_0226_org_spender_everywhere.sql` (owner-applied): the twenty-eight earlier bodies back, verbatim, with
+  their grants. It adds nothing else, so nothing else is undone.

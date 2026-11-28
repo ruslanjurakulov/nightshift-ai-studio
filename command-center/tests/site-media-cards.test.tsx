@@ -310,7 +310,8 @@ describe("the stylesheet", () => {
     expect(css).toMatch(/\.mf-cap \{[^}]*z-index: 2;[^}]*pointer-events: none;/);
     expect(css).toMatch(/\.mf-ai \{[^}]*z-index: 3;[^}]*pointer-events: none;/);
     expect(css).toMatch(/\.mf-card::after \{[^}]*z-index: 4;[^}]*pointer-events: none;/);
-    expect(css).toContain(".mf-card:has(.mf-card-link:focus-visible)::after { box-shadow: inset 0 0 0 3px #ffa940; }");
+    // Amber with a dark inner band (Pixel, PR #947): amber alone vanished on a warm, orange picture.
+    expect(css).toContain(".mf-card:has(.mf-card-link:focus-visible)::after { box-shadow: inset 0 0 0 3px #ffa940, inset 0 0 0 5px rgba(0, 0, 0, 0.75); }");
   });
 
   it("on a phone shows the title alone (three hyphenated lines, clear of the mark's row), three 18 px lines to 1023 px, 22/16 px above", () => {
