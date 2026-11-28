@@ -80,11 +80,25 @@
       left: 50%;
       top: 50%;
       translate: -50% -50%;
-      width: min(100% - 2rem, 560px);
+      /* A caller sets --ui-sheet-w for a narrower card (a folder's name needs less than a model list). */
+      width: min(100% - 2rem, var(--ui-sheet-w, 560px));
       max-height: min(80vh, 100dvh - 2rem);
       padding-bottom: 0;
       border-bottom: var(--ds-hairline) solid var(--ds-border-strong);
       border-radius: var(--ds-r-sheet);
+    }
+  }
+  /* data-dock="right": from 1024px the auto sheet becomes a full-height panel on the right, the page still visible beside it
+     (for a dialog someone works in for a while). */
+  @media (min-width: 1024px) {
+    .ui-sheet[data-side="auto"][data-dock="right"] {
+      inset: 0 0 0 auto;
+      translate: none;
+      width: min(100% - 3rem, 440px);
+      max-height: none;
+      border-block: 0;
+      border-right: 0;
+      border-radius: var(--ds-r-sheet) 0 0 var(--ds-r-sheet);
     }
   }
   .ui-sheet[data-side="right"],
@@ -270,6 +284,12 @@
   @media (min-width: 640px) {
     .ui-sheet[data-side="auto"][data-state="open"] { animation: ui-pop-in var(--ds-dur-panel) var(--ds-ease-out); }
     .ui-sheet[data-side="auto"][data-state="closed"] { animation: ui-pop-out var(--ds-dur-panel) var(--ds-ease-exit); }
+  }
+  /* Docked on the right, it slides in from that edge rather than popping in about its centre. */
+  @media (min-width: 1024px) {
+    .ui-sheet[data-side="auto"][data-dock="right"] { --ui-from: translateX(100%); }
+    .ui-sheet[data-side="auto"][data-dock="right"][data-state="open"] { animation: ui-sheet-in var(--ds-dur-page) var(--ds-ease-emphasized); }
+    .ui-sheet[data-side="auto"][data-dock="right"][data-state="closed"] { animation: ui-sheet-out var(--ds-dur-panel) var(--ds-ease-exit); }
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -395,3 +395,44 @@ describe("the cascade-layer trap (Lens on this PR)", () => {
     expect(read("components/shell/SessionEndedBar.tsx")).toMatch(/pointer-events-auto[^"]*z-\[var\(--ds-z-toast\)\]/);
   });
 });
+
+describe("focus goes back without a Trigger (the dialogs our app opens from state)", () => {
+  // Radix returns focus only to a Dialog.Trigger; opened from a tile or a menu, it dropped focus on <body> and a keyboard
+  // user landed at the top of the page.
+  function Opener({ sheet }: { sheet: boolean }) {
+    const [open, setOpen] = useState(false);
+    return (
+      <>
+        <button type="button" onClick={() => setOpen(true)}>
+          tile
+        </button>
+        {sheet ? (
+          <Sheet open={open} onOpenChange={setOpen}>
+            <SheetContent side="auto" closeLabel="x">
+              <SheetTitle>T</SheetTitle>
+              <SheetDescription>D</SheetDescription>
+            </SheetContent>
+          </Sheet>
+        ) : (
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogContent closeLabel="x">
+              <DialogTitle>T</DialogTitle>
+              <DialogDescription>D</DialogDescription>
+            </DialogContent>
+          </Dialog>
+        )}
+      </>
+    );
+  }
+
+  it.each([false, true])("returns focus to the element that opened it (sheet: %s)", async (sheet) => {
+    render(<Opener sheet={sheet} />);
+    const tile = screen.getByRole("button", { name: "tile" });
+    tile.focus();
+    fireEvent.click(tile);
+    await screen.findByRole("dialog");
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(tile));
+  });
+});
