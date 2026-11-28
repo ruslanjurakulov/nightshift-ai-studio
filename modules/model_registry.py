@@ -35,6 +35,7 @@ from modules.capabilities import ADAPTERS
 from modules.capabilities.base import (
     CAPTIONS,
     DESCRIBE,
+    MUSIC,
     DUB,
     ERASE,
     EXPAND,
@@ -60,6 +61,7 @@ from modules.capabilities.base import (
     VIDEO_REFRAME,
     VIDEO_REMOVE_BG,
     VIDEO_UPSCALE,
+    TTS,
     CapabilityRequest,
 )
 
@@ -257,6 +259,11 @@ class ModelEntry:
     api_exposure: str
     max_prompt_chars: int
     max_concurrent_per_org: int
+    #: The adapter puts negative_prompt in the vendor's request (registry ``takes_negative_prompt``, default false). A model that does
+    #: not is refused one, by the quote (0218) and here: never charged for and silently dropped (CLAUDE.md #4).
+    takes_negative_prompt: bool
+    #: The adapter's own negative prompt limit, in characters (``limits.max_negative_prompt_chars``; Krea: 1024). None = none of its own.
+    max_negative_prompt_chars: Optional[int]
     quality_tier: int
     speed_tier: int
     raw: Mapping
@@ -310,6 +317,10 @@ class ModelEntry:
             out.append("prompt is empty")
         if prompt_units(request.prompt) > self.max_prompt_chars:
             out.append(f"prompt is longer than {self.max_prompt_chars} characters")
+        # The worker's backstop for 0218's quote check: a job created before it (or by a path that skipped the quote) still never
+        # reaches an adapter that would drop its negative prompt.
+        if (request.negative_prompt or "").strip() and not self.takes_negative_prompt:
+            out.append(f"{self.id} does not take a negative prompt; remove it or choose a model that does")
         aspects = self.aspects_for(cap)
         if request.aspect_ratio and request.aspect_ratio not in aspects:
             out.append(f"aspect ratio {request.aspect_ratio} is not offered for {cap} by {self.id}")
@@ -401,8 +412,9 @@ class ModelEntry:
         # An expand is asked by its shape, and a relight by its look when the
         # probe names one (the database sends exactly one of look / prompt).
         # A video edit and a character swap are asked by their words; the other video tools take none.
+        # A picture upscale takes none either: Ideogram's (Topaz Standard V2, the one wired) refuses a prompt.
         wordless = (speech or (cap in VIDEO_INPUT and cap not in (VIDEO_EDIT, VIDEO_CHARACTER_SWAP)) or cap == DESCRIBE or cap == EXPAND
-                    or (cap == RELIGHT and p.get("look")))
+                    or cap == UPSCALE or (cap == RELIGHT and p.get("look")))
         return CapabilityRequest(capability=cap, prompt="" if wordless else p["prompt"],
                                  look=p.get("look"),
                                  aspect_ratio=p.get("aspect_ratio"), resolution=p.get("resolution"),
@@ -436,12 +448,26 @@ def _entry(m: Mapping) -> ModelEntry:
         credit_unit=m["credit_unit"], entitlement=m["entitlement"], terms_gate=m["terms_gate"],
         api_exposure=m["api_exposure"], max_prompt_chars=int(m["limits"]["max_prompt_chars"]),
         max_concurrent_per_org=int(m["limits"]["max_concurrent_per_org"]),
+        takes_negative_prompt=m.get("takes_negative_prompt") is True,
+        max_negative_prompt_chars=m["limits"].get("max_negative_prompt_chars"),
         quality_tier=int(m["quality_tier"]), speed_tier=int(m["speed_tier"]), raw=m,
     )
 
 
 def _err(mid: str, msg: str) -> str:
     return f"{mid or '?'}: {msg}"
+
+
+_BYTEDANCE_RE = re.compile(r"seedance|seedream")
+
+
+def is_bytedance(m: Mapping) -> bool:
+    """A ByteDance / BytePlus model, however it is named: the same test as migration 0219's oauth_creative_bytedance (the id, the
+    provider, the adapter, the vendor's own model id)."""
+    return bool(_BYTEDANCE_RE.search(str(m.get("id") or "").lower())
+                or str(m.get("provider") or "").lower() in ("bytedance", "byteplus")
+                or re.match(r"(video\.seedance|image\.seedream)", str(m.get("adapter") or "").lower())
+                or _BYTEDANCE_RE.search(str(m.get("vendor_model") or "").lower()))
 
 
 def _cross_errors(models: Sequence[Mapping]) -> List[str]:
@@ -498,10 +524,15 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             errors.append(_err(mid, "a picture-op model lists only picture ops"))
         if any(c in PICTURE_OPS for c in caps) and m["api_exposure"] != "web_only":
             errors.append(_err(mid, "picture ops are a web tool until the API documents them: api_exposure must be web_only"))
-        if (DUB in caps or CAPTIONS in caps) != bool(m.get("languages")):
+        if (DUB in caps or CAPTIONS in caps or TTS in caps) != bool(m.get("languages")):
             # 0050 sells a dub only into a language the model lists; 0072
-            # sells captions only in a spoken language it lists.
-            errors.append(_err(mid, "languages is required with dub or captions and only with them"))
+            # sells captions only in a spoken language it lists. A voice model
+            # lists what it speaks so a film's quote can refuse an Uzbek film
+            # read by a model that does not speak Uzbek before the hold (0214),
+            # and so the Brain proposes only a voice that speaks the film's
+            # language. A voice model without the list would read as "unknown"
+            # there, never as "speaks", so the entry may not omit it.
+            errors.append(_err(mid, "languages is required with dub, captions or tts and only with them"))
         if (VIDEO_UPSCALE in caps) != bool(m.get("upscale_targets")):
             # 0052 sells a video upscale only at a target the model lists.
             errors.append(_err(mid, "upscale_targets is required with video_upscale and only with it"))
@@ -530,6 +561,11 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
         if VIDEO_MUSIC in caps and not m["limits"].get("max_source_seconds"):
             # The vendor bills the video's seconds: without a documented longest input a length it refuses would be sold.
             errors.append(_err(mid, "video_music needs limits.max_source_seconds"))
+        if m["pricing"]["unit"] == "request" and not set(caps) <= {MUSIC, DESCRIBE}:
+            # BR-0228-01/02: 0228 quotes a per-request MUSIC model for one request, and every other capability by its own quantity
+            # (a region edit by its regions, a video op by its source's seconds). A per-request price on any other capability would
+            # be multiplied by that quantity, or by none: refused here until a migration says how such a model is quoted.
+            errors.append(_err(mid, "pricing.unit request is for music and describe models only"))
         if REGISTRY_ONLY_CAPABILITIES & set(caps):
             # The database's capability lists (0100) do not hold these. The entry is left out of the sync, so it must be
             # dark by its own fields too, and must not carry a capability the sync would then silently drop with it.
@@ -552,6 +588,18 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
                 errors.append(_err(mid, "a character swap is priced per resolution: one price for each listed resolution"))
             if swap["real_people"] == "own_generated_clip_only" and m["provider"] != "bytedance":
                 errors.append(_err(mid, "own_generated_clip_only is BytePlus's 30-day rule"))
+        if cls is not None and (m.get("takes_negative_prompt") is True) != bool(getattr(cls, "TAKES_NEGATIVE_PROMPT", False)):
+            # 0218 sells a negative prompt only to a model that says it takes one: the file must say exactly what the adapter sends
+            # (true on an adapter that drops it is a paid setting never used; false on one that sends it refuses what works).
+            errors.append(_err(mid, f"takes_negative_prompt must be {bool(getattr(cls, 'TAKES_NEGATIVE_PROMPT', False))} "
+                                    f"for adapter {m['adapter']}"))
+        neg_max = m["limits"].get("max_negative_prompt_chars")
+        if neg_max is not None and m.get("takes_negative_prompt") is not True:
+            errors.append(_err(mid, "limits.max_negative_prompt_chars is for a model that takes a negative prompt"))
+        if cls is not None and m.get("takes_negative_prompt") is True and neg_max != getattr(cls, "MAX_NEGATIVE_CHARS", None):
+            # The quote (0218) refuses past this number; the adapter refuses past its own. They must be one number.
+            errors.append(_err(mid, f"limits.max_negative_prompt_chars must be the adapter's own limit "
+                                    f"({getattr(cls, 'MAX_NEGATIVE_CHARS', None)})"))
         if m.get("end_frame"):
             if I2V not in caps:
                 errors.append(_err(mid, "end_frame is for a model that animates a picture (i2v)"))
@@ -593,6 +641,19 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
                 and not (pricing["source_url"] and pricing["as_of"]):
             # A price without where and when it came from is a guess (CLAUDE.md #5).
             errors.append(_err(mid, "a provider price needs source_url and as_of"))
+        for i, change in enumerate(pricing.get("changes") or ()):
+            # The patterns only check the shape. tests/test_dated_vendor_prices.py compares effective_at with the moment written in
+            # the documented credit_price_schedule row (0224), so an impossible date would be a change nobody can schedule.
+            try:
+                datetime.strptime(change["effective_at"], "%Y-%m-%dT%H:%M:%SZ")
+                date.fromisoformat(change["as_of"])
+            except ValueError:
+                errors.append(_err(mid, f"pricing.changes[{i}] has a date that is not on the calendar"))
+            if all(r["from"] == r["to"] for r in change["rates"].values()):
+                errors.append(_err(mid, f"pricing.changes[{i}] changes no rate"))
+            if any(r["from"] <= 0 or r["to"] <= 0 for r in change["rates"].values()):
+                # A ratio to/from is what the schedule's rate is scaled by: a rate from or to nothing has no ratio to scale by.
+                errors.append(_err(mid, f"pricing.changes[{i}] needs every rate above 0, before and after"))
         units = [m["credit_unit"]]
         if m["credit_unit"] != credit_unit_for(mid, pricing["unit"]):
             errors.append(_err(mid, f"credit_unit must be {credit_unit_for(mid, pricing['unit'])}"))
@@ -639,6 +700,16 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             # functions directly (docs/GEO_BLOCK.md "What it cannot do"). Until the database refuses by country, a model with a
             # country list stays off sale: a terms_gate keeps it hidden (0035), and 0142 refuses beta/ga for it in the database too.
             errors.append(_err(mid, "blocked_countries needs a terms_gate until the database checks the country"))
+        allowed_in = m.get("available_countries")
+        if allowed_in and not m.get("blocked_countries"):
+            # 0230 reads an allow-list only on a row with blocked_countries (0208's trigger skips any other): alone it gates nothing.
+            errors.append(_err(mid, "available_countries needs blocked_countries"))
+        if allowed_in and set(allowed_in) & set(m.get("blocked_countries") or []):
+            errors.append(_err(mid, "available_countries and blocked_countries share a code"))
+        if m["provider"] == "google" and m.get("blocked_countries") and not allowed_in:
+            # BR-S6-03: Google's terms are an allow-list. Its complement alone lets a code on neither list (EU, a typo) through, and
+            # 0230 refuses every job on a Google row with no allow-list: the file must carry it, or the model can never run.
+            errors.append(_err(mid, "a google model with blocked_countries needs available_countries (Google's own list)"))
         if "mcp_oauth_exposure" in m and m["mcp_oauth_exposure"] is not True and m["mcp_oauth_exposure"] is not False:
             errors.append(_err(mid, "mcp_oauth_exposure is true or false"))
         if m.get("mcp_oauth_exposure") is True:
@@ -654,6 +725,11 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             # give it, and 0191's gate (sellable_models 'mcp') would refuse the model anyway: the file must not promise it.
             if m["api_exposure"] not in ("web_mcp", "any"):
                 errors.append(_err(mid, "mcp_oauth_exposure needs api_exposure web_mcp (or any): web_only is the vendor's no"))
+        if is_bytedance(m) and (m["api_exposure"] != "web_only" or m.get("mcp_oauth_exposure") is True):
+            # BytePlus's service terms §4.2.3 forbid re-integrating its video API into an AI content-creation tool
+            # (docs/FILM_STUDIO.md "Models"): never the public API, never a connected assistant. Migration 0219 refuses every
+            # ByteDance model to every assistant in the database too; the file must not promise otherwise.
+            errors.append(_err(mid, "a ByteDance model is web_only and never mcp_oauth_exposure (BytePlus terms §4.2.3)"))
         ent = m["entitlement"]
         if ent and ent.split(":")[0] != f"models_{m['output']}":
             errors.append(_err(mid, "entitlement category must match the output"))
@@ -753,6 +829,8 @@ def sync_rows(entries: Sequence[ModelEntry]) -> List[dict]:
             # sync). The entry stays in the file until a migration teaches the database its capability.
             continue
         spec = {k: v for k, v in e.raw.items() if k not in _COLUMNS}
+        # Always stated, never left to "absent means false": migration 0218 reads it, and a spec that says it is one a reader can trust.
+        spec["takes_negative_prompt"] = e.takes_negative_prompt
         rows.append({"id": e.id, "display_name": e.display_name, "provider": e.provider,
                      "adapter": e.adapter, "capabilities": list(e.capabilities),
                      "credit_unit": e.credit_unit, "entitlement": e.entitlement, "spec": spec})

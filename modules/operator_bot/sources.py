@@ -23,6 +23,15 @@ Four kinds of source, none of them new:
   ``doctor_results``): the operator's own channels' schedule, the video, held and storyboard rows their runs
   write, and the scheduled readiness check's verdict rows. Ids, states, times and one fixed word (a hold's
   cause); never a title, a script, a gate verdict or an event's metadata.
+* The film reads (``film_events``, ``film_segments``, the ``security_events`` fallback kind
+  ``film.segment_skipped``, migrations 0166/0171, and ``film_sweep_status()``, 0212): ids, statuses, times,
+  an organization id, and single numbers or closed words picked out of an event's detail by PostgREST's path
+  select. Never a prompt, a scene, the database's message text or a customer's name.
+* The film spend reads (``film_segments`` → ``film_takes`` → ``creative_jobs.film_take_id`` →
+  ``creative_job_costs``, migrations 0171 and 0037, and ``model_registry``'s reviewed vendor figure, 0035): per film
+  with an open or recently settled segment, its takes' kind, attempt and status, their jobs' model ids, and each cost
+  row's quantity, unit and USD. Ids, closed words, small numbers and money; never a prompt, a model's parameters, an
+  error text or a price source.
 * The public pages of the site (a GET, status code only).
 
 Every read returns a :class:`Section`. A source that cannot answer says WHY in a
@@ -92,7 +101,20 @@ RUN_EVENTS = ("system.started", "render.completed", "upload.completed", "video.p
 _CHANNEL_ID = re.compile(r"[a-z0-9][a-z0-9-]{1,38}")
 #: The only database functions the bot may call (each takes no argument and only reads). A new one is a deliberate
 #: addition here, reviewed with its migration; anything else is refused before a request is made.
-_READ_FUNCTIONS = frozenset({"operator_marketing_summary"})
+_READ_FUNCTIONS = frozenset({"operator_marketing_summary", "film_sweep_status"})
+
+#: 0171's open segment statuses: a segment in one of these still holds a customer's credits.
+FILM_OPEN_STATUSES = ("queued", "running", "draining")
+#: The two film_events 0171 writes that need a person: a settle whose hold could no longer pay a charge
+#: (``detail.not_captured``), and a segment the claim or the sweep had to skip.
+FILM_ALERT_EVENTS = ("segment_settled", "segment_skipped")
+#: The security_events kind 0171's film_record_skip writes when even its film_events row could not be written.
+FILM_SKIP_SECURITY_KIND = "film.segment_skipped"
+
+#: film_takes statuses (0166) after which a take's vendor call, if it made one, is over: its cost row should exist.
+FILM_TAKE_DONE = ("completed", "failed", "superseded", "skipped")
+#: How many ids go into one ``in.(...)`` filter: a uuid is 36 characters, so a chunk stays far inside any URL limit.
+IN_CHUNK = 50
 
 SITE_PAGES = ("/", "/pricing", "/login", "/signup")
 
@@ -195,9 +217,10 @@ class OperatorSources:
         self._cache[key] = out
         return out
 
-    def _rpc(self, name: str) -> Section:
+    def _rpc(self, name: str, needs_ok: bool = True) -> Section:
         """One argument-less database function, cached like a table read. Never
-        raises; the answer must be a JSON object that says ``ok``."""
+        raises; the answer must be a JSON object that says ``ok`` (``needs_ok``
+        False: any JSON object, for a function whose answer has no such key)."""
         if name not in _READ_FUNCTIONS:
             logger.warning("operator refused to call %s: not a read function of the bot", name[:40])
             return Section.fail("unavailable")
@@ -211,7 +234,8 @@ class OperatorSources:
         try:
             call = getattr(self.sync, "rpc_strict", None)
             data = call(name, {}) if call is not None else None
-            out = Section(True, data) if isinstance(data, dict) and data.get("ok") is True else Section.fail("unavailable")
+            good = isinstance(data, dict) and (data.get("ok") is True or not needs_ok)
+            out = Section(True, data) if good else Section.fail("unavailable")
         except SupabaseReadError as e:
             out = Section.fail("not set up yet" if e.function_missing else "unavailable")
             # A function the database does not have yet is the normal state before its migration: not a warning every pass.
@@ -377,6 +401,155 @@ class OperatorSources:
         count against its cap, the switch, the last sent post and the last
         failure (migration 0109). Counts, kinds and closed codes only."""
         return self._rpc("operator_marketing_summary")
+
+    # -- film studio (0166, 0171, 0212) -----------------------------------
+
+    FILM_EVENTS_LIMIT = 300
+
+    def film_alert_events(self, since: datetime) -> Section:
+        """The settles that left a charge uncaptured and the skipped segments since ``since``, newest first.
+
+        Two reads, so a busy day of ordinary settles can never push a ``not_captured`` one out of the row limit: the
+        database is asked only for settles whose detail HAS that key. From ``detail`` only four values are picked out
+        by path (segment id, the uncaptured amount, the call and the SQLSTATE); the database's own ``message`` beside
+        them is never read, because it can quote a row."""
+        cols = ("id,film_id,org_id,event,created_at,segment_id:detail->>segment_id,"
+                "not_captured:detail->>not_captured,call:detail->>call,sqlstate:detail->>sqlstate")
+        common = {"select": cols, "created_at": f"gte.{iso(since)}", "order": "created_at.desc",
+                  "limit": str(self.FILM_EVENTS_LIMIT)}
+        settled = self._read("film_events", {**common, "event": "eq.segment_settled",
+                                             "detail->>not_captured": "not.is.null"})
+        skipped = self._read("film_events", {**common, "event": "eq.segment_skipped"})
+        if not settled.ok:
+            return settled
+        if not skipped.ok:
+            return skipped
+        # Belt and braces for a source that ignored a filter: each read keeps only its own event, each row once.
+        seen, rows = set(), []
+        for event, sec in (("segment_settled", settled), ("segment_skipped", skipped)):
+            for r in sec.data or []:
+                if r.get("event") == event and r.get("id") not in seen:
+                    seen.add(r.get("id"))
+                    rows.append(r)
+        return Section(True, rows, cap=settled.cap or skipped.cap)
+
+    def film_skip_fallbacks(self, since: datetime) -> Section:
+        """0171's fallback record of a skipped segment (``security_events`` kind ``film.segment_skipped``): its id,
+        time, target (the segment id) and two closed values of its detail. Never the actor columns, never the
+        message."""
+        sec = self._read("security_events", {
+            "select": "id,at,kind,target,call:detail->>call,sqlstate:detail->>sqlstate",
+            "kind": f"eq.{FILM_SKIP_SECURITY_KIND}", "at": f"gte.{iso(since)}", "order": "at.desc", "limit": "100",
+        })
+        if not sec.ok:
+            return sec
+        return Section(True, [r for r in sec.data or [] if r.get("kind") == FILM_SKIP_SECURITY_KIND], cap=sec.cap)
+
+    def film_open_segments(self) -> Section:
+        """Segments that still hold credits, OLDEST first (a stuck one is an old one). Id, status, the four
+        timestamps and the organization: no film, no quote, no money columns."""
+        sec = self._read("film_segments", {
+            "select": "id,org_id,status,created_at,claimed_at,heartbeat_at,updated_at",
+            "status": f"in.({','.join(FILM_OPEN_STATUSES)})", "order": "created_at.asc", "limit": "200",
+        })
+        if not sec.ok:
+            return sec
+        return Section(True, [r for r in sec.data or [] if r.get("status") in FILM_OPEN_STATUSES], cap=sec.cap)
+
+    FILM_SPEND_SEGMENTS_LIMIT = 200
+    FILM_SPEND_ROWS_LIMIT = 2000
+
+    def film_spend(self, since: datetime) -> Section:
+        """What each film with an open segment, or one settled since ``since``, has cost at its vendors so far: a cost
+        row's own ``usd_estimate`` where one was recorded, else its quantity times the registry's figure (an
+        estimate), else unknown (never 0), with its takes. Data: one dict per film, see
+        :func:`modules.operator_bot.analysis.film_spend_rollup`. Read-only; any read that fails makes the whole
+        answer unknown (a partial sum is not "this film's cost")."""
+        cols = "film_id,org_id,status,settled_at"
+        lim = str(self.FILM_SPEND_SEGMENTS_LIMIT)
+        open_ = self._read("film_segments", {"select": cols, "status": f"in.({','.join(FILM_OPEN_STATUSES)})",
+                                             "order": "created_at.asc", "limit": lim})
+        if not open_.ok:
+            return open_
+        done = self._read("film_segments", {"select": cols, "settled_at": f"gte.{iso(since)}",
+                                            "order": "settled_at.desc", "limit": lim})
+        if not done.ok:
+            return done
+        films: dict = {}
+        for r in list(open_.data or []) + list(done.data or []):
+            # Belt and braces for a source that ignored a filter: only a live segment or one settled in the window.
+            settled = parse_ts(r.get("settled_at"))
+            if r.get("status") in FILM_OPEN_STATUSES or (settled is not None and settled >= since):
+                fid = str(r.get("film_id") or "")
+                if fid:
+                    films.setdefault(fid, r.get("org_id"))
+        out = self._film_costs(films)
+        if out.ok and (open_.cap or done.cap):
+            out.cap = out.cap or open_.cap or done.cap
+        return out
+
+    def film_spend_for(self, film_id: str) -> Section:
+        """The same answer for one named film, whatever its segments (tools/film_spend.py)."""
+        sec = self._read("films", {"select": "id,org_id", "id": f"eq.{film_id}", "limit": "1"})
+        if not sec.ok:
+            return sec
+        rows = [r for r in sec.data or [] if str(r.get("id")) == film_id]
+        if not rows:
+            return Section.fail("not found")
+        return self._film_costs({film_id: rows[0].get("org_id")})
+
+    def _in_chunks(self, table: str, select: str, column: str, ids, extra: Optional[dict] = None) -> Section:
+        rows, cap = [], 0
+        ids = sorted({str(i) for i in ids if i})
+        for n in range(0, len(ids), IN_CHUNK):
+            sec = self._read(table, {"select": select, column: f"in.({','.join(ids[n:n + IN_CHUNK])})",
+                                     **(extra or {}), "limit": str(self.FILM_SPEND_ROWS_LIMIT)})
+            if not sec.ok:
+                return sec
+            rows += list(sec.data or [])
+            cap = cap or sec.cap
+        return Section(True, rows, cap=cap)
+
+    def _film_costs(self, films: dict) -> Section:
+        from modules.operator_bot import analysis
+
+        if not films:
+            return Section(True, [])
+        takes = self._in_chunks("film_takes", "id,film_id,org_id,kind,attempt,status,created_at", "film_id", films,
+                                {"order": "created_at.asc"})
+        if not takes.ok:
+            return takes
+        take_rows = [r for r in takes.data if str(r.get("film_id")) in films]
+        jobs = self._in_chunks("creative_jobs", "id,film_take_id,routed_model,requested_model", "film_take_id",
+                               [r.get("id") for r in take_rows])
+        if not jobs.ok:
+            return jobs
+        take_ids = {str(r.get("id")) for r in take_rows}
+        job_rows = [r for r in jobs.data if str(r.get("film_take_id")) in take_ids]
+        costs = self._in_chunks("creative_job_costs", "job_id,quantity,unit,usd_estimate", "job_id",
+                                [r.get("id") for r in job_rows])
+        if not costs.ok:
+            return costs
+        job_ids = {str(r.get("id")) for r in job_rows}
+        cost_rows = [r for r in costs.data if str(r.get("job_id")) in job_ids]
+        # The adapters record a quantity in the vendor's unit and leave usd_estimate NULL by design
+        # (modules/creative_adapters.py, RegistryAdapter.usage): the dollars come from the registry's reviewed figure,
+        # picked out of spec by path so nothing else of the spec is read. Only the prices and their unit.
+        models = {analysis.film_job_model(r) for r in job_rows} - {""}
+        # variant_prices: spec.pricing.variants.prices ({"1K": 0.067, "4K": 0.15, ...}, a figure or null per variant).
+        figures = self._in_chunks("model_registry", "id,usd_per_unit:spec->pricing->>provider_usd_per_unit,"
+                                  "price_unit:spec->pricing->>unit,variant_prices:spec->pricing->variants->prices",
+                                  "id", models) if models else Section(True, [])
+        if not figures.ok:
+            return figures
+        figure_rows = [r for r in figures.data if str(r.get("id")) in models]
+        rolled = analysis.film_spend_rollup(films, take_rows, job_rows, cost_rows, figure_rows)
+        return Section(True, rolled, cap=takes.cap or jobs.cap or costs.cap or figures.cap)
+
+    def film_sweep_status(self) -> Section:
+        """Whether the film sweep ran (0212): per runner its last run, the open segment count and ``overdue``
+        (true / false / null = never recorded). A database without 0212 reads as "not set up yet"."""
+        return self._rpc("film_sweep_status", needs_ok=False)
 
     def audit(self, since: datetime) -> Section:
         """Operator-level audit events only, filtered by the database (a Python

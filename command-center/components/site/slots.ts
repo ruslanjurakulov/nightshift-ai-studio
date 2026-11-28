@@ -5,8 +5,11 @@
  */
 import type { ClipId } from "@/components/site/clip-assets";
 import { MEDIA, type MediaId } from "@/lib/site/media";
-import { SHOWCASE_ENTRIES, type ShowcaseEntry, type ShowcaseFiles } from "@/lib/site/showcase";
-import { SHOWCASE_FILES } from "@/components/site/showcase-assets";
+// The client-safe slice, not lib/site/showcase.ts: the sign-in stages (components/auth/AuthShell.tsx, a Client Component) resolve
+// their slot in the browser, so whatever this module reads is shipped. Every helper is typed on a card, which a full entry is too.
+import type { ShowcaseFiles } from "@/lib/site/showcase";
+import { showcaseCard, type ShowcaseCard } from "@/lib/site/showcase-card";
+import { SHOWCASE_CARDS, SHOWCASE_FILES } from "@/components/site/showcase-assets";
 import { TOOL_JOBS } from "@/lib/site/tool-samples";
 
 /**
@@ -58,24 +61,25 @@ export type PlaceDef = { ai: string | null; aiPosition?: string; id: MediaId; po
  * either direction (CLAUDE.md #5), so every label on a slot is chosen from this and nothing else.
  */
 export type PlaceMedia =
-  | { kind: "ai"; entry: ShowcaseEntry; files: ShowcaseFiles; moving: boolean; position?: string }
+  | { kind: "ai"; entry: ShowcaseCard; files: ShowcaseFiles; moving: boolean; position?: string }
   | { kind: "stock"; id: MediaId; footage: boolean; clip: ClipId | null; position?: string };
 
 /** The sample a line names (or, with `ai` null, the newest entry exported for `name`) when its entry and its files are both here; else the stock fallback. */
 export function placeMedia(
   def: PlaceDef,
   name: string | null,
-  entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES,
+  entries: readonly ShowcaseCard[] = SHOWCASE_CARDS,
   files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES,
 ): PlaceMedia {
   const entry = def.ai ? entries.find((e) => e.jobId === def.ai) : name ? entries.find((e) => e.slot === name) : undefined;
   const f = entry ? files[entry.jobId] : undefined;
-  if (entry && f) return { kind: "ai", entry, files: f, moving: entry.kind === "video" && f.clip !== null, position: def.aiPosition };
+  // A copy, not the list's object: a server caller may pass full entries, and a place's media can become a client prop.
+  if (entry && f) return { kind: "ai", entry: showcaseCard(entry), files: f, moving: entry.kind === "video" && f.clip !== null, position: def.aiPosition };
   return { kind: "stock", id: def.id, footage: MEDIA[def.id].kind === "video", clip: def.clip ?? null, position: def.position };
 }
 
 /** What a slot shows (placeMedia over its line). */
-export function slotMedia(slot: SlotId, entries?: readonly ShowcaseEntry[], files?: Readonly<Record<string, ShowcaseFiles>>): PlaceMedia {
+export function slotMedia(slot: SlotId, entries?: readonly ShowcaseCard[], files?: Readonly<Record<string, ShowcaseFiles>>): PlaceMedia {
   return placeMedia(SLOTS[slot], slot, entries, files);
 }
 
@@ -97,22 +101,32 @@ export const EXAMPLE_JOBS: readonly string[] = [EXAMPLE_PHONE_JOB, EXAMPLE_THUMB
  * An example clip as a place's media (placeBox, PlaceFill), or null while its entry or its files are not in the repository. No stock
  * fallback, unlike a slot: a stand-in picture beside the example topic is exactly what the owner rejected, so its place is empty.
  */
-export function exampleMedia(job: string, entries: readonly ShowcaseEntry[] = SHOWCASE_ENTRIES, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): Extract<PlaceMedia, { kind: "ai" }> | null {
+export function exampleMedia(job: string, entries: readonly ShowcaseCard[] = SHOWCASE_CARDS, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): Extract<PlaceMedia, { kind: "ai" }> | null {
   const entry = entries.find((e) => e.jobId === job);
   const f = entry ? files[entry.jobId] : undefined;
-  return entry && f ? { kind: "ai", entry, files: f, moving: entry.kind === "video" && f.clip !== null } : null;
+  return entry && f ? { kind: "ai", entry: showcaseCard(entry), files: f, moving: entry.kind === "video" && f.clip !== null } : null;
 }
 
 /** The showcase jobs these slots show right now: a page leaves them out of its own gallery, so no clip is shown twice on it. */
-export function slotJobs(slots: readonly SlotId[], entries?: readonly ShowcaseEntry[], files?: Readonly<Record<string, ShowcaseFiles>>): string[] {
+export function slotJobs(slots: readonly SlotId[], entries?: readonly ShowcaseCard[], files?: Readonly<Record<string, ShowcaseFiles>>): string[] {
   return slots.flatMap((s) => {
     const m = slotMedia(s, entries, files);
     return m.kind === "ai" ? [m.entry.jobId] : [];
   });
 }
 
-/** The landing's own slots (its gallery leaves out the samples they show). */
-export const LANDING_SLOTS = ["hero", "show.studio", "landing.final"] as const satisfies readonly SlotId[];
+/**
+ * The first screen's clip on "/" (components/landing/home/HomeHero.tsx): orbit, the night city, the steaming street stall. Not a slot:
+ * it has no stock fallback, and with no entry or clip the hero has no picture rather than a stand-in. Here, and not in the hero's own
+ * file, so the landing's list of what it shows (landingPlacedJobs) can name it without loading the reel's media manifest.
+ */
+export const HERO_JOB = "4e85c7e4-fd1a-4771-97ee-66c1fb853367";
+
+/**
+ * The landing's own slots (its gallery leaves out the samples they show): only the closing panel since the owner kept the street-stall
+ * hero (2026-11-22) and the page went to one gallery. The `hero` and `show.studio` slots stay for the pages that still draw them.
+ */
+export const LANDING_SLOTS = ["landing.final"] as const satisfies readonly SlotId[];
 
 /**
  * Samples the landing's gallery leaves out although no slot shows them: more sea, sky and surf. The first screen is a whale in a sea
@@ -128,13 +142,20 @@ export const LANDING_LEFT_OUT: readonly string[] = [
 ];
 
 /**
- * The samples a landing place shows: its slots, the tool wall (lib/site/tool-samples.ts), and the example topic's two clips (the
- * third step's phone and the Approvals card's thumbnail, EXAMPLE_JOBS). They are on the page, so they count in its facts and model
- * tiles; a sample surface leaves them out so nothing is shown twice. Functions, not constants, so they read the slots and the data
- * file as they are when called.
+ * The samples a landing place actually draws: the first screen's clip (HERO_JOB, while its entry and clip are here), its slots, the
+ * tool wall (lib/site/tool-samples.ts) and the third step's phone (EXAMPLE_PHONE_JOB). They are on the page, so they count in its
+ * facts and model tiles; a sample surface leaves them out so nothing is shown twice. Only what is drawn: a sample counted here that
+ * the page does not show would be a fact the visitor cannot check (CLAUDE.md #5). Functions, not constants, so they read the slots
+ * and the data file as they are when called.
  */
-export function landingPlacedJobs(): string[] {
-  return [...slotJobs(LANDING_SLOTS), ...TOOL_JOBS, ...EXAMPLE_JOBS.filter((j) => exampleMedia(j) !== null)];
+export function landingPlacedJobs(entries: readonly ShowcaseCard[] = SHOWCASE_CARDS, files: Readonly<Record<string, ShowcaseFiles>> = SHOWCASE_FILES): string[] {
+  const hero = exampleMedia(HERO_JOB, entries, files);
+  return [
+    ...(hero?.moving ? [HERO_JOB] : []),
+    ...slotJobs(LANDING_SLOTS, entries, files),
+    ...TOOL_JOBS,
+    ...(exampleMedia(EXAMPLE_PHONE_JOB, entries, files) ? [EXAMPLE_PHONE_JOB] : []),
+  ];
 }
 
 /**
@@ -143,5 +164,8 @@ export function landingPlacedJobs(): string[] {
  * One list, so a new surface cannot show a sample twice or bring the sea back.
  */
 export function landingExcludedJobs(): string[] {
-  return [...landingPlacedJobs(), ...LANDING_LEFT_OUT];
+  const placed = landingPlacedJobs();
+  // The example topic's other clip is never a sample of its own on the landing, drawn or not: it is the one video the example ask
+  // makes (EXAMPLE_JOBS), and in a grid it would read as a second, unrelated result.
+  return [...placed, ...EXAMPLE_JOBS.filter((j) => !placed.includes(j)), ...LANDING_LEFT_OUT];
 }

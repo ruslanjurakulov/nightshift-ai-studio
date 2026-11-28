@@ -165,17 +165,49 @@ class Numbering(unittest.TestCase):
         # extended) was reviewed the same way: it replaces and alters nothing these pin.
         # 0205 (publish to platforms: replaces only publish_request_refusal, which none of these pins name; reads
         # videos.gate_verdict) was reviewed the same way.
+        # 0219 (the operator route for connected assistants: oauth_creative_models / _quote / _create, two columns on 0191's
+        # closed tables, three internal helpers) was reviewed the same way: it names nothing these pin.
+        # 0215 (Film Studio archive, resume and assembly re-run: three admin calls and internal helpers; marked hunks in 0166's film_read and
+        # archive_film and 0198's start_film, film_claim_segment and claim_creative_job; columns on film_segments, film_takes,
+        # film_quotes) was reviewed the same way: it names nothing these pin.
         # 0208 (the database's country gate and the price by picture size: one trigger on creative_jobs, two new functions, marked
         # hunks in creative_params_problem, creative_price, creative_regions_problem and reroute_creative_job) was reviewed the same
         # way: it names nothing these pin.
-        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194", "0195", "0196", "0197", "0198", "0199", "0200", "0201", "0202", "0203", "0204", "0205", "0208", "0209")
+        # 0222 (retires gemini-omni-1.1-flash: one UPDATE of model_registry.availability, no function or table) names nothing
+        # these pin.
+        # 0218 (a model's prompt limit, negative prompt and seed refused at the quote: replaces creative_params_problem and
+        # creative_price on 0208's bodies and film_price on 0171's, nothing else) was reviewed the same way: it names nothing these pin.
+        # 0214 (voice_language_problem: one new service-only read function, no table; replaces no body, names nothing these
+        # pin) was reviewed the same way.
+        # 0228 (music per request, S6: `music` added to 0100's two capability checks; creative_params_problem and creative_price
+        # replaced with one hunk each on 0218's and 0224's bodies) was reviewed the same way: it names nothing these pin.
+        # 0227 changes model terms and the audit allow-list, outside these pins.
+        # 0232 (one storyboard plan per film, its turns reserved) was reviewed the same way: one closed table, one function and two
+        # helpers of Nightshift AI's, and four ai_chat_* bodies (0199's, 0226's); it reads, replaces and alters nothing of 0127's.
+        # 0230 replaces only 0208's creative_jobs_geo_gate (the allow-list read), outside these pins.
+        # 0234 adds an operator check to 0130's two Agent Builder draft functions, outside these pins.
+        # 0224 (dated credit prices: a new closed table credit_price_schedule, an internal reader credits_per_unit_now, a list-price
+        # guard trigger on credit_prices and one line in 0218's creative_price) was reviewed the same way: it names nothing these pin.
+        # 0231 (cancel audit: cancel_creative_job on 0198's body, one restrictive insert policy on app_audit_log) names nothing
+        # these pin.
+        # 0230 replaces only 0208's creative_jobs_geo_gate (the allow-list read), outside these pins.
+        # 0233 (nobody changes the platform roster from a browser: EXECUTE on 0107's three roster functions and INSERT, UPDATE, DELETE
+        # on app_members revoked from the API roles; no body, table or policy) was reviewed the same way: it names nothing these pin.
+        reviewed = ("0128", "0129", "0130", "0131", "0132", "0133", "0134", "0136", "0137", "0138", "0139", "0142", "0143", "0145", "0146", "0147", "0149", "0151", "0152", "0153", "0155", "0156", "0157", "0158", "0159", "0161", "0162", "0164", "0165", "0166", "0167", "0168", "0170", "0171", "0172", "0173", "0174", "0182", "0183", "0184", "0185", "0186", "0187", "0188", "0189", "0190", "0191", "0192", "0193", "0194", "0195", "0196", "0197", "0198", "0199", "0200", "0201", "0202", "0203", "0204", "0205", "0208", "0209", "0222", "0212", "0215", "0218", "0219", "0225", "0214", "0211", "0227", "0230", "0224", "0232", "0231", "0233", "0228", "0234")
         # 0199 (Nightshift AI: new ai_chat_* tables and their functions; replaces no body, names nothing these pin) was
         # reviewed the same way.
         # 0203 (the owner AI's turn log: one closed table and two owner-only functions; replaces nothing) was reviewed the same way.
         # 0209 (the owner AI's chat history: owner_ai_* tables and owner-only functions; names nothing these pin) likewise.
+        # 0225 (creative_jobs: the member grant narrowed to named columns, and detail.worker redacted in two event trails; no
+        # function, policy or table) was reviewed the same way: it names nothing these pin.
         # 0204 (Instagram through Unified Login: three columns on social_accounts, store_social_account on 0028's body) was reviewed
         # against these pins: it names nothing of this file's.
-        self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
+        # 0212 (the recorded film sweep: one closed table, two service-role functions over 0171's film_expire_segments, a pg_cron
+        # job where installed; replaces nothing) was reviewed the same way: it names nothing these pin.
+        # 0226 carries 0122's render_jobs_payment_guard verbatim plus one marked hunk (the series-plan branch, which reads series_plans,
+        # is unchanged), and names request_series_plan only to say it is not asked: reviewed by hand, outside the word check below.
+        carried = ("0226",)
+        self.assertEqual([n for n in numbers if n > "0127" and n not in reviewed + carried], [], "0127 is the highest reviewed: a later number needs its own review of this file's pins")
         for n in reviewed:
             text = next(MIG.glob(f"{n}_*.sql")).read_text(encoding="utf-8")
             for word in ("request_series_plan", "series_plans", "series_plan_cap_settings"):

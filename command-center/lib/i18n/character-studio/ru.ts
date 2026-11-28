@@ -93,7 +93,8 @@ export const characterStudioRu: CharacterStudioDictionary = {
     charged: "Списано {credits} кредитов",
     open: "Открыть в библиотеке",
     cancel: "Отменить",
-    aiLabel: "Создано ИИ",
+    aiLabel: "AI",
+    aiLabelName: "Создано ИИ",
   },
 
   errors: {
@@ -121,6 +122,7 @@ export const characterStudioRu: CharacterStudioDictionary = {
     references_count: "Выберите хотя бы одну картинку, но не больше, чем принимает модель.",
     references_unavailable: "Картинки больше нет в библиотеке, она повторяется или это не PNG, JPEG или WebP.",
     project_unavailable: "Этого проекта нет в пространстве.",
+    not_a_member: "У вас нет места в этом рабочем пространстве с доступом, достаточным, чтобы тратить его кредиты. Попросите того, кто им управляет, добавить вас или дать вам больше доступа. Ничего не запущено и не списано.",
     declarations_shape: "Перед началом подтвердите каждый пункт.",
     declarations_unknown: "Перед началом подтвердите каждый пункт.",
     declarations_incomplete: "Перед началом подтвердите каждый пункт.",

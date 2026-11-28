@@ -74,16 +74,18 @@ export function useMotionPaused(): boolean {
  * first screen (its words column covers the clip under it), the drifting light behind a page's first words (.nx-lit) and the
  * sign-in stages. The owner wants no visible pause button (2026-11-13); keyboards keep the focus-revealed one (MotionToggle,
  * ClipPause). Taps toggle the page's one switch whether or not a clip is playing at that moment: under Save-Data or a slow link
- * no clip plays, but the posters drift and the light moves, and a pointer must still be able to stop them.
+ * no clip plays, but the posters drift and the light moves, and a pointer must still be able to stop them. The landing's models
+ * ribbon (.hm-ribbon) moves on a touch screen too, where no hover can stop it: a tap there is its pointer's pause.
  */
-const TAP_AREAS = "[data-clip], .nx-drift-pic, .nx-sh, .nx-lit, .st-auth-aside, .nx-auth-band";
+const TAP_AREAS = "[data-clip], .nx-drift-pic, .nx-sh, .nx-lit, .st-auth-aside, .nx-auth-band, .hm-ribbon";
 /**
  * What a tap in such an area belongs to rather than to the switch: a control, the composer's form, or anything focusable. Except a
  * row that is focusable only so a keyboard can scroll it (`data-scroll-region`, the landing's reel): it is not a control, and
- * counting it as one took the pointer's pause away from every clip in it. The links and buttons inside it still count.
+ * counting it as one took the pointer's pause away from every clip in it. The links and buttons inside it still count, and so does
+ * anything marked `data-tap-ignore` (a clip's sound toggle, components/site/SoundToggle.tsx).
  */
 const CONTROLS =
-  "a, button, input, select, textarea, label, summary, form, [role='button'], [contenteditable='true'], [tabindex]:not([tabindex='-1']):not([data-scroll-region])";
+  "a, button, input, select, textarea, label, summary, form, [role='button'], [contenteditable='true'], [data-tap-ignore], [tabindex]:not([tabindex='-1']):not([data-scroll-region])";
 
 /** When the last tap flipped the switch (ms), so the second click of a double-click can take it back. */
 let lastFlip = 0;

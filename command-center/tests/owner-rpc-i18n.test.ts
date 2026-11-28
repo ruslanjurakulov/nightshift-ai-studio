@@ -99,8 +99,8 @@ describe("ownerFailureText", () => {
   const fail = (kind: "server" | "mfa" | "session" | "network" | "forbidden" | "rate_limited", data: Record<string, unknown> = {}, status = 422) => ({ kind, status, data });
 
   it("a refusal from the database is worded by its code", () => {
-    expect(ownerFailureText(en, fail("server", { ok: false, error: "last_owner" }))).toBe(en.ownerRpc.err.last_owner);
-    expect(ownerFailureText(en, fail("server", { ok: false, error: "self_change" }))).toBe(en.ownerRpc.err.self_change);
+    expect(ownerFailureText(en, fail("server", { ok: false, error: "already_reversed" }))).toBe(en.ownerRpc.err.already_reversed);
+    expect(ownerFailureText(en, fail("server", { ok: false, error: "no_such_price" }))).toBe(en.ownerRpc.err.no_such_price);
     expect(ownerFailureText(en, fail("mfa", { error: "mfa_required" }, 401))).toBe(en.ownerRpc.err.mfa_required);
     expect(ownerFailureText(en, fail("rate_limited", { ok: false, error: "rate_limited" }, 429))).toBe(en.ownerRpc.err.rate_limited);
   });

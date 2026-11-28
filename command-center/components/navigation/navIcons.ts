@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, CircleDot, SwatchBook,
   Users, UserCircle, KeyRound, Bot, ListChecks,
   Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
-  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Settings, Cpu, Scissors, TrendingUp, Brush, Waypoints, Inbox, Megaphone, Target, Drama, Contact, House, Sparkles, Flame, FolderOpen, MessagesSquare, Telescope,
+  History, Plug, TriangleAlert, ScrollText, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Settings, Cpu, Scissors, TrendingUp, Brush, Waypoints, Inbox, Megaphone, Target, Drama, Contact, House, Sparkles, Flame, FolderOpen, MessagesSquare, Telescope,
   type LucideIcon,
 } from "lucide-react";
 import type { NavKey } from "@/lib/navigation";
@@ -69,7 +69,6 @@ export const ICONS: Record<NavKey, LucideIcon> = {
   onboarding: Rocket,
   organization: Building2,
   developers: TerminalSquare,
-  members: ShieldCheck,
   security: Lock,
   approvals: UserCheck,
   marketing: Megaphone,

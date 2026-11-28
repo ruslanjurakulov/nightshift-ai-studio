@@ -9,7 +9,8 @@
 import { useId, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { num } from "@/lib/owner-analytics/format";
-import { runsOutAt } from "@/lib/owner-analytics/runway";
+// From lib/stats, not lib/owner-analytics/runway: that module imports the server-only vendor table (lib/billing.ts).
+import { runsOutAt } from "@/lib/stats";
 
 export interface VolumeRow {
   id: string;

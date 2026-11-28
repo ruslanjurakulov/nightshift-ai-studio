@@ -211,6 +211,8 @@ export function mapRegenError(error: DbError): { status: number; body: Record<st
   const code = error.code ?? "";
   const msg = (error.message ?? "").trim();
   if (code === "42501") return { status: 403, body: { error: "forbidden" } };
+  // 0226: a platform admin with no seat in the workspace reads it but never spends its credits.
+  if (code === "NS400" && msg === "not_a_member") return { status: 403, body: { error: "not_a_member" } };
   if (code === "NS402")
     return {
       status: 402,
@@ -259,6 +261,8 @@ export function regenErrorText(body: Record<string, unknown> | null, t: T): stri
   switch (error) {
     case "forbidden":
       return t.errors.forbidden;
+    case "not_a_member":
+      return t.errors.notAMember;
     case "insufficient_credits":
       return fmt(t.errors.insufficient, { needed: n(body?.needed), available: n(body?.available) });
     case "run_limit":

@@ -315,3 +315,8 @@
 @media (prefers-reduced-transparency: reduce) {
   .fs-glass { background: var(--ns-console); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+
+/* The storyboard writer's progress (FilmCanvas AiWriter): the landing page's .lp-progress bar on a track. It sweeps only under
+   prefers-reduced-motion: no-preference (globals.css); with reduce it is a still bar. */
+.fs-ai-track { position: relative; width: 100%; max-width: 20rem; height: 4px; border-radius: 2px; background: var(--ns-rule-strong); overflow: hidden; }
+.fs-ai-track .lp-progress { display: block; height: 100%; border-radius: 2px; background: #a67bff; }

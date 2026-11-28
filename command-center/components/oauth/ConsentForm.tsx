@@ -35,6 +35,8 @@ export interface ConsentText {
   tooManyConnections: string;
   /** Connections approved in a rolling day, revoked ones included (0147). */
   tooManyToday: string;
+  /** 0226: the person approving holds no seat in the workspace (a platform admin reads it, never connects an app that spends it). */
+  notAMember: string;
   /** 0191: the app asked only for Studio generations and the box was left unticked. */
   studioOnly?: string;
 }
@@ -50,6 +52,8 @@ function refusalText(error: string | undefined, text: ConsentText): string {
       return text.tooManyConnections;
     case "too_many_connections_today":
       return text.tooManyToday;
+    case "not_a_member":
+      return text.notAMember;
     case "studio_only":
       return text.studioOnly ?? text.failed;
     default:

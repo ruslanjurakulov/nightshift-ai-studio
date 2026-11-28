@@ -9,8 +9,9 @@ import type { SiteCarouselDictionary } from "@/lib/i18n/site-carousel";
 import { clipsAllowed } from "@/components/site/LoopClip";
 import { usePageVisible, useReducedMotion, useClipNear, useClipTurn } from "@/components/site/clip-turns";
 import "@/components/site/before-after.css";
+import { AiMark } from "@/components/site/AiMark";
 
-export type CompareGalleryCopy = { badge: string; model: string; altClip: string; altImage: string };
+export type CompareGalleryCopy = { badge: string; badgeName: string; model: string; altClip: string; altImage: string };
 
 /**
  * Picture → video: one of our pictures (a text-to-image sample) and the clip another model made from that exact picture (an
@@ -167,7 +168,7 @@ export function BeforeAfter({ clip, picture, title, copy, g }: { clip: SampleSli
       </div>
       <figcaption className="nxb-cap">
         <h3 className="nxb-title">{title}</h3>
-        <span className="nx-ai-badge">{g.badge}</span>
+        <span className="nx-ai-badge"><AiMark short={g.badge} name={g.badgeName} /></span>
         <p className="nxb-credit">
           <span className="nxb-key">{copy.pictureBy}</span> <strong>{picture.modelName}</strong>
         </p>

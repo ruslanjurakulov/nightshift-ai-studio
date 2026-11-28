@@ -27,7 +27,10 @@ export function OwnerPriceHistory({
   history,
   prices,
   maxRatio,
+  unitMeanings,
 }: {
+  /** The ledger units' meanings, built on the server (lib/server/ledger-units.ts ledgerUnitMeanings). */
+  unitMeanings?: Readonly<Record<string, string>>;
   /** null = the read failed. */
   history: PriceHistoryEntry[] | null;
   prices: CreditPrice[];
@@ -41,7 +44,7 @@ export function OwnerPriceHistory({
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
 
-  const name = (unit: string) => unitMeaning(unit, t.credits.unitMeaning) ?? unit;
+  const name = (unit: string) => unitMeaning(unit, t.credits.unitMeaning, unitMeanings) ?? unit;
   const figure = (n: number) => new Intl.NumberFormat(locale, { maximumSignificantDigits: 8 }).format(n);
   const state = (rate: number | null, margin: number | null) =>
     rate === null ? p.noPrice : `${figure(rate)}${margin ? ` (+${formatCredits((margin ?? 0) * 100, locale)}%)` : ""}`;

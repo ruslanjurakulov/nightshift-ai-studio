@@ -9,8 +9,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { en } from "../lib/i18n/en";
-import type { Role } from "../lib/auth/roles-shared";
-import { grantTier, priceChangeTier, priceTypedFigure, typedFigure, typedMatches, memberBlock, GRANT_TYPED_ABOVE } from "../lib/confirm-tier";
+import { grantTier, priceChangeTier, priceTypedFigure, typedFigure, typedMatches, GRANT_TYPED_ABOVE } from "../lib/confirm-tier";
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("@/lib/i18n/context", async () => {
@@ -229,23 +228,5 @@ describe("tiers", () => {
     // a decimal comma is a point
     expect(typedMatches("0,016", "0.016")).toBe(true);
     expect(typedMatches("0.016", "0,016")).toBe(true);
-  });
-  it("blocks your own row and the last BOUND owner (the security PR's guard), nobody else", () => {
-    const rows: { id: string; user_id: string | null; email: string; role: Role }[] = [
-      { id: "1", user_id: "u1", email: "me@a.uz", role: "owner" },
-      { id: "2", user_id: "u2", email: "b@a.uz", role: "admin" },
-      { id: "3", user_id: null, email: "c@a.uz", role: "editor" },
-    ];
-    const me = { userId: "u2", email: "b@a.uz" };
-    expect(memberBlock(rows[0], rows, me)).toBe("last_owner");
-    expect(memberBlock(rows[1], rows, me)).toBe("self");
-    expect(memberBlock(rows[2], rows, me)).toBeNull();
-    // two owners: the first is no longer "last", and is not me either
-    const two: typeof rows = [...rows, { id: "4", user_id: "u4", email: "d@a.uz", role: "owner" }];
-    expect(memberBlock(two[0], two, me)).toBeNull();
-    expect(memberBlock({ ...two[3] }, two, { userId: "u4", email: "d@a.uz" })).toBe("self");
-    // an invited owner with no account yet does not count as an owner who can administer
-    const invited: typeof rows = [{ id: "9", user_id: null, email: "i@a.uz", role: "owner" }, rows[1]];
-    expect(memberBlock(invited[0], invited, me)).toBeNull();
   });
 });

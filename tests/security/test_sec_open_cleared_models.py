@@ -43,7 +43,8 @@ def _sync_row(mid):
     m = REGISTRY[mid]
     return {"id": m["id"], "display_name": m["display_name"], "provider": m["provider"], "adapter": m["adapter"],
             "capabilities": list(m["capabilities"]), "credit_unit": m["credit_unit"], "entitlement": m["entitlement"],
-            "spec": {k: v for k, v in m.items() if k not in _COLUMNS}}
+            # sync_rows always states takes_negative_prompt (0218 reads it): absent in the file is false.
+            "spec": {**{k: v for k, v in m.items() if k not in _COLUMNS}, "takes_negative_prompt": m.get("takes_negative_prompt") is True}}
 
 
 MIGRATION = sec_db.MIGRATIONS / "0173_open_cleared_models.sql"

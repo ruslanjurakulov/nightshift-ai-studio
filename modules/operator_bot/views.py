@@ -34,12 +34,15 @@ from modules.tg_text import clip, html_escape, safe_id, short_id
 # each one points. The kind ids are stable identifiers (they travel in callback
 # data and in /mute); what the owner reads for each comes from the copy table.
 ALERT_KINDS = ("run", "stuck", "balance", "deploy", "worker", "approval", "audit", "payment", "marketing", "email",
-               "pipeline", "health")
+               "pipeline", "health", "film")
 KIND_COMMAND = {
     "run": "errors", "stuck": "queue", "balance": "balance", "deploy": "deploys",
     "worker": "health", "approval": "approvals", "audit": "security", "payment": "payments",
     "marketing": "marketing", "email": "alerts", "pipeline": "today", "health": "health",
+    "film": "health",
 }
+# ``film`` has no KIND_PAGE entry on purpose: its alerts are about customers' projects, and no operator page in the
+# Command Center lists another organization's films, so there is no Open button rather than a guessed link.
 KIND_PAGE = {
     "run": "errors", "stuck": "jobs", "balance": "billing", "worker": "integrations",
     "approval": "approvals", "audit": "audit", "marketing": "marketing", "pipeline": "errors",
@@ -254,6 +257,7 @@ def view_health(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
     else:
         lines.extend(_deploy_summary_lines(lang, dep.data, now))
 
+    lines.extend(film_lines(ops, lang))
     lines.append(t(lang, "health.disk"))
     kb = _with_menu(
         lang, [_nav(lang, "queue", "deploys")],
@@ -261,6 +265,58 @@ def view_health(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> Reply:
         again="health",
     )
     return Reply("\n".join(lines), kb)
+
+
+def film_lines(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> list[str]:
+    """Film Studio in two lines, for /health and the digest: the open segments (how many are stuck) and the sweep.
+    A source that cannot answer says why; a sweep never recorded says so and is never read as on time (#5)."""
+    now = ops.now()
+    lines = []
+    seg = ops.film_open_segments()
+    if not seg.ok:
+        lines.append(t(lang, "film.segments_unknown", why=unknown(lang, seg)))
+    else:
+        stuck = analysis.film_stuck_segments(seg.data, now)
+        lines.append(t(lang, "film.segments", open=len(seg.data or []), stuck=len(stuck), cut=cut(lang, seg)))
+    sw = ops.film_sweep_status()
+    if not sw.ok:
+        lines.append(t(lang, "film.sweep_unknown", why=unknown(lang, sw)))
+    else:
+        st = analysis.film_sweep_state(sw.data)
+        last = (Raw(t(lang, "film.sweep_last", age=age_label(st["last_at"], now))) if st["last_at"] is not None
+                else Raw(t(lang, "film.sweep_never_completed")))
+        if st["overdue"] is None:
+            lines.append(t(lang, "film.sweep_never" if st["answered"] else "film.sweep_unreadable"))
+        elif st["overdue"]:
+            lines.append(t(lang, "film.sweep_overdue", last=last))
+        else:
+            lines.append(t(lang, "film.sweep_ok", last=last))
+    lines.append(film_spend_line(ops, lang))
+    return lines
+
+
+def film_spend_line(ops: OperatorSources, lang: str = DEFAULT_LANGUAGE) -> str:
+    """The film spend watch in one line: refused (the variable that is wrong), unknown (why), no film in the window,
+    or the dearest film's known dollars with how they were arrived at, the unknown lines, and the two lines."""
+    from modules.operator_bot.alerts import FILM_WINDOW, spend_basis
+
+    cfg = ops.cfg
+    if getattr(cfg, "film_spend_error", ""):
+        var, reason = (tuple(cfg.film_spend_refusal) + ("", ""))[:2]
+        return t(lang, "film.spend_refused", variable=safe_id(var, 40) or "?",
+                 why=Raw(t(lang, f"film.spend_reason.{reason}") if has(lang, f"film.spend_reason.{reason}")
+                         else t(lang, "film.spend_reason.not_usd")))
+    sec = ops.film_spend(ops.now() - FILM_WINDOW)
+    if not sec.ok:
+        return t(lang, "film.spend_unknown", why=unknown(lang, sec))
+    lines = dict(warn=num(lang, cfg.film_spend_warn_usd, 2), stop=num(lang, cfg.film_spend_stop_usd, 2))
+    films = list(sec.data or [])
+    if not films:
+        return t(lang, "film.spend_none", **lines)
+    top = max(films, key=lambda f: f["usd"])
+    unknown_n = sum(int(f.get("unknown") or 0) for f in films)
+    return t(lang, "film.spend", n=len(films), usd=num(lang, top["usd"], 2), film=safe_id(top.get("film_id"), 8) or "?",
+             basis=spend_basis(lang, top), unknown=unknown_n, cut=cut(lang, sec), **lines)
 
 
 def _run_word(run: dict) -> str:
@@ -859,6 +915,7 @@ def view_digest(ops: OperatorSources, held: Optional[list] = None, lang: str = D
                    partial=Raw(t(lang, "digest.partial")) if not (pa.ok and runs.ok) else ""))
     if held is not None:
         lines.append(t(lang, "digest.held", n=len(held)))
+    lines.extend(film_lines(ops, lang))
 
     dep = ops.deploys()
     if dep.ok:

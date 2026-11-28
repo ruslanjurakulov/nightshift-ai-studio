@@ -7,6 +7,8 @@
         key frames                (they are what the clips start from, and a clip may END on the next scene's key frame)
         clips and extends         scene by scene, shot by shot: shot 1 from its first frame, shots 2-3 from the shot before's last frame
         narration                 one film-level take, last
+      once a take failed for good (or cannot begin for a failed input) nothing new begins: P4a refuses that film, so it settles
+      'takes_failed' before charging for takes no film can use (rule 6)
       film_studio_on_for(org)     the platform's switch and the organization's (0198), asked again before every take: off = stop
       film_begin_take             marked running BEFORE the billable call
       film_take_job               the take's creative job (0198): payer 'film', no hold of its own, the inputs decided by the database
@@ -26,6 +28,14 @@ stored task id is polled, never submitted again) or, after the third lease, 0171
 Never paying twice: a take's job that recorded 'submitting' but no task id (the worker died during the paid call) is failed as
 worker_lost, never submitted again; a synchronous answer held only in memory (task id ``sync:``/``film-tts:``) cannot be fetched again
 and fails as no_output. Both are charged 0 (0171), and 0171 plans the retry.
+
+Cost rows (0037, reporting only): every call that reached a vendor (a task id or a synchronous answer came back) gets exactly one
+creative_job_costs row, whatever the take's outcome, because the takes that fail are the ones whose vendor spend the platform absorbs.
+A delivered answer writes the vendor's usage; a failed one, a timeout, an answer without a file, or a call abandoned with nobody left
+to poll it writes the adapter's usage for what was asked (``price_source`` failed_call, usd None: an estimate, never a measurement). A
+take left with its task id stored writes nothing: the claim that polls it next writes its row. A retry is a second call and a second
+row; each narration scene is one call and one row. Not covered: a submit that raised (nothing says whether the vendor took it), and a
+worker that died between storing a ``sync:`` key and polling it.
 
 The narration is voiced one scene at a time and laid out on the film's clock (docs/FILM_STUDIO.md, P4a): each scene's words start
 NARRATION_LEAD_S into the scene. The file's provenance carries the per-scene ``segments`` and the measured ``loudness_lufs`` /
@@ -156,6 +166,11 @@ def _assembly_raised(exc: BaseException, mod: Any, name: str) -> bool:
 
 class FilmUnavailable(RuntimeError):
     """The database could not be reached. Never carries a key or a body."""
+
+
+class FilmFunctionMissing(FilmUnavailable):
+    """PostgREST answered 404 for a service function: its migration is not applied here. A FilmUnavailable like any other to every
+    caller that does not ask; the sweep asks, because 0212's film_sweep missing means "call 0171's function directly", not "down"."""
 
 
 class FilmRefused(RuntimeError):
@@ -446,12 +461,18 @@ class FilmOrchestrator:
                     break
                 if seg.get("status") == "draining":
                     break
+                if not ready or self._unassemblable(takes):
+                    # A take failed for good, or this one can never begin because its input did: P4a refuses a film with any
+                    # missing take (docs/FILM_STUDIO.md, Assembly), so every take begun from here on would be charged to the
+                    # customer for a film that cannot come out (S2_GAPS G5: the narration was voiced and captured). Nothing new
+                    # begins (rule 6); what is planned is skipped at 0 by the settle. A superseded attempt 1 is not "failed": its
+                    # planned attempt 2 still runs. Takes already running were driven first (_next_take) and are unaffected.
+                    stopped = "takes_failed"
+                    break
             if not self.db.studio_on_for(org):
                 stopped = "film_studio_off"
                 break
             attempted.add(str(take["id"]))
-            if not ready:
-                continue  # its input failed for good: it never begins, and the settle skips it at 0
             try:
                 began = self.db.begin_take(str(take["id"]), self.worker_id)
             except FilmRefused as r:
@@ -486,6 +507,12 @@ class FilmOrchestrator:
                                  int(t["attempt"])))
         t = todo[0]
         return t, t["status"] == "running" or self._inputs_ready(t, takes, scenes)
+
+    @staticmethod
+    def _unassemblable(takes: Sequence[Mapping[str, Any]]) -> bool:
+        """A take of this segment ended for good without a result. 0171 marks a failure 'failed' only when no retry is left (one
+        with its retry left is 'superseded', and its attempt 2 is planned), and 'skipped' only at the settle."""
+        return any(t["status"] in ("failed", "skipped") for t in takes)
 
     @staticmethod
     def _slot(takes, kind_ok: Callable[[str], bool], scene_id: str, shot: Optional[int]) -> Optional[str]:
@@ -669,15 +696,25 @@ class FilmOrchestrator:
                                        quantity=float(take["quantity"]) if take.get("quantity") is not None else None)
         if task:
             if str(task).startswith(("sync:", "film-tts:")):
+                # No row here: the worker that made the call polled a synchronous answer (and each narration scene) right after it,
+                # and wrote its row then; what was lost is the storing (module doc, "Cost rows", for the one window not covered).
                 raise _TakeFailed("no_output", "the worker stopped after the provider answered and before the result was stored")
-            files = self._poll(adapter, str(task), request, work / "out", lease)
-            return self._deliver(seg, take, tj, job, request, files, str(task), work, None, processing=status == "processing")
+            # The worker that submitted this task left it stored, without its row, for this claim to poll. A job already
+            # 'processing' had its poll answered and its row written before the storing began: never a second row.
+            call = cw.VendorCall(recorded=status == "processing")
+            try:
+                files = self._poll(adapter, str(task), request, work / "out", lease, call)
+                return self._deliver(seg, take, tj, job, request, files, str(task), work, None, processing=status == "processing")
+            except _TakeFailed:
+                cw.record_unfinished_call(self.db, adapter, request, call)
+                raise
         if tj.get("submit_started"):
             # The paid call may have reached the vendor: it is never made again (0171 plans the retry, charged once).
             raise _TakeFailed("worker_lost", "the worker stopped during the provider call; it is never submitted twice")
         if kind == "narration":
             return self._narration(seg, take, tj, job, request, adapter, work, lease)
         request = self._inputs(request, tj, adapter, work)
+        self._still_on_sale(request)
         if not self.db.advance_job(job, self.worker_id, "submitting"):
             raise _TakeFailed("provider_error", "the take's job could not be sent (the model may be switched off)")
         try:
@@ -686,12 +723,37 @@ class FilmOrchestrator:
             raise _TakeFailed(film_error_code(cw.error_code_of(e), vendor_code=_vendor_code(adapter),
                                               http_status=getattr(e, "http_status", None), capability=request.capability),
                               cw.error_text_of(e)) from None
-        if not task or not isinstance(task, str):
-            raise _TakeFailed("no_output", "the provider accepted the take without a task id")
-        if not self.db.advance_job(job, self.worker_id, "submitted", task, {"model": model}):
-            raise _Stop("job_lost")
-        files = self._poll(adapter, task, request, work / "out", lease)
-        return self._deliver(seg, take, tj, job, request, files, task, work, None)
+        # The vendor answered: from here the call has exactly one cost row, whatever the take's outcome (module doc, "Cost rows").
+        call, stored = cw.VendorCall(), False
+        try:
+            if not task or not isinstance(task, str):
+                raise _TakeFailed("no_output", "the provider accepted the take without a task id")
+            if not self.db.advance_job(job, self.worker_id, "submitted", task, {"model": model}):
+                raise _Stop("job_lost")
+            stored = True
+            files = self._poll(adapter, task, request, work / "out", lease, call)
+            return self._deliver(seg, take, tj, job, request, files, task, work, None)
+        except _TakeFailed:
+            cw.record_unfinished_call(self.db, adapter, request, call)
+            raise
+        except BaseException:
+            # Left without an outcome. With its task id stored, the next claim polls the same task and writes the row; without
+            # it, no claim ever will (submit_started with no task fails as worker_lost), so it is written here.
+            if not stored:
+                cw.record_unfinished_call(self.db, adapter, request, call)
+            raise
+
+    def _still_on_sale(self, request: cw.GenerationRequest) -> None:
+        """The take's model must still be on sale for the take's capability right before the paid call (the creative worker's rule,
+        modules/creative_worker.py "Still on sale"): a film is priced at start, and its takes run for hours after. Not on sale fails the
+        take as ``bad_request`` (the closest word the live view has copy for: the person picks another model and starts again), charged
+        0 by 0171; its one retry meets the same answer and fails for good, and the segment settles as takes_failed. Never another model.
+        An answer that cannot be read raises CreativeUnavailable: nothing is sent, and the drive is left for the next claim."""
+        gone = cw.not_on_sale(self.db, request.model, request.capability, request.org_id, previews=False)
+        if gone is not None:
+            code, _ = gone
+            raise _TakeFailed("bad_request", f"{request.model} is no longer on sale for {request.capability} ({code}); "
+                                             "nothing was sent and this take is not charged. Choose another model and start again")
 
     def _inputs(self, request: cw.GenerationRequest, tj: Mapping[str, Any], adapter, work: Path) -> cw.GenerationRequest:
         """The take's pictures, as the database named them (film_take_job), copied by id; the style kit and @characters through the
@@ -724,7 +786,7 @@ class FilmOrchestrator:
             request = replace(request, reference_files=tuple(refs) + tuple(request.reference_files))
         return request
 
-    def _poll(self, adapter, task: str, request: cw.GenerationRequest, out: Path, lease: _Lease) -> List[Path]:
+    def _poll(self, adapter, task: str, request: cw.GenerationRequest, out: Path, lease: _Lease, call: cw.VendorCall) -> List[Path]:
         deadline = self.clock() + self.max_poll_seconds
         errors = 0
         while True:
@@ -741,14 +803,13 @@ class FilmOrchestrator:
             if res.state == cw.SUCCEEDED:
                 files = [Path(f) for f in res.files if Path(f).is_file() and Path(f).stat().st_size > 0]
                 if not files:
+                    cw.record_unfinished_call(self.db, adapter, request, call, res.usage)
                     raise _TakeFailed("no_output", "the provider reported success without an output file")
-                if res.usage is not None:
-                    try:
-                        self.db.record_cost(request.job_id, res.usage)
-                    except Exception as e:  # reporting only
-                        logger.warning("job %s: provider cost not recorded (%s)", request.job_id, type(e).__name__)
+                # Written here, before the result is stored: a storing that fails later still paid for this answer.
+                cw.record_call_cost(self.db, request.job_id, res.usage, call)
                 return files
             if res.state == cw.FAILED:
+                cw.record_unfinished_call(self.db, adapter, request, call, res.usage)
                 raise _TakeFailed(film_error_code(res.error_code, capability=request.capability),
                                   res.error or "the provider failed the task")
             if self.clock() >= deadline:
@@ -767,6 +828,7 @@ class FilmOrchestrator:
             start += float(s["planned_seconds"])
         if not plan:
             raise _TakeFailed("bad_request", "the film has no narration text")
+        self._still_on_sale(request)
         if not self.db.advance_job(job, self.worker_id, "submitting"):
             raise _TakeFailed("provider_error", "the narration's job could not be sent (the model may be switched off)")
         voiced, clips, segments, first_task = 0, [], [], None
@@ -780,7 +842,14 @@ class FilmOrchestrator:
                                                   http_status=getattr(e, "http_status", None), capability="tts"),
                                   cw.error_text_of(e), voiced or None) from None
             first_task = first_task or task
-            files = self._poll(adapter, str(task), req, work / f"scene_{n}", lease)
+            # Each scene is its own paid call and its own row. None of them is stored as a task id until every scene is voiced,
+            # so a narration left here for any reason is never polled again: every scene's row is written here.
+            call = cw.VendorCall()
+            try:
+                files = self._poll(adapter, str(task), req, work / f"scene_{n}", lease, call)
+            except BaseException:
+                cw.record_unfinished_call(self.db, adapter, req, call)
+                raise
             seconds = self.media.duration(files[0])
             if seconds is None:
                 raise _TakeFailed("no_output", "a scene's narration could not be measured", voiced + len(text))
@@ -892,7 +961,7 @@ class FilmRest:
         except Exception as e:
             raise FilmUnavailable(f"{name}: {type(e).__name__}") from None
         if r.status_code == 404:
-            raise FilmUnavailable(f"{name}: HTTP 404 (is its migration applied?)")
+            raise FilmFunctionMissing(f"{name}: HTTP 404 (is its migration applied?)")
         if 400 <= r.status_code < 500:
             word, detail = "", ""
             try:
@@ -961,6 +1030,28 @@ class FilmRest:
         out = self.rpc("film_expire_segments", {})
         return int(out) if isinstance(out, int) else 0
 
+    # 0212
+    def sweep(self, runner: str) -> int:
+        """film_expire_segments through 0212's film_sweep, which records that this runner swept (G2: "it ran" is a measurement). How
+        many segments it moved. A sweep that failed in the database is recorded there and raised here, by its SQLSTATE only."""
+        try:
+            out = self.rpc("film_sweep", {"p_runner": runner})
+        except FilmFunctionMissing:
+            raise FilmFunctionMissing("film_sweep: HTTP 404 (migration 0212_film_sweep.sql is not applied)") from None
+        if not isinstance(out, dict) or out.get("ok") is not True:
+            code = str(out.get("error") or "") if isinstance(out, dict) else ""
+            raise FilmUnavailable(f"film_sweep: the sweep failed ({code if re.match(r'^[0-9A-Z]{5}$', code) else 'no answer'})")
+        n = out.get("settled")
+        return int(n) if isinstance(n, int) and not isinstance(n, bool) else 0
+
+    def sweep_status(self) -> Optional[dict]:
+        """0212's film_sweep_status(): counts and times, read only. None when the answer is not an object."""
+        try:
+            out = self.rpc("film_sweep_status", {})
+        except FilmFunctionMissing:
+            raise FilmFunctionMissing("film_sweep_status: HTTP 404 (migration 0212_film_sweep.sql is not applied)") from None
+        return out if isinstance(out, dict) else None
+
     def takes(self, segment: str) -> list:
         return self._select("film_takes", {"segment_id": f"eq.{segment}",
                                            "select": "id,kind,scene_id,shot_index,attempt,status,model,params,quantity"})
@@ -984,6 +1075,16 @@ class FilmRest:
 
     def record_cost(self, job, usage):
         return self.creative.record_cost(job, usage)
+
+    # still on sale, right before a take's paid call (cw.not_on_sale)
+    def on_sale(self, capability):
+        return self.creative.on_sale(capability)
+
+    def model_switched_on(self, model):
+        return self.creative.model_switched_on(model)
+
+    def registry_row(self, model):
+        return self.creative.registry_row(model)
 
 
 __all__ = ["AssemblyOutcome", "DriveOutcome", "FILM_ERROR_CODES", "FilmOrchestrator", "FilmRefused", "FilmRest", "FilmUnavailable",

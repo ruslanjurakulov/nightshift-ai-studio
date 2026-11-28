@@ -1,8 +1,15 @@
+import "server-only";
+
 /**
  * Image generators the pipeline can use (modules/image_providers.py). One list
  * for every place that offers or validates a choice: the Create form, the
  * routing panel, the Actions dispatch and the queue row (runBackend). The
  * workflow's `image_provider` options and migration 0023 carry the same ids.
+ *
+ * Server-only: the Create form imported it, so every generator's secret name and
+ * default vendor model sat in the chunk of the customers' create page, which
+ * anyone can download. The operator's two screens that offer a generator get
+ * {id, name, secretName} as props from lib/server/pipeline-options.ts.
  *
  * `secretName` is the GitHub secret the generator needs; two reuse a key the
  * pipeline already has (OpenAI and Gemini), so no new key for those.

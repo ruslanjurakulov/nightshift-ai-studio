@@ -32,15 +32,10 @@ export const ownerRpcEn = {
     no_such_history: "That history entry does not exist. Nothing was changed.",
     price_changed:
       "The price of this service changed after this page was loaded, so it was not restored. Reload the page and look at the price history first. Nothing was changed.",
+    dated_price_scheduled:
+      "A dated price is in force or scheduled for this service, so its rate is not edited here: the owner adds a dated price row (effective now) in the database instead. The markup and the note can still be changed. Nothing was changed.",
     confirm_required:
       "This is a big price change (rate {rate}, charged {charged}; the normal limit is {max}× up or down). Check the old and new figures, then confirm it explicitly.",
-    bad_role: "The role must be owner, admin, editor or viewer. Nothing was changed.",
-    bad_email: "That is not a valid e-mail address. Nothing was changed.",
-    owner_required: "Only an owner can add, change or remove an admin or an owner. Nothing was changed.",
-    already_member: "That address is already on the team. Nothing was changed.",
-    no_such_member: "That person is no longer on the team. Reload the page. Nothing was changed.",
-    self_change: "You cannot change or remove yourself. Ask another owner, so you are never locked out. Nothing was changed.",
-    last_owner: "This is the only owner with a confirmed account. Make another owner first. Nothing was changed.",
     unauthorized: "Your session has ended. Sign in again, then retry.",
     forbidden: "This account may not do that.",
     migration_missing: "The database part of this feature is not installed yet (migration 0107). Nothing was changed.",
@@ -202,6 +197,8 @@ export const ownerRpcEn = {
     factors: "{n} verified authenticators",
     noFactor: "no authenticator",
     notSignedIn: "has not signed in yet",
+    roleOwner: "Owner",
+    roleAdmin: "Admin",
     factorsUnknown: "authenticators: unknown (could not be read)",
     readyYes: "Every owner and admin has two authenticators, so the gate could be switched on.",
     readyNo: "Not every owner and admin has two authenticators yet, so the gate must stay off.",

@@ -483,7 +483,10 @@ class UpscaleFpsProbeTests(unittest.TestCase):
 
         def fake_run(argv, **kw):
             seen.append((argv, kw))
-            return subprocess.CompletedProcess(argv, 0, b'{"streams":[{"avg_frame_rate":"30/1"}]}', b"")
+            out = b'{"streams":[{"index":0,"codec_type":"video","codec_name":"h264","avg_frame_rate":"30/1",' \
+                  b'"nb_read_packets":"60","duration":"2.0"}],' \
+                  b'"format":{"duration":"2.0"}}'
+            return subprocess.CompletedProcess(argv, 0, out, b"")
 
         with mock.patch.object(video.shutil, "which", return_value="/usr/bin/ffprobe"), \
                 mock.patch.object(video.subprocess, "run", side_effect=fake_run):
@@ -498,6 +501,7 @@ class UpscaleFpsProbeTests(unittest.TestCase):
                     else:
                         self.assertNotIn("-f", argv)
                     self.assertLess(argv.index("-protocol_whitelist"), argv.index(f"/m/{name}"))
+                    self.assertIn("-count_packets", argv)  # BR-L-211: frames, not the header's rate
                     self.assertEqual(kw["timeout"], 30)
 
 

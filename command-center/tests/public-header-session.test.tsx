@@ -114,7 +114,11 @@ describe("the public header, signed in: one Open app key", () => {
       expect(key.getAttribute("href")).toBe(APP_HOME);
       expect(hrefs()).not.toContain("/login");
       expect(hrefs()).not.toContain("/signup");
-      expect(hrefs().filter((h) => h === APP_HOME)).toHaveLength(1);
+      // One Open app key in the bar, and the phone sheet's pinned key (its foot) is the same one destination.
+      const keys = [...document.querySelectorAll<HTMLAnchorElement>(`header.st-header a[href="${APP_HOME}"]`)];
+      expect(keys.filter((a) => !a.closest(".st-menu-root"))).toHaveLength(1);
+      expect(keys.filter((a) => a.closest(".st-menu-foot"))).toHaveLength(1);
+      expect(keys).toHaveLength(2);
     });
   }
 

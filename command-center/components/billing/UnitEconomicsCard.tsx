@@ -15,10 +15,20 @@ import type { CostDriver, UnitEconomics } from "@/lib/unitEconomics";
  * the card says how many were left out and names the exact env var that would
  * bring them in, so a blank reads as "set this price", never as "free".
  */
-export function UnitEconomicsCard({ ue, scope }: { ue: UnitEconomics; scope: string }) {
+export function UnitEconomicsCard({
+  ue,
+  scope,
+  unitLabels,
+}: {
+  ue: UnitEconomics;
+  scope: string;
+  /** Labels for the ledger units whose names carry a vendor (lib/server/ledger-unit-labels.ts), from the page: the
+   *  dictionary, which ships to the browser, no longer has them. */
+  unitLabels?: Readonly<Record<string, string>>;
+}) {
   const { t, locale } = useI18n();
   const u = t.unitEconomics;
-  const labels = u.units as Record<string, string>;
+  const labels: Record<string, string> = { ...(u.units as Record<string, string>), ...unitLabels };
   const label = (d: Pick<CostDriver, "unit" | "provider">) =>
     `${labels[d.unit] ?? d.unit}${d.provider ? ` · ${d.provider}` : ""}`;
 

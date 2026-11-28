@@ -14,7 +14,6 @@ import {
   parseOwnerRpcFlag,
   parsePrice,
   parseReverse,
-  parseTeam,
   priceBigChange,
   ratioText,
   reasonOk,
@@ -32,7 +31,6 @@ import {
  */
 
 const ORG = "0b000000-0000-0000-0000-00000000000b";
-const MEMBER = "11111111-2222-3333-4444-555555555555";
 const KEY = "g-0123456789abcdef";
 const WHY = "welcome gift for the pilot";
 
@@ -55,13 +53,20 @@ describe("NIGHTSHIFT_OWNER_RPC", () => {
 
 describe("the refusal codes", () => {
   it("every code the 0107 owner functions can answer with is one the screens can word", () => {
-    const sql = readFileSync(join(__dirname, "..", "..", "supabase", "migrations", "0107_owner_safety.sql"), "utf8");
+    const whole = readFileSync(join(__dirname, "..", "..", "supabase", "migrations", "0107_owner_safety.sql"), "utf8");
+    // Section 6 is the platform roster (owner_add_member / owner_set_member_role / owner_remove_member): no screen calls
+    // it since the Team page went, and 0233 takes it away from the browser, so its refusals need no wording.
+    const start = whole.indexOf("-- 6. The roster");
+    const end = whole.indexOf("-- 7. Trails");
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const sql = whole.slice(0, start) + whole.slice(end);
     const used = new Set([...sql.matchAll(/owner_err\(\s*'([a-z_0-9]+)'/g)].map((m) => m[1]));
     // These belong to enable_admin_mfa / disable_admin_mfa, which no screen calls.
     const gateOnly = new Set(["admins_need_two_factors", "factors_unreadable", "no_admins", "session_not_fresh", "all", "or"]);
     const missing = [...used].filter((c) => !gateOnly.has(c) && !isOwnerRefusal(c));
     expect(missing, `add these to OWNER_REFUSALS and lib/i18n/owner-rpc: ${missing.join(", ")}`).toEqual([]);
-    expect(used.size).toBeGreaterThan(30);
+    expect(used.size).toBeGreaterThan(20);
   });
 
   it("names no refusal twice", () => {
@@ -169,37 +174,6 @@ describe("parsePrice", () => {
   });
 });
 
-describe("parseTeam", () => {
-  it("add: the address is lower-cased and trimmed", () => {
-    expect(parseTeam({ action: "add", email: "  New@A.uz ", role: "editor" })).toEqual({
-      ok: true,
-      call: { fn: "owner_add_member", args: { p_email: "new@a.uz", p_role: "editor", p_reason: null } },
-    });
-  });
-  it("role and remove take the member id", () => {
-    expect(parseTeam({ action: "role", member: MEMBER, role: "viewer" })).toEqual({
-      ok: true,
-      call: { fn: "owner_set_member_role", args: { p_member: MEMBER, p_role: "viewer", p_reason: null } },
-    });
-    expect(parseTeam({ action: "remove", member: MEMBER })).toEqual({
-      ok: true,
-      call: { fn: "owner_remove_member", args: { p_member: MEMBER, p_reason: null } },
-    });
-  });
-  it.each([
-    [{ action: "add", email: "not-an-address", role: "editor" }, "bad_email"],
-    [{ action: "add", email: "a@b", role: "editor" }, "bad_email"],
-    [{ action: "add", email: "a@b.uz", role: "superuser" }, "bad_role"],
-    [{ action: "add", email: "a@b.uz" }, "bad_role"],
-    [{ action: "role", member: "1", role: "viewer" }, "no_such_member"],
-    [{ action: "role", member: MEMBER, role: "root" }, "bad_role"],
-    [{ action: "remove", member: undefined }, "no_such_member"],
-    [{ action: "wipe", member: MEMBER }, "bad_request"],
-  ])("refuses %j as %s", (body, code) => {
-    expect(parseTeam(body)).toEqual({ ok: false, error: code });
-  });
-});
-
 describe("ownerReplyToHttp: the database's answer as a status and a body", () => {
   it("success keeps every field and is a 200", () => {
     const out = ownerReplyToHttp({ ok: true, duplicate: false, balance: 1250, transaction_id: 9 });
@@ -258,6 +232,7 @@ describe("ownerRpcErrorToHttp: a database error, without its text", () => {
     ["PGRST202", 503, "migration_missing"],
     ["42883", 503, "migration_missing"],
     ["PGRST301", 401, "unauthorized"],
+    ["NS428", 422, "dated_price_scheduled"],
     ["XX000", 502, "rpc_failed"],
     ["", 502, "rpc_failed"],
   ])("%s is %i %s", (code, status, error) => {
@@ -363,13 +338,12 @@ describe("characters are counted the way Postgres counts them (code points)", ()
     expect(reasonOk("😀".repeat(300))).toBe(true);
     expect(reasonOk("😀".repeat(301))).toBe(false);
   });
-  it("parseGrant and the optional reason on prices and team use the same count", () => {
+  it("parseGrant and the optional reason on prices use the same count", () => {
     const grant = { org: ORG, credits: 5, key: KEY };
     expect(parseGrant({ ...grant, reason: "😀".repeat(8) }).ok).toBe(true);
     expect(parseGrant({ ...grant, reason: "😀".repeat(7) })).toEqual({ ok: false, error: "reason_required" });
     expect(parsePrice({ action: "delete", unit: "usd", reason: "😀".repeat(300) }).ok).toBe(true);
     expect(parsePrice({ action: "delete", unit: "usd", reason: "😀".repeat(301) })).toEqual({ ok: false, error: "bad_note" });
-    expect(parseTeam({ action: "remove", member: MEMBER, reason: "😀".repeat(300) }).ok).toBe(true);
   });
 });
 
@@ -387,9 +361,6 @@ describe("the arguments the routes send are the ones the SQL functions declare",
     parsePrice({ action: "set", unit: "usd", rate: 1, margin: 0 }),
     parsePrice({ action: "delete", unit: "usd" }),
     parsePrice({ action: "restore", historyId: 3 }),
-    parseTeam({ action: "add", email: "a@b.uz", role: "viewer" }),
-    parseTeam({ action: "role", member: MEMBER, role: "viewer" }),
-    parseTeam({ action: "remove", member: MEMBER }),
   ];
 
   it.each(good.map((g) => (g.ok ? g.call : null)))("%j", (call) => {
@@ -399,7 +370,7 @@ describe("the arguments the routes send are the ones the SQL functions declare",
 
   it("covers every owner function a screen calls", () => {
     expect(good.every((g) => g.ok)).toBe(true);
-    expect(new Set(good.map((g) => (g.ok ? g.call.fn : ""))).size).toBe(8);
+    expect(new Set(good.map((g) => (g.ok ? g.call.fn : ""))).size).toBe(5);
   });
 
   it("the read helpers call functions that exist, with their declared argument", () => {
@@ -436,5 +407,13 @@ describe("newIdempotencyKey", () => {
     const keys = new Set(Array.from({ length: 20 }, newIdempotencyKey));
     expect(keys.size).toBe(20);
     for (const k of keys) expect(k).toMatch(/^[A-Za-z0-9_-]{8,100}$/);
+  });
+});
+
+describe("the platform roster has no client half any more", () => {
+  it("no request parser builds a call to a roster function, and none of its refusals is a screen's code", () => {
+    const src = readFileSync(join(__dirname, "..", "lib", "owner-rpc.ts"), "utf8");
+    expect(src).not.toMatch(/owner_(add|set|remove)_member/);
+    for (const code of ["already_member", "no_such_member", "self_change", "last_owner", "bad_role"]) expect(isOwnerRefusal(code), code).toBe(false);
   });
 });

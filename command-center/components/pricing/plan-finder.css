@@ -22,14 +22,20 @@
 .pf-grid { display: grid; gap: 18px; }
 @media (min-width: 640px) { .pf-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .pf-field { display: grid; gap: 8px; align-content: start; }
+/* Side by side, one label ("Kanallar") fits one line and the others wrap to two: with `start` the first stepper sat a line
+   higher than the other two. Each field stretches to the row's height (the grid's default), so `space-between` keeps the
+   label at the top and puts every stepper on the row's bottom edge, one line, whatever the labels' lengths. */
+@media (min-width: 640px) { .pf-grid > .pf-field { align-content: space-between; } }
 .pf-label { padding: 0; font-size: 14px; font-weight: 600; line-height: 1.35; color: var(--ns-text); }
 .pf-step { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 6px; }
 .pf-step-key {
   display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 999px;
   border: 1px solid var(--ns-rule-strong); background: var(--ns-key); color: var(--ns-text); cursor: pointer;
 }
-.pf-step-key svg { width: 18px; height: 18px; }
-.pf-step-key:disabled { opacity: 0.45; cursor: not-allowed; }
+.pf-step-key svg { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; }
+/* At its minimum (Kanallar = 1) the minus read as an empty circle: the whole key at 0.45 opacity left a 2px line too faint
+   to see. The key goes quiet (no fill, a lighter edge) but its sign keeps a full-opacity colour, under either look. */
+.pf-step-key:disabled { cursor: not-allowed; background: transparent; border-color: var(--ns-rule); color: var(--ns-text-dim); }
 .pf-step-key:focus-visible,
 .pf-num:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 2px; }
 .pf-num {

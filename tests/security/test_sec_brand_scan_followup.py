@@ -237,6 +237,7 @@ def test_the_rollback_puts_0133s_body_back_then_0133s_rollback_runs_and_0134_app
     s = w.su
     rollback = ROLLBACK.read_text(encoding="utf-8")
     assert rollback.count("\nbegin;\n") == 1 and rollback.count("\ncommit;\n") == 1
+    sec_db.take_off_0226(s)  # 0226 sits on 0133's request_brand_scan, which 0133's rollback refuses: off, and out of the comparison
     others = fingerprint(s, False)
     become(s, None)
     s.conn.execute(body(ROLLBACK))

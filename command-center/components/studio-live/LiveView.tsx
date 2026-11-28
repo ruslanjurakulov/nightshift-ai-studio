@@ -11,7 +11,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import { AssetDownloads } from "@/components/media/AssetDownloads";
 import { Lamp } from "@/components/studio-canvas/parts";
 import { useMediaUrls } from "@/components/studio-timeline/useTimelineData";
-import { JOB_ERROR_CODES } from "@/lib/runBackend";
+import { JOB_ERROR_CODES } from "@/lib/job-errors";
 import { useBrainBrief, handoffTarget } from "./useBrainBrief";
 import { ActivityPanel } from "./ActivityPanel";
 import { logLines, type LogLine } from "@/lib/studio/liveLane";
