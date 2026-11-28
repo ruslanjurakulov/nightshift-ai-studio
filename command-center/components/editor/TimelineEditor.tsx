@@ -37,6 +37,7 @@ import { ImproveWithAi } from "@/components/ai/ImproveWithAi";
 import { isImproveKind } from "@/lib/creative/improve";
 import type { StudioModel } from "@/lib/creative/studio";
 import { VoiceOverRecorder } from "@/components/editor/VoiceOverRecorder";
+import { MusicMaker, musicModelsFrom } from "@/components/editor/MusicMaker";
 import { useFullLoadLinks } from "@/components/editor/useFullLoadLinks";
 import { loadDocument } from "@/lib/editor-nav";
 import {
@@ -438,6 +439,9 @@ export function TimelineEditor({
   const [addingSound, setAddingSound] = useState(false);
   /** The voice-over panel. Opening it asks for nothing: the microphone is asked for only when Record is pressed. */
   const [recordingVoice, setRecordingVoice] = useState(false);
+  /** "Make music": offered only while the Studio's own list has a music model sold here (the same list as aiModels). */
+  const [makingMusic, setMakingMusic] = useState(false);
+  const makeMusicButton = useRef<HTMLButtonElement>(null);
   const [addingOverlay, setAddingOverlay] = useState(false);
   const [addingShape, setAddingShape] = useState(false);
   // Why the last "Add to video" was refused by the export's budgets (said politely, in words).
@@ -1310,6 +1314,22 @@ export function TimelineEditor({
     return true;
   }
 
+  /** A finished "Make music" track: a sound like any other, at the playhead now, marked as music. */
+  function onAddMusic(a: EditorAsset): boolean {
+    const out = addSound(model, a, playhead < picture ? playhead : 0);
+    if (!out) return false;
+    setAssets((x) => ({ ...x, [a.id]: a }));
+    apply({ ...out.model, sounds: out.model.sounds.map((x) => (x.id === out.id ? { ...x, role: "music" as const } : x)) });
+    setSelected({ kind: "sound", id: out.id });
+    return true;
+  }
+
+  function closeMusic() {
+    setMakingMusic(false);
+    // Back to the key that opened it (the panel's own close key and Escape alike).
+    setTimeout(() => makeMusicButton.current?.focus(), 0);
+  }
+
   function onAddOverlay(a: EditorAsset) {
     const out = addOverlay(
       model,
@@ -1349,6 +1369,7 @@ export function TimelineEditor({
   }
 
   const audioFull = audioInputs(model) >= MAX_AUDIO_CLIPS;
+  const musicModels = musicModelsFrom(aiModels);
   const shownTexts = textsAt(model, playhead);
   // "Exports are sold now" is not a failure: the price and its yes appear right below it, so it is said as a note, not an
   // alarm, and the next press of Export is the paid one. The refusal that taught it stays the pinned flow.
@@ -1981,6 +2002,18 @@ export function TimelineEditor({
                 {te.voiceOver.open}
               </button>
             ) : null}
+            {orgId && musicModels.length > 0 ? (
+              <button
+                type="button"
+                ref={makeMusicButton}
+                onClick={() => setMakingMusic((v) => !v)}
+                aria-expanded={makingMusic}
+                className={quietBtn}
+              >
+                <Music className="size-3.5" aria-hidden />
+                {t.editorMusic.open}
+              </button>
+            ) : null}
             <button
               type="button"
               ref={addOverlayButton}
@@ -2091,6 +2124,9 @@ export function TimelineEditor({
               onAdd={onAddVoiceOver}
               onClose={() => setRecordingVoice(false)}
             />
+          ) : null}
+          {makingMusic && orgId && musicModels.length > 0 ? (
+            <MusicMaker orgId={orgId} models={musicModels} canAdd={canAddSound(model)} onAdd={onAddMusic} onClose={closeMusic} />
           ) : null}
           {addingSound ? (
             <section
