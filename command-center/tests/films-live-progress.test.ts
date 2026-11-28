@@ -113,6 +113,28 @@ describe("the live answer carries 0246 and 0248, read through the person's own s
     ]);
   });
 
+  it("the master's sound record (#973) and 0246/0248 come back together, each read on its own", async () => {
+    setup({ typical: { data: [{ model: "vid-clip", capability: "i2v", basis: "yours", median_s: 93, n: 4 }], error: null } });
+    const segs = [{ id: "s1", status: "settled", assembly_status: "completed", assembly_asset_id: "a-master", assembly_progress: 100 }];
+    const seen: string[] = [];
+    h.from.mockImplementation((t: string) => {
+      if (t === "media_assets")
+        return {
+          select: (cols: string) => {
+            seen.push(cols);
+            return { eq: () => ({ maybeSingle: async () => ({ data: { mix_format: 2, sound: { kept: true } }, error: null }) }) };
+          },
+        };
+      return t === "film_segments" ? table(segs, [], segCols) : table([], [], takeCols);
+    });
+    const body = await (await live.GET(req(), params)).json();
+    expect(body.master).toEqual({ asset_id: "a-master", mix_format: 2, sound: { kept: true } });
+    expect(seen).toEqual(["id,mix_format:provenance->mix_format,sound:provenance->sound"]);
+    expect(body.typical).toHaveLength(1);
+    // A completed assembly keeps 100 in the row: the answer says not known.
+    expect(body.segments[0]).toMatchObject({ assembly_progress: null });
+  });
+
   it("a database without 0246 answers the shapes before it: progress then reads not known, never an error", async () => {
     setup({ refuse: ["progress", "assembly_progress"], typical: { data: null, error: { code: "PGRST202", message: "no function" } } });
     const r = await live.GET(req(), params);
