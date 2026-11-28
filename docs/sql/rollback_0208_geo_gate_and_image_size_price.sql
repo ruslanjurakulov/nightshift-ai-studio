@@ -10,6 +10,28 @@
 begin;
 set local lock_timeout = '5s';
 
+-- Since 0238 a model with a country list may be on sale when its row carries an allow-list, because this gate checks the country.
+-- Taking the gate away under such a model would sell it unchecked: while 0238's CHECK is the live one (the only definition of
+-- model_registry_countries_before_sale that reads available_countries), refused, with the names, until it is off sale and 0238 is
+-- out. (With 0142's CHECK no such row can be on sale; with no CHECK at all, someone took 0142 out by hand, as the lab does.)
+do $$
+declare
+  bad text;
+begin
+  if not exists (select 1 from pg_constraint
+                  where conrelid = 'public.model_registry'::regclass and conname = 'model_registry_countries_before_sale'
+                    and position('available_countries' in pg_get_constraintdef(oid)) > 0) then
+    return;
+  end if;
+  select string_agg(id || ' (' || availability || ')', ', ' order by id) into bad
+    from public.model_registry
+   where availability in ('beta', 'ga')
+     and coalesce(nullif(spec -> 'blocked_countries', 'null'::jsonb), '[]'::jsonb) <> '[]'::jsonb;
+  if bad is not null then
+    raise exception 'rollback 0208: these models are on sale with a country list, which only the country gate keeps honest: %. Take them off sale and apply rollback_0238_country_list_sale_needs_allow_list.sql first', bad;
+  end if;
+end $$;
+
 do $$
 declare
   r record;

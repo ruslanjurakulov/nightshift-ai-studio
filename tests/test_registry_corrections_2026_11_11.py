@@ -87,14 +87,24 @@ class ApiExposure(unittest.TestCase):
             self.assertNotIn("runwayml.com", " ".join(self.r[mid].raw["terms_notes"]), mid)
 
 
+#: Entries whose gate the owner cleared later, with the date and the reason in their own terms_notes (2026-11-28: Google's 18+ and
+#: consumer-use clauses, on the 18+ attestation of 0192; migration 0238). Their history above stays in the notes.
+CLEARED_LATER = {"gemini-3-pro-image": "Owner decision 2026-11-28", "gemini-nano-banana-2.1": "Owner decision 2026-11-28"}
+
+
 class GatesUnderTheSameTerms(unittest.TestCase):
     def setUp(self):
         self.r = reg.load()
 
     def test_the_entries_that_changed_gate_are_exactly_these(self):
         for mid, gate in NEWLY_GATED.items():
-            self.assertEqual(self.r[mid].terms_gate, gate, mid)
-            self.assertIn("was null", " ".join(self.r[mid].raw["terms_notes"]), mid)
+            notes = " ".join(self.r[mid].raw["terms_notes"])
+            self.assertIn("was null", notes, mid)
+            if mid in CLEARED_LATER:
+                self.assertIsNone(self.r[mid].terms_gate, mid)
+                self.assertIn(CLEARED_LATER[mid], notes, mid)
+            else:
+                self.assertEqual(self.r[mid].terms_gate, gate, mid)
 
     def test_every_live_entry_under_one_vendors_terms_carries_a_gate(self):
         # The past-shutdown entries (Veo 3.1, Seedance 1.5 Pro) are not sold at all and were left as they are.
@@ -103,6 +113,9 @@ class GatesUnderTheSameTerms(unittest.TestCase):
             live = [e for e in self.r.values() if e.provider == provider and not e.shut_down(today)]
             self.assertTrue(live, provider)
             for e in live:
+                if e.id in CLEARED_LATER:
+                    self.assertIn(CLEARED_LATER[e.id], " ".join(e.raw["terms_notes"]), e.id)
+                    continue
                 self.assertTrue(e.terms_gate, f"{provider}: {e.id} is ungated")
 
     def test_the_bfl_gate_quotes_the_training_licence_for_every_flux_model(self):
