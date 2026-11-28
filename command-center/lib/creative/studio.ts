@@ -509,14 +509,28 @@ export function shapesFor(
   return orderShapes(available.flatMap((m) => modelShapes(m, cap) ?? [...ASPECT_RATIOS]));
 }
 
-/** The clip lengths offered, chosen the same way as the shapes (VIDEO_DURATIONS when a spec was not read). */
+/**
+ * The lengths offered, chosen the same way as the shapes. `standIn` is what a model whose spec was not read is offered: a clip's
+ * VIDEO_DURATIONS. A sound effect passes [] (soundLengthsFor): a clip's 5 s is no reading of a sound model, and a guessed length
+ * would be quoted as if the model had listed it.
+ */
 export function durationsFor(
   available: readonly Pick<StudioModel, "durations">[],
   current: Pick<StudioModel, "durations"> | null,
   routed: boolean,
+  standIn: readonly number[] = VIDEO_DURATIONS,
 ): number[] {
-  if (!routed) return orderSeconds(current?.durations ?? VIDEO_DURATIONS);
-  return orderSeconds(available.flatMap((m) => m.durations ?? VIDEO_DURATIONS));
+  if (!routed) return orderSeconds(current?.durations ?? standIn);
+  return orderSeconds(available.flatMap((m) => m.durations ?? standIn));
+}
+
+/** A sound effect's lengths: only what the models list. A model that lists none (or whose list was not read) offers none. */
+export function soundLengthsFor(
+  available: readonly Pick<StudioModel, "durations">[],
+  current: Pick<StudioModel, "durations"> | null,
+  routed: boolean,
+): number[] {
+  return durationsFor(available, current, routed, []);
 }
 
 /**

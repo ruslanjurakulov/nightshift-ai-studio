@@ -150,9 +150,10 @@ describe("where the sound tools live", () => {
   });
 });
 
+// Lyria as the registry has it today. S6's price migration flips its entitlement to `any`: that migration MUST update this block
+// (the expectation becomes "no lock"), or this test is a pin on a state that no longer exists.
 describe("Lyria's state today, in the library (no UI)", () => {
   it("its plan-tier entitlement (models_audio:premium) is not on sale to any workspace, purchase or not", () => {
-    // S6's price migration flips the entitlement to `any`; this test changes with it.
     expect(modelLock("models_audio:premium", null)).toBe("not_on_sale");
     expect(modelLock("models_audio:premium", true)).toBe("not_on_sale");
     expect(planGate("models_audio:premium", true)?.kind).toBe("not_open");
@@ -206,12 +207,49 @@ describe("the sound effect form, once a model is sold", () => {
     expect(creates[0]).toMatchObject({ capability: "sfx", model: SFX.id, max_credits: 3, params: { prompt: "a door knock", duration_s: 2 } });
   });
 
-  it("a model that lists no length is not priced: the reason is named", async () => {
-    render(withI18n(<GeneratePanel orgId={ORG} models={[{ ...SFX, durations: [] }]} desk="voice" initial={{ capability: "sfx", model: SFX.id, prompt: "a door knock", aspect: "16:9", duration: 5 }} />));
-    expect(status()).toBe(t.gen.noLength.replace("{model}", "Sound Effects"));
+  it.each([
+    ["an empty list", []],
+    ["no list at all (the clip stand-in of 5 and 10 s is never offered for a sound)", undefined],
+  ] as const)("a model with %s is not quoted: the sound's own reason is named", async (_, durations) => {
+    const model: StudioModel = { ...SFX, durations: durations === undefined ? undefined : [...durations] };
+    render(withI18n(<GeneratePanel orgId={ORG} models={[model]} desk="voice" initial={{ capability: "sfx", model: SFX.id, prompt: "a door knock", aspect: "16:9", duration: 5 }} />));
+    expect(status()).toBe(t.gen.noSoundLength.replace("{model}", "Sound Effects"));
+    expect(screen.queryByRole("group", { name: t.gen.durationLabel })).toBeNull();
     expect(press().disabled).toBe(true);
     await new Promise((r) => setTimeout(r, 700));
     expect(quotes).toEqual([]);
+  });
+
+  it("under Auto, models that list no length are not quoted at a raw 5 s: the reason is named, without a model's name", async () => {
+    const other: StudioModel = { ...SFX, id: "sfx-two", displayName: "Other Sounds" };
+    render(
+      withI18n(
+        <GeneratePanel
+          orgId={ORG}
+          models={[{ ...SFX, durations: undefined }, { ...other, durations: [] }]}
+          desk="voice"
+          initial={{ capability: "sfx", model: "", auto: true, prompt: "a door knock", aspect: "16:9", duration: 5 }}
+        />,
+      ),
+    );
+    expect(screen.getByTestId("gen-auto").getAttribute("aria-pressed")).toBe("true");
+    expect(status()).toBe(t.gen.noSoundLengthAuto);
+    expect(press().disabled).toBe(true);
+    await new Promise((r) => setTimeout(r, 700));
+    expect(quotes).toEqual([]);
+  });
+
+  it("under Auto, the lengths any model lists are offered and the quote goes to the router", async () => {
+    const other: StudioModel = { ...SFX, id: "sfx-two", displayName: "Other Sounds", durations: [3] };
+    quoteReply = () => json({ quote: { credits: 3, routed_model: "sfx-two", route_reason: "cheapest" } });
+    render(
+      withI18n(
+        <GeneratePanel orgId={ORG} models={[SFX, other]} desk="voice" initial={{ capability: "sfx", model: "", auto: true, prompt: "a door knock", aspect: "16:9", duration: 3 }} />,
+      ),
+    );
+    const lengths = within(screen.getByRole("group", { name: t.gen.durationLabel })).getAllByRole("button");
+    expect(lengths).toHaveLength(5);
+    await waitFor(() => expect(quotes.at(-1)).toEqual({ org_id: ORG, capability: "sfx", mode: "auto", params: { prompt: "a door knock", duration_s: 3 } }), { timeout: 2000 });
   });
 });
 
@@ -265,7 +303,10 @@ describe("each refusal in its own words, with the key disabled", () => {
   });
 
   it("entitlement: a plan-tier model (ElevenLabs SFX's models_audio:basic) is not on sale to any workspace, and is not even quoted", async () => {
-    start({ ...SFX, entitlement: "models_audio:basic", lock: "not_on_sale" });
+    // The lock the server would attach (lib/server/creative withLocks), derived by the same rule rather than written by hand.
+    const lock = modelLock("models_audio:basic", true);
+    expect(lock).toBe("not_on_sale");
+    start({ ...SFX, entitlement: "models_audio:basic", lock });
     expect(screen.getByTestId("gen-locked").textContent).toBe(t.gen.lockWhy.not_on_sale);
     expect(press().disabled).toBe(true);
     await new Promise((r) => setTimeout(r, 700));
@@ -308,6 +349,8 @@ describe("copy", () => {
     d.desk.toolFrom.sfx,
     d.gen.promptPh.sfx,
     d.gen.soundWords.sfx,
+    d.gen.noSoundLength,
+    d.gen.noSoundLengthAuto,
   ];
 
   it("every language has every new word, and ru and uz are not English left in place", () => {
@@ -316,6 +359,17 @@ describe("copy", () => {
       for (const w of words) expect(w.trim(), loc).not.toBe("");
       if (loc !== "en") newWords(dictionaries.en).forEach((en, i) => expect(words[i], `${loc} ${en}`).not.toBe(en));
     }
+  });
+
+  it("the feed's name for a sound effect job is the tab's name, and the no-length reason never says clip or another model", () => {
+    for (const d of Object.values(dictionaries)) {
+      expect(d.gen.kinds.sfx).toBe(d.gen.tabs.sfx);
+      expect(d.gen.noSoundLength).toContain("{model}");
+      expect(d.gen.noSoundLengthAuto).not.toContain("{model}");
+    }
+    for (const w of [dictionaries.en.gen.noSoundLength, dictionaries.en.gen.noSoundLengthAuto]) expect(w).not.toMatch(/clip|another model/i);
+    for (const w of [dictionaries.ru.gen.noSoundLength, dictionaries.ru.gen.noSoundLengthAuto]) expect(w).not.toMatch(/клип|другую модель/i);
+    for (const w of [dictionaries.uz.gen.noSoundLength, dictionaries.uz.gen.noSoundLengthAuto]) expect(w).not.toMatch(/klip|boshqa model/i);
   });
 
   it("writes Uzbek with the modifier letters (U+02BB, U+02BC), never ' or ’", () => {

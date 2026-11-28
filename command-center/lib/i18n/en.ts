@@ -3852,7 +3852,7 @@ export const en = {
     subtitle: "Describe it, see the price, generate. Credits are held while it works and charged only when it succeeds.",
     kindLabel: "What to make",
     toolRowLabel: "Tools",
-    kinds: { t2i: "Image", t2v: "Video", tts: "Voice", sfx: "Sound", music: "Music", edit: "Edit", i2v: "Animate", upscale: "Upscale", remove_bg: "Remove background", voice_change: "Change voice", dub: "Dub / translate", video_upscale: "Upscale video", describe: "Describe", captions: "Captions", expand: "Extend picture", relight: "Relight", erase: "Erase object", video_edit: "Edit video", video_reframe: "Reframe video", video_remove_bg: "Remove video background" },
+    kinds: { t2i: "Image", t2v: "Video", tts: "Voice", sfx: "Sound effect", music: "Music", edit: "Edit", i2v: "Animate", upscale: "Upscale", remove_bg: "Remove background", voice_change: "Change voice", dub: "Dub / translate", video_upscale: "Upscale video", describe: "Describe", captions: "Captions", expand: "Extend picture", relight: "Relight", erase: "Erase object", video_edit: "Edit video", video_reframe: "Reframe video", video_remove_bg: "Remove video background" },
     promptLabel: "Describe it",
     voiceTextLabel: "Words to speak",
     promptPh: {
@@ -3987,6 +3987,8 @@ export const en = {
     snapAuto: "No model here makes {from} — set to {to}.",
     snapModelDefault: "its own default",
     noLength: "{model} offers no clip length here, so it cannot be priced. Pick another model.",
+    noSoundLength: "{model} offers no sound length here, so it cannot be quoted.",
+    noSoundLengthAuto: "No model here offers a sound length, so it cannot be quoted.",
     // A requested model this workspace is not offered for this tool (owner decision 22 Nov): the default is taken and named, never swapped silently.
     modelGone: "The requested model isn't offered for this tool here, so {default} is selected.",
     modelGoneNamed: "{model} isn't offered for this tool here, so {default} is selected.",

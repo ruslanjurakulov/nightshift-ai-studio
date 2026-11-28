@@ -3832,7 +3832,7 @@ export const uz: Dictionary = {
     subtitle: "Tasvirlang, narxni koʻring, yarating. Kreditlar ish davomida band qilinadi va faqat muvaffaqiyatli boʻlsa yechiladi.",
     kindLabel: "Nima yaratiladi",
     toolRowLabel: "Vositalar",
-    kinds: { t2i: "Rasm", t2v: "Video", tts: "Ovoz", sfx: "Tovush", music: "Musiqa", edit: "Tahrirlash", i2v: "Jonlantirish", upscale: "Kattalashtirish", remove_bg: "Fonni olib tashlash", voice_change: "Ovozni almashtirish", dub: "Dublyaj / tarjima", video_upscale: "Video sifatini oshirish", describe: "Tasvirlash", captions: "Subtitrlar", expand: "Rasmni kengaytirish", relight: "Yorugʻlikni oʻzgartirish", erase: "Obyektni oʻchirish", video_edit: "Videoni tahrirlash", video_reframe: "Video shaklini oʻzgartirish", video_remove_bg: "Video fonini olib tashlash" },
+    kinds: { t2i: "Rasm", t2v: "Video", tts: "Ovoz", sfx: "Ovoz effekti", music: "Musiqa", edit: "Tahrirlash", i2v: "Jonlantirish", upscale: "Kattalashtirish", remove_bg: "Fonni olib tashlash", voice_change: "Ovozni almashtirish", dub: "Dublyaj / tarjima", video_upscale: "Video sifatini oshirish", describe: "Tasvirlash", captions: "Subtitrlar", expand: "Rasmni kengaytirish", relight: "Yorugʻlikni oʻzgartirish", erase: "Obyektni oʻchirish", video_edit: "Videoni tahrirlash", video_reframe: "Video shaklini oʻzgartirish", video_remove_bg: "Video fonini olib tashlash" },
     promptLabel: "Tasvirlang",
     voiceTextLabel: "Aytiladigan matn",
     promptPh: {
@@ -3967,6 +3967,8 @@ export const uz: Dictionary = {
     snapAuto: "Bu yerda hech bir model {from} yaratmaydi — {to} tanlandi.",
     snapModelDefault: "oʻzining standart qiymati",
     noLength: "{model} bu yerda hech qanday klip davomiyligini taklif qilmaydi, shuning uchun narxini aytib boʻlmaydi. Boshqa model tanlang.",
+    noSoundLength: "{model} bu yerda hech qanday ovoz davomiyligini taklif qilmaydi, shuning uchun narxini aytib boʻlmaydi.",
+    noSoundLengthAuto: "Bu yerda hech bir model ovoz davomiyligini taklif qilmaydi, shuning uchun narxini aytib boʻlmaydi.",
     modelGone: "Soʻralgan model bu vosita uchun mavjud emas, shuning uchun {default} tanlandi.",
     modelGoneNamed: "{model} modeli bu vosita uchun mavjud emas, shuning uchun {default} tanlandi.",
     // Ommaviy namunaning «rasmdan video» havolasi (lib/site/sample-source.ts): uning boshlangʻich rasmi kutubxonaga forma manbasi sifatida qoʻyiladi.

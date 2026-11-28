@@ -68,6 +68,7 @@ import {
   resolutionLabel,
   resolutionsFor,
   shapesFor,
+  soundLengthsFor,
   sheetQuoteParams,
   snapSeconds,
   snapShape,
@@ -442,8 +443,8 @@ export function GeneratePanel({
   // A model whose spec lists no aspect ratio makes its own shape: no shape is offered or sent for it (Auto: not known, as above).
   const shapeless = !routed && textShape && (ownShapes ? ownShapes.length === 0 : current?.fixedShape === true);
   const effectiveAspect = snapShape(aspect, shapeList);
-  // A sound effect with no model offers no length: durationsFor's stand-in list is for a spec not read, never for no model at all.
-  const lengths = clip || (timed && available.length > 0) ? durationsFor(pool, current, routed) : [];
+  // A sound effect is offered only the lengths its models list: never a clip's stand-in, for no model or a spec that names none.
+  const lengths = clip ? durationsFor(pool, current, routed) : timed ? soundLengthsFor(pool, current, routed) : [];
   const effectiveSeconds = snapSeconds(duration, lengths);
   // A resolution only on a hand-picked model whose price follows it; the default stands for "send none".
   const resolutions = clip ? resolutionsFor(current, routed) : [];
@@ -452,7 +453,14 @@ export function GeneratePanel({
   const effectiveRes = resolutions.length > 0 && shownRes && shownRes !== defaultRes ? shownRes : null;
   // A model whose spec lists no clip length at all cannot be sold a clip (0159 refuses every length): no price is asked for a
   // stand-in length, the reason is named instead.
-  const noLength = timed && !routed && !!current && Array.isArray(current.durations) && current.durations.length === 0;
+  // A sound effect with a model but no listed length (an empty list or none at all, hand-picked or under Auto) is the same: 0228
+  // requires a length, and the 5 s the form starts with is not one any model offered. Auto for a clip is left to the database,
+  // which refuses an unlisted length by name: its list falls back to the clip stand-in for a spec not read, so it is never empty there
+  // unless every model states an empty list.
+  const noLength =
+    capability === "sfx"
+      ? !!current && lengths.length === 0
+      : clip && !routed && !!current && Array.isArray(current.durations) && current.durations.length === 0;
   // What was asked for (a retried job, a link, a setting kept from another model) and is NOT what will be sent: said in one line,
   // never changed silently (CLAUDE.md #4).
   const snapped: Array<[string, string]> = [];
@@ -802,7 +810,11 @@ export function GeneratePanel({
   const blockedText = pickedOff
     ? t.modelSwitch.studio.offBody
     : noLength && current
-      ? fmt(t.gen.noLength, { model: current.displayName })
+      ? capability === "sfx"
+        ? routed
+          ? t.gen.noSoundLengthAuto
+          : fmt(t.gen.noSoundLength, { model: current.displayName })
+        : fmt(t.gen.noLength, { model: current.displayName })
       : blocked === "no_model" && awaitsFirstModel(capability)
       ? t.gen.notAvailableYet
       : blocked === "need_words" && current && promptRule(capability) === "optional"
@@ -1047,7 +1059,7 @@ export function GeneratePanel({
     </div>
   ) : (
     <div className="flex flex-col gap-2">
-      {/* The mode switch: what to make. The tools below it start from something in the library. */}
+      {/* The mode switch: what to make. The tool row below holds the tools that start from a library file, then the sound tools. */}
       <SegmentedSwitch
         semantics="tab"
         label={t.gen.kindLabel}
