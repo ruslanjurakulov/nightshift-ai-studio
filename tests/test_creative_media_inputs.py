@@ -232,7 +232,10 @@ class TheAdapterSeam(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self.tmp.name)
         self.img = self.dir / "source.png"
-        self.img.write_bytes(PNG)
+        # A real picture: the upscale reads the source's size before any call (its 8192 px output limit).
+        from PIL import Image  # noqa: PLC0415
+        Image.new("RGB", (64, 48), (10, 20, 30)).save(self.img, "PNG")
+        self.src = self.img.read_bytes()
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -279,7 +282,7 @@ class TheAdapterSeam(unittest.TestCase):
     def test_a_synchronous_vendor_is_written_out_by_the_first_poll(self):
         entry = reg.get("ideogram-upscale")
         sess = FakeSession([
-            ("POST", "/upscale", 200, {"data": [{"url": "https://ideogram.ai/api/images/x.png", "is_image_safe": True}]}),
+            ("POST", "/v2/image/upscale/topaz-standard-2", 200, {"data": [{"url": "https://ideogram.ai/api/images/x.png", "is_image_safe": True}]}),
             ("GET", "ideogram.ai/api/images/x.png", 200, PNG),
         ])
         adapter = build_adapter(entry.adapter, env={"IDEOGRAM_API_KEY": "k" * 20}, session=sess)
@@ -289,11 +292,11 @@ class TheAdapterSeam(unittest.TestCase):
         task = ra.submit(req)
         self.assertTrue(task.startswith(ca.SYNC_PREFIX))
         post = sess.sent[0]
-        self.assertEqual(post["url"], "https://api.ideogram.ai/upscale")
+        self.assertEqual(post["url"], "https://api.ideogram.ai/v2/image/upscale/topaz-standard-2")
         self.assertEqual(post["headers"]["Api-Key"], "k" * 20)
-        self.assertEqual(json.loads(post["files"]["image_request"][1]), {})
-        self.assertEqual(post["files"]["image_file"][1], PNG)
-        self.assertEqual(post["files"]["image_file"][2], "image/png")
+        self.assertEqual(post["files"]["upscale_factor"], (None, "x2"))
+        self.assertEqual(post["files"]["image"][1], self.src)
+        self.assertEqual(post["files"]["image"][2], "image/png")
         res = ra.poll(task, req, self.dir / "out")
         self.assertEqual(res.state, cw.SUCCEEDED)
         self.assertEqual(res.files[0].read_bytes(), PNG)
@@ -305,7 +308,7 @@ class TheAdapterSeam(unittest.TestCase):
 
     def test_the_vendor_refusing_a_key_is_a_typed_error(self):
         entry = reg.get("ideogram-upscale")
-        sess = FakeSession([("POST", "/upscale", 401, {"error": "bad key"})])
+        sess = FakeSession([("POST", "/v2/image/upscale/topaz-standard-2", 401, {"error": "bad key"})])
         ra = ca.RegistryAdapter(entry, build_adapter(entry.adapter, env={"IDEOGRAM_API_KEY": "k" * 20},
                                                      session=sess), sync_store={})
         with self.assertRaises(AdapterError) as cm:

@@ -345,8 +345,10 @@ class CreativePromptLimitsMigration(unittest.TestCase):
         self.assertIn("ON_0139 = (*(f for f in ON_0139 if f != MIGRATION_0218.name), MIGRATION_0218.name)", LAB)
         on_0124 = LAB[LAB.index("ON_0124 = ("):]
         on_0124 = on_0124[:on_0124.index(")\n")]
-        # 0218 closes the list, or is followed only by 0219 (which refuses to apply without it).
-        self.assertRegex(on_0124, r'"0218_creative_prompt_limits\.sql"(,\s*(#[^\n]*\s*)*"0219_oauth_creative_operator_models\.sql")?$')
+        # 0218 closes the list, or is followed only by 0219 (which refuses to apply without it) and 0230 (which refuses to apply
+        # without 0208, out and back with it).
+        self.assertRegex(on_0124, r'"0218_creative_prompt_limits\.sql"(,\s*(#[^\n]*\s*)*"0219_oauth_creative_operator_models\.sql")?'
+                                  r'(,\s*(#[^\n]*\s*)*"0230_geo_gate_allow_list\.sql")?$')
         off = LAB[LAB.index("def take_off_0171("):LAB.index("def put_back_0171(")]
         self.assertLess(off.index("take_off_0218(conn)"), off.index("rollback_0171_body("))
         self.assertIn("put_back_0218(", LAB[LAB.index("def put_back_0171("):LAB.index("MIGRATION_0174 =")])

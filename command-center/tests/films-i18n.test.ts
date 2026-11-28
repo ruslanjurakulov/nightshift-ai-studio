@@ -67,7 +67,12 @@ describe("the three dictionaries", () => {
     for (const d of [filmStudioEn, filmStudioRu, filmStudioUz]) {
       expect(d.dock.notLive.length).toBeGreaterThan(20);
       expect(d.dock.notLive).not.toMatch(/\d/);
-      expect(d.canvas.aiWriteReason.length).toBeGreaterThan(20);
+      // The AI writer's cost line names messages, never a price or credits figure (only the words "no credits are used").
+      for (const k of ["cost", "costTrial", "costUnknown"] as const) {
+        expect(d.canvas.ai[k]).toMatch(/\{about\}/);
+        expect(d.canvas.ai[k]).not.toMatch(/\d/);
+      }
+      expect(d.canvas.ai.hasScenes.length).toBeGreaterThan(20);
     }
   });
 

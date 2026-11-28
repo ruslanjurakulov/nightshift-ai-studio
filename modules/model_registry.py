@@ -411,8 +411,9 @@ class ModelEntry:
         # An expand is asked by its shape, and a relight by its look when the
         # probe names one (the database sends exactly one of look / prompt).
         # A video edit and a character swap are asked by their words; the other video tools take none.
+        # A picture upscale takes none either: Ideogram's (Topaz Standard V2, the one wired) refuses a prompt.
         wordless = (speech or (cap in VIDEO_INPUT and cap not in (VIDEO_EDIT, VIDEO_CHARACTER_SWAP)) or cap == DESCRIBE or cap == EXPAND
-                    or (cap == RELIGHT and p.get("look")))
+                    or cap == UPSCALE or (cap == RELIGHT and p.get("look")))
         return CapabilityRequest(capability=cap, prompt="" if wordless else p["prompt"],
                                  look=p.get("look"),
                                  aspect_ratio=p.get("aspect_ratio"), resolution=p.get("resolution"),
@@ -680,6 +681,16 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             # functions directly (docs/GEO_BLOCK.md "What it cannot do"). Until the database refuses by country, a model with a
             # country list stays off sale: a terms_gate keeps it hidden (0035), and 0142 refuses beta/ga for it in the database too.
             errors.append(_err(mid, "blocked_countries needs a terms_gate until the database checks the country"))
+        allowed_in = m.get("available_countries")
+        if allowed_in and not m.get("blocked_countries"):
+            # 0230 reads an allow-list only on a row with blocked_countries (0208's trigger skips any other): alone it gates nothing.
+            errors.append(_err(mid, "available_countries needs blocked_countries"))
+        if allowed_in and set(allowed_in) & set(m.get("blocked_countries") or []):
+            errors.append(_err(mid, "available_countries and blocked_countries share a code"))
+        if m["provider"] == "google" and m.get("blocked_countries") and not allowed_in:
+            # BR-S6-03: Google's terms are an allow-list. Its complement alone lets a code on neither list (EU, a typo) through, and
+            # 0230 refuses every job on a Google row with no allow-list: the file must carry it, or the model can never run.
+            errors.append(_err(mid, "a google model with blocked_countries needs available_countries (Google's own list)"))
         if "mcp_oauth_exposure" in m and m["mcp_oauth_exposure"] is not True and m["mcp_oauth_exposure"] is not False:
             errors.append(_err(mid, "mcp_oauth_exposure is true or false"))
         if m.get("mcp_oauth_exposure") is True:

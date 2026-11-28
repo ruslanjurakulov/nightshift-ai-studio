@@ -3836,6 +3836,7 @@ export const uz: Dictionary = {
       model_temporarily_off: "Bu model vaqtincha mavjud emas. Hech narsa yechilmadi. Boshqa modelni tanlang yoki keyinroq urinib koʻring.",
       country_blocked: "Bu model sizning hududingizda mavjud emas. Hech narsa yechilmadi. Roʻyxatdan boshqa modelni tanlang.",
       country_unverified: "Bu model faqat qoʻllab-quvvatlanadigan hududlarda ishlaydi, sizning hududingizni aniqlab boʻlmadi. Hech narsa yechilmadi. VPN yoki proksini oʻchirib, sahifani yangilang yoki boshqa modelni tanlang.",
+      prompt_not_taken: "Rasmni kattalashtirish soʻz qabul qilmaydi: promptni tozalang, shunda narx chiqadi. Hech narsa yechilmadi.",
       prompt_required: "Bu modelga soʻzlar kerak: harakat yoki kadrni tasvirlang, shunda narx chiqadi. Hech narsa yechilmadi.",
       prompt_too_long: "Prompt bu model qabul qiladiganidan uzun (emoji ikki belgi hisoblanadi). Uni qisqartiring. Hech narsa yechilmadi.",
       negative_prompt_not_supported: "Bu model negativ promptni qabul qilmaydi. Uni olib tashlang yoki uni qabul qiladigan modelni tanlang. Hech narsa yechilmadi.",
