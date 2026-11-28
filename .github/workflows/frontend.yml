@@ -120,3 +120,10 @@ jobs:
       - name: Browser bundles carry no showcase vendor data
         if: ${{ !cancelled() }}
         run: node scripts/showcase-bundle-check.mjs
+
+      # Vendor billing URLs, a vendor's credit price and our routing map lived in lib/billing.ts and reached the chunk every
+      # public page loads through one pure helper import. Every file under .next/static is scanned, the signed-in operator
+      # chunks too: a static chunk is downloadable by anyone, signed in or not.
+      - name: Static chunks carry no vendor billing data
+        if: ${{ !cancelled() }}
+        run: node scripts/billing-bundle-check.mjs
