@@ -127,7 +127,7 @@ describe("Plan column: switching", () => {
     expect(pane()).toBeNull();
     await activity(null, "thinking");
     expect(pane()).toBeTruthy();
-    expect(screen.getByTestId("plan-planning").textContent).toContain(c.plan.planning);
+    expect(screen.getByTestId("plan-thinking").textContent).toContain(c.plan.planning);
     expect(canvasPane().hasAttribute("inert")).toBe(true);
     expect(screen.getByTestId("plan-switch-plan").getAttribute("aria-selected")).toBe("true");
     expect(screen.getByTestId("plan-announce").textContent).toContain(c.plan.autoShown);
@@ -182,7 +182,7 @@ describe("Plan column: switching", () => {
     await activity(A, "end");
     await flush();
     expect(reads).toBe(0);
-    expect(screen.getByTestId("plan-planning")).toBeTruthy();
+    expect(screen.getByTestId("plan-thinking")).toBeTruthy();
   });
 
   it("on B, A's storyboard does not switch the column to A", async () => {
@@ -480,7 +480,7 @@ describe("replay (Lens H2)", () => {
     cleanup();
     render(ui(null));
     fireEvent.click(screen.getByTestId("plan-switch-plan"));
-    expect(screen.queryByTestId("plan-planning")).toBeNull();
+    expect(screen.queryByTestId("plan-thinking")).toBeNull();
   });
   it("a refresh mid-storyboard: the column that mounts after the panel spoke still shows the storyboard row, and switches nothing", async () => {
     answers.push({ status: 200, body: { brief: drafting } });

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { onBrainActivity, type BrainPhase } from "@/lib/studio/brainActivity";
@@ -109,10 +109,25 @@ export function StudioSplit({
         {phase === "thinking" ? p.chip.planning : phase === "planning" ? p.chip.storyboard : p.chip.open}
       </button>
     ) : null;
+  // Below 1024 px the chat fills the window from where it starts down to the app's tab bar: where it starts (under the banner, the
+  // header, the tabs and the chip) is measured, as the canvas measures its own top (--cv-top), so the composer is never under the
+  // tab bar (Pixel L-a: 78-82 px under it with a fixed guess).
+  const rootRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!narrow || !root) return;
+    const size = () => {
+      const dock = root.querySelector<HTMLElement>(".ns-ai-dock");
+      if (dock) root.style.setProperty("--split-dock-top", `${Math.max(0, dock.getBoundingClientRect().top + window.scrollY)}px`);
+    };
+    size();
+    window.addEventListener("resize", size);
+    return () => window.removeEventListener("resize", size);
+  }, [narrow, tab, phase, hasPlan]);
   const panelProps = (id: "chat" | "plan") => (narrow ? tabPanelProps("studio-split", id) : {});
   return (
     <StudioSplitContext.Provider value={narrow ? { tab, setTab } : null}>
-      <div className={`studio-split ${className}`} data-tab={narrow ? tab : undefined} data-testid="studio-split">
+      <div ref={rootRef} className={`studio-split ${className}`} data-tab={narrow ? tab : undefined} data-testid="studio-split">
         {narrow ? (
           <SegTabs
             items={[

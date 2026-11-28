@@ -295,13 +295,16 @@ export function PlanColumn({ initialSession, children }: { initialSession: strin
     </button>
   );
   const planning = (
-    <div className="plan-skeleton" role="status" data-testid="plan-planning">
+    <div className="plan-skeleton" role="status" data-testid="plan-thinking">
       <div className="plan-skeleton-row" aria-hidden>
         <span className="plan-skel" />
         <span className="plan-skel" />
         <span className="plan-skel is-small" />
       </div>
-      <p className="ds-t-caption">{elapsed >= STILL_WORKING_MS ? p.stillWorking : p.planning}</p>
+      <p className="ds-t-caption">
+        {elapsed >= STILL_WORKING_MS ? p.stillWorking : p.planning}{" "}
+        <span className="ds-mono">{fmt(p.elapsed, { time: clock(elapsed) })}</span>
+      </p>
     </div>
   );
 

@@ -194,8 +194,10 @@
   .studio-split[data-tab="chat"] > .studio-split-plan { display: none; }
   /* The tabs take a row above the chat: the dock is shorter by it, so its composer stays above the app's tab bar (Pixel L-a). */
   .studio-split[data-tab] .ns-ai-dock {
-    height: calc(100dvh - var(--ns-shell-h, 4rem) - var(--split-tabs-h, 4rem) - 5.5rem - env(safe-area-inset-bottom));
+    /* From the dock's measured top (StudioSplit) down to the app's tab bar (~64 px) and the safe area, with a little air. */
+    height: calc(100dvh - var(--split-dock-top, 11rem) - 4.5rem - env(safe-area-inset-bottom));
     min-height: 20rem;
+    margin-bottom: 0;
   }
   .studio-split[data-tab="plan"] > .studio-split-chat,
   .studio-split[data-tab="canvas"] > .studio-split-chat { display: none; }

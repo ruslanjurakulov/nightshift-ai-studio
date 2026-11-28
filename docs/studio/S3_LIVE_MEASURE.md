@@ -252,3 +252,32 @@ Measured after this round (same stub, 1440 dark, main merged):
 The page itself still scrolls about 50 px at 1440×900. The cause is on main: the shell's `app-geo-credit` line under the page
 (`studio-canvas.css:202`), with the two-step sign-in banner above the bar. The left rail only stretches to the page's height; it
 does not set it. This PR touches neither. The Studio column ends inside the window.
+
+### Final round (Lens, Pixel; S1's #989 contract)
+
+- The activity event is S1's contract (#989 @ 13dab36c8), copied into `lib/studio/brainActivity.ts` until #989 lands:
+  - the phases are `thinking`, `planning`, `saving`, `pricing` and `end`;
+  - `session_id` is null only on a first send's `thinking`;
+  - `dispatchBrainCanvas` refuses a detail that breaks the contract.
+- A storyboard shows "Writing chapter n of m" only when the server sends its counts; without counts, the row says only that the
+  storyboard is being written.
+- Only an in-flight storyboard is replayed to a board that mounts late, marked as a replay: a stale send no longer brings another
+  conversation into a new column.
+- Below 1024 px one tablist (Chat · Plan · My canvas) replaces the two switches. A reply that waits for the person's choice is
+  said on the Plan tab, with the way to the chat, and the Chat tab is marked when such a reply lands while the person is elsewhere.
+- The project bar stays in the header while the plan is shown; only its search is off.
+
+`tools/visual-qa/timing/brain-flow.mjs` (S3's timing harness, branch `claude/nsai-s3-timing`) on this branch against main's
+baseline, same stub:
+
+| Measure | main, L=2 s | this PR, L=2 s | main, L=8 s | this PR, L=8 s |
+|---|---|---|---|---|
+| First board event after Send | never | 0.44 s (planning skeleton) | never | 0.39 s |
+| First plan card after Send | never | 2.55 s | never | 8.52 s |
+| First board event after Choose | never | 0.09 s (storyboard row) | never | 0.14 s |
+| Longest unchanged stretch, Send → outlines (board) | 2.51 s | 1.10 s | 8.46 s | 1.12 s |
+| Longest unchanged stretch overall | 5.67 s (confirm → first lit) | 5.84 s (confirm → first lit) | 8.46 s | 5.83 s (confirm → first lit) |
+| Full-page reloads after Create | 1 | 1 | 1 | 1 |
+
+Confirm → first lit and the reload after Create are not this PR's: they are LIVE_CREATION_PLAN items 9 (Create in place) and 12
+(Realtime). The skeleton's measured clock ticks once a second, so the planning wait is never a still screen.
