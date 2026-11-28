@@ -574,8 +574,13 @@ What the numbers say:
 3. **PANNs:** the maximum, over 10 s windows, of the largest voice-class probability is **at least 0.10**.
    Positives 0.201 to 0.351, negatives 0.032 and 0.039: 2.6 times above the worst negative, 2 times below the weakest positive.
 
-Signals 2 and 3 each separate all five samples alone, so the rule keeps both (an OR) as two independent signals. The longest-run
-measures and Silero are not part of the rule (margins too thin, or no separation). If either detector fails to run, the answer is
+4. **UMX longest run (added 2026-11-28, Atlas, after Breach's BR-S6V-05; provisional):** a run of **at least 10 consecutive
+   seconds** with the vocal stem above -10 dB. Positives 14 to 34 s, negatives 0 and 4 s. It exists for a song sung only in a
+   short burst, whose share stays under 0.30 and whose PANNs windows can stay under 0.10; it leans to refusing, and a burst
+   measurement (about three calls with short sung passages) confirms or tunes the 10 s before beta.
+
+Signals 2 and 3 each separate all five samples alone, so the rule keeps both (an OR) as two independent signals; signal 4 is
+the fail-safe for short bursts. Silero is not part of the rule (no separation). If either detector fails to run, the answer is
 refused as "check did not run", never accepted (rules 4 and 5). A false refusal costs the customer nothing (it is refunded) and
 costs us one song; a false acceptance breaks the instrumental promise, so the rule leans to refusing.
 
