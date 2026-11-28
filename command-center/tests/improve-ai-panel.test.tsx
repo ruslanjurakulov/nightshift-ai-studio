@@ -326,7 +326,8 @@ describe("a side panel on a wide screen, a sheet on a phone, in three languages"
     mount(<ImproveWithAi assetId={FILE} kind="image" name="Cover" available={null} models={MODELS} />);
     const dialog = openPanel();
     expect(dialog.dataset.placement).toBe("side");
-    expect(within(dialog).getByRole("dialog", { name: tx.title })).toBeTruthy();
+    // The test id sits on the dialog itself since LibraryDialog moved onto the shared Sheet (Radix): it is the named dialog.
+    expect(screen.getByRole("dialog", { name: tx.title })).toBe(dialog);
     expect(within(dialog).getByText(fmt(tp.lead, { name: "Cover" }))).toBeTruthy();
     expect(document.activeElement).toBe(dialog.querySelector('[data-tool="upscale"] input'));
     expect(screen.getByTestId("improve-with-ai").getAttribute("aria-expanded")).toBe("true");

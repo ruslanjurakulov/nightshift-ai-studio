@@ -116,6 +116,9 @@ describe("buildConceptDrafts", () => {
     expect(all).not.toContain(rlo);
   });
 
+  // The full matrix (2,400 drafts) takes ~3.3 s alone and went past Vitest's 5 s default when the
+  // suite shared a 2-core runner with another run. The matrix is the point of this test, so it gets
+  // the time rather than a smaller matrix.
   it("every combination of language, objective, direction, format and kind gives a draft within the database's limits", () => {
     const long = P(1, { title: "W".repeat(120), description: `${"long ".repeat(250)}.`, price: "9".repeat(40) });
     let seen = 0;
@@ -143,7 +146,7 @@ describe("buildConceptDrafts", () => {
       }
     }
     expect(seen).toBe(3 * 5 * 5 * 4 * 2 * 2 * 2);
-  });
+  }, 30_000);
 });
 
 describe("the templates themselves", () => {

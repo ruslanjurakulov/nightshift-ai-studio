@@ -910,6 +910,12 @@ import sec_country_sale_0238  # noqa: E402
 
 sec_country_sale_0238.extend(TABLES, FUNCTIONS)
 
+# Migration 0235 (Film Studio: the operator's preview models, in the operator's own organization only): two internal four-argument
+# overloads of 0166's film_check_model and 0171's film_model_problem, revoked from every API role. tests/security/sec_film_operator_preview_0235.py
+import sec_film_operator_preview_0235  # noqa: E402
+
+sec_film_operator_preview_0235.extend(TABLES, FUNCTIONS)
+
 # Migrations 0246 (film_takes / film_segments progress columns, two service-role writers) and 0248 (a members' median read of take
 # timings): tests/security/sec_take_progress_0246_0248.py
 import sec_take_progress_0246_0248  # noqa: E402

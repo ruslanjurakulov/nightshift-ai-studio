@@ -3277,8 +3277,11 @@ on sale.
   On 0218's `creative_price` alone it refuses and names 0224.
 - **Nothing on sale.**
   - No credit price is seeded: a music quote is `unpriced` until the owner sets one, after a passing probe and the legal sign-off.
-  - The code keeps `music` in `REGISTRY_ONLY_CAPABILITIES`, so the sync never writes a music row before this file is live. A later
-    small PR removes it once 0228 is confirmed live.
+  - The code kept `music` in `REGISTRY_ONLY_CAPABILITIES` until this file was confirmed live, so no sync wrote a music row before
+    it. Since then (branch `claude/nsai-s6-music-on`) the music entries sync dark: a new row is `hidden` (0035's default; the sync
+    never writes availability), and 0035's CHECKs refuse beta/ga while the spec carries a `terms_gate` or no probe verified it.
+    The owner can clear the gate in the app (0227), so the credit price is the last hard barrier (plus 0142 and the entitlement for
+    Lyria). The vocal-activity check, Sonilo's written answer and the legal sign-off are not enforced by code: no price before them.
   - Lyria's registry entry also carries `terms_gate`, `web_only` and `requires_adult`. A vocal-activity check on the returned MP3
     is a condition of sale that does not exist yet.
 - **Backslash-free.** The `creative_price` body is written with `@@0228_BACKSLASH@@` and put back with `chr(92)`, which is 0224's
@@ -3383,6 +3386,61 @@ database doors it used.
   The two rows now have no terms gate, so `--all` in the Probe models workflow includes them: one paid call each.
 - **Tests.** `tests/test_country_sale_allow_list_migration.py`, `tests/test_geoip_build.py` (`RegistryField`),
   `tests/test_google_requires_adult.py`, `tests/security/test_sec_country_sale_0238.py`, `tests/security/test_sec_country_block.py`.
+
+## Film Studio: the operator's preview models (0235, provisional)
+
+0235 (`0235_film_operator_preview.sql`) lets the platform operator use an operator-preview model (0139: a `hidden` row whose spec
+says `"operator_preview": true`) in Film Studio, in the operator's own credits-exempt organization, exactly where the Studio already
+allows it. Nothing changes for any customer. Dark until the registry marks a row: this pull request marks `elevenlabs-v3` and
+`elevenlabs-v4` in `schemas/model_registry.json`, so that an operator-only test film can be narrated in Uzbek or Russian.
+
+- **The finding (measured).** 0166's `film_check_model` (`864da632969ae05f964eee1b568a671f`) passes only what
+  `sellable_models(cap, 'web')` lists, which is never a hidden model, and every Film path called it (or 0171's `film_model_problem`,
+  `d828ee349aa5da3aa05ea9db4d8f1b94`) with no organization: save, quote, start and resume refused every hidden model, the operator's
+  preview included, before `creative_price` (which already quotes a preview) was asked.
+- **The change.** Two internal overloads, `film_check_model(model, caps, field, org)` and `film_model_problem(model, caps, field, org)`:
+  the three-argument check word for word (the id rule, then Seedance refused first, whoever asks), except that a model not on sale
+  passes when 0139's `creative_operator_preview(org, availability, spec)` holds (hidden, marked with the JSON true, the caller's own
+  JWT a platform owner/admin, the credits-exempt organization; its member check is vacuous for a platform admin, since 0043 makes
+  every platform owner/admin a member of every organization, so the audience is every platform owner/admin there, as for start_film's
+  exempt branch: Breach 0235-I1) and the row is probed (`verified_at`,
+  `verified_probe_id`), not past its shutdown date, not switched off (`model_is_available`) and lists one of the role's capabilities.
+  Five callers, each on its live body with only its check call(s) given the film's organization and marked `-- 0235`:
+  `film_price` (0218's `3c22f87be736c073d17d93e040e914e1` -> `186d34ffb633bc56a91bbf617b0b7520`; three calls: key frame, clip,
+  voice), `film_precheck` (0171's `ff4fa7e8a6386420f32ab6a3a85a778c` -> `826a4c57a5a97ef44634cb7e25d1f11d`),
+  `film_resume_precheck` (0215's `aa7275ed5e8520af52cabd03c2f930d8` -> `ca3ccf2b51ddd0b4e3cc71aedee216e4`), `film_apply_settings`
+  (0166's `248ffb76f60f3a6f4e8b34b85cd0c92b` -> `f5cdf963343a4b722333eaf0d13bd840`; two calls) and `film_save_scenes` (0166's
+  `c836631256f669318c9ef499d7c4c54b` -> `d2d32abea21beb742eea14d92ad6e9fd`). quote_film, start_film, quote_film_resume,
+  start_film_resume, save_film and create_film_draft inherit it. The three-argument functions are unchanged. md5s are of prosrc with
+  white space folded (`[[:space:]]+`); the file holds no backslash (film_price's one is written `@@0235_BACKSLASH@@` and put back with
+  `chr(92)`).
+- **The refs path (a live money bug, S1).** `film_take_job` makes every key frame as t2i, and an adapter sends reference pictures
+  only on its `reference_capabilities` (the OpenAI image adapter: edit only; `creative_adapters` refuses the rest as `bad_request` at
+  submit). `film_price` asked only `inputs.image_refs_max`, so a film with a reference on a GPT Image key-frame model was priced,
+  held at Start, then refused at its first take. The registry now states `inputs.ref_capabilities` on every image model, derived from
+  the adapter and checked against it by `modules/model_registry.py` and pinned by `tests/test_ref_capabilities_registry.py`, and
+  `film_price`'s key-frame line (marked `-- 0235 (refs path)`) is `refs_not_supported` when the scene has references and the field
+  does not list `t2i`. A missing field is not supported (rule 4). The detail names the remedy: remove the reference pictures or choose
+  a key-frame model that takes them. start_film and start_film_resume re-price through film_price before their hold.
+  **Owner step:** run `python tools/probe_models.py --sync` (no vendor call) with this file, or every film with references is refused
+  at the quote until it runs.
+- **Who.** A customer, a member of the exempt organization who is not a platform admin, a platform admin acting in a customer's
+  organization, and any caller without a JWT (the service role, the SQL editor) get `model_not_available`, as before. A preview film
+  holds nothing (the exempt organization) and is quoted at the vendor's cost with `"preview": true`; no `credit_prices` row is written.
+- **Take time.** No database function at take or claim time asks whether a model is on sale (film_claim_segment, film_begin_take,
+  film_take_job): nothing there refuses a preview, and nothing there was widened. The worker's recheck before the paid call
+  (`modules/film_orchestrator.py` `_still_on_sale`) now passes previews for the exempt organization only
+  (`previews=credits.is_exempt(org)`), through `creative_worker.operator_preview_runnable` (hidden, marked, probed, the capability
+  listed, not past its date) and the owner's switch. A customer's take is asked with previews off, as before.
+- **Overlap.** Draft #920 (0220) also replaces `film_price` and `film_precheck`. Whichever merges second rebases on the other's
+  bodies (its guard, end state, rollback and the lab's take-off order).
+- **Owner steps.** Apply 0235 (one transaction; the header's read-only check first), then run `python tools/probe_models.py --sync`
+  (no vendor call) so the two ElevenLabs rows carry the flag in the database. Both rows must already be probed (`verified_at`).
+- **Undo.** `docs/sql/rollback_0235_film_operator_preview.sql` (owner-applied): refuses a body that is neither 0235's nor its
+  predecessor's, puts the five bodies back byte for byte, drops the two overloads. Run it before rolling back or replaying 0166, 0171,
+  0215 or 0218 (the lab's `take_off_0235` does).
+- **Tests.** `tests/test_film_operator_preview_migration.py`, `tests/test_creative_model_recheck.py` (the worker's recheck),
+  `tests/security/test_sec_film_operator_preview_0235.py` (a real PostgreSQL; contract `tests/security/sec_film_operator_preview_0235.py`).
 
 ## A running take's vendor percent and status word, and the assembly's measured percent (0246)
 

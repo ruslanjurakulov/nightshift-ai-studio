@@ -673,7 +673,8 @@ def not_on_sale(queue, model: str, capability: str, org_id: str, *, previews: bo
     """Asked right before a paid submit of a job queued earlier (module doc, "Still on sale"). None: the model may be sent. Otherwise
     ``(code, message)``: it must not be, and the caller fails the job with that code. Raises :class:`CreativeUnavailable` when the
     database's answer cannot be read, so the caller sends nothing and leaves the job (unknown is not "available"). ``previews``: the
-    caller sells operator previews (the Studio's creative jobs do; Film Studio refuses them at start, 0166's film_check_model)."""
+    caller sells operator previews (the Studio's creative jobs do; Film Studio's takes do for the exempt organization only, which is
+    where 0235's film_check_model lets a platform admin start a film on one). Either way the exempt organization is asked here too."""
     sold = queue.on_sale(capability)
     if not isinstance(sold, list):
         raise CreativeUnavailable("sellable_models: unreadable answer")
@@ -934,6 +935,15 @@ class CreativeWorker:
                 try:
                     task_id = adapter.submit(request)
                 except Exception as e:
+                    usage = getattr(e, "usage", None)
+                    if isinstance(usage, ProviderUsage):
+                        # A task existed and was given up (a vendor estimate over the price): what it may cost the
+                        # platform is a vendor fact for creative_job_costs, recorded before the job fails.
+                        try:
+                            self.queue.record_cost(job_id, usage)
+                        except Exception as rec:
+                            logger.warning("job %s: the provider's estimate could not be recorded (%s)", job_id,
+                                           type(rec).__name__)
                     raise _Refused(error_code_of(e), error_text_of(e),
                                    not_accepted=getattr(e, "not_accepted", False) is True) from None
                 break
