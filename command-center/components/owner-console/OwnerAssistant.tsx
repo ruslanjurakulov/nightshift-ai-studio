@@ -40,7 +40,6 @@ export const QUESTION_MAX = 2000;
 export const COUNTER_FROM = 1800;
 const HISTORY = 6;
 const MODEL_STORAGE_KEY = "ns.owner-ai.model";
-const GEMINI_MODEL: ChatModelId = "gemini-3.6-flash";
 
 function listedModel(names: A["modelPicker"]["names"], value: string | null): value is ChatModelId {
   return value !== null && Object.hasOwn(names, value);
@@ -122,6 +121,7 @@ export function OwnerAssistant({
   signInHref,
   history = false,
   configuredModels,
+  preferredModel,
 }: {
   a: A;
   greeting: string;
@@ -131,6 +131,9 @@ export function OwnerAssistant({
   history?: boolean;
   locale?: string;
   configuredModels?: Partial<Record<ChatModelId, boolean>>;
+  /** The model the picker starts on when it is configured (lib/server/brain/llm.ts OWNER_PICKER_DEFAULT), from the page: a
+   *  constant here put the vendor model id in the owner page's static chunk. Absent = the first configured one. */
+  preferredModel?: ChatModelId;
 }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [pending, setPending] = useState(false);
@@ -149,7 +152,7 @@ export function OwnerAssistant({
 
   const names = a.modelPicker.names;
   const modelIds = Object.keys(names) as ChatModelId[];
-  const defaultModel = configuredModels?.[GEMINI_MODEL] ? GEMINI_MODEL : modelIds.find((id) => configuredModels?.[id]);
+  const defaultModel = preferredModel && configuredModels?.[preferredModel] ? preferredModel : modelIds.find((id) => configuredModels?.[id]);
   const [model, setModel] = useState<ChatModelId>();
   const [modelReady, setModelReady] = useState(false);
 

@@ -535,4 +535,22 @@ TABLE = {
     "film.sweep_unreadable": "Очистка фильмов: неизвестно (статус не сказал, просрочена ли она)",
     "film.sweep_overdue": "Очистка фильмов: <b>ПРОСРОЧЕНА</b> — {last}",
     "film.sweep_ok": "Очистка фильмов: вовремя — {last}",
+
+    # -- film spend watch (the hard cap of a paid test film) ----------------
+    "alert.film_spend_warn": "Фильм {film} — орг. {org}: у поставщиков уже USD {usd}, {basis}. Это не ниже порога предупреждения USD {warn} (порог остановки USD {stop}). Проверяйте после каждого дубля: python tools/film_spend.py --film &lt;id фильма&gt;.",
+    "alert.film_spend_stop": "Фильм {film} — орг. {org}: у поставщиков USD {usd}, {basis}. Это не ниже порога ОСТАНОВКИ USD {stop}. Остановите фильм вручную сейчас (шаг 6 регламента, docs/studio/S2_LIVE_TEST.md), начиная с самого мягкого: 1) выключить переключатель рабочего пространства, set_org_film_studio_enabled(&lt;org&gt;, false); 2) отменить сегмент, film_cancel_segment(&lt;segment&gt;, cancelled); 3) выключить воркер, пустой NIGHTSHIFT_FILM_WORKER, затем передеплой. Неизвестные строки не учтены: проверьте страницы оплаты у поставщиков.",
+    "alert.film_spend_unrecorded": "Фильм {film} — орг. {org}: у {n} строк(и) поставщиков нет суммы в долларах (завершённый дубль без строки стоимости, строка без количества или модель без цифры в реестре). Пороги USD {warn} / {stop} для них не отследить. Известно пока: USD {usd}, {basis}. Проверьте страницы оплаты у поставщиков.",
+    "film.spend_estimated": "оценка (цифра из реестра)",
+    "film.spend_estimated_highest": "оценка (самый дорогой вариант)",
+    "film.spend_estimated_mixed": "оценка (цифра из реестра; самый дорогой вариант там, где цена зависит от варианта)",
+    "film.spend_recorded": "записано",
+    "film.spend_nothing_known": "ни одной суммы в долларах пока нет",
+    "film.spend_unknown_lines": ", и ещё {n} неизвестных строк(и), не учтены",
+    "film.spend": "Расходы фильмов (за 24 ч): фильмов {n}; больше всего у {film}: USD {usd}, {basis}; неизвестных строк всего {unknown}; пороги: предупреждение USD {warn}, остановка USD {stop}{cut}",
+    "film.spend_none": "Расходы фильмов (за 24 ч): нет фильма с открытым или недавно закрытым сегментом; пороги: предупреждение USD {warn}, остановка USD {stop}",
+    "film.spend_unknown": "Расходы фильмов: {why}",
+    "film.spend_refused": "Наблюдение за расходами фильмов: ОТКАЗ, {variable} {why}. Исправьте переменную: до этого проход оповещений не запускается.",
+    "film.spend_reason.not_usd": "— не сумма в долларах США (пишите как 6 или 6.50)",
+    "film.spend_reason.not_positive": "должна быть больше 0",
+    "film.spend_reason.not_below_stop": "должна быть меньше NIGHTSHIFT_FILM_SPEND_STOP_USD",
 }

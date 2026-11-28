@@ -3,6 +3,7 @@ import { PipelineRouting } from "@/components/providers/PipelineRouting";
 import { PageHeader } from "@/components/PageHeader";
 import "../../app-pages-g2.css";
 import { providersByCategory } from "@/lib/providers";
+import { routingOptions } from "@/lib/server/pipeline-options";
 import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/github-secrets";
 import { readVariables } from "@/lib/server/github-variables";
 import { isGoogleOAuthConfigured } from "@/lib/server/google-oauth";
@@ -30,7 +31,10 @@ export default async function ProvidersPage({
   const { t } = await getDictionary();
   const { channel } = await params;
   const { yt } = await searchParams;
+  // The vendor lists are server-only (a static chunk is downloadable by anyone): the board and the routing panel get them
+  // here, after the operator guard above.
   const groups = providersByCategory();
+  const routing = routingOptions();
 
   let configured: string[] = [];
   let routingVars: Record<string, string> = {};
@@ -99,6 +103,10 @@ export default async function ProvidersPage({
         initial={routingVars}
         configured={configured}
         githubConfigured={isGithubConfigured}
+        videoProviders={routing.video}
+        imageGenerators={routing.image}
+        defaults={routing.defaults}
+        vars={routing.vars}
       />
     </div>
   );

@@ -74,7 +74,9 @@ class TheTableIsOneTable(unittest.TestCase):
             self.assertIn(tl.language_code(value), ("ru", "en"), value)
 
     def test_the_command_center_names_equal_the_python_names(self):
-        ts = (ROOT / "command-center/lib/ttsLanguages.ts").read_text(encoding="utf-8")
+        # The spellings are the browser's half (the Create form folds a language as it is typed); the vendor model table
+        # above stays in the server-only lib/ttsLanguages.ts.
+        ts = (ROOT / "command-center/lib/tts-language-code.ts").read_text(encoding="utf-8")
         block = re.search(r"TTS_LANGUAGE_NAMES_BY_SPELLING[^=]*=\s*\{(.*?)\n\};", ts, re.S)
         self.assertIsNotNone(block)
         parsed = dict(re.findall(r'^\s*"([^"]+)":\s*"([a-z]{2})",', block.group(1), re.M))

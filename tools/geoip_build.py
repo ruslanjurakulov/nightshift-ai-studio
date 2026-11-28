@@ -9,8 +9,8 @@ fetched a pinned monthly URL would start failing about two months later. The tab
 that is half the size of the CSV (2.2 MB against 4.6 MB gzipped) and needs no parsing at runtime: the web process gunzips
 it once and binary-searches typed arrays.
 
-WHAT CHANGES (CC BY 4.0 asks us to say): the format only. Every range and every country code of the source is kept, in
-the source's order; nothing is merged, dropped or corrected. The source's MD5 is checked before anything is written
+WHAT CHANGES (CC BY 4.0 asks us to say): the format, and one mapping. Every range of the source is kept, in the source's
+order; nothing is merged or dropped. A code that is not ISO 3166-1 alpha-2 (or XK) is written as ZZ, "unknown" (BR-S6-03). The source's MD5 is checked before anything is written
 (db-ip.com prints it next to the download), and the manifest beside the table records the month, the URL, the MD5 and
 the sha256 of what was written.
 
@@ -46,6 +46,28 @@ SOURCE_URL = "https://download.db-ip.com/free/dbip-country-lite-{month}.csv.gz"
 LICENCE = "CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); attribution: IP Geolocation by DB-IP (https://db-ip.com)"
 
 
+#: ISO 3166-1 alpha-2 (the twin of ISO_3166_ALPHA2 in command-center/lib/geo/blocked.ts; tests/test_geoip_build.py compares them),
+#: plus Google's Kosovo XK. BR-S6-03: any other two letters in the source (a DB-IP placeholder such as EU or AP) are written as ZZ,
+#: DB-IP's own "unknown", so no reader can take them for a country that happens to be on no list.
+ISO_3166_ALPHA2 = frozenset("""
+    AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE
+    BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD
+    CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM
+    DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF
+    GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU
+    ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN
+    KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME
+    MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA
+    NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM
+    PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI
+    SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK
+    TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI
+    VN VU WF WS YE YT ZA ZM ZW
+""".split())
+KNOWN_CODES = ISO_3166_ALPHA2 | {"XK"}
+UNKNOWN = "ZZ"
+
+
 class GeoTableError(ValueError):
     pass
 
@@ -69,7 +91,7 @@ def parse_rows(lines: Iterable[str]) -> Tuple[List[Tuple[int, int, str]], List[T
             raise GeoTableError(f"line {n}: {e}") from None
         if a.version != b.version or int(b) < int(a):
             raise GeoTableError(f"line {n}: not a range")
-        (v4 if a.version == 4 else v6).append((int(a), int(b), code))
+        (v4 if a.version == 4 else v6).append((int(a), int(b), code if code in KNOWN_CODES else UNKNOWN))
     return v4, v6
 
 

@@ -31,7 +31,7 @@ describe("ElevenLabs models", () => {
 
 describe("ElevenLabs voices", () => {
   it("lists only well-formed, unique voice ids", async () => {
-    const { VOICES, isVoiceId } = await import("../lib/ttsModels");
+    const { VOICES, isVoiceId } = await import("../lib/voices");
     expect(VOICES.length).toBeGreaterThan(5);
     for (const v of VOICES) expect(isVoiceId(v.id), v.name).toBe(true);
     expect(new Set(VOICES.map((v) => v.id)).size).toBe(VOICES.length);
@@ -75,7 +75,7 @@ describe("the voice-model picker and the language a model speaks", () => {
   });
 
   it("reads every way people write Uzbek, so none slips past the picker", async () => {
-    const { ttsLanguageCode } = await import("../lib/ttsLanguages");
+    const { ttsLanguageCode } = await import("../lib/tts-language-code");
     for (const v of ["Uzbek", "uz_UZ", "uz-Latn", "Uzbekcha", "Oʻzbek", "O’zbek", "Oʼzbek", "O‘zbek", "O`zbek", "Ўзбек", "ўзбекча"]) {
       expect(ttsLanguageCode(v), v).toBe("uz");
     }

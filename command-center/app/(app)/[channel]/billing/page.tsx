@@ -257,7 +257,7 @@ export default async function BillingPage() {
       keysUnknown = true;
     }
   }
-  const secretOf = new Map(PROVIDERS.map((p) => [p.id, p.secretName]));
+  const secretOf = new Map<string, string>(PROVIDERS.map((p) => [p.id, p.secretName]));
   // A registry vendor's own row (Runway, Krea...) has no entry in lib/providers.ts: its key names are lib/model-keys.ts's.
   const vendorOf = new Map(Object.entries(REGISTRY_BILLING).map(([vendor, id]) => [id, vendor]));
   const keySetOf = (id: string): boolean => {

@@ -13,7 +13,7 @@ import {
   PROVIDER_CATEGORIES,
   type ProviderCategory,
   type ProviderDef,
-} from "@/lib/providers";
+} from "@/lib/provider-types";
 
 /**
  * The Providers board: one card per external provider, grouped by capability.
