@@ -28,8 +28,6 @@ export interface OnboardingState {
   youtubeConnected: boolean;
   /** At least one channel row exists. */
   hasChannel: boolean;
-  /** At least one team member/owner has claimed a seat (app_members non-empty). */
-  hasMember: boolean;
   /** At least one content series exists. */
   hasSeries: boolean;
 }
@@ -43,7 +41,6 @@ export type OnboardingStepKey =
   | "routing"
   | "youtube"
   | "channel"
-  | "member"
   | "series";
 
 export interface ChecklistItem {
@@ -72,13 +69,13 @@ export interface Checklist {
  */
 const STEPS: { key: OnboardingStepKey; href: string; signal: (s: OnboardingState) => boolean }[] = [
   { key: "supabase", href: "/integrations", signal: (s) => s.supabaseConfigured },
-  { key: "signedIn", href: "/members", signal: (s) => s.signedIn },
+  // The account lives on Settings; the Team page that used to be here is gone (workspaces have one person).
+  { key: "signedIn", href: "/organization", signal: (s) => s.signedIn },
   { key: "github", href: "/integrations", signal: (s) => s.githubConfigured },
   { key: "provider", href: "/providers", signal: (s) => s.providerKeySet },
   { key: "routing", href: "/providers", signal: (s) => s.routingSet },
   { key: "youtube", href: "/providers", signal: (s) => s.youtubeConnected },
   { key: "channel", href: "/channels", signal: (s) => s.hasChannel },
-  { key: "member", href: "/members", signal: (s) => s.hasMember },
   { key: "series", href: "/series", signal: (s) => s.hasSeries },
 ];
 

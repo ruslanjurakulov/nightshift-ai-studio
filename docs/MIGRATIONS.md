@@ -3294,3 +3294,40 @@ on sale.
     off first, and `put_back_0224` puts it back last.
   - Static: `tests/test_music_per_request_migration.py`.
 - **Verify** (the SQL editor): the query at the end of the file. Every column should read true.
+
+## Nobody changes the platform roster from a browser (0233)
+
+0233 (`0233_platform_roster_closed.sql`, BR-L-213 in `docs/security/LEDGER.md`) follows the owner's decision that the site has two
+kinds of people, the owner/operator and users, each user owning their own workspace. 0091 closed the workspace side
+(`org_members`). The Command Center's Team page (`/members`, the operator's roster) is gone in the same PR, and this file closes the
+database doors it used.
+
+- **The finding.** In the security lab with every migration up to 0230, `authenticated` could execute `owner_add_member`,
+  `owner_set_member_role` and `owner_remove_member` (0107) and had INSERT, UPDATE and DELETE on `app_members`, with 0007's write
+  policies and 0018's empty-roster bootstrap policy deciding. A signed-in platform owner or admin could still mint an admin or an
+  owner, change a role or remove a person with one REST call, and the direct writes skipped 0107's last-owner, self-change and
+  owner-only checks (BR-S-024, BR-S-029).
+- **Change.** Privileges only. EXECUTE on the three functions is revoked from public, anon and authenticated (0107 had already
+  revoked it from service_role); INSERT, UPDATE and DELETE on `app_members` from anon and authenticated. SELECT stays
+  (`platform_role`, Approvals). Nothing is dropped or replaced: the policies stay and decide nothing without the privilege, RLS stays
+  on, `bind_current_member()` still links a confirmed account to a row the operator added, and every role check in RLS and SQL is
+  unchanged (every user is the owner of their own workspace). Credits, spend and publishing are untouched; friend invites (0092) and
+  referrals are a credits program, not membership, and are untouched.
+- **End state.** The file refuses its whole transaction when any API role can still execute a roster function or write
+  `app_members`, when `authenticated` lost SELECT, when RLS is off, and when 0091's half is open again (org_members writes, or the
+  four invite functions): that message says "apply 0091 again, then this file". It refuses to apply without 0007 or 0107.
+- **Owner step.** None in the app. The operator's roster is changed in the SQL editor from now on
+  (`insert into public.app_members (email, role) values (...)`; keep at least one bound owner with a confirmed address). A fresh
+  project's first owner inserts their own row as `'owner'`, bound to their auth user:
+  `insert into public.app_members (user_id, email, role) select id, email, 'owner' from auth.users where lower(email) = lower('<address>');`
+  (an email-only row binds only once the address is confirmed, 0043; the first row ends the empty-roster owner fallback).
+- **Replay.** Revokes and a read-only check: replay-twice safe. Re-applying 0007, 0018 or 0107 alone re-grants what it revokes;
+  apply 0233 again after them (the lab's `put_back_0233`).
+- **Number.** 0233, assigned for this PR. Needs 0007, 0091 and 0107. Independent of 0224, 0226, 0227, 0230, 0231 and 0232.
+- **Undo.** `docs/sql/rollback_0233_platform_roster_closed.sql` (owner-applied) re-grants exactly what 0233 revoked and asserts it.
+  BR-L-213 is then open again.
+- **Tests.** `tests/test_platform_roster_closed_migration.py`, `tests/security/test_sec_roster_closed_0233.py` (a real PostgreSQL;
+  contract `tests/security/sec_platform_roster_0233.py`). The 0107 tests of the roster functions' own checks
+  (`tests/security/test_sec_owner_safety.py`) take 0233 off inside their rolled-back transaction, since those checks are what a later
+  re-grant would rely on. `tests/security/test_sec_friend_invites.py` pins that a counted friend-invite join adds nobody to a
+  workspace or the roster.
