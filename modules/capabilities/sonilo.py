@@ -7,9 +7,11 @@ Sources, all read 2026-11-10: ``platform.sonilo.com/docs`` (introduction, quicks
 updated October 10, 2026) and the licensing help centre (``sonilo.com/help/licensing``, last reviewed 2026-10-01).
 docs/research/sonilo-first-party.md has the quotes.
 
-DARK AND REGISTRY-ONLY. The two capabilities this adapter serves (``music``, ``video_music``) are not in the database
-(``base.REGISTRY_ONLY_CAPABILITIES``): the two registry entries are not synced, cannot be probed or priced, and no job can
-name them. Nothing here was called with a key.
+DARK. ``sonilo-video-music`` is REGISTRY-ONLY: the database has no ``video_music`` capability
+(``base.REGISTRY_ONLY_CAPABILITIES``), so that entry is not synced, cannot be probed or priced, and no job can name it.
+``sonilo-music`` (``music``, known to the database since 0228) is synced dark: its row is hidden, terms-gated and unpriced, so
+``--all`` never probes it and nothing can sell it; only a probe that names it would call Sonilo. Nothing here was called with a
+key.
 
 * A task is created with ``POST /v1/text-to-music`` or ``POST /v1/video-to-music`` (``multipart/form-data``) and
   ``mode=async``, which answers ``202 {"task_id", "status": "processing"}``; ``GET /v1/tasks/{task_id}`` answers ``status``

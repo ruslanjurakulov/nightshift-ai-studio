@@ -123,12 +123,35 @@ class RegistryEntryTests(unittest.TestCase):
         self.assertNotIn("mcp_oauth_exposure", self.e.raw)
         self.assertEqual(self.e.terms_gate, "terms_review_required")
 
-    def test_it_is_registry_only_so_nothing_can_sync_probe_price_or_run_it(self):
-        # The database does not know `music` yet (base.REGISTRY_ONLY_CAPABILITIES): no row, so no quote, hold or job.
-        self.assertIn(MUSIC, REGISTRY_ONLY_CAPABILITIES)
-        self.assertTrue(self.e.registry_only)
-        self.assertNotIn(LYRIA, [row["id"] for row in reg.sync_rows(list(self.r.values()))])
-        self.assertIsNone(ca.resolve(LYRIA, env={"GEMINI_API_KEY": KEY}))
+    def test_it_syncs_dark_gated_web_only_and_unpriced_so_the_row_cannot_be_sold(self):
+        # 0228 put `music` in the database's lists, so the entry syncs. The row the sync sends carries no availability (0035's
+        # sync_model_registry never writes it, so a new row is 'hidden'), and its terms_gate rides the spec, which 0035's
+        # model_registry_terms_before_sale CHECK reads: no beta/ga while it is set, whatever a probe says.
+        self.assertNotIn(MUSIC, REGISTRY_ONLY_CAPABILITIES)
+        self.assertFalse(self.e.registry_only)
+        (row,) = [row for row in reg.sync_rows(list(self.r.values())) if row["id"] == LYRIA]
+        self.assertEqual(set(row), {"id", "display_name", "provider", "adapter", "capabilities", "credit_unit", "entitlement", "spec"})
+        self.assertNotIn("availability", row["spec"])
+        self.assertEqual((row["capabilities"], row["provider"], row["credit_unit"]),
+                         (["music"], "google", "model_google_lyria_3_5_request"))
+        self.assertEqual((row["spec"]["terms_gate"], row["spec"]["api_exposure"], row["spec"]["pricing"]["confirmed"]),
+                         ("terms_review_required", "web_only", False))
+        self.assertIn("SYNCED DARK after 0228", self.e.raw["api_documented"]["note"])
+
+    def test_it_syncs_with_googles_allow_list_so_the_geo_gate_asks_it(self):
+        # 0230's creative_jobs_geo_gate answers a Google row by spec.available_countries (Google's own allow-list): a code not on
+        # it is country_unverified, and a Google row synced without the list is refused everywhere. RU stays country_blocked.
+        (row,) = [row for row in reg.sync_rows(list(self.r.values())) if row["id"] == LYRIA]
+        allowed, blocked = row["spec"]["available_countries"], row["spec"]["blocked_countries"]
+        self.assertIn("UZ", allowed)
+        self.assertNotIn("RU", allowed)
+        self.assertIn("RU", blocked)
+        self.assertFalse(set(allowed) & set(blocked))
+        self.assertEqual(allowed, self.r["gemini-nano-banana-2.1"].raw["available_countries"])
+
+    def test_the_worker_has_an_adapter_for_it_as_for_any_gated_model(self):
+        # A named probe needs it. A job cannot reach it: create_creative_job refuses a hidden, gated, unpriced row.
+        self.assertIsNotNone(ca.resolve(LYRIA, env={"GEMINI_API_KEY": KEY}))
 
     def test_the_end_user_conditions_ride_the_entry_the_existing_gates_read(self):
         # 0192/0196 read requires_adult; 0208's trigger and lib/geo/blocked.ts read blocked_countries. Russia is not one of Google's
@@ -169,11 +192,15 @@ class RegistryEntryTests(unittest.TestCase):
         req = self.e.probe_request()
         self.assertEqual(GoogleLyriaAdapter(env={}).problems(req, self.e), [])
 
-    def test_no_probe_picks_it_even_by_name_while_the_database_cannot_record_it(self):
+    def test_all_never_probes_it_and_only_a_probe_that_names_it_does(self):
+        # --all spends on no gated model (the workflow's empty "model" input); the owner names it to pay for the one probe.
         from tools import probe_models  # noqa: PLC0415
 
-        for ids, everything in (([], True), ([LYRIA], False)):
-            self.assertNotIn(LYRIA, [e.id for e in probe_models.select(list(self.r.values()), ids, None, everything)])
+        entries = list(self.r.values())
+        self.assertNotIn(LYRIA, [e.id for e in probe_models.select(entries, [], None, True)])
+        self.assertIn(LYRIA, [e.id for e in probe_models.gated_left_out(entries, [], None, True)])
+        self.assertEqual([e.id for e in probe_models.select(entries, [LYRIA], None, False)], [LYRIA])
+        self.assertEqual(probe_models.registry_only_left_out(entries, [LYRIA], None), [])
 
 
 # ── the request ───────────────────────────────────────────────────────────────────

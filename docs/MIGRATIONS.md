@@ -3241,8 +3241,9 @@ on sale.
   On 0218's `creative_price` alone it refuses and names 0224.
 - **Nothing on sale.**
   - No credit price is seeded: a music quote is `unpriced` until the owner sets one, after a passing probe and the legal sign-off.
-  - The code keeps `music` in `REGISTRY_ONLY_CAPABILITIES`, so the sync never writes a music row before this file is live. A later
-    small PR removes it once 0228 is confirmed live.
+  - The code kept `music` in `REGISTRY_ONLY_CAPABILITIES` until this file was confirmed live, so no sync wrote a music row before
+    it. Since then (branch `claude/nsai-s6-music-on`) the music entries sync dark: a new row is `hidden` (0035's default; the sync
+    never writes availability), and 0035's CHECKs refuse beta/ga while the spec carries a `terms_gate` or no probe verified it.
   - Lyria's registry entry also carries `terms_gate`, `web_only` and `requires_adult`. A vocal-activity check on the returned MP3
     is a condition of sale that does not exist yet.
 - **Backslash-free.** The `creative_price` body is written with `@@0228_BACKSLASH@@` and put back with `chr(92)`, which is 0224's

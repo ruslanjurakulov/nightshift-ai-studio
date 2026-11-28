@@ -66,7 +66,8 @@ VIDEO_EDIT = "video_edit"            # video + what to change (the prompt) → t
 VIDEO_REFRAME = "video_reframe"      # video → the same video in another shape (CapabilityRequest.aspect_ratio), uncropped
 VIDEO_REMOVE_BG = "video_remove_bg"  # video → the same video without its background
 VIDEO_OPS = (VIDEO_EDIT, VIDEO_REFRAME, VIDEO_REMOVE_BG)
-#: Music (no migration yet, see REGISTRY_ONLY_CAPABILITIES): a track made from words, or scored to a library video.
+#: Music: a track made from words (0228 put `music` in the database's lists), or scored to a library video (`video_music`: no
+#: migration yet, so still registry-only).
 MUSIC = "music"              # text → music, CapabilityRequest.duration_s seconds long
 VIDEO_MUSIC = "video_music"  # video → music that follows it; the output is the audio alone, the video is not changed
 #: Character Studio (0137, docs/CHARACTER_STUDIO.md): a video and 1..N character pictures (CapabilityRequest.input_media and
@@ -83,7 +84,9 @@ CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE,
 #: migrations, so the migration that teaches the database a capability is also the change that takes it out of here.
 #: A character swap is not a creative job at all (0137 prices, holds and runs it in its own tables), so it stays here for good:
 #: the creative system must never be able to sell it.
-REGISTRY_ONLY_CAPABILITIES = frozenset({MUSIC, VIDEO_MUSIC, VIDEO_CHARACTER_SWAP})
+#: ``music`` left this set once 0228 was confirmed live. Leaving it is not a sale: a synced row starts ``hidden`` (0035's default,
+#: and the sync never writes availability), and the database refuses beta/ga for a row with a terms_gate or without a probe.
+REGISTRY_ONLY_CAPABILITIES = frozenset({VIDEO_MUSIC, VIDEO_CHARACTER_SWAP})
 OUTPUT_OF = {T2I: "image", EDIT: "image", T2V: "video", I2V: "video", TTS: "audio", SFX: "audio",
              UPSCALE: "image", REMOVE_BG: "image", VOICE_CHANGE: "audio", DUB: "audio",
              VIDEO_UPSCALE: "video", DESCRIBE: "text", CAPTIONS: "text",

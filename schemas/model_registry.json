@@ -9691,7 +9691,7 @@
         "checked_at": "2026-11-10",
         "source": "vendor_docs_search",
         "evidence": "Sonilo's own pages read in full 2026-11-10 (not search extracts): docs introduction, quickstart, errors, the reference pages, openapi.json, llms-full.txt, pricing, Terms of Service, Privacy Policy, licensing help.",
-        "note": "REGISTRY-ONLY: the database has no 'music' capability yet. POST /v1/text-to-music (multipart, mode=async, output_format=mp3, variants_num=1), poll GET /v1/tasks/{id}; Bearer key. Sonilo takes 5-360 s; 10-120 s offered (10 s billing floor; this schema caps a duration at 120). No model field exists."
+        "note": "SYNCED DARK after 0228; not on sale until Sonilo answers on its terms in writing, a real probe and a credit price. POST /v1/text-to-music (multipart, mode=async, output_format=mp3, variants_num=1), poll GET /v1/tasks/{id}; Bearer key. 10-120 s offered (10 s billing floor). No model field exists."
       },
       "pricing": {
         "unit": "second",
@@ -9823,7 +9823,7 @@
         "checked_at": "2026-11-27",
         "source": "vendor_docs_search",
         "evidence": "aistudio.google.com music-generation, models/lyria-3.5, interactions, pricing, terms and available-regions pages read 2026-11-27 (docs/research/lyria-3-5.md). No real call made.",
-        "note": "REGISTRY-ONLY: the database has no 'music' capability yet. Interactions API (POST /v1beta/interactions, Api-Revision 2026-05-20), synchronous, store false. No duration, language or lyrics field. Instrumental only until a probe proves a sung language."
+        "note": "SYNCED DARK after 0228; not on sale until a real probe, the vocal-activity check and a credit price. Interactions API (POST /v1beta/interactions, Api-Revision 2026-05-20), synchronous, store false. No duration, language or lyrics field. Instrumental only until a probe proves a sung language."
       },
       "pricing": {
         "unit": "request",
