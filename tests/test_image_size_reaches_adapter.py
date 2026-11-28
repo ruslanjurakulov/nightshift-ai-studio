@@ -1,7 +1,7 @@
 """The picture size a job was quoted (0208, params.image_size) reaches the adapter.
 
 ``creative_adapters.capability_request`` used to drop ``image_size``, which broke three models in two ways (measured in
-docs/studio/S9_PARAM_PARITY.md, G1):
+docs/studio/S9_PARAM_PARITY.md in PR #998, G1):
 
 * Flux 3 (flux-3-image, -klein) and Nano Banana 2.1 require a size, because their price depends on it, and never default one. So
   every Studio job on them was refused with ``bad_request`` after the database had already quoted it.
@@ -82,11 +82,34 @@ class SizeReachesTheAdapter(unittest.TestCase):
                     self.assertEqual(self._submit(model, cap, size).image_size, size, (model, cap, size))
 
     def test_a_job_with_no_size_carries_none_and_is_not_given_one(self):
-        # The worker never makes a size up: the database requires one for these models, and a job without it is refused by the
-        # adapters that need it rather than billed at a size nobody quoted.
+        # The worker never makes a size up: capability_request leaves it None when the job names none.
         req = ca.capability_request(cw.GenerationRequest(job_id=JOB, org_id=ORG, capability="t2i", model="m",
                                                          params={"prompt": "x"}))
         self.assertIsNone(req.image_size)
+
+    def test_a_size_priced_job_with_no_size_is_refused_before_any_call(self):
+        # The database requires a size for these models (0208). A job that reaches the worker without one anyway is refused
+        # free, never sent: the Gemini adapter would otherwise send no imageSize and the vendor would render its default size.
+        for model in SIZE_PRICED:
+            entry = reg.get(model)
+            for cap in [c for c in entry.capabilities if c in ("t2i", "edit")]:
+                adapter = build_adapter(entry.adapter, env={})
+                sent = []
+                adapter.submit = lambda request, vendor_model: sent.append(request)
+                params = {"prompt": "x"}
+                if entry.qualities:
+                    params["quality"] = entry.qualities[0]
+                files = ()
+                if cap == "edit":
+                    params["source_asset_id"] = SRC
+                    files = (self.src,)
+                with self.assertRaises(ca.CreativeAdapterError, msg=(model, cap)) as cm:
+                    ca.RegistryAdapter(entry, adapter, sync_store={}).submit(
+                        cw.GenerationRequest(job_id=JOB, org_id=ORG, capability=cap, model=model, params=params,
+                                             input_files=files, quantity=1))
+                self.assertEqual(cm.exception.code, "bad_request", (model, cap))
+                self.assertIn("no picture size", cm.exception.message)
+                self.assertEqual(sent, [], (model, cap))
 
 
 class GeminiSendsTheQuotedSize(unittest.TestCase):

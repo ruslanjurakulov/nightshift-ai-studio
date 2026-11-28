@@ -114,7 +114,8 @@ class WhatIsSent(Tmp):
                                                            {"candidates": [{"content": {"parts": [
                                                                {"inlineData": {"mimeType": "image/png",
                                                                                "data": IMG["data"][0]["b64_json"]}}]}}]}))
-        ra.submit(self.request("t2i", {"prompt": "x"}))
+        # The size it is priced by (0208), as every such job carries: the worker refuses one without it.
+        ra.submit(self.request("t2i", {"prompt": "x", "image_size": "1K"}))
         self.assertNotIn("quality", str(sess.sent[0]["json"]))
 
     def test_a_tier_on_a_model_that_lists_none_is_refused_before_any_call(self):

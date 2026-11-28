@@ -209,7 +209,7 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         quality=_str(p.get("quality")),
         # t2i / edit on a model priced by picture size (0208): the size quoted. Without it Flux 3 and Nano Banana 2.1 refused every
         # Studio job (their price depends on it, so they never default one), and the Gemini image models made the vendor's default
-        # size for a 2K or 4K quote (S9 measurement, docs/studio/S9_PARAM_PARITY.md, G1).
+        # size for a 2K or 4K quote (S9 measurement, G1: docs/studio/S9_PARAM_PARITY.md in PR #998).
         image_size=_str(p.get("image_size")),
         # t2v / i2v on a model that prices the soundtrack apart (0070).
         audio=_bool(p.get("audio")),
@@ -264,6 +264,15 @@ class RegistryAdapter:
             raise CreativeAdapterError(
                 "bad_request",
                 f"this job carries no quality tier for {self.entry.id}, so it cannot be billed as quoted; "
+                "nothing was charged — start it again")
+        if (cap in ("t2i", "edit") and req.image_size is None
+                and ((self.entry.raw.get("pricing") or {}).get("variants") or {}).get("by") == "image_size"):
+            # The same rule as the tier's: a model priced by picture size is sent exactly the size the job was quoted. With
+            # none, the Gemini image adapter sends no imageSize and the vendor renders its own default size, which is not what
+            # was priced. The database requires a size for these models (0208); this is the worker's backstop.
+            raise CreativeAdapterError(
+                "bad_request",
+                f"this job carries no picture size for {self.entry.id}, so it cannot be billed as quoted; "
                 "nothing was charged — start it again")
         if cap in VIDEO_VARIANT_CAPABILITIES:
             # What the quote priced is what is sent (0070): the resolution and
