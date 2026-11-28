@@ -17,14 +17,15 @@ MIG = ROOT / "supabase" / "migrations"
 NEW_TEXT = (MIG / "0239_film_keyframe_refs_quote.sql").read_text(encoding="utf-8")
 ROLLBACK_TEXT = (ROOT / "docs" / "sql" / "rollback_0239_film_keyframe_refs_quote.sql").read_text(encoding="utf-8")
 OLD_TEXT = (MIG / "0235_film_operator_preview.sql").read_text(encoding="utf-8")
+OLD_PRICE_TEXT = (MIG / "0236_film_clip_sound_gate.sql").read_text(encoding="utf-8")
 LAB = (ROOT / "tests" / "security" / "sec_db.py").read_text(encoding="utf-8")
 
 
 def bodies(text):
     """Every `create or replace function public.<name>(` statement, keyed by name; film_price's read as the body that reaches the
     database (its backslash placeholder put back)."""
-    text = text.replace("@@0235_BACKSLASH@@", "\\").replace("@@0239_BACKSLASH@@", "\\")
-    text = text.replace("$fp0235$", "\n").replace("$fp0239$", "\n")
+    for tag in ("0235", "0236", "0239"):
+        text = text.replace(f"@@{tag}_BACKSLASH@@", "\\").replace(f"$fp{tag}$", "\n")
     out = {}
     for m in re.finditer(r"(?m)^create or replace function public\.(\w+)\(.*?^\$\$;?", text, re.S):
         out[m.group(1)] = m.group(0).rstrip(";")
@@ -38,13 +39,15 @@ def md5_of(fn):
 
 NEW = bodies(NEW_TEXT)
 BACK = bodies(ROLLBACK_TEXT)
-OLD = {k: v for k, v in bodies(OLD_TEXT).items() if k in ("film_price", "film_apply_settings", "film_save_scenes")}
-BEFORE = {"film_price": "186d34ffb633bc56a91bbf617b0b7520", "film_apply_settings": "f5cdf963343a4b722333eaf0d13bd840",
+#: film_price is 0236's (0235's plus 0236's clip-sound hunk); the two save bodies are 0235's (0236 does not touch them).
+OLD = {**{k: v for k, v in bodies(OLD_TEXT).items() if k in ("film_apply_settings", "film_save_scenes")},
+       "film_price": bodies(OLD_PRICE_TEXT)["film_price"]}
+BEFORE = {"film_price": "af0fb80cce8e92fd2360aa6d5366a942", "film_apply_settings": "f5cdf963343a4b722333eaf0d13bd840",
           "film_save_scenes": "d2d32abea21beb742eea14d92ad6e9fd"}
-AFTER = {"film_price": "a3be47c473036b97121df607ffb911e2", "film_apply_settings": "9a2ae594cb08df36973c7e656a7f1c9d",
+AFTER = {"film_price": "02016cc4a695a54c5693a5066247269b", "film_apply_settings": "9a2ae594cb08df36973c7e656a7f1c9d",
          "film_save_scenes": "4115ba8800b1b1a702585267d27af17c"}
 
-# 0239's hunks, (old, new), on 0235's bodies.
+# 0239's hunks, (old, new), on 0236's film_price and 0235's two save bodies.
 APPLY_SETTINGS = [(
 """            perform public.film_check_model(m, case when kv.key = 'keyframe_model' then array['t2i', 'edit'] else array['i2v'] end,
                                              kv.key, f.org_id);
@@ -236,7 +239,7 @@ class FilmKeyframeRefsQuoteMigration(unittest.TestCase):
             self.assertNotIn(word, code)
         self.assertNotRegex(code, r"\b(insert\s+into|update\s+public\.|upsert)")
 
-    def test_each_body_is_0235s_plus_exactly_the_marked_hunks(self):
+    def test_each_body_is_its_predecessor_plus_exactly_the_marked_hunks(self):
         for name, hunks in HUNKS.items():
             old, new = OLD[name], NEW[name]
             self.assertEqual(md5_of(old), BEFORE[name], name)
@@ -247,9 +250,12 @@ class FilmKeyframeRefsQuoteMigration(unittest.TestCase):
                 self.assertEqual(new.count(b), 1, (name, b[:60]))
                 self.assertIn("-- 0239", b, (name, b[:60]))
                 undone = undone.replace(b, a)
-            self.assertEqual(undone, old, f"{name} differs from 0235's body beyond the listed hunks")
+            self.assertEqual(undone, old, f"{name} differs from its predecessor's body beyond the listed hunks")
+        # 0236's own clip-sound hunk is kept, untouched
+        self.assertIn("'clip_sound_not_kept'", NEW["film_price"])
+        self.assertEqual(NEW["film_price"].count("-- 0236"), OLD["film_price"].count("-- 0236"))
 
-    def test_the_rollback_puts_back_exactly_0235s_bodies(self):
+    def test_the_rollback_puts_back_exactly_the_predecessors_bodies(self):
         for name in HUNKS:
             self.assertEqual(BACK[name], OLD[name], name)
         self.assertLess(ROLLBACK_TEXT.index("rollback 0239: % is neither"), ROLLBACK_TEXT.index("create or replace function"))
@@ -258,10 +264,12 @@ class FilmKeyframeRefsQuoteMigration(unittest.TestCase):
 
     def test_the_guards_the_end_state_and_the_rollback_name_the_recomputed_hashes(self):
         for name in HUNKS:
-            self.assertIn(f"'{BEFORE[name]}', '{AFTER[name]}', '0235'", NEW_TEXT, name)
-            self.assertIn(f"'{BEFORE[name]}', '{AFTER[name]}', '0235'", ROLLBACK_TEXT, name)
+            src = "0236" if name == "film_price" else "0235"
+            self.assertIn(f"'{BEFORE[name]}', '{AFTER[name]}', '{src}'", NEW_TEXT, name)
+            self.assertIn(f"'{BEFORE[name]}', '{AFTER[name]}', '{src}'", ROLLBACK_TEXT, name)
             self.assertGreaterEqual(NEW_TEXT.count(f"'{AFTER[name]}'"), 3, name)  # guard, end state, Verify
             self.assertIn(f"'{BEFORE[name]}'", ROLLBACK_TEXT.split("-- 0235's body.", 1)[1], name)  # its end state
+        self.assertIn("-- 0236's body, its one backslash put back with chr(92).", ROLLBACK_TEXT)
         self.assertLess(NEW_TEXT.index("0239 found a %"), NEW_TEXT.index("create or replace function"))
         self.assertIn("0239 end state:", NEW_TEXT)
         self.assertIn("set local lock_timeout = '5s';", NEW_TEXT)
@@ -323,23 +331,25 @@ class FilmKeyframeRefsQuoteMigration(unittest.TestCase):
         for const, name in (("FILM_PRICE_0239", "film_price"), ("FILM_APPLY_SETTINGS_0239", "film_apply_settings"),
                             ("FILM_SAVE_SCENES_0239", "film_save_scenes")):
             self.assertIn(f'{const} = "{AFTER[name]}"', LAB)
-        off = LAB[LAB.index("def take_off_0235("):]
+        # 0239 rides on 0236's helpers, which 0235's (and 0215's, 0218's, 0139's) reach.
+        off = LAB[LAB.index("def take_off_0236("):]
         off = off[:off.index("\ndef ")]
-        self.assertIn("take_off_0239(conn)", off)
-        on = LAB[LAB.index("def put_back_0235("):]
-        on = on[:on.index("\nMIGRATION_0239")]
+        self.assertLess(off.index("take_off_0239(conn)"), off.index("if has_0236(conn):"))
+        on = LAB[LAB.index("def put_back_0236("):]
+        on = on[:on.index("\ndef ")]
         self.assertIn("put_back_0239(conn)", on)
-        self.assertIn("return rollback_0239_if_on() +", LAB[LAB.index("def rollback_0235_if_on("):LAB.index("def put_back_0235(")])
-        self.assertLess(LAB.index('ON_0156 = (*ON_0156, "0235_film_operator_preview.sql")'),
-                        LAB.index('ON_0156 = (*ON_0156, "0239_film_keyframe_refs_quote.sql")'))
-        self.assertLess(LAB.index('ON_0139 = (*(f for f in ON_0139 if f != "0235_film_operator_preview.sql")'),
-                        LAB.index('ON_0139 = (*(f for f in ON_0139 if f != "0239_film_keyframe_refs_quote.sql")'))
+        self.assertIn("return rollback_0239_if_on() +", LAB[LAB.index("def rollback_0236_if_on("):LAB.index("def put_back_0236(")])
+        self.assertIn("return rollback_0236_if_on() +", LAB[LAB.index("def rollback_0235_if_on("):LAB.index("def put_back_0235(")])
+        self.assertIn('_BEFORE_0239 = {"public.film_price(public.films)": FILM_PRICE_0236,', LAB)
+        for lst in ('ON_0156 = (*ON_0156, "{}")', 'ON_0139 = (*(f for f in ON_0139 if f != "{}")'):
+            self.assertLess(LAB.index(lst.format("0235_film_operator_preview.sql")), LAB.index(lst.format("0236_film_clip_sound_gate.sql")))
+            self.assertLess(LAB.index(lst.format("0236_film_clip_sound_gate.sql")), LAB.index(lst.format("0239_film_keyframe_refs_quote.sql")))
         on_0124 = LAB[LAB.index("ON_0124 = ("):]
         on_0124 = on_0124[:on_0124.index(")\n")]
         self.assertTrue(on_0124.rstrip().endswith('"0239_film_keyframe_refs_quote.sql"'), on_0124[-200:])
 
     def test_the_header_says_it_depends_on_0235_and_names_the_worker_side(self):
-        for words in ("DEPENDS ON 0235", "neither start_film nor film_take_job", "reserved_slots=len(film refs)",
+        for words in ("DEPENDS ON 0235 (0235_film_operator_preview.sql) AND 0236", "neither start_film nor film_take_job", "reserved_slots=len(film refs)",
                       "FilmOrchestrator._inputs counts the references", "WHAT IS NOT COVERED"):
             self.assertIn(words, NEW_TEXT)
 

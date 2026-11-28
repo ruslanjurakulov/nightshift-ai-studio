@@ -13,9 +13,9 @@ import { readRunAnswer, unsureRunAnswer } from "@/lib/run-answer";
 import { clearDraft, draftStore, readDraft, writeDraft, type DraftScope } from "@/lib/create-draft";
 import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
 import { CreditEstimateLine, type PriceReport } from "@/components/credits/CreditEstimateLine";
-import { IMAGE_GENERATORS } from "@/lib/imageProviders";
-import { DEPRECATED_TTS_MODELS, TTS_LANGUAGE_NAMES, TTS_MODEL_LABELS, TTS_PICKER_MODELS, VOICES, isVoiceId, ttsModelBlock, type TtsPickerModel } from "@/lib/ttsModels";
-import { TTS_LANGUAGE_READ_ON } from "@/lib/ttsLanguages";
+import { VOICES, isVoiceId } from "@/lib/voices";
+import { TTS_LANGUAGE_NAMES } from "@/lib/tts-language-code";
+import { ttsOptionBlock, type PipelineOptions, type PipelineTtsOption } from "@/lib/pipeline-options";
 import { VoicePreviewButton } from "@/components/create/VoicePreviewButton";
 import type { RunPrefill } from "@/lib/home";
 import { MadeForKidsSwitch } from "@/components/review/MadeForKidsSwitch";
@@ -27,10 +27,6 @@ import { brainSessionFromUrl, recordRunHandoff } from "@/lib/brain/handoff";
 import "@/components/create/flow.css";
 
 const CUSTOM_VOICE = "__custom__";
-/** Higgsfield b-roll talks to a guessed endpoint with a Bearer key (its real API is `Key id:secret`), so it fails
- *  closed on every run. It stays out of the operator's video-model list until tools/probe_models.py shows it
- *  answering; flip this with that change. The id is still a valid run parameter. */
-const HIGGSFIELD_BROLL_PROBED = false;
 
 /** A connected account the video can be made for (lib/connectedAccounts.ts). */
 export interface CreateTarget {
@@ -76,6 +72,7 @@ export function CreateStudio({
   dna = null,
   userId = "",
   orgId = null,
+  pipeline = null,
 }: {
   channelId: string | null;
   githubConfigured: boolean;
@@ -101,6 +98,10 @@ export function CreateStudio({
   userId?: string;
   /** The open organization when the page knows it: part of what the stored key is for. */
   orgId?: string | null;
+  /** The operator's per-run video, image and narration model choices, from the server (lib/server/pipeline-options.ts) and
+   *  only for the operator: the lists name our vendors and their model ids, and this module is in the customers' create
+   *  page chunk. Null = no choice is drawn, whatever `operator` says. */
+  pipeline?: PipelineOptions | null;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
@@ -117,16 +118,18 @@ export function CreateStudio({
   // rather than sent (rule 4: the run would refuse it anyway, after the person waited).
   const videoLanguage = language || dna?.language || "";
   // The model the language just ruled out, named to the person instead of vanishing silently.
-  const [droppedModel, setDroppedModel] = useState<TtsPickerModel | null>(null);
+  const ttsOptions = pipeline?.tts ?? [];
+  const [droppedModel, setDroppedModel] = useState<PipelineTtsOption | null>(null);
+  const chosenTts = ttsOptions.find((o) => o.id === ttsModel);
   useEffect(() => {
-    if (ttsModel && ttsModelBlock(ttsModel as TtsPickerModel, videoLanguage)) {
-      setDroppedModel(ttsModel as TtsPickerModel);
+    if (chosenTts && ttsOptionBlock(chosenTts, videoLanguage)) {
+      setDroppedModel(chosenTts);
       setTtsModel("");
     }
-  }, [ttsModel, videoLanguage]);
+  }, [chosenTts, videoLanguage]);
   // "Repo default" is whatever ELEVENLABS_MODEL_ID says, which this page cannot see: when some
   // model on the list cannot speak this language, the default may be one of them.
-  const blockedLanguage = TTS_PICKER_MODELS.map((m) => ttsModelBlock(m, videoLanguage)).find((b) => b?.reason === "language");
+  const blockedLanguage = ttsOptions.map((o) => ttsOptionBlock(o, videoLanguage)).find((b) => b?.reason === "language");
   const riskyLanguage = blockedLanguage?.reason === "language" ? TTS_LANGUAGE_NAMES[blockedLanguage.language] : null;
   // "" = the channel's voice, a voice id, or CUSTOM_VOICE to type one in.
   const [voice, setVoice] = useState(dna?.voice ?? "");
@@ -664,26 +667,24 @@ export function CreateStudio({
 
             {/* Provider-level routing is the platform operator's: a customer's run uses the
                 channel's own setup, and customer screens never name a provider. */}
-            {providerChoice && (
+            {providerChoice && pipeline && (
               <>
                 <label className="fl-field">
                   <span>{t.create.videoModel}</span>
                   <select value={videoProvider} onChange={(e) => setVideoProvider(e.target.value)} className={selectClass}>
                     <option value="">{t.create.optDefault}</option>
-                    <option value="seedance">Seedance</option>
-                    <option value="kling">Kling</option>
-                    <option value="veo">Veo</option>
-                    {HIGGSFIELD_BROLL_PROBED && <option value="higgsfield">Higgsfield</option>}
-                    <option value="wan">Wan</option>
-                    <option value="minimax">MiniMax</option>
+                    {pipeline.video.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label className="fl-field">
                   <span>{t.create.imageModel}</span>
                   <select value={imageProvider} onChange={(e) => setImageProvider(e.target.value)} className={selectClass}>
                     <option value="">{t.create.optDefault}</option>
-                    <option value="pexels">Pexels (stock)</option>
-                    {IMAGE_GENERATORS.map((g) => (
+                    {pipeline.image.map((g) => (
                       <option key={g.id} value={g.id}>
                         {g.name}
                       </option>
@@ -705,27 +706,27 @@ export function CreateStudio({
                       {t.create.optDefault}
                       {riskyLanguage ? ` (${fmt(t.create.voiceModelDefaultMayNot, { language: riskyLanguage })})` : ""}
                     </option>
-                    {TTS_PICKER_MODELS.map((m) => {
-                      const block = ttsModelBlock(m, videoLanguage);
+                    {ttsOptions.map((m) => {
+                      const block = ttsOptionBlock(m, videoLanguage);
                       const notes = [
-                        ...(DEPRECATED_TTS_MODELS.includes(m) ? [t.create.voiceModelDeprecated] : []),
+                        ...(m.deprecated ? [t.create.voiceModelDeprecated] : []),
                         ...(block?.reason === "language" ? [fmt(t.create.voiceModelNoLanguage, { language: TTS_LANGUAGE_NAMES[block.language] })] : []),
                         ...(block?.reason === "not_on_queue" ? [t.create.voiceModelNotOnQueue] : []),
                       ];
                       return (
-                        <option key={m} value={m} disabled={block !== null}>
-                          {TTS_MODEL_LABELS[m]}
+                        <option key={m.id} value={m.id} disabled={block !== null}>
+                          {m.label}
                           {notes.length > 0 ? ` (${notes.join("; ")})` : ""}
                         </option>
                       );
                     })}
                   </select>
                   <span id="create-voice-model-hint" className="text-xs text-[var(--color-muted)]">
-                    {fmt(t.create.voiceModelHint, { date: TTS_LANGUAGE_READ_ON })}
+                    {fmt(t.create.voiceModelHint, { date: pipeline.ttsReadOn })}
                   </span>
                   <span role="status" aria-live="polite" className="text-xs text-[var(--color-warn)]">
                     {droppedModel && riskyLanguage
-                      ? fmt(t.create.voiceModelDropped, { model: TTS_MODEL_LABELS[droppedModel].split(" — ")[0], language: riskyLanguage })
+                      ? fmt(t.create.voiceModelDropped, { model: droppedModel.label.split(" — ")[0], language: riskyLanguage })
                       : ""}
                   </span>
                 </label>

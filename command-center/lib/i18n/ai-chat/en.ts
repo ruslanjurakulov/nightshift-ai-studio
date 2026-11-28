@@ -35,7 +35,33 @@ export const aiChatEn = {
   shortMinNote: "A short Studio film is at least 10 seconds long.",
   trialLeft: { one: "Free trial: {n} message left.", few: "Free trial: {n} messages left.", many: "Free trial: {n} messages left.", other: "Free trial: {n} messages left." },
   planReady: "The plan",
-  clipAudioNote: "The characters' lines are spoken by the video model inside each clip.",
+  /** How a story film is heard (lib/brain/logic speechBlocks), said on the plan; never a claim that is not true of the cut. */
+  plannedWordless: "This story is planned without spoken lines: voices and in-clip sound aren't available for films yet.",
+  voiceOverNote: "A narrator tells the story in a voice-over; no one speaks on screen in those scenes.",
+  inClipNote: "In some scenes the characters speak inside the clip.",
+  wordlessNote: "This film has no words: pictures, music cues and sound only.",
+  speechBlocked: {
+    clip_sound_not_kept: "Clip sound is not yet kept in the final film, so a film whose characters speak inside the clips can't be created yet.",
+    voice_unavailable: "Voice-over needs a voice model that isn't available for films yet, so this film can't be created yet.",
+  },
+  /** Said once under the blocked reasons: the turns were spent on a storyboard that is kept. */
+  blockedSaved: "Nothing was priced. The storyboard is saved in the project.",
+  /** The remedy a blocked film offers: a turn asking for a version that can be made today. */
+  wordlessAsk: "Make a version without spoken words",
+  wordlessAskText: "Please make a version of this story without spoken words, so it can be made today.",
+  seeStoryboard: "See the storyboard",
+  /** A language by its own name in the app's language (never the stored English value). */
+  languageNames: { English: "English", Russian: "Russian", Uzbek: "Uzbek" },
+  aspectNames: { "16:9": "Landscape 16:9", "9:16": "Vertical 9:16", "1:1": "Square 1:1" },
+  textLayersNote: { one: "{n} on-screen text is added as a layer, never drawn into the picture.", few: "{n} on-screen texts are added as layers, never drawn into the picture.", many: "{n} on-screen texts are added as layers, never drawn into the picture.", other: "{n} on-screen texts are added as layers, never drawn into the picture." },
+  /** An inferred slot (lib/brain/logic INFERABLE_SLOTS): shown as a chip the person can change. */
+  slotNames: { kind: "Kind", target_seconds: "Length", aspect: "Shape", style: "Style", language: "Language", audience: "Audience" },
+  inferredChip: "{slot}: {value}",
+  inferredChipLabel: "{slot} was guessed as {value}. Change it",
+  inferredHeading: "Guessed from your message",
+  changeQuestion: "Change {slot}",
+  changeOwn: "Type the {slot} in the box below.",
+  changeCancel: "Keep it",
   minutes: "{n} min",
   seconds: "{n} s",
   price: { one: "{n} credit", few: "{n} credits", many: "{n} credits", other: "{n} credits" },
@@ -120,6 +146,13 @@ export const aiChatEn = {
     busy: "An answer is still on its way. Open that chat once it has arrived.",
   },
   errors: {
+    narration_too_long_plain: "The narrator's words for a scene were too long to say in time, even after asking again. Nothing was priced. Try again, or choose a longer film.",
+    looks_too_long_plain: "The characters' looks are too long for the picture models. No messages were used. Ask Nightshift AI for shorter looks or fewer characters.",
+    speech_not_available: "The storyboard came back with spoken lines, but only films without spoken words can be made today, even after asking again. Nothing was priced. Try again.",
+    looks_too_long: "The characters' looks are too long for the picture models: with {n} characters in one shot, a scene's description would be {length} of {limit} characters. No messages were used. Ask Nightshift AI for shorter looks or fewer characters.",
+    story_arc_invalid: "The ideas didn't come out as a clear story, even after asking again, so none is shown. That used {messages}; nothing was priced. Try again, or tell a little more about the story.",
+    narration_too_long: "The narrator's words for a scene in chapter {chapter} were too long to say in time, even after asking again. Nothing was priced. Try again, or choose a longer film.",
+    plan_shot_rules: "The storyboard didn't come out right, even after asking again. Nothing was priced. Try again.",
     session_ended: "Your session ended. Sign in again to continue.",
     chat_daily_cap: "Today's Nightshift AI messages for this workspace are used up ({used} of {limit}). More open up within 24 hours.",
     chat_daily_cap_plain: "Nightshift AI's messages for today are used up. More open up within 24 hours.",

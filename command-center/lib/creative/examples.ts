@@ -11,10 +11,13 @@
  * picture or clip later is one line: `mediaSrc` (a same-origin path under
  * /public, e.g. "/examples/<id>.webp" or ".mp4").
  *
- * `modelId` is a registry id the example was written for. The composer uses it
- * only when the organization is offered that model for the tool; otherwise the
- * composer's own default stands, and the model button names what will really
- * be used — never a model that is not offered, never a price not quoted.
+ * The model an example was written for is not here: which model we chose for
+ * which prompt is ours, and this list is in a static chunk. It is
+ * lib/server/creative-examples.ts, and the page passes StudioHome the pairs whose
+ * model it offers (exampleModels). The composer uses one only when the
+ * organization is offered that model for the tool; otherwise the composer's own
+ * default stands, and the model button names what will really be used — never a
+ * model that is not offered, never a price not quoted.
  */
 import type { MediaDesk } from "@/lib/creative/desks";
 import type { AspectRatio, StudioCapability, VideoDuration } from "@/lib/creative/studio";
@@ -38,8 +41,6 @@ export interface CreativeExample {
   mode: StudioMode;
   /** The tool the example opens (one of the mode's tools); absent for the YouTube run. */
   capability?: StudioCapability;
-  /** The registry model it was written for (used only when offered; see above). */
-  modelId?: string;
   aspect?: AspectRatio;
   duration?: VideoDuration;
   prompt_uz: string;
@@ -56,7 +57,6 @@ export const CREATIVE_EXAMPLES: readonly CreativeExample[] = [
     id: "samarkand_dawn",
     mode: "image",
     capability: "t2i",
-    modelId: "seedream-5.0-pro",
     aspect: "16:9",
     prompt_uz: "Tong saharda Registon maydoni, moviy gumbazlarga tushgan iliq oltin nur, boʻm-boʻsh maydon, keng plan, kinematografik kadr",
     prompt_en: "Registan square at first light, warm gold light on the blue domes, the square empty, wide shot, cinematic frame",
@@ -67,7 +67,6 @@ export const CREATIVE_EXAMPLES: readonly CreativeExample[] = [
     id: "thumbnail_portrait",
     mode: "image",
     capability: "t2i",
-    modelId: "flux-2-pro",
     aspect: "16:9",
     prompt_uz: "YouTube muqovasi uchun: hayratlangan yosh dasturchi yaqin planda, orqasida ekranlar nuri, chap tomonda sarlavha uchun boʻsh joy, yorqin kontrast",
     prompt_en: "For a YouTube thumbnail: a surprised young programmer in close-up, screen glow behind, empty space on the left for a title, bold contrast",
@@ -78,7 +77,6 @@ export const CREATIVE_EXAMPLES: readonly CreativeExample[] = [
     id: "plov_flatlay",
     mode: "image",
     capability: "t2i",
-    modelId: "seedream-5.0-pro",
     aspect: "1:1",
     prompt_uz: "Yogʻoch stolda bir lagan osh, ustidan qaralgan kadr, yonida non va choynak, yumshoq kunduzgi yorugʻlik, taom jurnali uslubida",
     prompt_en: "A platter of plov on a wooden table, seen from above, bread and a teapot beside it, soft daylight, food magazine style",
@@ -89,7 +87,6 @@ export const CREATIVE_EXAMPLES: readonly CreativeExample[] = [
     id: "product_bottle",
     mode: "image",
     capability: "t2i",
-    modelId: "ideogram-3",
     aspect: "1:1",
     prompt_uz: "Shisha idishdagi atir, toza oq fon, yumshoq soya, studiyada suratga olingan mahsulot kadri, oʻrtada joylashgan",
     prompt_en: "A glass perfume bottle on a clean white background, soft shadow, studio product shot, centred",
@@ -100,7 +97,6 @@ export const CREATIVE_EXAMPLES: readonly CreativeExample[] = [
     id: "mountain_drone",
     mode: "video",
     capability: "t2v",
-    modelId: "veo-3.1-fast",
     aspect: "16:9",
     duration: 5,
     prompt_uz: "Chimyon togʻlari ustidan sekin uchayotgan dron kadri, quyosh botishi, vodiyda tuman, kamera oldinga siljiydi",
@@ -112,7 +108,6 @@ export const CREATIVE_EXAMPLES: readonly CreativeExample[] = [
     id: "tea_pour",
     mode: "video",
     capability: "t2v",
-    modelId: "kling-v3",
     aspect: "9:16",
     duration: 5,
     prompt_uz: "Piyolaga choy quyilayotgan yaqin kadr, bugʻ koʻtariladi, sekinlashtirilgan harakat, iliq ertalabki yorugʻlik, vertikal format",
@@ -124,7 +119,6 @@ export const CREATIVE_EXAMPLES: readonly CreativeExample[] = [
     id: "city_night",
     mode: "video",
     capability: "t2v",
-    modelId: "veo-3.1-fast",
     aspect: "16:9",
     duration: 10,
     prompt_uz: "Yomgʻirdan keyingi tungi Toshkent koʻchasi, hoʻl asfaltda chiroqlar aksi, kamera piyodalar orasidan sekin oʻtadi",
@@ -136,7 +130,6 @@ export const CREATIVE_EXAMPLES: readonly CreativeExample[] = [
     id: "intro_voice",
     mode: "voice",
     capability: "tts",
-    modelId: "elevenlabs-multilingual-v2",
     prompt_uz: "Assalomu alaykum! Kanalimizga xush kelibsiz. Bugun sizga qadimiy Buxoro haqida kam maʼlum boʻlgan uchta voqeani aytib beraman.",
     prompt_en: "Hello and welcome to the channel. Today I will tell you three little-known stories about old Bukhara.",
     prompt_ru: "Здравствуйте и добро пожаловать на канал. Сегодня я расскажу вам три малоизвестные истории о старой Бухаре.",

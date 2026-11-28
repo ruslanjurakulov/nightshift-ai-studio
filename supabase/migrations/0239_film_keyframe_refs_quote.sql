@@ -3,8 +3,9 @@
 -- 16 references are refused at the quote, by name, before anything is held; and a character given more pictures after Start fails its
 -- take by name in the worker, before the provider call.
 --
--- DEPENDS ON 0235 (0235_film_operator_preview.sql) BEING APPLIED FIRST: film_price, film_apply_settings and film_save_scenes are
--- replaced on 0235's bodies, and the drift guard below refuses any other. It replaces neither start_film nor film_take_job (0198's,
+-- DEPENDS ON 0235 (0235_film_operator_preview.sql) AND 0236 (0236_film_clip_sound_gate.sql) BEING APPLIED FIRST, in that order:
+-- film_price is replaced on 0236's body (0235's plus its clip-sound hunk), film_apply_settings and film_save_scenes on 0235's (0236
+-- does not touch them), and the drift guard below refuses any other. It replaces neither start_film nor film_take_job (0198's,
 -- which a later file replaces): what the take must re-check is checked by the worker.
 --
 -- EVIDENCE (Breach, against 0235's head 23ee434fb in the local lab; tests/security/test_sec_breach_0235_refs_take.py, each test failing
@@ -34,7 +35,7 @@
 --     a key-frame model must be on sale for t2i: after 0235's film_check_model (the id, Seedance first, on sale for a role), one more
 --     film_model_problem(m, ['t2i']) refuses model_not_available with the remedy ("choose a key-frame model that makes a picture from
 --     words"). The clip model and the voice are not touched.
---   film_price (0235's body, hunks marked `-- 0239`)
+--   film_price (0236's body, hunks marked `-- 0239`; 0236's own clip-sound hunk is kept as it is)
 --     B1 the same refusal on the key-frame line, for a film saved before this file;
 --     B2/B3 the style path: the worker's own arithmetic, in SQL. The film references the take carries (refs_k, film_take_job's count)
 --        leave slots = image_refs_max - refs_k when the model lists t2i in inputs.ref_capabilities, else 0; the kit and the mentioned
@@ -69,7 +70,7 @@
 --
 -- WHAT TO VERIFY BEFORE YOU APPLY (read-only; the SQL editor on the live project). Expected: one row, all true.
 --   select (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.film_price(public.films)'::regprocedure)
---            = '186d34ffb633bc56a91bbf617b0b7520' as film_price_is_0235s,
+--            = 'af0fb80cce8e92fd2360aa6d5366a942' as film_price_is_0236s,
 --          (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.film_apply_settings(public.films, jsonb, text[])'::regprocedure)
 --            = 'f5cdf963343a4b722333eaf0d13bd840' as film_apply_settings_is_0235s,
 --          (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.film_save_scenes(public.films, jsonb)'::regprocedure)
@@ -91,6 +92,10 @@ begin
      or to_regprocedure('public.film_model_problem(text, text[], text, uuid)') is null then
     raise exception '0239 needs 0235_film_operator_preview.sql (the four-argument film_check_model / film_model_problem): apply it first';
   end if;
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'film_studio_settings'
+                    and column_name = 'clip_sound_kept') then
+    raise exception '0239 needs 0236_film_clip_sound_gate.sql (its film_price is the one this file is written on): apply it first';
+  end if;
   if to_regprocedure('public.film_asset_live(uuid, uuid, text)') is null
      or to_regprocedure('public.creative_job_style(uuid, text)') is null then
     raise exception '0239 needs 0166 (film_asset_live) and 0048 / 0187 (creative_job_style, whose reading the quote mirrors): apply them first';
@@ -108,7 +113,7 @@ begin
     select * from (values
       ('public.film_apply_settings(public.films, jsonb, text[])', 'f5cdf963343a4b722333eaf0d13bd840', '9a2ae594cb08df36973c7e656a7f1c9d', '0235'),
       ('public.film_save_scenes(public.films, jsonb)', 'd2d32abea21beb742eea14d92ad6e9fd', '4115ba8800b1b1a702585267d27af17c', '0235'),
-      ('public.film_price(public.films)', '186d34ffb633bc56a91bbf617b0b7520', 'a3be47c473036b97121df607ffb911e2', '0235')
+      ('public.film_price(public.films)', 'af0fb80cce8e92fd2360aa6d5366a942', '02016cc4a695a54c5693a5066247269b', '0236')
     ) v(sig, was, now_, src)
   loop
     select md5(regexp_replace(x.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc x where x.oid = to_regprocedure(r.sig);
@@ -500,7 +505,7 @@ $$;
 revoke all on function public.film_save_scenes(public.films, jsonb) from public, anon, authenticated, service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 2. The quote: the key frame counted the way the take and the worker make it (0235's film_price, hunks marked 0239)
+-- 2. The quote: the key frame counted the way the take and the worker make it (0236's film_price, hunks marked 0239)
 -- ───────────────────────────────────────────────────────────────────────────
 
 -- Built as text with its one backslash (0218's clip-length pattern) written @@0239_BACKSLASH@@ and put back with chr(92), then executed;
@@ -709,6 +714,12 @@ begin
     select m.spec into spec from public.model_registry m where m.id = cmodel;
     -- 0235: the film's organization, so a platform admin's operator preview in the exempt organization passes (and nobody else's).
     bad := case when cmodel is not null then public.film_model_problem(cmodel, array['i2v'], label || ' clip_model', f.org_id) end;
+    -- 0236: while the cut drops a clip's own sound (BR-SG-01), the priced sound option is refused by name, not sold to be dropped.
+    if bad is null and sc.clip_params -> 'audio' = 'true'::jsonb  -- 0236
+       and not coalesce((select s.clip_sound_kept from public.film_studio_settings s where s.id), false) then  -- 0236
+      bad := jsonb_build_object('priced', false, 'reason', 'clip_sound_not_kept',  -- 0236
+                                'detail', format('%s: clip sound is not yet kept in the final film; turn the scene''s sound option off', label));  -- 0236
+    end if;  -- 0236
     target := ceil(sc.planned_seconds::numeric / sc.shot_count);
     select min(x::numeric) filter (where x::numeric >= target), max(x::numeric) into dur, longest
       from jsonb_array_elements_text(case when jsonb_typeof(spec -> 'durations_s') = 'array' then spec -> 'durations_s'
@@ -872,7 +883,7 @@ begin
     select * from (values
       ('public.film_apply_settings(public.films, jsonb, text[])', '9a2ae594cb08df36973c7e656a7f1c9d', false),
       ('public.film_save_scenes(public.films, jsonb)', '4115ba8800b1b1a702585267d27af17c', false),
-      ('public.film_price(public.films)', 'a3be47c473036b97121df607ffb911e2', false)
+      ('public.film_price(public.films)', '02016cc4a695a54c5693a5066247269b', false)
     ) v(sig, want, service)
   loop
     fn := to_regprocedure(r.sig);
@@ -905,7 +916,7 @@ end $$;
 -- ───────────────────────────────────────────────────────────────────────────
 -- select
 --   (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
---     where oid = 'public.film_price(public.films)'::regprocedure) = 'a3be47c473036b97121df607ffb911e2' as film_price_is_0239s,
+--     where oid = 'public.film_price(public.films)'::regprocedure) = '02016cc4a695a54c5693a5066247269b' as film_price_is_0239s,
 --   (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
 --     where oid = 'public.film_apply_settings(public.films, jsonb, text[])'::regprocedure) = '9a2ae594cb08df36973c7e656a7f1c9d' as film_apply_settings_is_0239s,
 --   (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc

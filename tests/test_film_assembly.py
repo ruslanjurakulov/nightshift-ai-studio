@@ -230,6 +230,21 @@ def fake_render(length_s, w, h):
     return render, calls, (lambda p: fa.Probed(length_s, w, h, True))
 
 
+LINEAR = {"target": {"I": -14.0, "TP": -1.0, "LRA": 11.0}, "measured": {"I": -16.0, "TP": -4.0, "LRA": 5.0, "thresh": -26.0},
+          "mode": "linear", "status": "linear", "result": {"I": -14.0, "TP": -2.0, "LRA": 5.0}}
+
+
+def fake_mix(loudness=None):
+    """film_mix.master without ffmpeg: the placeholder files here carry no sound to mix."""
+    calls = []
+
+    def mix(norm, cut, resolver, **kw):
+        calls.append(cut)
+        return fa.film_mix.Mixed(tracks=(), loudness=loudness or LINEAR, stem_shots=len((cut.sound or {}).get("stem", [])))
+    mix.calls = calls
+    return mix
+
+
 def fake_store_file(db: FakeDb, root: Path, proxy_bytes=1000, duration=6.0):
     def store_file(path, *, asset_id, org_id, store, media_root, tools, provenance, **kw):
         d = ml.asset_dir(media_root, asset_id)
@@ -255,7 +270,7 @@ class Base(unittest.TestCase):
                      asset_id=k["asset_id"], org=k["org_id"], kind="caption", mime="text/vtt", bytes=10, sha256="x",
                      source="generated", width=None, height=None, duration_s=None, provenance=k["provenance"],
                      derived_bytes=0, variants=[], parent_asset_id=None),
-                 has_audio=lambda p, m: False,
+                 has_audio=lambda p, m: False, mix=fake_mix(),
                  free_mb=lambda p: 1e9)
         d.update(kw)
         return fa.Deps(**d)

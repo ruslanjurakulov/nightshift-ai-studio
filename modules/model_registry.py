@@ -35,6 +35,7 @@ from modules.capabilities import ADAPTERS
 from modules.capabilities.base import (
     CAPTIONS,
     DESCRIBE,
+    MUSIC,
     DUB,
     ERASE,
     EXPAND,
@@ -570,6 +571,11 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
         if VIDEO_MUSIC in caps and not m["limits"].get("max_source_seconds"):
             # The vendor bills the video's seconds: without a documented longest input a length it refuses would be sold.
             errors.append(_err(mid, "video_music needs limits.max_source_seconds"))
+        if m["pricing"]["unit"] == "request" and not set(caps) <= {MUSIC, DESCRIBE}:
+            # BR-0228-01/02: 0228 quotes a per-request MUSIC model for one request, and every other capability by its own quantity
+            # (a region edit by its regions, a video op by its source's seconds). A per-request price on any other capability would
+            # be multiplied by that quantity, or by none: refused here until a migration says how such a model is quoted.
+            errors.append(_err(mid, "pricing.unit request is for music and describe models only"))
         if REGISTRY_ONLY_CAPABILITIES & set(caps):
             # The database's capability lists (0100) do not hold these. The entry is left out of the sync, so it must be
             # dark by its own fields too, and must not carry a capability the sync would then silently drop with it.
@@ -699,12 +705,13 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             # The country is read from the visitor's address (docs/GEO_BLOCK.md). The API and MCP sell to a server, whose
             # address says nothing about the person behind it, so a model sold by country is never offered there.
             errors.append(_err(mid, "blocked_countries needs api_exposure web_only"))
-        if m.get("blocked_countries") and not m.get("terms_gate"):
-            # The country is checked in the web routes only; a signed-in user can call create_creative_job and the workflow
-            # functions directly (docs/GEO_BLOCK.md "What it cannot do"). Until the database refuses by country, a model with a
-            # country list stays off sale: a terms_gate keeps it hidden (0035), and 0142 refuses beta/ga for it in the database too.
-            errors.append(_err(mid, "blocked_countries needs a terms_gate until the database checks the country"))
         allowed_in = m.get("available_countries")
+        if m.get("blocked_countries") and not m.get("terms_gate") and not allowed_in:
+            # Since 0208 the database refuses by country on every path (creative_jobs_geo_gate, one trigger on the table every
+            # create writes, with the signed geo claim), and since 0230 it reads the vendor's own allow-list. A deny-list alone still
+            # lets a code on neither list through (EU, ZZ: BR-S6-04), so 0238 lets a row with blocked_countries go on sale only when
+            # it also carries available_countries; the file holds the same line. Without one, a terms_gate keeps it hidden (0035).
+            errors.append(_err(mid, "blocked_countries needs available_countries (or a terms_gate) before the database lets it on sale (0238)"))
         if allowed_in and not m.get("blocked_countries"):
             # 0230 reads an allow-list only on a row with blocked_countries (0208's trigger skips any other): alone it gates nothing.
             errors.append(_err(mid, "available_countries needs blocked_countries"))

@@ -18,8 +18,11 @@ import {
 describe("navigation definitions", () => {
   it("lists every routed section, so no page is left without a breadcrumb label or tab title", () => {
     const hrefs = new Set(SECTION_ITEMS.map((i) => i.href.slice(1)));
-    // presets is a Studio sub-page (breadcrumb named in PageNav, rail kept lit by RAIL_SCREENS), not a nav item
-    for (const section of SECTIONS.filter((s) => s !== "presets")) expect(hrefs, section).toContain(section);
+    // presets is a Studio sub-page (breadcrumb named in PageNav, rail kept lit by RAIL_SCREENS), not a nav item.
+    // members stays a reserved section name (no channel may take the slug) but only redirects to Settings: the Team
+    // page is gone, so it has no label to show.
+    for (const section of SECTIONS.filter((s) => s !== "presets" && s !== "members")) expect(hrefs, section).toContain(section);
+    expect(hrefs.has("members")).toBe(false);
   });
 
   it("names Home in breadcrumbs and the tab title, though it has no rail icon", () => {

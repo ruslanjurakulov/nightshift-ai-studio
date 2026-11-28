@@ -4,12 +4,14 @@ import "server-only";
  * Agent Builder private drafts (migration 0130, docs/product/AGENT_NODE_BUILDER.md): the web half's switch and how a refusal of the
  * two database functions is answered.
  *
+ * Operators only until launch, in three places that agree: the page (guardOperatorPage), every route (requireOperator, asked FIRST,
+ * so a customer gets the same 403 whatever the switch says and cannot learn its state), and the database (migration 0234: both draft
+ * functions raise operator_only unless is_platform_admin(), so a direct PostgREST call with the browser key is refused too).
+ *
  * NIGHTSHIFT_AGENT_DRAFTS_ENABLED — a server env var, default OFF. On for `on`, `1`, `true` or `yes` (any case, surrounding spaces
  * ignored), like the repository's other release switches (lib/server/release-flags.ts). Read on every request, never at import. Off:
- * every /api/agent-builder/drafts route answers the public 404 before it reads the session or touches the database.
- *
- * This hides the doors only. Once 0130 is applied, a signed-in user can call save_agent_workflow_draft() and
- * delete_agent_workflow_draft() through PostgREST with the browser key whatever this says, within the database's own limits.
+ * an operator gets the public 404 before the session's drafts or the database are touched. The switch and the role are two locks,
+ * and neither opens the routes alone.
  */
 export const AGENT_DRAFTS_FLAG = "NIGHTSHIFT_AGENT_DRAFTS_ENABLED";
 
@@ -32,6 +34,9 @@ export function draftRpcFailure(error: DraftRpcError): { status: number; error: 
   if (message === "agent_draft_too_large") return { status: 413, error: "payload_too_large" };
   if (code === "22023") return { status: 400, error: "invalid_agent_draft" };
   if (message === "not_authenticated") return { status: 401, error: "unauthorized" };
+  // 0234: the database says this session is not a platform operator (the route asked requireOperator first, so this is a role
+  // revoked between the two reads, or a lookup that disagreed): the same 403 the route gives, never a 503 outage.
+  if (message === "operator_only") return { status: 403, error: "forbidden" };
   return { status: 503, error: "drafts_unavailable" };
 }
 

@@ -3098,6 +3098,42 @@ BR-S6-03; the web half is PR #951.
 - **Tests.** `tests/test_geo_gate_allow_list_migration.py`, `tests/security/test_sec_geo_allowlist_0230.py` and
   `tests/security/test_sec_geo_allowlist_0230_breach.py` (a real PostgreSQL; contract `tests/security/sec_geo_allowlist_0230.py`),
   `command-center/tests/geo-block.test.ts`.
+
+## The Agent Builder draft functions serve platform operators only (0234)
+
+0234 (`0234_agent_drafts_operator_only.sql`, BR-S8-01 in `docs/security/LEDGER.md`) is the database half of the owner's decision of
+28 Nov that the Agent Builder is operators-only until launch; the web half (the page's `guardOperatorPage`, the four routes'
+`requireOperator`) is PR #960. Live on apply: a signed-in person who is not a platform owner or admin can no longer save or delete a
+draft through the database. No draft is deleted, and owners still read what they saved (0130's policies are not touched), but a non-operator can no
+longer delete a draft saved before 0234.
+
+- **The finding.** Both 0130 functions check only sign-in, so any authenticated non-admin saved and deleted drafts straight through
+  PostgREST with the browser key, whatever the web gate said (Breach, in the lab). Revoking EXECUTE from `authenticated` is not the
+  fix: both bind to `auth.uid()`, and the operator's own route calls them with the browser key.
+- **The change.** Both bodies, 0130's verbatim, with one marked check right after the sign-in check: unless
+  `public.is_platform_admin()` (0018; the function the Command Center's `isOperator()` asks) is true, `operator_only` with SQLSTATE
+  42501 (0130's code for `not_authenticated`). NULL is no; an error inside the lookup aborts the call. Refusal order:
+  `not_authenticated` -> `operator_only` -> 0130's own checks. `draftRpcFailure` answers `operator_only` as 403 `forbidden`.
+- **Grants unchanged.** EXECUTE for `authenticated` only, exactly 0130's, stated again and asserted by the end state.
+- **Replaces** `save_agent_workflow_draft(uuid, integer, jsonb)`: 0130's `c5175b042a9118080b0d4f12906c202d` -> 0234's
+  `a95607774a410e65ccdefb1989557946`; `delete_agent_workflow_draft(uuid)`: 0130's `7b72f3679d8e9de439d753738f8b66bc` -> 0234's
+  `5a506ee8e5b1fd93419b2fce831e3093` (0230's fingerprint: `--` comments cut, then white space folded). Folded only, as
+  `rollback_0130` pins them: save `7fe9d1359748e6e311f95678843a6b2e` -> `3ec1e1922060eb771bf57be879d5bfb2`, delete
+  `ef7540b121198f0b79cde9f8975a5c95` -> `2f7e029a513675feeed6aded38622c63`. Refuses any other body, and refuses without 0130 or
+  0018's `is_platform_admin()`. No backslash in the file.
+- **Replay.** The guard accepts 0234's own bodies: a second run writes the same bodies. Replaying 0130 is not possible (it is not
+  idempotent: it stops at its first CREATE TABLE).
+- **`rollback_0130` now refuses** (its guard pins 0130's bodies): apply `rollback_0234` first. The lab's `take_off_0234` /
+  `put_back_0234` (`tests/security/sec_db.py`) do that around the 0130 rollback test.
+- **Number.** 0234, assigned by Atlas (0233 is taken). Needs 0130 and 0018. Independent of 0230.
+- **Undo.** `docs/sql/rollback_0234_agent_drafts_operator_only.sql` (owner-applied): refuses a body that is neither 0234's nor
+  0130's, puts 0130's bodies back verbatim and asserts them and the grants. BR-S8-01 is then open again (the routes still refuse
+  non-operators).
+- **Tests.** `tests/test_agent_drafts_operator_only_migration.py`, `tests/security/test_sec_agent_drafts_operator_only_0234.py` (a
+  real PostgreSQL), `tests/security/test_sec_agent_workflow_drafts.py` (0130's guards, each caller made a platform admin for its
+  rolled-back transaction), `command-center/tests/agent-builder-operator-gate.test.tsx`, `agent-drafts-route.test.ts` and
+  `security-agent-builder-gate-breach.test.tsx`.
+
 ## Only a member spends a workspace's credits, on every path (0226, provisional)
 
 0226 (`0226_org_spender_everywhere.sql`) applies the owner's decision of 22 Nov, which 0215 applied to the film paths, to every other
@@ -3212,6 +3248,142 @@ are replaced, each with marked 0231 hunks, and one policy is added.
 - **Lab.** `tests/security/test_sec_cancel_audit_0231.py` (Breach's round-3 and round-4 pins, the four callers, the reserved key
   namespace, the migration's guard, replay and rollback, sec_db's chain).
 
+## The database knows `music`, and a model priced per request is quoted for one request (0228)
+
+0228 (`0228_music_per_request_price.sql`, stream S6) is **live on apply**. It writes no row and grants nothing, and it puts nothing
+on sale.
+
+- **What it changes.**
+  - `music` is added to 0100's `model_registry_capabilities_check` and `model_probe_runs_capability_check`. That is the only value
+    added.
+  - `creative_params_problem` is 0218's body plus one hunk: music may come without `duration_s`. A duration that is given is still
+    held to 1..60.
+  - `creative_price` is 0224's body plus one hunk, right after the quantity is read, for **music only**:
+    - a music model whose `spec.pricing.unit` is `request` is quoted for a quantity of 1;
+    - **hunk 3**: a music quote with no duration on any other music model is refused with the word `invalid_params` and the detail
+      "<model> is sold by the second: duration_s (a whole number of seconds from 1 to 60) is required". The Studio shows the
+      `invalid_params` copy in en/ru/uz (`lib/i18n/{en,ru,uz}.ts`, the quote refusal reasons); the API and MCP pass the detail.
+  - Every other capability is quoted exactly as 0224 quotes it. BR-0228-01/02: a first build applied the quantity of 1 to every
+    per-request model, before the longest-input checks. A per-request video op would then have skipped `max_source_seconds`, and
+    a 3-region edit would have been quoted as one request (the worker calls the vendor 3 times, and `finish_creative_job` then
+    charges 0). The registry validator also allows `pricing.unit = "request"` only for music and describe.
+- **Why.** Google Lyria 3.5 is "$0.08 per song" and has no duration field (docs/research/lyria-3-5.md). Before 0228, music could only
+  be asked a duration and billed by the second.
+- **Order (enforced).** Apply after S10's 0224 (#945). The drift guard accepts only:
+  - `creative_price` `ea2b58e88fe34ae18b261e5a0fbef435` (0218 plus 0224's line) and `creative_params_problem`
+    `cb7ad6cd459f31259445bedd1a4a0c88` (0218);
+  - or its own bodies on a replay: `33bb0ea77aedd1ffc3df339034adc6d3` and `0570bb5a1f749b7e3d556c87443bf17b`.
+
+  On 0218's `creative_price` alone it refuses and names 0224.
+- **Nothing on sale.**
+  - No credit price is seeded: a music quote is `unpriced` until the owner sets one, after a passing probe and the legal sign-off.
+  - The code keeps `music` in `REGISTRY_ONLY_CAPABILITIES`, so the sync never writes a music row before this file is live. A later
+    small PR removes it once 0228 is confirmed live.
+  - Lyria's registry entry also carries `terms_gate`, `web_only` and `requires_adult`. A vocal-activity check on the returned MP3
+    is a condition of sale that does not exist yet.
+- **Backslash-free.** The `creative_price` body is written with `@@0228_BACKSLASH@@` and put back with `chr(92)`, which is 0224's
+  technique. The end state checks the md5 of what results.
+- **Rollback.** `docs/sql/rollback_0228_music_per_request_price.sql` (owner-applied):
+  - it puts 0218's `creative_params_problem` and 0224's `creative_price` back byte for byte, and takes `music` out of both checks;
+  - it refuses while a `model_registry` row or a `model_probe_runs` row names music. Probe results are append-only, so after a
+    music probe has been recorded the value cannot be taken out again; that is the owner's decision, never the rollback's;
+  - it is harmless where 0228 is not on.
+- **Lab.**
+  - `tests/security/test_sec_music_per_request_0228.py`, with the contract in `tests/security/sec_music_per_request_0228.py`;
+  - `sec_db.take_off_0228` and `put_back_0228` run inside the 0218 chain: `take_off_0224` (and `rollback_0224_body`) take 0228
+    off first, and `put_back_0224` puts it back last.
+  - Static: `tests/test_music_per_request_migration.py`.
+- **Verify** (the SQL editor): the query at the end of the file. Every column should read true.
+
+## Nobody changes the platform roster from a browser (0233)
+
+0233 (`0233_platform_roster_closed.sql`, BR-L-213 in `docs/security/LEDGER.md`) follows the owner's decision that the site has two
+kinds of people, the owner/operator and users, each user owning their own workspace. 0091 closed the workspace side
+(`org_members`). The Command Center's Team page (`/members`, the operator's roster) is gone in the same PR, and this file closes the
+database doors it used.
+
+- **The finding.** In the security lab with every migration up to 0230, `authenticated` could execute `owner_add_member`,
+  `owner_set_member_role` and `owner_remove_member` (0107) and had INSERT, UPDATE and DELETE on `app_members`, with 0007's write
+  policies and 0018's empty-roster bootstrap policy deciding. A signed-in platform owner or admin could still mint an admin or an
+  owner, change a role or remove a person with one REST call, and the direct writes skipped 0107's last-owner, self-change and
+  owner-only checks (BR-S-024, BR-S-029).
+- **Change.** Privileges only. EXECUTE on the three functions is revoked from public, anon and authenticated (0107 had already
+  revoked it from service_role); INSERT, UPDATE and DELETE on `app_members` from anon and authenticated. SELECT stays
+  (`platform_role`, Approvals). Nothing is dropped or replaced: the policies stay and decide nothing without the privilege, RLS stays
+  on, `bind_current_member()` still links a confirmed account to a row the operator added, and every role check in RLS and SQL is
+  unchanged (every user is the owner of their own workspace). Credits, spend and publishing are untouched; friend invites (0092) and
+  referrals are a credits program, not membership, and are untouched.
+- **End state.** The file refuses its whole transaction when any API role can still execute a roster function or write
+  `app_members`, when `authenticated` lost SELECT, when RLS is off, and when 0091's half is open again (org_members writes, or the
+  four invite functions): that message says "apply 0091 again, then this file". It refuses to apply without 0007 or 0107.
+- **Owner step.** None in the app. The operator's roster is changed in the SQL editor from now on
+  (`insert into public.app_members (email, role) values (...)`; keep at least one bound owner with a confirmed address). A fresh
+  project's first owner inserts their own row as `'owner'`, bound to their auth user:
+  `insert into public.app_members (user_id, email, role) select id, email, 'owner' from auth.users where lower(email) = lower('<address>');`
+  (an email-only row binds only once the address is confirmed, 0043; the first row ends the empty-roster owner fallback).
+- **Replay.** Revokes and a read-only check: replay-twice safe. Re-applying 0007, 0018 or 0107 alone re-grants what it revokes;
+  apply 0233 again after them (the lab's `put_back_0233`).
+- **Number.** 0233, assigned for this PR. Needs 0007, 0091 and 0107. Independent of 0224, 0226, 0227, 0230, 0231 and 0232.
+- **Undo.** `docs/sql/rollback_0233_platform_roster_closed.sql` (owner-applied) re-grants exactly what 0233 revoked and asserts it.
+  BR-L-213 is then open again.
+- **Tests.** `tests/test_platform_roster_closed_migration.py`, `tests/security/test_sec_roster_closed_0233.py` (a real PostgreSQL;
+  contract `tests/security/sec_platform_roster_0233.py`). The 0107 tests of the roster functions' own checks
+  (`tests/security/test_sec_owner_safety.py`) take 0233 off inside their rolled-back transaction, since those checks are what a later
+  re-grant would rely on. `tests/security/test_sec_friend_invites.py` pins that a counted friend-invite join adds nobody to a
+  workspace or the roster.
+
+## A model with a country list may go on sale with its vendor's allow-list, behind 0230's gate (0238)
+
+0238 (`0238_country_list_sale_needs_allow_list.sql`, stream S10) replaces 0142's CHECK `model_registry_countries_before_sale`
+(same name) and changes no row. It opens nothing for sale.
+
+- **Owner decision, 2026-11-28 (relayed by Atlas).** Google's image terms are cleared for `gemini-3-pro-image` and
+  `gemini-nano-banana-2.1`: the Gemini API Additional Terms, Age Requirements and Use Restrictions ("18+", "not for consumer use"),
+  and Google Cloud Service Terms §20.d ("not for services likely used by under-18s"). The owner's reasoning: the 18+ attestation
+  (0192) is asked of every user, Europe included, so the responsibility does not fall on us. The decision covers only those
+  clauses. Still OPEN: Cloud Service Terms §17.a (competing products) and Google APIs Terms of Service §4(a) (sublicensing), which
+  is why `api_exposure` stays `web_only`. In `schemas/model_registry.json` both rows lose `terms_gate` (now null) and gain a dated
+  `terms_notes` record of the decision. `requires_adult`, both country lists, `api_exposure`, pricing and availability (`hidden`,
+  the database's) are unchanged. No credit price is added. They are NOT marked `operator_preview` (below).
+- **Evidence.** 0142 kept every row with `blocked_countries` off sale because the database did not know the country. 0208's
+  `creative_jobs_geo_gate` (one trigger on the table every create writes, with the signed geo claim) and 0230's allow-list read
+  answer that for a row with `available_countries`. They do not for a deny-list-only row (a code on neither list passes it,
+  BR-S6-04), so such a row must stay off sale.
+- **The CHECK.** `availability not in ('beta','ga')`, or no (or an empty or JSON null) `blocked_countries` (0142's rule), or a
+  non-empty JSON array `available_countries` (0238). The allow-list test is wrapped in `coalesce(..., false)`: a CHECK passes on
+  NULL, and without it a row with no allow-list would pass (the lab caught that).
+- **Apply-time guard.** Refuses unless `creative_jobs_geo_gate()` is 0230's body (`6a7b6f2b075c4775ee83808932f88bd0` by 0230's
+  comment-cut fingerprint, and `6d28388da6b6b927b0da500524fe0325` folded only), `geo_claim_country()` is 0208's
+  (`6cb8abcd7ab3dff8fb2a4ce33afa58d6`), the gate is SECURITY DEFINER with a pinned search_path, and the trigger
+  `creative_jobs_geo_gate` is on `creative_jobs`, on that function, enabled, BEFORE, FOR EACH ROW, on INSERT and UPDATE. It
+  names any deny-list-only row already on sale (possible only where 0142 was rolled back) instead of a bare 23514. No backslash.
+- **Other refusals, read and unchanged.** 0142 has nothing besides the CHECK (its end-state `position()` checks still match 0238's
+  definition). 0173, 0194 and 0195 refuse country-listed rows only while they apply, for fixed model lists. 0191's and 0219's
+  assistant checks answer `not_offered` for any row with `blocked_countries` (no visitor address). `sellable_models` has no
+  country clause. 0035's `terms_before_sale` still refuses a terms-gated row.
+- **Order of undoing.** The CHECK reads the row, not the gate. Take every country-listed row off sale, apply
+  `docs/sql/rollback_0238_country_list_sale_needs_allow_list.sql`, then roll back 0230 or 0208. Since 0238,
+  `rollback_0230_geo_gate_allow_list.sql` and `rollback_0208_geo_gate_and_image_size_price.sql` refuse (and name the rows) while a
+  country-listed row is on sale. A later migration that replaces `creative_jobs_geo_gate` must keep the allow-list read or take
+  such rows off sale first.
+- **Replay.** Drop and add: a replay changes nothing. A replay of 0142 puts 0142's definition back over 0238's; apply 0238 again.
+- **Undo.** `docs/sql/rollback_0238_country_list_sale_needs_allow_list.sql` (owner-applied): refuses while any row with
+  `blocked_countries` is `beta`/`ga`, then puts 0142's CHECK back verbatim and asserts it.
+- **Why not an operator preview (measured in the lab, 2026-11-28).** Both rows are priced by `image_size`, and creative_price
+  (0208's rule, 0224's body) quotes a size-priced preview with no per-size `credit_prices` row (`model_<id>_image_1k` ...) as
+  `unpriced`: 0139's vendor-cost fallback reads no size variant. With the mark added in the lab, a quote by the platform operator
+  in the exempt organization, `image_size` 1K, answered `NS400 unpriced` for both. Marking them would list two dead ends in the
+  operator's Studio, which `tests/test_preview_price_by_quality_migration.py` (NoPreviewIsADeadEnd) and
+  `tests/test_preview_price_by_resolution_migration.py` refuse. The way forward is a later migration that extends the preview
+  fallback to sizes, as 0149 and 0153 did for resolution and quality, or a per-size price set by the owner; then the mark. Separately, a Film Studio take, a workflow step carried on by another member's page, the API and MCP
+  carry no visitor, so the gate refuses them for these rows (`country_unverified`, 0208): a film's key frames on these models are
+  refused even once priced, until a take carries a claim, and Film's own model check needs S2's 0235 (not on main). Opening for
+  sale (`beta`/`ga` plus a `credit_prices` row) stays the owner's act.
+- **Owner steps.** Apply 0238 (after 0230), then `python tools/probe_models.py --sync` (spends nothing) to copy the registry.
+  The two rows now have no terms gate, so `--all` in the Probe models workflow includes them: one paid call each.
+- **Tests.** `tests/test_country_sale_allow_list_migration.py`, `tests/test_geoip_build.py` (`RegistryField`),
+  `tests/test_google_requires_adult.py`, `tests/security/test_sec_country_sale_0238.py`, `tests/security/test_sec_country_block.py`.
+
 ## Film Studio: the operator's preview models (0235, provisional)
 
 0235 (`0235_film_operator_preview.sql`) lets the platform operator use an operator-preview model (0139: a `hidden` row whose spec
@@ -3267,12 +3439,42 @@ allows it. Nothing changes for any customer. Dark until the registry marks a row
 - **Tests.** `tests/test_film_operator_preview_migration.py`, `tests/test_creative_model_recheck.py` (the worker's recheck),
   `tests/security/test_sec_film_operator_preview_0235.py` (a real PostgreSQL; contract `tests/security/sec_film_operator_preview_0235.py`).
 
+## Film clip sound: refused until the cut keeps it (0236, provisional)
+
+0236 (`0236_film_clip_sound_gate.sql`) closes Breach BR-SG-01 (S1). On main, `modules/film_timeline.py` dropped a clip's own sound,
+while 0218's `film_price` sold the priced sound option (`clip_params.audio = true`: kling-v3, seedance-1.5-pro) at its with-sound
+rate: the person paid for sound the film never played.
+
+- **The switch**: `film_studio_settings.clip_sound_kept`, a new column on 0171's one-row switch table, boolean, **default false**.
+  No API role reads or writes the table (0171's grants, said again; RLS on). The owner writes it from the SQL editor.
+- **`film_price`** replaced on 0235's body (`186d34ff…`: 0218's plus 0235's org-aware model checks) -> `af0fb80cce8e92fd2360aa6d5366a942`
+  (white space folded), with one
+  six-line hunk, every line marked `-- 0236`: while the switch is off, each clip line of a scene asking for clip sound is
+  `clip_sound_not_kept` ("scene N: clip sound is not yet kept in the final film; turn the scene's sound option off"), unpriced, so
+  the total is NULL. quote_film, start_film and the resume paths inherit it, so the refusal is server-side on every path;
+  `/api/films/[id]/start` answers the same word, with its sentence in `lib/i18n/studio-timeline/{en,ru,uz}.ts`. `film_precheck`
+  is not replaced (start_film always reaches `film_price`).
+- **`film_assembly_retryable`** replaced on 0215's body (`82ec51da…` -> `88a312d28e63be043796bcc86f024164`) with one marked
+  two-line hunk: `sound_mix_failed` and `asset_unprobed` (the S2 assembly's transient words, whose remedy is "retry the assembly")
+  are retryable, so `rerun_film_assembly` makes them again. `clip_without_sound` (re-shoot) stays not retryable. 0215's replay and
+  rollback refuse 0236's body: `sec_db.take_off_0215` takes 0236 off first and `put_back_0215` puts it back.
+- **Owner step, in this order**: deploy the media worker carrying the S2 clip-sound fix (`CLIP_SOUND_IN_CUT = True` in
+  `modules/film_timeline.py`, `modules/film_mix.py`), then `update public.film_studio_settings set clip_sound_kept = true,
+  updated_at = now() where id;`. Turning it on earlier sells sound a running worker still drops.
+- **Order**: 0235 -> 0236 -> 0239 -> 0240 (Atlas). 0236 refuses 0218's `film_price` ("apply 0235 first") and any body but 0235's
+  or its own. The lab: `take_off_0235` takes 0236 off first, `put_back_0235` puts it back, `rollback_0235_if_on` starts with 0236's.
+- **No backslash** in the file or its rollback: 0218's one backslash goes through `chr(92)`.
+- **Lab**: `tests/security/test_sec_film_clip_sound_0236.py`; `sec_db.take_off_0236` / `put_back_0236` ride on
+  `take_off_0218` / `put_back_0218` / `rollback_0218_if_on`.
+- Rollback: `docs/sql/rollback_0236_film_clip_sound_gate.sql` (0235's and 0215's bodies back byte for byte, the column dropped).
+
 ## Film Studio: a key frame is quoted the way it is made (0239, provisional)
 
 0239 (`0239_film_keyframe_refs_quote.sql`) makes `film_price` ask the questions a key-frame take and the worker really ask, so that a
 film is refused at the quote, by name, instead of being priced, held at Start and refused at its first key frame. **It depends on
-0235 being applied first** (its bodies are 0235's plus hunks marked `-- 0239`), and it replaces neither `start_film` nor
-`film_take_job`.
+0235 and then 0236 being applied first** (order 0235 -> 0236 -> 0239 -> 0240): its `film_price` is 0236's plus hunks marked
+`-- 0239` (0236's clip-sound hunk kept as it is), its `film_apply_settings` and `film_save_scenes` 0235's (0236 does not touch them).
+It replaces neither `start_film` nor `film_take_job`.
 
 - **The findings (Breach, lab; `tests/security/test_sec_breach_0235_refs_take.py`).** B1: an edit-only model (live:
   `krea-3-regional`) was accepted as the key-frame model and priced on edit, but `film_take_job` makes key frames as t2i only. B2: the
@@ -3285,7 +3487,7 @@ film is refused at the quote, by name, instead of being priced, held at Start an
 - **The change (SQL).** `film_apply_settings` (`f5cdf963343a4b722333eaf0d13bd840` -> `9a2ae594cb08df36973c7e656a7f1c9d`) and
   `film_save_scenes` (`d2d32abea21beb742eea14d92ad6e9fd` -> `4115ba8800b1b1a702585267d27af17c`): a key-frame model must be on sale
   for t2i (`model_not_available`, "choose a key-frame model that makes a picture from words"). `film_price`
-  (`186d34ffb633bc56a91bbf617b0b7520` -> `a3be47c473036b97121df607ffb911e2`): the same refusal for a film saved before; more than 16
+  (0236's `af0fb80cce8e92fd2360aa6d5366a942` -> `02016cc4a695a54c5693a5066247269b`): the same refusal for a film saved before; more than 16
   references `refs_not_supported`; a reference character with a picture no longer in the library `reference_missing`; and the style
   path, the worker's arithmetic in SQL: the slots the film's references leave (only when the model lists t2i in
   `inputs.ref_capabilities`), the kit and mentioned characters read as `creative_job_style` reads them, picked in turns as
@@ -3301,8 +3503,10 @@ film is refused at the quote, by name, instead of being priced, held at Start an
 - **Not covered (named in the header).** The prompt the style descriptions lengthen (0218's residual); a kit or character changed
   after Start other than the film references' count; a kit with more pictures than the slots left is sent its first ones (0048's
   design).
-- **Owner steps.** Apply 0235 first, then 0239 (one transaction; the header's read-only check first), and deploy the worker with it.
-- **Undo.** `docs/sql/rollback_0239_film_keyframe_refs_quote.sql` (owner-applied): refuses a body that is neither 0239's nor 0235's,
-  puts 0235's three bodies back byte for byte. Run it before rolling back or replaying 0235 (the lab's `take_off_0235` does).
+- **Owner steps.** Apply 0235, then 0236, then 0239 (each one transaction; 0239's header has a read-only check), and deploy the
+  worker with it.
+- **Undo.** `docs/sql/rollback_0239_film_keyframe_refs_quote.sql` (owner-applied): refuses a body that is neither 0239's nor its
+  predecessor's, puts 0236's `film_price` and 0235's two save bodies back byte for byte. Run it before rolling back or replaying 0236
+  or 0235 (the lab's `take_off_0236`, which `take_off_0235` reaches, does).
 - **Tests.** `tests/test_film_keyframe_refs_quote_migration.py`, `tests/test_film_keyframe_refs_worker.py`,
   `tests/security/test_sec_film_keyframe_refs_quote_0239.py`, `tests/security/test_sec_breach_0235_refs_take.py`.

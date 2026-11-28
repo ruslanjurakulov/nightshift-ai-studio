@@ -22,6 +22,7 @@ import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
 import { fmt } from "@/lib/i18n/core";
 import { CreateStudio } from "@/components/create/CreateStudio";
+import { createPipelineOptions } from "@/lib/server/pipeline-options";
 
 const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }));
 
@@ -43,7 +44,7 @@ afterEach(() => {
 const show = (language: string, locale: Locale = "en") =>
   render(
     <I18nProvider locale={locale}>
-      <CreateStudio channelId="chan-a" githubConfigured agentConfig={null} canRun operator dna={{ language, voice: "", duration: "", href: "/x" }} />
+      <CreateStudio channelId="chan-a" githubConfigured agentConfig={null} canRun operator pipeline={createPipelineOptions()} dna={{ language, voice: "", duration: "", href: "/x" }} />
     </I18nProvider>,
   );
 

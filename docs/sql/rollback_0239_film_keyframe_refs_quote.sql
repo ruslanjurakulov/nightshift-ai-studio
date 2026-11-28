@@ -1,16 +1,16 @@
 -- rollback_0239_film_keyframe_refs_quote.sql — takes migration 0239 (a film's key frame quoted the way it is made) out again.
 -- OWNER-APPLY: paste into the Supabase SQL editor, as one transaction. Nothing in the app runs it. Idempotent.
 --
--- WHEN YOU NEED IT. If 0239 refuses a film it should price, or before the rollback (or a replay) of 0235: it refuses a body that is
--- not its own, and this file replaced film_price, film_apply_settings and film_save_scenes (0235's).
--- WHAT COMES BACK, byte for byte (md5 of prosrc with white space folded): film_price 0235's 186d34ffb633bc56a91bbf617b0b7520, film_apply_settings
+-- WHEN YOU NEED IT. If 0239 refuses a film it should price, or before the rollback (or a replay) of 0236 or 0235: each refuses a body
+-- that is not its own, and this file replaced film_price (0236's) and film_apply_settings and film_save_scenes (0235's).
+-- WHAT COMES BACK, byte for byte (md5 of prosrc with white space folded): film_price 0236's af0fb80cce8e92fd2360aa6d5366a942, film_apply_settings
 --   0235's f5cdf963343a4b722333eaf0d13bd840, film_save_scenes 0235's d2d32abea21beb742eea14d92ad6e9fd, each with its grants (none: no API
 --   role).
 -- WHAT IT DOES: 0. REFUSES (changes nothing) if any of the three bodies is neither 0239's nor the one 0239 was written on. 1. Puts the four
 --   bodies back. 2. Asserts it.
 -- Afterwards the holes 0239 closed are open again (an edit-only key-frame model, style pictures beside film references, a deleted
 --   character picture, more than 16 references are priced and refused at the take, charged 0). The worker's changes are code, not SQL:
---   they stay, and are safe on 0235's film_price (fewer style pictures, and a take above the model's limit failed before the call).
+--   they stay, and are safe on 0236's film_price (fewer style pictures, and a take above the model's limit failed before the call).
 -- No backslash anywhere in this file: film_price's one backslash is written @@0239_BACKSLASH@@ and put back with chr(92).
 
 begin;
@@ -25,7 +25,7 @@ begin
     select * from (values
       ('public.film_apply_settings(public.films, jsonb, text[])', 'f5cdf963343a4b722333eaf0d13bd840', '9a2ae594cb08df36973c7e656a7f1c9d', '0235'),
       ('public.film_save_scenes(public.films, jsonb)', 'd2d32abea21beb742eea14d92ad6e9fd', '4115ba8800b1b1a702585267d27af17c', '0235'),
-      ('public.film_price(public.films)', '186d34ffb633bc56a91bbf617b0b7520', 'a3be47c473036b97121df607ffb911e2', '0235')
+      ('public.film_price(public.films)', 'af0fb80cce8e92fd2360aa6d5366a942', '02016cc4a695a54c5693a5066247269b', '0236')
     ) v(sig, was, now_, src)
   loop
     select md5(regexp_replace(x.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc x where x.oid = to_regprocedure(r.sig);
@@ -398,7 +398,7 @@ end
 $$;
 revoke all on function public.film_save_scenes(public.films, jsonb) from public, anon, authenticated, service_role;
 
--- 0235's body, its one backslash put back with chr(92).
+-- 0236's body, its one backslash put back with chr(92).
 do $fp$
 begin
   execute replace($fp0239$create or replace function public.film_price(p_film public.films) returns jsonb
@@ -518,6 +518,12 @@ begin
     select m.spec into spec from public.model_registry m where m.id = cmodel;
     -- 0235: the film's organization, so a platform admin's operator preview in the exempt organization passes (and nobody else's).
     bad := case when cmodel is not null then public.film_model_problem(cmodel, array['i2v'], label || ' clip_model', f.org_id) end;
+    -- 0236: while the cut drops a clip's own sound (BR-SG-01), the priced sound option is refused by name, not sold to be dropped.
+    if bad is null and sc.clip_params -> 'audio' = 'true'::jsonb  -- 0236
+       and not coalesce((select s.clip_sound_kept from public.film_studio_settings s where s.id), false) then  -- 0236
+      bad := jsonb_build_object('priced', false, 'reason', 'clip_sound_not_kept',  -- 0236
+                                'detail', format('%s: clip sound is not yet kept in the final film; turn the scene''s sound option off', label));  -- 0236
+    end if;  -- 0236
     target := ceil(sc.planned_seconds::numeric / sc.shot_count);
     select min(x::numeric) filter (where x::numeric >= target), max(x::numeric) into dur, longest
       from jsonb_array_elements_text(case when jsonb_typeof(spec -> 'durations_s') = 'array' then spec -> 'durations_s'
@@ -669,7 +675,7 @@ begin
     select * from (values
       ('public.film_apply_settings(public.films, jsonb, text[])', 'f5cdf963343a4b722333eaf0d13bd840', false),
       ('public.film_save_scenes(public.films, jsonb)', 'd2d32abea21beb742eea14d92ad6e9fd', false),
-      ('public.film_price(public.films)', '186d34ffb633bc56a91bbf617b0b7520', false)
+      ('public.film_price(public.films)', 'af0fb80cce8e92fd2360aa6d5366a942', false)
     ) v(sig, want, service)
   loop
     fn := to_regprocedure(r.sig);

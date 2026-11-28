@@ -5,6 +5,7 @@
  * here ever starts, retries or prices anything (rule 3): the view only reads.
  */
 import { chosenClip, chosenKeyframe, chosenShots, coerceTimelineFilm, narrationTake, type TakeMedia, type TimelineFilm } from "@/lib/studio/timeline";
+import { coerceMasterSound, type MasterSound } from "@/lib/studio/masterSound";
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
 const num = (v: unknown): number | null => {
@@ -18,12 +19,13 @@ const oneOf = <T extends string>(v: unknown, xs: readonly T[]): T | null => (typ
  * - waiting: in the plan, not started yet (a planned or queued row, or no row while the project has not reached it)
  * - working: a row says it is running now
  * - done / failed / skipped: a row says so
+ * - retried: its first attempt failed and the retry (attempt + 1) is queued but has not begun
  * - stopped: it was running when the whole run ended without finishing it
  * - unknown: what it is cannot be read (a missing table, an unreadable answer, a run whose events are not here)
  * - none: not part of this plan (no music chosen, no voice asked for)
  * - draft: planned in the conversation, before Create: nothing runs, no lamp (the brief, not the database)
  */
-export type LiveStatus = "draft" | "waiting" | "working" | "done" | "failed" | "skipped" | "stopped" | "unknown" | "none";
+export type LiveStatus = "draft" | "waiting" | "retried" | "working" | "done" | "failed" | "skipped" | "stopped" | "unknown" | "none";
 
 export type FilmNodeKind = "idea" | "script" | "keyframe" | "clip" | "voice" | "music" | "assembly" | "final" | "character" | "location" | "prop";
 export type RunNodeKind = "topic" | "research" | "script" | "voice" | "visuals" | "render" | "gate" | "upload";
@@ -51,6 +53,8 @@ export interface LiveNode {
   error?: string | null;
   /** upload: the privacy the uploader recorded (video.published metadata), or null when it was not recorded. */
   privacy?: string | null;
+  /** final: what the finished file records about its sound (lib/studio/masterSound.ts); unknown when not recorded. */
+  sound?: MasterSound;
   /** Draft nodes: the price the backend already gave for this step, or null (no number is guessed). */
   price?: number | null;
   /** Draft reference nodes: the generated reference picture, once there is one. */
@@ -114,14 +118,21 @@ export type TakeMoney = ReadonlyMap<string, LiveCredits>;
 /** Per take id, its stored error word. */
 export type TakeErrors = ReadonlyMap<string, string>;
 
+/** Per take id, film_takes.charge_basis (0171), when the route could read it. */
+export type TakeBases = ReadonlyMap<string, string>;
+
 export interface FilmReading {
   film: TimelineFilm;
   /** Null: film_segments could not be read (0171 not applied, or the read failed), so the assembly is unknown. */
   segments: LiveSegment[] | null;
   money: TakeMoney;
   errors: TakeErrors;
+  /** film_takes.charge_basis per take; absent when the column could not be read (then a superseded sibling is read as 0171's retry). */
+  bases?: TakeBases | null;
   /** films.pause_reason: where the worker records why a segment's assembly failed (S6's contract). */
   pauseReason?: string | null;
+  /** The newest master's sound record (the live route's `master`), for the final node. Undefined or null: unknown. */
+  master?: { assetId: string; sound: MasterSound } | null;
   /** film_json's events (0166 film_events, the newest 50) as raw rows: filmGraph numbers their scenes. */
   rawEvents?: { rows: Record<string, unknown>[]; total: number | null } | null;
 }
@@ -152,6 +163,20 @@ export interface Activity {
 
 const KIND_WORD = /^[a-z][a-z_]{0,30}$/;
 
+/**
+ * Two film_events lines recorded in the same instant, in the order the database wrote them: `f:<id>` compared as numbers (the id is
+ * a bigserial, and as strings f:1000 sorts before f:999), any other key as a string after them. The Activity panel and the live
+ * lane's log (lib/studio/liveLane.ts) both sort with this, so they never disagree on the order.
+ */
+export function compareEventIds(a: string, b: string): number {
+  const na = /^f:\d{1,15}$/.test(a) ? Number(a.slice(2)) : null;
+  const nb = /^f:\d{1,15}$/.test(b) ? Number(b.slice(2)) : null;
+  if (na !== null && nb !== null) return na - nb;
+  if (na !== null) return -1;
+  if (nb !== null) return 1;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function filmActivity(raw: { rows: Record<string, unknown>[]; total: number | null }, sceneNo: Map<string, number>): Activity {
   const items: ActivityItem[] = [];
   for (const e of raw.rows) {
@@ -164,7 +189,7 @@ function filmActivity(raw: { rows: Record<string, unknown>[]; total: number | nu
     const sceneId = str(e.scene_id);
     items.push({ id: `f:${id}`, at, word, scene: sceneId ? sceneNo.get(sceneId) ?? null : null, kind });
   }
-  items.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.id.localeCompare(b.id));
+  items.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || compareEventIds(a.id, b.id));
   return { items, total: raw.total };
 }
 
@@ -214,6 +239,8 @@ export function coerceFilmLive(raw: unknown): FilmReading | null {
     : null;
   const money = new Map<string, LiveCredits>();
   const errors = new Map<string, string>();
+  const bases = new Map<string, string>();
+  let basesRead = false;
   for (const t of Array.isArray(r.takes) ? r.takes : []) {
     const o = rec(t);
     const id = o && str(o.id);
@@ -221,6 +248,11 @@ export function coerceFilmLive(raw: unknown): FilmReading | null {
     const err = str(o.error_code);
     if (err) errors.set(id, err);
     if ("confirmed_credits" in o || "charged_credits" in o) money.set(id, { held: num(o.confirmed_credits), charged: num(o.charged_credits) });
+    if ("charge_basis" in o) {
+      basesRead = true;
+      const b = str(o.charge_basis);
+      if (b) bases.set(id, b);
+    }
   }
   const filmRow = rec(rec(r.film)?.film);
   const fj = rec(r.film);
@@ -229,9 +261,15 @@ export function coerceFilmLive(raw: unknown): FilmReading | null {
   return {
     film,
     segments,
+    bases: basesRead ? bases : null,
     money,
     errors,
     pauseReason: filmRow ? str(filmRow.pause_reason) : null,
+    master: (() => {
+      const m = rec(r.master);
+      const assetId = m ? str(m.asset_id) : null;
+      return m && assetId ? { assetId, sound: coerceMasterSound(m.mix_format, m.sound) } : null;
+    })(),
     rawEvents: rows ? { rows, total } : null,
   };
 }
@@ -256,18 +294,68 @@ function takeStatus(status: string): LiveStatus {
   }
 }
 
-/** The take a step stands for: the current version's newest attempt of that kind and shot (superseded rows are history). */
-function latestTake(takes: readonly TakeMedia[], kind: string, shotIndex: number, version: number | null): TakeMedia | null {
-  const rows = takes
-    .filter((t) => t.kind === kind && t.shotIndex === shotIndex && t.status !== "superseded" && (version === null || t.version === version))
-    .sort((a, b) => b.version - a.version || b.attempt - a.attempt);
-  return rows[0] ?? null;
+/**
+ * Where a film is, for a step with no row or with a row that has not begun:
+ * - before: not started (draft, planning, planned, queued);
+ * - flight: running (running, draining, assembling, or paused with a funding segment still open: it resumes);
+ * - over: nothing more will run (ready, failed, cancelled, archived, or paused once every segment settled).
+ * A paused film whose segments cannot be read is in flight: "over" would be a guess.
+ */
+export type FilmPhase = "before" | "flight" | "over";
+const OPEN_SEGMENT = new Set(["queued", "running", "draining"]);
+export function filmPhase(filmStatus: string, segments: readonly { status: string }[] | null): FilmPhase {
+  if (BEFORE_WORK.has(filmStatus)) return "before";
+  if (filmStatus === "running" || filmStatus === "draining" || filmStatus === "assembling") return "flight";
+  if (filmStatus === "paused") return segments === null || segments.some((s) => OPEN_SEGMENT.has(s.status)) ? "flight" : "over";
+  return "over";
 }
 
-/** A step with no row yet: waiting while the project has not got there, unknown once it should have one. */
-function noRow(filmStatus: string): LiveStatus {
-  if (BEFORE_WORK.has(filmStatus) || filmStatus === "running" || filmStatus === "draining" || filmStatus === "paused") return "waiting";
-  if (filmStatus === "cancelled" || filmStatus === "failed") return "stopped";
+/** One slot's reading (one kind and shot of a scene, or the narration), shared by the canvas (filmGraph) and the lane (liveLane). */
+export interface SlotPick {
+  /** The take the slot stands for now: the newest non-superseded row, or null. */
+  take: TakeMedia | null;
+  /** The superseded first attempt, while its retry (attempt + 1) is queued and has not begun: the slot is `retried`. */
+  retriedFrom: TakeMedia | null;
+  /** Only superseded rows and no sibling: a row this build cannot place (never a state to guess). */
+  orphan: TakeMedia | null;
+}
+
+/**
+ * The rule that picks a slot's take: the newest non-superseded row of that kind and shot, of the scene's current version when it is
+ * set (no migration writes current_version yet, so null reads every version). The slot is `retried` while a superseded sibling of
+ * the same version with attempt - 1 exists, its basis is 0171's `retried_not_charged` (or unread: 0171's retry is the only
+ * superseding today), and the retry is still planned or queued.
+ */
+export function pickSlot(takes: readonly TakeMedia[], kind: string, shotIndex: number, version: number | null, bases?: TakeBases | null): SlotPick {
+  const rows = takes.filter((t) => t.kind === kind && t.shotIndex === shotIndex && (version === null || t.version === version));
+  const newestFirst = (a: TakeMedia, b: TakeMedia) => b.version - a.version || b.attempt - a.attempt;
+  const take = rows.filter((t) => t.status !== "superseded").sort(newestFirst)[0] ?? null;
+  if (!take) return { take: null, retriedFrom: null, orphan: [...rows].sort(newestFirst)[0] ?? null };
+  const waiting = take.status === "planned" || take.status === "queued";
+  const before = waiting
+    ? (rows.find(
+        (t) =>
+          t.status === "superseded" &&
+          t.version === take.version &&
+          t.attempt === take.attempt - 1 &&
+          (!bases || bases.get(t.id) === "retried_not_charged"),
+      ) ?? null)
+    : null;
+  return { take, retriedFrom: before, orphan: null };
+}
+
+/** A slot's status on the board: pickSlot's reading, with a waiting or retried slot of a finished film read as skipped. */
+export function slotStatus(pick: SlotPick, phase: FilmPhase, filmStatus: string): LiveStatus {
+  if (!pick.take) return pick.orphan ? "unknown" : noRow(filmStatus, phase);
+  const st = pick.retriedFrom ? "retried" : takeStatus(pick.take.status);
+  // Nothing more will run: a step still waiting (or waiting to retry) will never be made.
+  return phase === "over" && (st === "waiting" || st === "retried") ? "skipped" : st;
+}
+
+/** A step with no row yet: waiting while the project has not got there or is running; once it is over, stopped, or unknown. */
+function noRow(filmStatus: string, phase: FilmPhase): LiveStatus {
+  if (phase !== "over") return "waiting";
+  if (filmStatus === "cancelled" || filmStatus === "failed" || filmStatus === "paused") return "stopped";
   return "unknown";
 }
 
@@ -286,6 +374,7 @@ function combine(statuses: readonly LiveStatus[]): LiveStatus {
   if (statuses.length === 0) return "unknown";
   if (statuses.includes("failed")) return "failed";
   if (statuses.includes("working")) return "working";
+  if (statuses.includes("retried")) return "retried";
   if (statuses.includes("unknown")) return "unknown";
   if (statuses.every((s) => s === "done")) return "done";
   if (statuses.every((s) => s === "skipped")) return "skipped";
@@ -326,17 +415,17 @@ export function filmGraph(r: FilmReading): LiveGraph {
   edges.push({ from: "idea", to: "script" });
 
   const sceneEnds: string[] = [];
+  const phase = filmPhase(fs, r.segments);
   scenes.forEach((scene, i) => {
     const takes = r.film.sceneTakes.get(scene.id) ?? [];
     const version = scene.currentVersion;
-    const kf = latestTake(takes, "keyframe", 0, version);
+    const kfPick = pickSlot(takes, "keyframe", 0, version, r.bases);
+    const kf = kfPick.take;
     // Only a `keyframe` scene generates its first picture. `asset` starts from the person's own file (there, or gone from the
     // library); `previous` starts from the scene before's last frame, so no step runs for it.
     const kfStatus: LiveStatus =
       scene.firstFrame === "keyframe"
-        ? kf
-          ? takeStatus(kf.status)
-          : noRow(fs)
+        ? slotStatus(kfPick, phase, fs)
         : scene.firstFrame === "asset"
           ? scene.firstFrameMissing
             ? "failed"
@@ -361,15 +450,9 @@ export function filmGraph(r: FilmReading): LiveGraph {
     });
     edges.push({ from: "script", to: kfId });
 
-    const shots: TakeMedia[] = [];
-    for (let idx = 1; idx <= Math.max(1, scene.shotCount); idx++) {
-      const t = latestTake(takes, idx === 1 ? "clip" : "extend", idx, version);
-      if (t) shots.push(t);
-    }
-    const shotStatuses = Array.from({ length: Math.max(1, scene.shotCount) }, (_, k) => {
-      const t = shots.find((s) => s.shotIndex === k + 1);
-      return t ? takeStatus(t.status) : noRow(fs);
-    });
+    const picks = Array.from({ length: Math.max(1, scene.shotCount) }, (_, k) => pickSlot(takes, k === 0 ? "clip" : "extend", k + 1, version, r.bases));
+    const shots: TakeMedia[] = picks.flatMap((p) => (p.take ? [p.take] : []));
+    const shotStatuses = picks.map((p) => slotStatus(p, phase, fs));
     const clipStatus = chosenShots(scene, takes) ? "done" : combine(shotStatuses);
     const failedShot = shots.find((s) => s.status === "failed");
     const clipId = `scene:${scene.id}:clip`;
@@ -395,10 +478,10 @@ export function filmGraph(r: FilmReading): LiveGraph {
   const mid = Math.floor((rows - 1) / 2);
 
   // Narration is one film-level take; a film with no voice take at all, once work has started, did not ask for one.
-  const narrationRows = r.film.filmTakes.filter((t) => t.kind === "narration" && t.status !== "superseded");
-  narrationRows.sort((a, b) => b.version - a.version || b.attempt - a.attempt);
-  const voiceRow = narrationRows[0] ?? null;
-  const voiceStatus: LiveStatus = voiceRow ? takeStatus(voiceRow.status) : BEFORE_WORK.has(fs) ? "waiting" : fs === "running" ? "waiting" : "none";
+  const voicePick = pickSlot(r.film.filmTakes, "narration", 0, null, r.bases);
+  const voiceRow = voicePick.take;
+  const voiceStatus: LiveStatus =
+    voiceRow || voicePick.orphan ? slotStatus(voicePick, phase, fs) : BEFORE_WORK.has(fs) ? "waiting" : fs === "running" ? "waiting" : "none";
   nodes.push({
     id: "voice",
     kind: "voice",
@@ -418,7 +501,7 @@ export function filmGraph(r: FilmReading): LiveGraph {
   nodes.push({ id: "music", kind: "music", status: music, assetId: r.film.musicMissing ? null : r.film.musicAssetId, error: r.film.musicMissing ? "music_missing" : null, col: 4, row: rows });
 
   const seg = r.segments === null ? null : ([...r.segments].sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))[0] ?? null);
-  const asm: LiveStatus = r.segments === null ? "unknown" : seg ? assemblyStatus(seg.assemblyStatus) : noRow(fs);
+  const asm: LiveStatus = r.segments === null ? "unknown" : seg ? assemblyStatus(seg.assemblyStatus) : noRow(fs, phase);
   nodes.push({
     id: "assembly",
     kind: "assembly",
@@ -435,7 +518,13 @@ export function filmGraph(r: FilmReading): LiveGraph {
   // The final video is the assembly's file: there only when the segment recorded one.
   const finalAsset = seg?.assemblyAssetId ?? null;
   const final: LiveStatus = r.segments === null ? "unknown" : finalAsset ? "done" : asm === "failed" || asm === "stopped" ? "stopped" : asm === "done" ? "unknown" : "waiting";
-  nodes.push({ id: "final", kind: "final", status: final, assetId: finalAsset, col: 6, row: mid });
+  // The route answers null for `master` when the read failed: a file is there and what it records could not be read (Pixel M2).
+  const sound: MasterSound | undefined = finalAsset
+    ? r.master && r.master.assetId === finalAsset
+      ? r.master.sound
+      : { state: "unknown", cause: "read_failed" }
+    : undefined;
+  nodes.push({ id: "final", kind: "final", status: final, assetId: finalAsset, ...(sound ? { sound } : {}), col: 6, row: mid });
   edges.push({ from: "assembly", to: "final" });
 
   const settled = ["ready", "failed", "cancelled", "archived"].includes(fs) && nodes.every((n) => TERMINAL.has(n.status) || n.status === "unknown");

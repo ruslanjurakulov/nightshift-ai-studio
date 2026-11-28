@@ -175,7 +175,7 @@
           }
         },
         "blocked_countries": {
-          "description": "Countries where the vendor forbids this model, as ISO 3166-1 alpha-2 codes (docs/GEO_BLOCK.md). The Command Center neither offers, quotes nor starts the model for a request whose address it reads in one of them; an unknown country is allowed and logged. Needs api_exposure web_only. command-center/lib/geo/blocked.ts carries the same lists (a test compares them).",
+          "description": "Countries where the vendor forbids this model, as ISO 3166-1 alpha-2 codes (docs/GEO_BLOCK.md). The Command Center neither offers, quotes nor starts the model for a request whose address it reads in one of them; an unknown country is allowed and logged. Needs api_exposure web_only, and either available_countries or a terms_gate: the database lets a country-listed model on sale only with an allow-list (migration 0238). command-center/lib/geo/blocked.ts carries the same lists (a test compares them).",
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,

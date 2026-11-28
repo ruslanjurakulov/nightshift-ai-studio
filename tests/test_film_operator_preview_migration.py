@@ -218,10 +218,19 @@ class FilmOperatorPreviewMigration(unittest.TestCase):
         for f in later:
             text = (MIG / f).read_text(encoding="utf-8")
             for name, _n in AFTER:
-                if f == "0239_film_keyframe_refs_quote.sql" and name in ("film_price", "film_apply_settings", "film_save_scenes"):
+                if f == "0236_film_clip_sound_gate.sql" and name == "film_price":
+                    # 0236 (next in Atlas's order) replaces it with this file's body plus one marked hunk and refuses any other
+                    # base (tests/test_film_clip_sound_migration.py undoes the hunk back to this file's body).
+                    self.assertIn(f"'{AFTER[('film_price', 1)]}', 'af0fb80cce8e92fd2360aa6d5366a942'", text)
+                    continue
+                if f == "0239_film_keyframe_refs_quote.sql" and name in ("film_apply_settings", "film_save_scenes"):
                     # 0239 replaces these with this file's bodies plus its marked hunks, and refuses any other base
                     # (tests/test_film_keyframe_refs_quote_migration.py undoes its hunks back to this file's bodies).
-                    self.assertIn(f"'{AFTER[(name, 3 if name == 'film_apply_settings' else 2 if name == 'film_save_scenes' else 1)]}', ", text)
+                    self.assertIn(f"'{AFTER[(name, 3 if name == 'film_apply_settings' else 2)]}', ", text)
+                    continue
+                if f == "0239_film_keyframe_refs_quote.sql" and name == "film_price":
+                    # 0239 replaces 0236's film_price (this file's plus 0236's hunk), never this file's own.
+                    self.assertIn("('public.film_price(public.films)', 'af0fb80cce8e92fd2360aa6d5366a942',", text)
                     continue
                 self.assertNotIn(f"function public.{name}(", text, (f, name))
 
@@ -248,8 +257,9 @@ class FilmOperatorPreviewMigration(unittest.TestCase):
         self.assertIn('ON_0139 = (*(f for f in ON_0139 if f != "0235_film_operator_preview.sql"), "0235_film_operator_preview.sql")', LAB)
         on_0124 = LAB[LAB.index("ON_0124 = ("):]
         on_0124 = on_0124[:on_0124.index(")\n")]
-        # 0235 closes the list, or is followed only by 0239 (on its bodies).
-        self.assertRegex(on_0124, r'"0235_film_operator_preview\.sql"(,\s*(#[^\n]*\s*)*"0239_film_keyframe_refs_quote\.sql")?\s*$')
+        # ... or on 0236, which sits on this file's film_price and comes right after it, then 0239 (on 0236's), last.
+        self.assertRegex(on_0124, r'"0235_film_operator_preview\.sql"(,\s*(#[^\n]*\s*)*"0236_film_clip_sound_gate\.sql")?'
+                                  r'(,\s*(#[^\n]*\s*)*"0239_film_keyframe_refs_quote\.sql")?\s*$')
         self.assertLess(LAB.index('ON_0156 = (*(f for f in ON_0156 if f != "0230_geo_gate_allow_list.sql")'),
                         LAB.index('ON_0156 = (*ON_0156, "0235_film_operator_preview.sql")'))
 

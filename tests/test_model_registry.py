@@ -94,6 +94,16 @@ class ValidationRejectsTests(unittest.TestCase):
     def assertRejected(self, errors, fragment):
         self.assertTrue(any(fragment in e for e in errors), errors)
 
+    def test_br_0228_a_per_request_price_is_for_music_and_describe_only(self):
+        # 0228 quotes a per-request music model for one request and every other capability by its own quantity: a per-request price
+        # on an edit (one call per region) or a video op (its source's seconds) would be quoted wrong.
+        def per_request(m):
+            m["pricing"]["unit"] = "request"
+            m["credit_unit"] = m["credit_unit"].rsplit("_", 1)[0] + "_request"
+        self.assertRejected(self.mutate("veo-3.1", per_request), "pricing.unit request is for music and describe models only")
+        self.assertRejected(self.mutate("gemini-nano-banana-2.1", per_request), "pricing.unit request is for music and describe models only")
+        self.assertEqual(reg.validate(doc()), [])   # Lyria (music) and the describe models stay valid
+
     def test_availability_cannot_be_typed_into_the_file(self):
         # The database owns availability and verification (CLAUDE.md #5).
         for field, value in (("availability", "ga"), ("verified_at", "2026-09-30T00:00:00Z")):

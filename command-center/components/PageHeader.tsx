@@ -3,7 +3,7 @@ import {
   Film, Workflow, BarChart3, Palette, ListVideo, Users, UserCircle, KeyRound,
   Bot, ListChecks, Hash, Ruler, GitBranch, GraduationCap, Database, Gauge,
   RefreshCw, Lightbulb, Brain, History, Plug, TriangleAlert, ScrollText,
-  Sparkles, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Cpu, Scissors, TrendingUp, Brush, Waypoints, Inbox, Megaphone, Target, Drama, Contact, CircleDot, Flame, Telescope, type LucideIcon,
+  Sparkles, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Cpu, Scissors, TrendingUp, Brush, Waypoints, Inbox, Megaphone, Target, Drama, Contact, CircleDot, Flame, Telescope, type LucideIcon,
 } from "lucide-react";
 
 /**
@@ -21,7 +21,7 @@ export type PageIcon =
   | "accounts" | "portfolio" | "providers" | "agents" | "jobs" | "topics" | "measurement"
   | "decisions" | "learning" | "memory" | "brain" | "autonomy" | "feedback"
   | "advisory" | "intelligence" | "timeMachine" | "integrations" | "errors" | "logs"
-  | "members" | "organization" | "security" | "onboarding" | "approvals" | "alerts" | "audit" | "billing" | "credits" | "usage"
+  | "organization" | "security" | "onboarding" | "approvals" | "alerts" | "audit" | "billing" | "credits" | "usage"
   | "developers" | "library" | "editor" | "models" | "margin" | "customers" | "styles" | "workflows" | "inbox" | "marketing" | "modelKeys" | "ads" | "characterStudio" | "trends" | "research";
 
 const ICONS: Record<PageIcon, LucideIcon> = {
@@ -63,7 +63,6 @@ const ICONS: Record<PageIcon, LucideIcon> = {
   integrations: Plug,
   errors: TriangleAlert,
   logs: ScrollText,
-  members: ShieldCheck,
   organization: Building2,
   developers: TerminalSquare,
   security: Lock,

@@ -182,8 +182,12 @@ class GoogleTermsTests(unittest.TestCase):
         for mid in VEO_IDS:
             self.assertEqual(r[mid].terms_gate, "terms_review_required", mid)
             self.assertTrue(r[mid].raw.get("blocked_countries"), mid)
-        for mid in OPS_IDS + ("gemini-3.1-flash-image", "gemini-3-pro-image"):
+        for mid in OPS_IDS + ("gemini-3.1-flash-image",):
             self.assertEqual(r[mid].terms_gate, "terms_review_required", mid)
+        # 2026-11-28: the owner cleared Google's 18+ and consumer-use clauses for gemini-3-pro-image (its terms_notes, migration
+        # 0238); its price is still the one above.
+        self.assertIsNone(r["gemini-3-pro-image"].terms_gate)
+        self.assertIn("Owner decision 2026-11-28", " ".join(r["gemini-3-pro-image"].raw["terms_notes"]))
 
 
 def bodies(text):

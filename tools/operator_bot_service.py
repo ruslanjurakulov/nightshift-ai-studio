@@ -256,7 +256,13 @@ def main(argv=None) -> int:
     if not getattr(sync, "enabled", False):
         logger.error("SUPABASE_URL / SUPABASE_SERVICE_KEY are not set — the bot has no state to read or remember")
         return EXIT_NOT_CONFIGURED
-    engine = alerts_tool.build_engine(control, sync)
+    try:
+        engine = alerts_tool.build_engine(control, sync)
+    except alerts_tool.ConfigRefused as e:
+        # A film spend line the owner mistyped: refuse to start, naming the variable, rather than watch a paid film
+        # against a default nobody chose.
+        logger.error("%s; the operator bot service did not start", e)
+        return EXIT_REFUSED
 
     import requests
 

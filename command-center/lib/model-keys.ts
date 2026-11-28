@@ -1,6 +1,9 @@
 /**
  * The owner's API key per model vendor, VERIFIED AND FORGOTTEN (docs/MODEL_API_KEYS.md): the closed list of vendors, how each key is checked,
- * and the small pure rules around it. Pure and client-safe: no request, no network, no secret. The server half is lib/server/model-keys.ts.
+ * and the small pure rules around it. Pure: no request, no network, no secret. The server half is lib/server/model-keys.ts.
+ *
+ * Server-only: the vendor list, each key page and each secret NAME are ours, and a static chunk is downloadable by anyone. The page builds
+ * the cards here (buildCards) and the board gets them as props; the board imports this module's types only.
  *
  * NOTHING IS STORED. A key pasted here is sent once to the server, checked with the vendor, and dropped: not in a database, not in Vault, not
  * in a log, not in an audit row, not even its last four characters. The page shows the verdict for this visit only. To use a verified key a run
@@ -19,6 +22,7 @@
  * The vendors are the providers of schemas/model_registry.json (tests/model-keys-registry.test.ts compares them). `unassigned-video-vendor` is a placeholder in the registry, not a vendor, and has no entry.
  */
 
+import "server-only";
 import { validateSecretValue } from "@/lib/server/secret-validators";
 
 export const MODEL_KEY_PROVIDER_IDS = [
