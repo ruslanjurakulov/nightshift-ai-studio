@@ -2,27 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
-import { AssetDownloads } from "@/components/media/AssetDownloads";
-import { Lamp } from "@/components/studio-canvas/parts";
-import { useMediaUrls } from "@/components/studio-timeline/useTimelineData";
-import { JOB_ERROR_CODES } from "@/lib/job-errors";
 import { useBrainBrief, handoffTarget } from "./useBrainBrief";
 import { ActivityPanel } from "./ActivityPanel";
 import { LiveLane } from "./LiveLane";
 import { utc } from "@/lib/studio/utc";
-import { type Brief, type LiveGraph, type LiveNode, type LiveStatus, type RunVideoRef, type Activity, type ActivityItem } from "@/lib/studio/liveGraph";
+import { type Brief, type LiveGraph, type LiveStatus, type Activity, type ActivityItem } from "@/lib/studio/liveGraph";
 import { useLiveGraph, type LiveTarget } from "./useLiveGraph";
-import { nodeName, StoryBoard, TONE } from "./StoryBoard";
+import { nodeName, StoryBoard } from "./StoryBoard";
+import { Details, failureText } from "./Details";
 import { useBoardModel } from "./useBoardModel";
 import type { BoardInput } from "@/lib/studio/boardModel";
 import "@/components/studio-canvas/studio-canvas.css";
 import "./studio-live.css";
-
-type T = ReturnType<typeof useI18n>["t"];
 
 /** Signing in again returns to this very plan (Pixel M10), as AssetDownloads does. */
 function loginHref(): string {
@@ -33,7 +27,7 @@ function loginHref(): string {
 /** system_events.ts is text, often a naive utcnow().isoformat(): read without an offset it would be local time (Lens M1). */
 export { utc };
 
-export { nodeName };
+export { nodeName, Details, failureText };
 
 /** A channel run's live facts: GitHub's own status of the dispatched job, and the run's credit hold. Only what was read is said. */
 function RunFacts({ graph }: { graph: LiveGraph }) {
@@ -54,121 +48,6 @@ function RunFacts({ graph }: { graph: LiveGraph }) {
       {wf ? <li data-testid="live-workflow">{wf}</li> : null}
       {hold ? <li data-testid="live-hold">{hold}</li> : null}
     </ul>
-  );
-}
-
-/** A failed step's reason and remedy, never a guess: a known word gets its sentence, any other is named as it was stored. */
-export function failureText(t: T, n: LiveNode, run: boolean): { reason: string; remedy: string | null } {
-  const c = t.studioLive;
-  if (run) {
-    const code = n.error && (JOB_ERROR_CODES as readonly string[]).includes(n.error) ? (n.error as keyof T["create"]["jobError"]) : null;
-    return { reason: code ? t.create.jobError[code] : c.failedNoCode, remedy: null };
-  }
-  if (n.error && c.errors[n.error]) return { reason: c.errors[n.error], remedy: null };
-  return { reason: n.error ? fmt(c.failedGeneric, { code: n.error }) : c.failedNoCode, remedy: c.remedyGeneric };
-}
-
-
-function Output({ node }: { node: LiveNode }) {
-  const { t } = useI18n();
-  const ids = useMemo(() => (node.assetId ? [node.assetId] : []), [node.assetId]);
-  const { urls } = useMediaUrls(ids);
-  // A failed step has nothing coming: "nothing to show yet" would promise otherwise.
-  if (!node.assetId) return node.text ? <p className="lv-text">{node.text}</p> : node.status === "failed" ? null : <p className="lv-muted">{t.studioLive.noOutput}</p>;
-  const m = urls.get(node.assetId);
-  if (!m) return <p className="lv-muted">{t.studioLive.loading}</p>;
-  // A picture has a thumbnail and no play link (useMediaUrls gives play to video and audio only): Pixel H2.
-  const src = m.kind === "image" ? (m.thumb ?? m.play) : m.play;
-  if (m.failed || m.unavailable || !src) return <p className="lv-muted">{t.studioLive.outputUnavailable}</p>;
-  // eslint-disable-next-line @next/next/no-img-element -- a signed, short-lived library link
-  if (m.kind === "image") return <img className="lv-media" src={src} alt="" />;
-  if (m.kind === "audio") return <audio className="lv-audio" src={src} controls preload="none" />;
-  return <video className="lv-media" src={src} poster={m.thumb ?? undefined} controls preload="metadata" playsInline />;
-}
-
-export function Details({
-  node,
-  run,
-  filmId,
-  video,
-  onClose,
-}: {
-  node: LiveNode;
-  run: boolean;
-  filmId: string | null;
-  /** undefined: the route did not say (an older answer); null: no video row readable for this run yet. */
-  video?: RunVideoRef | null;
-  onClose: () => void;
-}) {
-  const { t, locale } = useI18n();
-  const c = t.studioLive;
-  const path = useChannelPath();
-  const closeRef = useRef<HTMLButtonElement>(null);
-  // preventScroll: focusing the close key must not scroll the page and hide the plan's title (S4 MEDIUM 4).
-  useEffect(() => closeRef.current?.focus({ preventScroll: true }), [node.id]);
-  return (
-    <aside
-      className="lv-details"
-      aria-label={c.details}
-      data-testid="live-details"
-    >
-      <div className="lv-details-head">
-        <h2>{nodeName(t, node)}</h2>
-        <button type="button" ref={closeRef} className="cv-kbtn" onClick={onClose} aria-label={c.close}>
-          <X aria-hidden className="size-4" />
-        </button>
-      </div>
-      <Lamp tone={TONE[node.status]} live={node.status === "working"} label={c.status[node.status]} />
-      {node.status === "failed" ? (
-        (() => {
-          const f = failureText(t, node, run);
-          return (
-            <div className="lv-fail" role="status" data-testid="live-failure">
-              <p>{f.reason}</p>
-              {f.remedy ? <p>{f.remedy}</p> : null}
-            </div>
-          );
-        })()
-      ) : null}
-      {node.kind === "upload" ? (
-        <p data-testid="live-privacy">{node.privacy === "private" ? c.privacyPrivate : node.privacy ? fmt(c.privacyOther, { privacy: c.privacyWords[node.privacy] ?? node.privacy }) : c.privacyUnknown}</p>
-      ) : null}
-      {run && node.kind === "upload" && video !== undefined ? (
-        // The run's video page holds the existing "Publish to platforms" panel: the person sends from there, after its checks.
-        video ? (
-          <Link className="cv-kbtn" href={path(`/videos/${encodeURIComponent(video.id)}`)} data-testid="live-open-video">
-            {c.openVideo}
-          </Link>
-        ) : (
-          <p className="lv-muted" data-testid="live-video-after-sync">
-            {c.videoAfterSync}
-          </p>
-        )
-      ) : null}
-      {!run ? (
-        <p className="lv-muted" data-testid="live-credits">
-          {node.credits
-            ? [
-                node.credits.held === null ? c.creditsHeldUnrecorded : fmt(c.creditsHeld, { n: node.credits.held }),
-                node.credits.charged === null ? c.creditsChargedUnrecorded : fmt(c.creditsCharged, { n: node.credits.charged }),
-              ].join(" · ")
-            : c.creditsNone}
-        </p>
-      ) : node.at ? (
-        <p className="lv-muted">{fmt(c.recordedAt, { time: utc(node.at).toLocaleString(locale === "uz" ? "uz-Latn-UZ" : locale) })}</p>
-      ) : null}
-      {!run ? <Output node={node} /> : null}
-      {node.kind === "final" && node.assetId ? (
-        <div className="lv-final" data-testid="live-final">
-          <AssetDownloads assetId={node.assetId} preview="ready" />
-          {filmId ? (
-            <Link className="cv-kbtn" href={path(`/studio?view=timeline&film=${filmId}`)} data-testid="live-open-timeline">
-              {c.openTimeline}
-            </Link>
-          ) : null}
-        </div>
-      ) : null}
-    </aside>
   );
 }
 
@@ -196,7 +75,13 @@ export function LiveView({
   const brief = givenBrief ?? (brainRead.load.state === "ready" ? brainRead.load.brief : null);
   // After Create the brief names what was made; the view follows it in place. The scene cards keep their ids because both graphs key
   // them by the scene's position (liveGraph sceneNodeId): the brief's scene ids are not the film's, so keyed by id they never matched.
-  const target = given ?? (brief?.handoff ? handoffTarget(brief.handoff) : null);
+  // One object per handoff, not per render: every read of the brief makes a new handoff object, and a new target each render fed
+  // the board a new reading each frame (React H1: 53 commits a second after a handoff, forever).
+  const handoff = brief?.handoff ?? null;
+  const handoffKey = handoff ? JSON.stringify(handoff) : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the handoff's fields, not on its object identity
+  const fromHandoff = useMemo(() => (handoff ? handoffTarget(handoff) : null), [handoffKey]);
+  const target = given ?? fromHandoff;
   const run = target?.kind === "run" || target?.kind === "window" || (!target && brief?.kind === "long");
   const shown = filmStudio || run ? target : null;
   const { load, stale, retry } = useLiveGraph(shown);
@@ -214,7 +99,8 @@ export function LiveView({
   }, [target, brief, load]);
   // A conversation stays one plan across its Create (its film is the same plan); otherwise the plan is the target.
   const boardPlan = brain && !given ? `brain:${brain}` : target ? (target.kind === "window" ? `window:${target.channel}:${target.since}` : `${target.kind}:${target.id}`) : null;
-  const graph = useBoardModel(boardInput, boardPlan)?.graph ?? null;
+  const model = useBoardModel(boardInput, boardPlan);
+  const graph = model?.graph ?? null;
   const sel = graph?.nodes.find((n) => n.id === selected) ?? null;
   // The Activity lines. A film's reading gives the log's newest 50, so lines read earlier stay on screen (gathered by line id); a
   // run's routes answer the whole window, so its lines are replaced. Only a reading of THIS plan counts: for one render after a
@@ -255,12 +141,22 @@ export function LiveView({
   // The steps that turned done since the last reading: only they play the "turning on" ring, never every done card on first load.
   const seen = useRef<Map<string, LiveStatus> | null>(null);
   const [lit, setLit] = useState<ReadonlySet<string>>(new Set());
+  // The reading's source: a brief's draft and the film's live rows are not one series. Opening a finished film after its brief was
+  // drawn is a first reading of the film, so nothing rings (Lens M1). The ring plays once per change (a CSS animation of 1); a card
+  // that keeps `data-lit` across readings does not replay it.
+  // Read off the model the graph came from (a frame after its input), so the reset lands with the film's first graph, not before it.
+  const source = model ? (model.stage === "making" || model.stage === "assembled" ? "live" : "brief") : null;
+  const seenSource = useRef(source);
   useEffect(() => {
     if (!graph) return;
+    if (seenSource.current !== source) {
+      seenSource.current = source;
+      seen.current = null;
+    }
     const before = seen.current;
     setLit(new Set(before ? graph.nodes.filter((n) => n.status === "done" && before.has(n.id) && before.get(n.id) !== "done").map((n) => n.id) : []));
     seen.current = new Map(graph.nodes.map((n) => [n.id, n.status]));
-  }, [graph]);
+  }, [graph, source]);
 
   let body: React.ReactNode;
   if (draft) body = null;
@@ -345,7 +241,9 @@ export function LiveView({
       ) : null}
       {graph ? (
         <div className={`lv-main${sel ? " has-details" : ""}${activity ? " has-activity" : ""}`}>
-          <StoryBoard graph={graph} selected={selected} onOpen={setSelected} lit={lit} />
+          {/* Not only the visible cards while the lane is under the board: its flights start from a card's box, which an unrendered
+              card does not have (Lens L3). */}
+          <StoryBoard graph={graph} selected={selected} onOpen={setSelected} lit={lit} visibleOnly={!(target?.kind === "film" && shown && !draft)} />
           {sel ? <Details node={sel} run={run} filmId={target?.kind === "film" ? target.id : null} video={graph.video} onClose={close} /> : null}
         </div>
       ) : null}

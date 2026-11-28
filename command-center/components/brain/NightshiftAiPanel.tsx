@@ -777,7 +777,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
                    retry: NO_RETRY_REASONS.has(reason) ? null : () => void chooseRef.current(w.index) });
     } finally {
       inFlight.current = false;
-      emitBrainActivity({ session_id: sid, phase: "idle" });
+      if (sessionRef.current === sid) emitBrainActivity({ session_id: sid, phase: "idle" });
       if (!signal.aborted) {
         setPlanning(false);
         setBusy(false);
@@ -869,7 +869,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       inFlight.current = false;
       setPlanning(false);
       setBusy(false);
-      emitBrainActivity({ session_id: session, phase: "idle" });
+      if (sessionRef.current === session) emitBrainActivity({ session_id: session, phase: "idle" });
       setTimeout(refocus, 0);
       if (waiting && life.current) void waitForPlan(session, waiting, life.current.signal);
     }

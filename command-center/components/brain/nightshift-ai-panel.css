@@ -20,11 +20,10 @@
 }
 .ns-ai-dock > .chat-shell { height: 100%; }
 @media (max-width: 40rem) {
-  /* On a phone the canvas's fixed dock (.cv-flow-dock: safe area + 80px up, ~62px tall) covers the bottom of the page. The page scrolls
-     this sheet (its thread scrolls inside it), so the room goes under the sheet: its composer and the last remedy keys in the thread
-     (Use shorter, Upgrade, Top up, a failed plan's Retry) can always be scrolled clear. 80 + 62 + a 16px gap + slack: the value
-     .cv-root.is-flow uses (Pixel on S5, 390px). */
-  .ns-ai-dock { margin-bottom: calc(env(safe-area-inset-bottom) + 172px); }
+  /* On a phone the chat is a tab of its own (StudioSplit): the canvas, and its fixed dock that this margin used to clear (172px), is
+     never on screen with it. What is left to clear is the app's tab bar, so the composer and the last remedy keys in the thread can
+     always be scrolled above it (Pixel H4). */
+  .ns-ai-dock { margin-bottom: calc(env(safe-area-inset-bottom) + 88px); }
 }
 @media (min-width: 64rem) {
   /* Beside the canvas: it stays on screen while the canvas scrolls, below the app's sticky top bar (--ns-shell-h is its measured

@@ -46,14 +46,14 @@ describe("ids across Create", () => {
     for (const n of b.graph.nodes) expect(ids.has(n.id)).toBe(true);
   });
 
-  it("the brief's character and place cards stay after Create, with the brief's names and wires", () => {
+  it("the brief's character and place cards stay after Create, with the brief's names", () => {
     const b = reduceBoard(null, { source: "brief", brief: brief() });
     const after = reduceBoard(b, { source: "live", graph: film("running") });
     const aziza = after.graph.nodes.find((n) => n.id === "ref:c1");
     expect(aziza).toMatchObject({ kind: "character", sceneTitle: "Aziza" });
     expect(after.graph.nodes.find((n) => n.id === "ref:l1")?.kind).toBe("location");
-    expect(after.graph.edges).toContainEqual({ from: "ref:c1", to: "scene#2:keyframe" });
-    expect(after.graph.edges).toContainEqual({ from: "script", to: "ref:c1" });
+    // No wires to carry any more (the cast is on the scene's cards, from the scene's own ids): none appear from nowhere.
+    expect(after.graph.edges.some((e) => e.from.startsWith("ref:") || e.to.startsWith("ref:"))).toBe(false);
     // And on every later reading of the film.
     const later = reduceBoard(after, { source: "live", graph: film("running") });
     expect(later.graph.nodes.some((n) => n.id === "ref:c1")).toBe(true);

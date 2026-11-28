@@ -374,12 +374,14 @@ describe("the brief, before Create", () => {
     expect(g.settled).toBe(false);
   });
 
-  it("a reference reused by a scene is wired into that scene's picture; an unknown reference is not drawn", () => {
+  it("a scene carries its own cast by name instead of a wire from each reference; an unknown reference is not named", () => {
     const g = briefGraph(brief);
-    const into = (to: string) => g.edges.filter((e) => e.to === to).map((e) => e.from);
-    expect(into(`scene#1:keyframe`)).toEqual(expect.arrayContaining(["ref:hero", "ref:desert"]));
-    expect(into(`scene#2:keyframe`)).toContain("ref:sword");
-    expect(g.edges.some((e) => e.from === "ref:ghost")).toBe(false);
+    const cast = (id: string) => g.nodes.find((n) => n.id === id)?.cast;
+    expect(g.edges.some((e) => e.from.startsWith("ref:") || e.to.startsWith("ref:"))).toBe(false);
+    expect(cast(`scene#1:keyframe`)).toEqual(expect.arrayContaining(["Aziz", "Desert"]));
+    expect(cast(`scene#1:clip`)).toEqual(cast(`scene#1:keyframe`));
+    expect(cast(`scene#2:keyframe`)).toContain("Sword");
+    expect(g.nodes.some((n) => n.id === "ref:ghost")).toBe(false);
   });
 
   it("a price is only where the backend gave one, never guessed, and none at all unless the server says priced", () => {

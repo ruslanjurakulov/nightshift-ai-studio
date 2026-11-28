@@ -36,8 +36,12 @@ export function useBoardModel(input: BoardInput | null, plan: string | null): Bo
 
   const pending = useRef<BoardInput | null>(null);
   const cancel = useRef<(() => void) | null>(null);
+  // The reading last taken (drawn, or waiting for its frame): the same input again schedules nothing.
+  const seen = useRef<BoardInput | null>(current.input);
+  if (current !== state) seen.current = current.input;
   useEffect(() => {
-    if (!input || input === state.input) return;
+    if (!input || input === seen.current) return;
+    seen.current = input;
     pending.current = input;
     if (cancel.current) return;
     cancel.current = frame(() => {
@@ -45,19 +49,23 @@ export function useBoardModel(input: BoardInput | null, plan: string | null): Bo
       const next = pending.current;
       pending.current = null;
       if (!next) return;
-      setState((s) => (s.model && s.plan === plan ? { model: reduceBoard(s.model, next), plan, input: next } : s));
+      // A reading that changes nothing keeps the state object itself: React bails out, nothing re-renders (React H1 measured 53
+      // commits a second when every frame set a new object holding the same model).
+      setState((s) => {
+        if (!s.model || s.plan !== plan) return s;
+        const model = reduceBoard(s.model, next);
+        return model === s.model ? s : { model, plan, input: next };
+      });
     });
-  }, [input, plan, state.input]);
+  }, [input, plan]);
+  // Another plan, or unmounting: a frame scheduled for the last one is cancelled, never landed.
   useEffect(
     () => () => {
       cancel.current?.();
       cancel.current = null;
+      pending.current = null;
     },
-    [],
+    [plan],
   );
-  // Another plan, or none: a frame scheduled for the last one lands nowhere.
-  useEffect(() => {
-    pending.current = null;
-  }, [plan]);
   return current.model;
 }

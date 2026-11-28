@@ -50,6 +50,9 @@ export function useBrainBrief(session: string | null) {
   const [load, setLoad] = useState<BriefLoad>({ state: "loading" });
   // A re-read that failed while a brief was on screen: the brief stays, and a reader that wants to can say it is the last one read.
   const [stale, setStale] = useState(false);
+  // The conversation `load` belongs to. For the one render after a switch, `load` is still the previous conversation's: it is not
+  // shown as this one's (Lens L1: the Plan column took the old brief's cards for the new one's and called them new).
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const gen = useRef(0);
   // Each read's own number: of two overlapping reads, only the newer may land (Lens).
   const seq = useRef(0);
@@ -75,6 +78,7 @@ export function useBrainBrief(session: string | null) {
     if (!session) return;
     gen.current += 1;
     setLoad({ state: "loading" });
+    setLoadedFor(session);
     setStale(false);
     void read();
     const onBrief = (e: Event) => {
@@ -99,5 +103,6 @@ export function useBrainBrief(session: string | null) {
   }, [read]);
 
   // No conversation (?brain= taken off the URL: the panel found it gone, or New chat): the last one's brief is not drawn on.
-  return { load: session ? load : IDLE, retry, stale: !!session && stale };
+  const mine = !!session && loadedFor === session;
+  return { load: mine ? load : IDLE, retry, stale: mine && stale };
 }

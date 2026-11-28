@@ -160,8 +160,8 @@ function mockFetch() {
   }) as typeof fetch;
 }
 
-function mount({ tools = UNKNOWN_TOOLS, filmStudio = false, operator = false }: { tools?: ToolAvailability; filmStudio?: boolean; operator?: boolean } = {}) {
-  return render(
+function canvasTree({ tools = UNKNOWN_TOOLS, filmStudio = false, operator = false, active }: { tools?: ToolAvailability; filmStudio?: boolean; operator?: boolean; active?: boolean } = {}) {
+  return (
     <I18nProvider locale="en">
       <ShellProvider operator={operator} tools={tools}>
         <StudioCanvas
@@ -169,10 +169,14 @@ function mount({ tools = UNKNOWN_TOOLS, filmStudio = false, operator = false }: 
           userId="u1"
           channel="chronos"
           filmStudio={filmStudio}
+          active={active}
         />
       </ShellProvider>
-    </I18nProvider>,
+    </I18nProvider>
   );
+}
+function mount(o: { tools?: ToolAvailability; filmStudio?: boolean; operator?: boolean; active?: boolean } = {}) {
+  return render(canvasTree(o));
 }
 
 const store = (layout: unknown) => window.localStorage.setItem(KEY, JSON.stringify(layout));
@@ -969,5 +973,34 @@ describe("Lens mediums", () => {
     const after = JSON.parse(window.localStorage.getItem(KEY)!);
     expect(after.nodes).toEqual(before.nodes);
     expect(screen.queryByTestId("canvas-palette")).toBeNull();
+  });
+});
+
+describe("hidden behind the Studio's Plan column (active false)", () => {
+  const press = (init: KeyboardEventInit) =>
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, ...init }));
+    });
+  it("what it had open closes, ⌘K and N open nothing (the app keeps ⌘K), and nothing can be added; shown again, it works", async () => {
+    const appPalette = vi.fn();
+    window.addEventListener("keydown", appPalette);
+    const { rerender } = mount();
+    await screen.findByTestId("canvas-first-run");
+    fireEvent.click(screen.getByTestId("recipe-blank"));
+    press({ key: "n" });
+    expect(await screen.findByTestId("canvas-palette")).toBeTruthy();
+    rerender(canvasTree({ active: false }));
+    expect(screen.queryByTestId("canvas-palette")).toBeNull();
+    press({ key: "k", metaKey: true });
+    press({ key: "n" });
+    expect(screen.queryByTestId("canvas-palette")).toBeNull();
+    expect(appPalette).toHaveBeenCalled();
+    expect(document.querySelector("[data-kind]")).toBeNull();
+    rerender(canvasTree({ active: true }));
+    press({ key: "n" });
+    const pal = await screen.findByTestId("canvas-palette");
+    fireEvent.click(within(pal).getByTestId("add:voice"));
+    expect(document.querySelector('[data-kind="voice"]')).toBeTruthy();
+    window.removeEventListener("keydown", appPalette);
   });
 });

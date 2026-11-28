@@ -33,18 +33,29 @@ export function parseBrainActivity(detail: unknown): BrainActivity | null {
   return { session_id: sid, phase: d.phase as BrainPhase };
 }
 
+/**
+ * The last activity this page heard, per window. A listener that mounts after the panel spoke (the board beside it mounts after the
+ * panel; a refresh mid-storyboard re-emits "storyboard" from the panel's own mount) still learns what is in flight.
+ */
+const lastByWindow = new WeakMap<object, BrainActivity>();
+
 export function emitBrainActivity(detail: BrainActivity): void {
   if (typeof window === "undefined") return;
+  const a = parseBrainActivity(detail);
+  if (a) lastByWindow.set(window, a);
   window.dispatchEvent(new CustomEvent(BRAIN_ACTIVITY_EVENT, { detail }));
 }
 
-/** Calls `handler` with every well-formed activity; returns the unsubscribe. */
-export function onBrainActivity(handler: (a: BrainActivity) => void): () => void {
+/** Calls `handler` with the last well-formed activity heard here (if any), then with every new one; returns the unsubscribe. */
+export function onBrainActivity(handler: (a: BrainActivity) => void, { replay = true }: { replay?: boolean } = {}): () => void {
   if (typeof window === "undefined") return () => {};
+  const w = window;
   const on = (e: Event) => {
     const a = parseBrainActivity((e as CustomEvent<unknown>).detail);
     if (a) handler(a);
   };
-  window.addEventListener(BRAIN_ACTIVITY_EVENT, on);
-  return () => window.removeEventListener(BRAIN_ACTIVITY_EVENT, on);
+  w.addEventListener(BRAIN_ACTIVITY_EVENT, on);
+  const last = lastByWindow.get(w);
+  if (replay && last) handler(last);
+  return () => w.removeEventListener(BRAIN_ACTIVITY_EVENT, on);
 }

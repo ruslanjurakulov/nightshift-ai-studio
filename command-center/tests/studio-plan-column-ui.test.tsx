@@ -6,8 +6,9 @@
  * screen, cards that move under reduced motion, and a failed re-read that blanks the plan.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { useState, type ReactNode } from "react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Profiler, useContext, useState, type ReactNode } from "react";
+import { CanvasActiveContext } from "../components/studio-canvas/canvasActive";
 import { studioLiveEn as c } from "../lib/i18n/studio-live/en";
 import { emitBrainActivity } from "../lib/studio/brainActivity";
 import { VIEW_MEMORY_KEY } from "../lib/studio/planBoard";
@@ -29,25 +30,32 @@ let search = new URLSearchParams();
 vi.mock("next/navigation", () => ({ usePathname: () => "/alpha/studio", useRouter: () => ({ refresh() {} }), useSearchParams: () => search }));
 
 const { PlanColumn } = await import("../components/studio-live/PlanColumn");
+const { LiveView } = await import("../components/studio-live/LiveView");
 
 const A = "5e550000-0000-4000-8000-0000000000e1";
+const B = "5e550000-0000-4000-8000-0000000000e2";
 const drafting = { version: 1, status: "drafting", kind: "short", voice: { mode: "off" }, music: { mode: "off" } };
 const withScenes = (n: number) => ({
   ...drafting,
   status: "ready",
   title: "The kite that came back",
-  scenes: Array.from({ length: n }, (_, i) => ({ id: `s${i + 1}`, n: i + 1, title: `Shot ${i + 1}` })),
+  characters: [{ id: "c1", name: "Aziza" }],
+  scenes: Array.from({ length: n }, (_, i) => ({ id: `s${i + 1}`, n: i + 1, title: `Shot ${i + 1}`, visual_prompt: `The kite, shot ${i + 1}\nmore`, duration_s: 3, character_ids: ["c1"] })),
 });
 
 let answers: { status: number; body: unknown }[] = [];
 let reads = 0;
 let reduce = false;
+let readUrls: string[] = [];
+let byUrl: ((url: string) => { status: number; body: unknown } | null) | null = null;
 
 beforeEach(() => {
   search = new URLSearchParams();
   answers = [];
   reads = 0;
   reduce = false;
+  readUrls = [];
+  byUrl = null;
   window.localStorage.clear();
   // Phone width (the board is React Flow's, measured by a browser): the same cards as a list.
   vi.stubGlobal("matchMedia", (q: string) => ({
@@ -60,9 +68,9 @@ beforeEach(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
-      expect(url).toBe(`/api/brain/session/${A}`);
       reads++;
-      const a = answers.shift() ?? { status: 500, body: {} };
+      readUrls.push(url);
+      const a = (byUrl && byUrl(url)) ?? answers.shift() ?? { status: 500, body: {} };
       return new Response(JSON.stringify(a.body), { status: a.status });
     }),
   );
@@ -70,6 +78,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  // The page remembers the last activity for late listeners (brainActivity replay): each test starts from a quiet panel.
+  emitBrainActivity({ session_id: null, phase: "idle" });
 });
 
 /** The person's own canvas: it has cards, and a count only kept if it is never unmounted. */
@@ -95,114 +105,261 @@ const flush = () =>
   });
 const canvasPane = () => screen.getByTestId("plan-canvas-pane");
 
-describe("Plan column", () => {
-  it("sending switches the column to the plan, even with cards on the person's canvas", async () => {
-    render(<PlanColumn initialSession={null}><FakeCanvas /></PlanColumn>);
+const pane = () => screen.queryByTestId("plan-board-pane");
+const card = (id: string) => screen.getByTestId(`plan-card-${id}`);
+const arriving = () => [...document.querySelectorAll<HTMLElement>("article.ds-reveal [data-node-id]")].map((el) => el.dataset.nodeId);
+const ui = (initial: string | null) => <PlanColumn initialSession={initial}><FakeCanvas /></PlanColumn>;
+const openOn = async (sid: string, ...briefs: unknown[]) => {
+  answers.push(...briefs.map((brief) => ({ status: 200, body: { brief } })));
+  search = new URLSearchParams(`brain=${sid}`);
+  const r = render(ui(sid));
+  await flush();
+  return r;
+};
+
+describe("Plan column: switching", () => {
+  it("sending switches the column to the plan, even with cards on the person's canvas, and says so", async () => {
+    render(ui(null));
     expect(screen.getByTestId("fake-nodes")).toBeTruthy();
     expect(canvasPane().hasAttribute("inert")).toBe(false);
-    expect(screen.queryByTestId("plan-board-pane")).toBeNull();
+    expect(pane()).toBeNull();
     await activity(null, "thinking");
-    expect(screen.getByTestId("plan-board-pane")).toBeTruthy();
-    expect(screen.getByTestId("plan-planning").textContent).toBe(c.plan.planning);
+    expect(pane()).toBeTruthy();
+    expect(screen.getByTestId("plan-planning").textContent).toContain(c.plan.planning);
     expect(canvasPane().hasAttribute("inert")).toBe(true);
-    expect(screen.getByTestId("plan-switch-plan").getAttribute("aria-pressed")).toBe("true");
-    // The turn's answer: the board reads the conversation once and draws its cards.
+    expect(screen.getByTestId("plan-switch-plan").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("plan-announce").textContent).toContain(c.plan.autoShown);
+    // The turn's answer: the column reads the conversation once and draws its cards.
     answers.push({ status: 200, body: { brief: drafting } });
     await briefDone(A);
     await flush();
     expect(reads).toBe(1);
-    expect(screen.getByTestId("live-node-idea")).toBeTruthy();
+    expect(card("idea")).toBeTruthy();
   });
 
-  it("the switch returns to the person's canvas as it was, and the choice holds for this conversation's next message", async () => {
-    answers.push({ status: 200, body: { brief: drafting } });
-    search = new URLSearchParams(`brain=${A}`);
-    render(<PlanColumn initialSession={A}><FakeCanvas /></PlanColumn>);
-    await flush();
-    // Something done on the canvas before it was hidden.
+  it("the switch (a tablist, arrow keys) returns to the canvas as it was; the choice holds for this conversation only", async () => {
+    await openOn(A, drafting);
     fireEvent.click(screen.getByText("edits 0"));
-    expect(screen.getByTestId("plan-board-pane")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("plan-switch-canvas"));
-    expect(screen.queryByTestId("plan-board-pane")).toBeNull();
+    expect(pane()).toBeTruthy();
+    fireEvent.keyDown(screen.getByTestId("plan-switch-plan"), { key: "ArrowRight" });
+    expect(pane()).toBeNull();
+    expect(document.activeElement).toBe(screen.getByTestId("plan-switch-canvas"));
     expect(canvasPane().hasAttribute("inert")).toBe(false);
     expect(screen.getByText("edits 1")).toBeTruthy();
-    // Another message in the same conversation: their choice stands.
     await activity(A, "thinking");
-    expect(screen.queryByTestId("plan-board-pane")).toBeNull();
+    expect(pane()).toBeNull();
     expect(JSON.parse(window.localStorage.getItem(VIEW_MEMORY_KEY) ?? "null")).toEqual({ session: A, view: "canvas" });
-    // A new conversation: sending shows its plan again.
     await activity(null, "thinking");
-    expect(screen.getByTestId("plan-board-pane")).toBeTruthy();
+    expect(pane()).toBeTruthy();
     expect(screen.getByText("edits 1")).toBeTruthy();
   });
 
-  it("while the storyboard is written: an honest state over the cards, no per-scene count", async () => {
-    answers.push({ status: 200, body: { brief: drafting } });
-    search = new URLSearchParams(`brain=${A}`);
-    render(<PlanColumn initialSession={A}><FakeCanvas /></PlanColumn>);
+  it("storage that throws: the switch still works for this page (Lens N1)", async () => {
+    const real = window.localStorage;
+    Object.defineProperty(window, "localStorage", { configurable: true, get: () => { throw new Error("denied"); } });
+    try {
+      render(ui(null));
+      await activity(null, "thinking");
+      expect(pane()).toBeTruthy();
+      fireEvent.click(screen.getByTestId("plan-switch-canvas"));
+      expect(pane()).toBeNull();
+    } finally {
+      Object.defineProperty(window, "localStorage", { configurable: true, value: real });
+    }
+  });
+
+  it("another conversation's storyboard and idle move nothing: no plan comes back beside a new chat (Lens H1)", async () => {
+    render(ui(null));
+    await activity(A, "storyboard");
+    await activity(A, "idle");
+    expect(pane()).toBeNull();
+    expect(reads).toBe(0);
+    await activity(null, "thinking");
+    expect(pane()).toBeTruthy();
+    await activity(A, "storyboard");
+    await activity(A, "idle");
     await flush();
+    expect(reads).toBe(0);
+    expect(screen.getByTestId("plan-planning")).toBeTruthy();
+  });
+
+  it("on B, A's storyboard does not switch the column to A", async () => {
+    byUrl = (u) => ({ status: 200, body: { brief: u.includes(B) ? withScenes(1) : withScenes(4) } });
+    search = new URLSearchParams(`brain=${B}`);
+    render(ui(B));
+    await flush();
+    await activity(A, "storyboard");
+    await activity(A, "idle");
+    await flush();
+    expect(readUrls.every((u) => u.endsWith(B))).toBe(true);
+    expect(screen.queryByTestId("plan-storyboard")).toBeNull();
+  });
+});
+
+describe("Plan column: the plan", () => {
+  it("a scene card carries its title, the first line of its visual, its planned length and its cast; no per-card status word", async () => {
+    await openOn(A, withScenes(2));
+    const s1 = card("scene#1").closest("article") as HTMLElement;
+    expect(s1.textContent).toContain("Shot 1");
+    expect(s1.textContent).toContain("The kite, shot 1");
+    expect(s1.textContent).not.toContain("more");
+    expect(s1.textContent).toContain("3 s plan");
+    expect(s1.textContent).toContain("Aziza");
+    expect(s1.textContent).not.toContain(c.status.draft);
+    expect(screen.getByText(c.plan.absent.voiceMusic)).toBeTruthy();
+  });
+
+  it("while the storyboard is written: its own row, the time measured here, no per-scene count", async () => {
+    await openOn(A, drafting);
     await activity(A, "storyboard");
     const s = screen.getByTestId("plan-storyboard");
     expect(s.textContent).toContain(c.plan.storyboard);
-    expect(s.textContent).not.toMatch(/\d/);
-    expect(screen.getByTestId("live-node-idea")).toBeTruthy();
+    expect(s.textContent).toContain(c.plan.storyboardNote);
+    expect(s.textContent).not.toMatch(/\d+\s*(\/|of|%)/);
+    expect(card("idea")).toBeTruthy();
     await activity(A, "idle");
     expect(screen.queryByTestId("plan-storyboard")).toBeNull();
   });
 
-  it("new cards enter in scene order, but not on the first reading and never under reduced motion", async () => {
-    answers.push({ status: 200, body: { brief: drafting } }, { status: 200, body: { brief: withScenes(2) } });
-    search = new URLSearchParams(`brain=${A}`);
-    render(<PlanColumn initialSession={A}><FakeCanvas /></PlanColumn>);
-    await flush();
-    // The first reading after open: nothing enters.
-    expect(document.querySelectorAll("[data-enter]").length).toBe(0);
+  it("new cards enter in scene order, not on the first reading, and the marks go once the entrance is over", async () => {
+    await openOn(A, drafting, withScenes(2));
+    expect(arriving()).toEqual([]);
     await briefDone(A);
     await flush();
-    const entering = [...document.querySelectorAll<HTMLElement>("[data-enter]")].map((el) => el.dataset.testid);
-    expect(entering).toEqual(["live-node-scene#1:keyframe", "live-node-scene#1:clip", "live-node-scene#2:keyframe", "live-node-scene#2:clip"]);
+    // In reading order: the cast card above the scenes, then scene by scene.
+    expect(arriving()).toEqual(["ref:c1", "scene#1", "scene#2"]);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 800));
+    });
+    expect(arriving()).toEqual([]);
   });
 
   it("reduced motion: the same new cards arrive with no animation", async () => {
     reduce = true;
-    answers.push({ status: 200, body: { brief: drafting } }, { status: 200, body: { brief: withScenes(2) } });
-    search = new URLSearchParams(`brain=${A}`);
-    render(<PlanColumn initialSession={A}><FakeCanvas /></PlanColumn>);
-    await flush();
+    await openOn(A, drafting, withScenes(2));
     await briefDone(A);
     await flush();
-    expect(screen.getByTestId("live-node-scene#2:clip")).toBeTruthy();
-    expect(document.querySelectorAll("[data-enter]").length).toBe(0);
+    expect(card("scene#2")).toBeTruthy();
+    expect(arriving()).toEqual([]);
+  });
+
+  it("opening another existing conversation is a first reading: nothing is called new (Lens L1)", async () => {
+    byUrl = (u) => ({ status: 200, body: { brief: u.includes(A) ? withScenes(1) : withScenes(4) } });
+    search = new URLSearchParams(`brain=${A}`);
+    const { rerender } = render(ui(A));
+    await flush();
+    search = new URLSearchParams(`brain=${B}`);
+    rerender(ui(A));
+    await flush();
+    await flush();
+    expect(card("scene#4")).toBeTruthy();
+    expect(arriving()).toEqual([]);
   });
 
   it("a failed read keeps the last board and marks it as the last one read", async () => {
-    answers.push({ status: 200, body: { brief: withScenes(1) } }, { status: 500, body: {} });
-    search = new URLSearchParams(`brain=${A}`);
-    render(<PlanColumn initialSession={A}><FakeCanvas /></PlanColumn>);
-    await flush();
+    await openOn(A, withScenes(1));
+    answers.push({ status: 500, body: {} });
     expect(screen.queryByTestId("plan-stale")).toBeNull();
     await briefDone(A);
     await flush();
     expect(reads).toBe(2);
-    expect(screen.getByTestId("live-node-scene#1:clip")).toBeTruthy();
+    expect(card("scene#1")).toBeTruthy();
     expect(screen.getByTestId("plan-stale").textContent).toBe(c.plan.stale);
   });
 
+  it("a first turn that got no answer says so, not 'send a message' (Pixel M3)", async () => {
+    render(ui(null));
+    await activity(null, "thinking");
+    await activity(null, "idle");
+    expect(screen.getByTestId("plan-no-answer").textContent).toBe(c.plan.noAnswer);
+  });
+});
+
+describe("Plan column: details and Escape", () => {
+  it("a card opens its step; Escape closes it, is taken (preventDefault), and focus goes back to the card", async () => {
+    await openOn(A, withScenes(1));
+    fireEvent.click(card("scene#1"));
+    expect(screen.getByTestId("live-details")).toBeTruthy();
+    expect(screen.getByTestId("live-credits").textContent).toBe(c.plan.pricedAtCreate);
+    expect(screen.getByTestId("live-cast").textContent).toContain("Aziza");
+    const e = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    act(() => void document.body.dispatchEvent(e));
+    expect(e.defaultPrevented).toBe(true);
+    expect(screen.queryByTestId("live-details")).toBeNull();
+    expect(document.activeElement).toBe(card("scene#1"));
+  });
+});
+
+describe("Plan column: states", () => {
   it("a signed-out read says so, with the way back", async () => {
+    await openOn(A);
+    answers.length = 0;
+    cleanup();
     answers.push({ status: 401, body: {} });
-    search = new URLSearchParams(`brain=${A}`);
-    render(<PlanColumn initialSession={A}><FakeCanvas /></PlanColumn>);
+    render(ui(A));
     await flush();
     expect(screen.getByTestId("plan-expired").textContent).toContain(c.signIn);
   });
 
+  it("not found and unavailable leave a way on: a new conversation, the person's canvas (Pixel M7)", async () => {
+    answers.push({ status: 404, body: {} });
+    search = new URLSearchParams(`brain=${A}`);
+    render(ui(A));
+    await flush();
+    expect(screen.getByTestId("plan-new-conversation").getAttribute("href")).toBe("/alpha/studio?ai=new");
+    fireEvent.click(screen.getByTestId("plan-show-canvas"));
+    expect(pane()).toBeNull();
+  });
+
   it("no conversation yet: the plan view says how it starts; a malformed activity changes nothing", async () => {
-    render(<PlanColumn initialSession={null}><FakeCanvas /></PlanColumn>);
+    render(ui(null));
     fireEvent.click(screen.getByTestId("plan-switch-plan"));
     expect(screen.getByTestId("plan-empty").textContent).toBe(c.plan.empty);
     fireEvent.click(screen.getByTestId("plan-switch-canvas"));
     await act(async () => void window.dispatchEvent(new CustomEvent("nightshift:brain-activity", { detail: { session_id: "x", phase: "thinking" } })));
-    expect(screen.queryByTestId("plan-board-pane")).toBeNull();
+    expect(pane()).toBeNull();
     expect(reads).toBe(0);
+  });
+
+  it("the canvas is told it is not active while the plan is shown", async () => {
+    const seen: boolean[] = [];
+    function Probe() {
+      seen.push(useContext(CanvasActiveContext));
+      return null;
+    }
+    render(<PlanColumn initialSession={null}><Probe /></PlanColumn>);
+    await activity(null, "thinking");
+    expect(seen.at(-1)).toBe(false);
+    fireEvent.click(screen.getByTestId("plan-switch-canvas"));
+    expect(seen.at(-1)).toBe(true);
+  });
+});
+
+describe("LiveView after a handoff (React H1, Lens M1)", () => {
+  const FILMID = "0f000000-0000-4000-8000-00000000000f";
+  it("settles: no commits a second once the film is read, and nothing rings on the first reading of the film", async () => {
+    const { filmJson, sceneJson, S1 } = await import("./films-fixtures");
+    byUrl = (url) =>
+      url.includes("/api/brain/session/")
+        ? { status: 200, body: { brief: { status: "created", kind: "short", title: "x", idea: "x", scenes: [{ id: "s1", n: 1, visual_prompt: "A dune" }], handoff: { kind: "film", film_id: FILMID } } } }
+        : url.includes("/live")
+          ? { status: 200, body: { film: filmJson({ status: "ready" }, [sceneJson(S1, 0, {})]), segments: [], takes: [] } }
+          : { status: 200, body: { urls: {}, served: false } };
+    let commits = 0;
+    render(
+      <Profiler id="lv" onRender={() => void (commits += 1)}>
+        <LiveView filmStudio target={null} brain={A} />
+      </Profiler>,
+    );
+    await waitFor(() => expect(screen.getByTestId("live-node-scene#1:clip").getAttribute("data-status")).not.toBe("draft"));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    const settled = commits;
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 1000));
+    });
+    expect(commits - settled).toBeLessThanOrEqual(2);
+    expect(document.querySelectorAll("[data-lit]").length).toBe(0);
   });
 });

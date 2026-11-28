@@ -164,7 +164,15 @@ export type ViewProps = {
   enter?: ReadonlyMap<string, number>;
   /** The Plan column: a growing plan, kept in view from its start (Idea first), moved only when cards are added. */
   follow?: boolean;
+  /**
+   * Render only the cards on screen above VISIBLE_ONLY cards. Off where a card must exist off screen: the Live lane's flights start
+   * from a card's box (LiveView turns it off while the lane is mounted), and a keyboard must reach every card.
+   */
+  visibleOnly?: boolean;
 };
+
+/** A wire that fans out of the script into each scene, or into the assembly from each scene: drawn as right angles, not a bundle. */
+const fan = (from: string, to: string) => (from === "script" && to.startsWith("scene#")) || (to === "assembly" && from.startsWith("scene#"));
 
 /**
  * The Plan column's fit. LiveView fits the whole plan centred at a readable zoom, which on a plan wider than the board hides both ends
@@ -220,7 +228,7 @@ const sameCard = (a: CardData, b: CardData) =>
   a.node === b.node && a.name === b.name && a.statusWord === b.statusWord && a.price === b.price && a.lit === b.lit && a.selected === b.selected &&
   a.onOpen === b.onOpen && a.enter === b.enter;
 
-export function Board({ graph, selected, onOpen, names, words, prices, lit, enter, follow = false }: ViewProps) {
+export function Board({ graph, selected, onOpen, names, words, prices, lit, enter, follow = false, visibleOnly = false }: ViewProps) {
   // The node object React Flow was given for each card last time: handed back as it was when nothing on the card changed.
   const cache = useRef(new Map<string, FlowNode>());
   const nodes = useMemo<FlowNode[]>(() => {
@@ -245,6 +253,7 @@ export function Board({ graph, selected, onOpen, names, words, prices, lit, ente
         id: `${e.from}->${e.to}`,
         source: e.from,
         target: e.to,
+        ...(fan(e.from, e.to) ? { type: "smoothstep", pathOptions: { borderRadius: 8 } } : {}),
         // A step not in the plan draws no live path into the next one (S4 LOW 6).
         className:
           status.get(e.from) === "none" || status.get(e.to) === "none"
@@ -278,7 +287,7 @@ export function Board({ graph, selected, onOpen, names, words, prices, lit, ente
           minZoom={0.3}
           maxZoom={1.5}
           proOptions={{ hideAttribution: true }}
-          onlyRenderVisibleElements={nodes.length > VISIBLE_ONLY}
+          onlyRenderVisibleElements={visibleOnly && nodes.length > VISIBLE_ONLY}
         >
           {follow ? <FollowFit count={graph.nodes.length} /> : <FitOnResize selected={selected} />}
         </ReactFlow>
@@ -355,7 +364,8 @@ export function StoryBoard({
   lit,
   enter,
   follow,
-}: Pick<ViewProps, "graph" | "selected" | "onOpen" | "lit" | "enter" | "follow">) {
+  visibleOnly,
+}: Pick<ViewProps, "graph" | "selected" | "onOpen" | "lit" | "enter" | "follow" | "visibleOnly">) {
   const { t } = useI18n();
   const c = t.studioLive;
   const narrow = useNarrow();
@@ -365,6 +375,6 @@ export function StoryBoard({
     () => new Map(graph.nodes.filter((n) => typeof n.price === "number").map((n) => [n.id, fmt(c.price, { n: n.price as number })])),
     [graph, c],
   );
-  const props = { graph, selected, onOpen, names, words, prices, lit, enter, follow };
+  const props = { graph, selected, onOpen, names, words, prices, lit, enter, follow, visibleOnly };
   return narrow ? <List {...props} /> : <Board {...props} />;
 }

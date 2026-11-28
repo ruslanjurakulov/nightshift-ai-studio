@@ -95,3 +95,13 @@ export function planViewport(b: Rect, w: number, h: number, fit = PLAN_FIT): { x
   const y = b.height * zoom <= roomH ? (h - b.height * zoom) / 2 - b.y * zoom : fit.pad - b.y * zoom;
   return { x, y, zoom };
 }
+
+/**
+ * The same rule for any list of card ids in reading order (the Plan column's storyboard: idea, script, cast, scenes, footer): the
+ * ids not in the last reading, each with its place among them. `seen` null is a first reading: nothing enters.
+ */
+export function enteringIds(seen: ReadonlySet<string> | null, ids: readonly string[]): Map<string, number> {
+  if (!seen) return new Map();
+  const fresh = ids.filter((id) => !seen.has(id));
+  return new Map(fresh.map((id, i) => [id, Math.min(i, ENTER_CAP)]));
+}
