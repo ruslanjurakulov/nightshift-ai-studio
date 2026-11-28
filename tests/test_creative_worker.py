@@ -36,6 +36,17 @@ def job(**over):
     return j
 
 
+class _OnSaleBut(list):
+    """sellable_models' ids, as a list holding every model but the ones named (the fake does not enumerate the registry)."""
+
+    def __init__(self, off):
+        super().__init__()
+        self.off = frozenset(off)
+
+    def __contains__(self, model):
+        return model not in self.off
+
+
 class FakeQueue:
     """The 0036 worker functions, in memory, with the same refusals."""
 
@@ -46,6 +57,11 @@ class FakeQueue:
         self.costs = []
         self.down_at = down_at
         self.heartbeat_answer = True
+        #: Models taken off sale since the job was queued (sellable_models no longer lists them), and the owner's switched-off ones.
+        self.off_sale = set()
+        self.switched_off = set()
+        #: model_registry rows the operator-preview rule reads, by model id.
+        self.registry = {}
 
     def _maybe_down(self, what):
         if self.down_at == what:
@@ -83,6 +99,22 @@ class FakeQueue:
 
     def record_cost(self, job_id, usage):
         self.costs.append(usage)
+
+    def on_sale(self, capability):
+        """sellable_models as the worker reads it: every model is on sale unless a test took it off (``off_sale``)."""
+        self._maybe_down("on_sale")
+        self.calls.append(("on_sale", capability))
+        if self.down_at == "on_sale_unreadable":
+            return None
+        return _OnSaleBut(self.off_sale | self.switched_off)
+
+    def model_switched_on(self, model_id):
+        self.calls.append(("switched_on", model_id))
+        return model_id not in self.switched_off
+
+    def registry_row(self, model_id):
+        self.calls.append(("registry_row", model_id))
+        return self.registry.get(model_id)
 
     def reroute(self, job_id, worker_id, code):
         """0075's reroute_creative_job: the next model from `self.reroutes`,
@@ -742,3 +774,60 @@ class RealAdapterFailover(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AdapterProvenance(unittest.TestCase):
+    """BR-L-208: what an adapter may add to a library row's provenance (0038), and what it may never set."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+        self.worker = cw.CreativeWorker.__new__(cw.CreativeWorker)
+        self.worker.library = cw.Library(store=object(), media_root=self.tmp)
+        self.worker.queue = mock.Mock(attach_assets=mock.Mock(return_value=True))
+        self.worker.worker_id = "w"
+        self.file = self.tmp / "output_0.mp3"
+        self.file.write_bytes(b"ID3" + b"\x00" * 64)
+        self.request = cw.GenerationRequest(job_id="j1", org_id="o1", capability="music", model="google-lyria-3.5", params={})
+
+    def stored(self, said):
+        with mock.patch.object(cw.ml, "store_generated") as store:
+            self.worker._to_library(self.request, [self.file], cw.ProviderUsage(provider="google"), said)
+        return store.call_args.kwargs["provenance"]
+
+    def test_an_adapter_can_never_set_a_key_sql_reads_as_authority(self):
+        forged = {k: "forged" for k in ("provider", "origin", "scan_id", "job_id", "film_take_id", "film_segment_id",
+                                        "source_asset_id", "end_asset_id", "model", "rights", "capability")}
+        prov = self.stored({**forged, "synthid": True})
+        self.assertEqual(prov["synthid"], True)
+        self.assertEqual((prov["job_id"], prov["model"], prov["provider"], prov["rights"]),
+                         ("j1", "google-lyria-3.5", "google", "generated_for_org"))
+        for k in ("origin", "scan_id", "film_take_id", "film_segment_id", "source_asset_id", "end_asset_id"):
+            self.assertNotIn(k, prov, k)
+
+    def test_only_the_allow_list_is_kept_and_strings_are_capped(self):
+        prov = self.stored({"vendor_model": "x" * 20000, "vocals_requested": False, "anything": "else", "nested": {"a": 1}})
+        self.assertEqual(len(prov["vendor_model"]), cw.ADAPTER_PROVENANCE_MAX_CHARS)
+        self.assertIs(prov["vocals_requested"], False)
+        self.assertNotIn("anything", prov)
+        self.assertNotIn("nested", prov)
+        self.assertEqual(cw.ADAPTER_PROVENANCE_KEYS, {"synthid", "vendor_model", "vocals_requested"})
+        # JSON has no NaN or Infinity: a non-finite number would make the row unwritable (or a lie), so it is dropped.
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            self.assertNotIn("synthid", self.stored({"synthid": bad}))
+
+    def test_an_adapter_that_states_provenance_as_a_non_mapping_is_an_error_not_silence(self):
+        from modules import creative_adapters as ca  # noqa: PLC0415
+        from modules import model_registry as reg  # noqa: PLC0415
+
+        class Odd:
+            key = "audio.odd"
+
+            def output_provenance(self, request, vendor_model):
+                return ["synthid"]
+
+        ra = ca.RegistryAdapter(reg.load()["google-lyria-3.5"], Odd(), sync_store={})
+        with self.assertRaises(ca.CreativeAdapterError) as cm:
+            ra.provenance(self.request)
+        self.assertEqual(cm.exception.code, "bad_response")

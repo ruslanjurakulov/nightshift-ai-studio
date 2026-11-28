@@ -5,6 +5,7 @@ import { fill } from "@/lib/owner-analytics/format";
 import { firstNameOf } from "@/lib/owner-console/greeting";
 import { mfaVerifyUrl } from "@/lib/security/admin-mfa";
 import { requireOwnerConsole } from "@/lib/server/owner-console";
+import { CHAT_MODELS, OWNER_PICKER_DEFAULT, chatModelConfigured, type ChatModelId } from "@/lib/server/brain/llm";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,10 @@ export default async function OwnerConsoleAi() {
     <div className="oc-ai-page">
       <OwnerAssistant
         a={a}
+        configuredModels={Object.fromEntries(
+          (Object.keys(CHAT_MODELS) as ChatModelId[]).map((id) => [id, chatModelConfigured(id)]),
+        )}
+        preferredModel={OWNER_PICKER_DEFAULT}
         greeting={name ? fill(a.greeting, { name }) : a.greetingNoName}
         verifyHref={mfaVerifyUrl("/owner/ai")}
         signInHref={`/login?next=${encodeURIComponent("/owner/ai")}`}

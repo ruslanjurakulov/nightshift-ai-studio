@@ -24,6 +24,8 @@ name: Deploy web
 # worker (creative_jobs, migration 0036); otherwise that one is removed.
 # While NIGHTSHIFT_FILM_WORKER is `on` as well, it also starts the film worker
 # (Film Studio segments, migrations 0171 and 0198); otherwise that one is removed.
+# While NIGHTSHIFT_FILM_SWEEP is `on` as well, it also starts the film sweep (0212's fallback schedule, every 5
+# minutes, independent of the film worker); otherwise that one is removed.
 # Two small workers have a switch and an env file each, and neither is the
 # pipeline worker's: while NIGHTSHIFT_NOTIFY_WORKER is `on` the customer
 # Telegram sender (notify-worker, /opt/nightshift/.env.notify, step "Build the
@@ -250,6 +252,7 @@ jobs:
           WEBENV_NIGHTSHIFT_AI_CHAT_ORGS: ${{ vars.NIGHTSHIFT_AI_CHAT_ORGS }}
           WEBENV_AI_CHAT_ANTHROPIC_API_KEY: ${{ secrets.AI_CHAT_ANTHROPIC_API_KEY }}
           WEBENV_AI_CHAT_OPENAI_API_KEY: ${{ secrets.AI_CHAT_OPENAI_API_KEY }}
+          WEBENV_AI_CHAT_GEMINI_API_KEY: ${{ secrets.AI_CHAT_GEMINI_API_KEY }}
           WEBENV_MARKETING_TELEGRAM_CHAT: ${{ vars.MARKETING_TELEGRAM_CHAT }}
           WEBENV_NOTIFY_APP_ORIGIN: ${{ vars.NOTIFY_APP_ORIGIN }}
           WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}
@@ -434,6 +437,9 @@ jobs:
           WORKERENV_NIGHTSHIFT_FILM_WORKER: ${{ vars.NIGHTSHIFT_FILM_WORKER }}
           # The film assembly's switch: off unless exactly `on`; without it the film worker claims nothing.
           WORKERENV_NIGHTSHIFT_FILM_ASSEMBLY: ${{ vars.NIGHTSHIFT_FILM_ASSEMBLY }}
+          # The film sweep's switch (tools/film_sweep.py --loop, 0212): `on` = remote-deploy.sh starts or recreates film-sweep,
+          # anything else = it is removed. Independent of NIGHTSHIFT_FILM_WORKER. A word, not a secret.
+          WORKERENV_NIGHTSHIFT_FILM_SWEEP: ${{ vars.NIGHTSHIFT_FILM_SWEEP }}
           # Models, hosts, per-run and per-day USD caps and unit prices: variables only
           # (deploy/.env.worker.example, "Models, hosts and caps" and "Spend").
           WORKERENV_GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
@@ -591,6 +597,9 @@ jobs:
           OPERATORENV_OPERATOR_STUCK_MINUTES: ${{ vars.OPERATOR_STUCK_MINUTES }}
           OPERATORENV_OPERATOR_ALERT_MAX_PER_HOUR: ${{ vars.OPERATOR_ALERT_MAX_PER_HOUR }}
           OPERATORENV_OPERATOR_DEADMAN_HOURS: ${{ vars.OPERATOR_DEADMAN_HOURS }}
+          # The film spend watch's lines (empty = USD 6 and 8); a malformed one stops the service from starting.
+          OPERATORENV_NIGHTSHIFT_FILM_SPEND_WARN_USD: ${{ vars.NIGHTSHIFT_FILM_SPEND_WARN_USD }}
+          OPERATORENV_NIGHTSHIFT_FILM_SPEND_STOP_USD: ${{ vars.NIGHTSHIFT_FILM_SPEND_STOP_USD }}
           # The owner's pause of the scheduled pipeline: the always-on bot reads it at deploy time, so after
           # changing the variable run Deploy web (docs/VIDEO_GO_LIVE.md, section 8).
           OPERATORENV_NIGHTSHIFT_PIPELINE_PAUSED: ${{ vars.NIGHTSHIFT_PIPELINE_PAUSED }}

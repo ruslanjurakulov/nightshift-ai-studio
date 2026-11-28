@@ -1,0 +1,51 @@
+name: Film Sweep Watchdog
+
+# Once an hour, READS whether the Film Studio sweep is running (switch-on gate G2, docs/FILM_STUDIO.md): tools/film_sweep.py
+# --check calls film_sweep_status() (migration 0212) and never sweeps. The sweep itself runs in the database (pg_cron, every 5
+# minutes, where installed) and on our own server (the film-sweep service, every 5 minutes, while NIGHTSHIFT_FILM_SWEEP=on).
+# Actions does not sweep: a 10-minute schedule would cost about 4,300 runner-minutes a month; this costs about 720 short runs.
+#
+# It spends nothing, writes nothing and calls no provider. Outcomes:
+#   red     the database says "overdue": a segment stuck past its settle point longer than the line, or one open and no sweep
+#           completed within it (::error:: with the counts), or the status could not be read;
+#   green   not overdue, or unknown (no sweep recorded yet), as a ::notice::;
+#   green   0212 not applied yet (one neutral ::notice::), or the secrets unset (a ::warning::).
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: film-sweep-watchdog
+  cancel-in-progress: false
+
+# Least privilege (BR-S-001): the job token may read the repository and nothing else.
+permissions:
+  contents: read
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Never pushes: keeps the job token out of .git/config (BR-S-001).
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Install requests
+        run: pip install "requests>=2.33.0"
+
+      - name: Is the film sweep running?
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python tools/film_sweep.py --check

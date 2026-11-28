@@ -415,6 +415,20 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   border-radius: var(--ns-r-key);
 }
 .st-signin:hover { background: var(--ns-hover); }
+/* 1024 to 1119px: the bar is one row from 1024px, and with the panel triggers (a chevron each) it wrapped to two lines up
+   to 1116px (Russian; Uzbek 1076, English 1040: the header 69 -> 97px). Here the bar gives up a little air instead: tighter
+   gaps and item padding, a smaller chevron and lockup, and the language key shows its code without the globe. Measured
+   one row at 1024 in every language, with the lit item's dot (tools/visual-qa/public-megamenu.mjs). The triggers' share is
+   after their own rules below, which would otherwise win by coming later. */
+@media (min-width: 1024px) and (max-width: 1119px) {
+  .st-brand { --wm-h: 22px; }
+  .st-header-row { gap: 6px; }
+  .st-nav a { padding: 0 6px; gap: 4px; }
+  .st-header-desk { gap: 6px; }
+  .st-header-desk [aria-haspopup="listbox"] svg { display: none; }
+  .st-signin { padding: 0 8px; }
+  .st-header-tools .st-key[data-size="sm"] { padding: 0 12px; }
+}
 
 /* ── The phone bar and its menu (components/legal/PublicMenu.tsx) ─────────
    Below 768px the rows under the wordmark were 209px tall at 390px (the links wrapped to three lines). There the bar is
@@ -499,8 +513,187 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 .st-menu-signin:hover { background: var(--ns-hover); }
 @media (prefers-reduced-motion: no-preference) {
   .st-menu-sheet { animation: st-menu-in var(--ns-dur-2) var(--ns-ease); }
+  html[data-motion="paused"] .st-menu-sheet { animation: none; }
 }
 @keyframes st-menu-in { from { transform: translateX(24px); opacity: 0; } }
+/* The phone sheet's sections (PublicMenu.tsx): the desktop panels' groups, one button each, a chevron that turns. The sheet
+   is the whole screen (a 360px side sheet left a 30px strip of page on a 390px phone, which read as a mistake). */
+@media (max-width: 767px) { .st-menu-sheet { width: 100%; border-left: 0; padding-bottom: 0; } }
+.st-menu-sec { border-bottom: 1px solid var(--ns-rule); }
+/* The list's last row has no rule of its own: with only the language and theme keys before the pinned foot's top rule, two
+   rules read as a double line on a short phone (360px). */
+.st-menu-nav > :last-child { border-bottom: 0; }
+.st-menu-sec-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ns-text);
+  text-align: start;
+  cursor: pointer;
+}
+.st-menu-sec-btn:hover { background: var(--ns-hover); }
+.st-menu-sec-btn[data-current="true"]::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--ns-amber); }
+.st-menu-sec-btn[data-current="true"] { justify-content: flex-start; }
+.st-menu-sec-btn[data-current="true"] .st-menu-chev { margin-inline-start: auto; }
+.st-menu-chev { width: 20px; height: 20px; flex: none; color: var(--ns-text-dim); }
+.st-menu-sec-btn[aria-expanded="true"] .st-menu-chev { transform: rotate(180deg); }
+.st-menu-sec-body { padding: 0 4px 12px; }
+.st-menu-sec-body[hidden] { display: none; }
+.st-menu-col + .st-menu-col { margin-top: 8px; }
+.st-menu-col-title { display: flex; align-items: center; min-height: 44px; padding: 0 8px; font-size: 14px; font-weight: 600; color: var(--ns-text-dim); }
+a.st-menu-col-title { color: var(--ns-text); text-decoration: underline; text-decoration-color: var(--ns-rule-strong); text-underline-offset: 4px; }
+.st-menu-col ul { display: flex; flex-direction: column; }
+.st-menu-col li a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: var(--ns-r-key);
+  font-size: 16px;
+  color: var(--ns-text);
+}
+.st-menu-col li a:hover { background: var(--ns-hover); }
+/* A section's links are a level under the group's button: not the top-level rows' 20px display type and rule. */
+.st-menu-nav .st-menu-col a { border-bottom: 0; font-family: inherit; font-weight: 500; }
+.st-menu-nav .st-menu-col li a { min-height: 44px; font-size: 16px; }
+.st-menu-nav .st-menu-col a.st-menu-col-title { min-height: 44px; padding: 0 8px; font-size: 14px; font-weight: 600; }
+.st-menu-col a[aria-current="page"]::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--ns-amber); }
+/* The foot: Sign in and the one key, stuck to the bottom of the sheet while the list scrolls under them. */
+.st-menu-foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+  padding: 12px 0 calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--ns-ground);
+  border-top: 1px solid var(--ns-rule);
+}
+.st-menu-foot .st-menu-signin { margin-top: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .st-menu-chev { transition: transform var(--ns-dur-2) var(--ns-ease); }
+  html[data-motion="paused"] .st-menu-chev { transition: none; }
+}
+
+/* ── The desktop panels (components/legal/PublicMegaMenu.tsx) ─────────────
+   A trigger per group in the bar; one full-width frame under the bar, over the page. The frame is absolutely placed in the
+   header (sticky from 1024px, positioned below that so the frame has the header to hang from), so opening it moves nothing
+   and the bar's height never changes. It slides down by its clip (not its height: no box is laid out again) and fades,
+   200ms (the design system's panel duration); under reduced motion or the site's "Pause motion" it is simply there. Panels swap inside it at once. */
+/* Positioned only where a panel is drawn (768 to 1023px; sticky above). Below 768px the header stays unpositioned: a
+   positioned header with its z-index 40 is a stacking context, and the phone sheet (fixed, z-index 60, inside it) would
+   then be ranked as 40 against the page: none of the public pages draws above 40 today, but the sheet must not depend on it. */
+@media (min-width: 768px) and (max-width: 1023px) { .st-header { position: relative; } }
+.st-nav .st-mm-trigger {
+  position: relative;
+  flex: none;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 6px 0 8px;
+  border: 0;
+  border-radius: var(--ns-r-key);
+  background: transparent;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ns-text-dim);
+  cursor: pointer;
+  transition: color var(--ns-dur-1) var(--ns-ease), background-color var(--ns-dur-1) var(--ns-ease);
+}
+.st-nav .st-mm-trigger:hover, .st-nav .st-mm-trigger[aria-expanded="true"] { color: var(--ns-text); }
+.st-nav .st-mm-trigger[data-current="true"] { color: var(--ns-text); }
+.st-nav .st-mm-trigger[data-current="true"]::before { content: ""; width: 6px; height: 6px; margin-inline-end: 4px; border-radius: 999px; background: var(--ns-amber); }
+/* The open trigger's thin underline: a drawn line, not a border, so the trigger keeps its size. */
+.st-nav .st-mm-trigger[aria-expanded="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 6px; height: 1px; background: currentColor; }
+.st-mm-chev { width: 14px; height: 14px; flex: none; opacity: 0.7; }
+.st-mm-trigger[aria-expanded="true"] .st-mm-chev { transform: rotate(180deg); }
+/* Without JavaScript the triggers are hidden by the shell's noscript rule and these plain links take their place. */
+.st-nav .st-mm-nojs { display: none; }
+/* The 1024 to 1119px bar's tighter triggers (with the header's other tightening above). */
+@media (min-width: 1024px) and (max-width: 1119px) {
+  .st-nav .st-mm-trigger { padding: 0 4px 0 6px; gap: 2px; }
+  .st-mm-chev { width: 12px; height: 12px; }
+}
+
+.st-mm {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  background: var(--ns-ground);
+  border-top: 1px solid var(--ns-rule);
+  border-bottom: 1px solid var(--ns-rule);
+  box-shadow: 0 24px 48px -32px rgba(0, 0, 0, 0.45);
+  visibility: hidden;
+  opacity: 0;
+  clip-path: inset(0 0 100% 0);
+  pointer-events: none;
+}
+.st-mm[data-open="true"] { visibility: visible; opacity: 1; clip-path: inset(0 0 -64px 0); pointer-events: auto; }
+@media (max-width: 767px) { .st-mm { display: none; } }
+@media (prefers-reduced-motion: no-preference) {
+  .st-mm { transition: opacity 200ms var(--ns-ease), clip-path 200ms var(--ns-ease), visibility 0s linear 200ms; }
+  .st-mm[data-open="true"] { transition: opacity 200ms var(--ns-ease), clip-path 200ms var(--ns-ease), visibility 0s; }
+  .st-mm-chev { transition: transform var(--ns-dur-2) var(--ns-ease); }
+  html[data-motion="paused"] .st-mm, html[data-motion="paused"] .st-mm[data-open="true"], html[data-motion="paused"] .st-mm-chev { transition: none; }
+}
+.st-mm-inner { padding-block: 20px 28px; }
+.st-mm-panel { display: flex; gap: 48px; padding-inline-start: var(--mm-x, 0px); }
+.st-mm-panel[hidden] { display: none; }
+.st-mm-col { display: flex; flex-direction: column; width: 340px; max-width: 100%; }
+.st-mm-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  min-height: 40px;
+  padding: 0 10px;
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ns-text-dim);
+}
+a.st-mm-title { color: var(--ns-text); border-radius: var(--ns-r-key); }
+a.st-mm-title:hover { background: var(--ns-hover); }
+a.st-mm-title svg { width: 14px; height: 14px; }
+.st-mm-col ul { display: flex; flex-direction: column; }
+.st-mm-link {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 40px;
+  padding: 6px 10px;
+  border-radius: var(--ns-r-key);
+  color: var(--ns-text);
+}
+.st-mm-link:hover { background: var(--ns-hover); }
+.st-mm-label { font-size: 15px; font-weight: 500; line-height: 1.35; }
+/* 14px, not the reference's 13: the public site's smallest text size (tests/site-engage-5.test.tsx). */
+/* Wraps rather than cutting the sentence (an ellipsis cut Trust's line and Russian's API line mid-word). */
+.st-mm-desc { font-size: 14px; line-height: 1.4; color: var(--ns-text-dim); white-space: normal; text-wrap: pretty; }
+.st-mm-link[aria-current="page"] .st-mm-label::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-inline-end: 8px; vertical-align: middle; border-radius: 999px; background: var(--ns-amber); }
+/* A coarse pointer (a touch screen at desktop width) gets the 44px rows a finger needs. */
+@media (pointer: coarse) { .st-mm-link, .st-mm-title { min-height: 44px; } }
+/* The focus ring is the site's (global :focus-visible, --ns-focus); inside the frame it is drawn inside the row so the
+   clip that slides the frame never cuts it. */
+.st-mm a:focus-visible { outline-offset: -2px; }
 
 
 /* ── Hero ───────────────────────────────────────────────────────────────── */
@@ -2460,3 +2653,13 @@ h3.st-doc-h3 { letter-spacing: 0; }
 
 /* The language chip in the public header and the auth pages (a component the signed-in app shares, so this is scoped to .st): its code was 12 px. */
 .st [aria-haspopup="listbox"] .text-xs { font-size: 14px; line-height: 20px; }
+
+/* The bar's quiet controls (language, theme, view, the menu key) are found by their edge alone: on the dark ground the shared
+   quiet border measured 1.37:1 (S5 Pixel on #889/#906), under the 3:1 a control's boundary needs (WCAG 1.4.11). The strong rule
+   is 3:1 or better on every public ground; hover keeps the app's accent edge. A listbox row keeps its transparent edge.
+   Unlayered (outside @layer components): the shared .btn-sky.is-quiet border is unlayered in globals.css, and an unlayered
+   rule beats any layered one whatever its specificity, so inside the layer this never applied (S5 Pixel, #916). */
+.st-header .btn-sky.is-quiet:not(.border-transparent),
+.st-menu-btn,
+.st-menu-close { border-color: var(--ns-rule-strong); }
+.st-header .btn-sky.is-quiet:not(.border-transparent):hover:where(:not(:disabled, [aria-disabled="true"])) { border-color: var(--color-primary); }

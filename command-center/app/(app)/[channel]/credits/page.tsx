@@ -43,6 +43,8 @@ import { OwnerRecentGrants } from "@/components/credits/OwnerRecentGrants";
 import { OwnerPriceHistory } from "@/components/credits/OwnerPriceHistory";
 import { ownerRpcOn } from "@/lib/server/owner-rpc";
 import { readGrantWindow, readOwnerSecurity, readPriceHistory } from "@/lib/server/owner-reads";
+import { LEDGER_UNITS } from "@/lib/server/ledger-units";
+import { ledgerUnitMeanings } from "@/lib/server/ledger-unit-labels";
 
 const FAILED_READ = { state: "failed" as const };
 
@@ -331,6 +333,8 @@ export default async function CreditsPage() {
               <CreditPricesEditor
                 prices={Object.values(priceList.prices)}
                 canEdit
+                ledgerUnits={LEDGER_UNITS}
+                unitMeanings={ledgerUnitMeanings(t.credits.unitMeaning)}
                 rpc={rpcActive ? { maxRatio: sec?.priceMaxRatio ?? null } : undefined}
               />
               {rpcActive && (
@@ -338,6 +342,7 @@ export default async function CreditsPage() {
                   history={priceHistory?.state === "ok" ? priceHistory.value : null}
                   prices={Object.values(priceList.prices)}
                   maxRatio={sec?.priceMaxRatio ?? null}
+                  unitMeanings={ledgerUnitMeanings(t.credits.unitMeaning)}
                 />
               )}
             </>

@@ -37,7 +37,9 @@ vi.mock("@/lib/site/showcase.json", async () => {
 });
 vi.mock("@/components/site/showcase-assets", async () => {
   const { FIXTURE_FILES, FIXTURE_JOB } = await import("./fixtures/showcase-entry");
-  return { SHOWCASE_FILES: { ...FIXTURE_FILES, "0d0d0d0d-1111-4222-8333-444455556666": FIXTURE_FILES[FIXTURE_JOB], "4e85c7e4-fd1a-4771-97ee-66c1fb853367": FIXTURE_FILES[FIXTURE_JOB] } };
+  const { SHOWCASE_ENTRIES, showcaseCard } = await import("@/lib/site/showcase");
+  // The client slice of the same stand-in data file, as the generator would write it (lib/site/showcase.ts showcaseCard).
+  return { SHOWCASE_FILES: { ...FIXTURE_FILES, "0d0d0d0d-1111-4222-8333-444455556666": FIXTURE_FILES[FIXTURE_JOB], "4e85c7e4-fd1a-4771-97ee-66c1fb853367": FIXTURE_FILES[FIXTURE_JOB] }, SHOWCASE_CARDS: SHOWCASE_ENTRIES.map(showcaseCard) };
 });
 // The hero's line as it is before its id is set (`ai` null), so the fixture's `slot: "hero"` export fills it; every other slot names a
 // real job that is not in this fixture data, so it shows its stock fallback here.
@@ -277,6 +279,17 @@ describe("the landing with our own clip on its first screen", () => {
     expect(tile.querySelector(".nx-gallery-unavailable")?.textContent).toBe(t.site.gallery.notInStudio);
     expect(tile.querySelector(`a[href="#sample-${OTHER}"]`)?.textContent).toBe(t.site.models.see);
     expect(tile.textContent).not.toMatch(/\$|€|credit|new\b/i);
+  });
+
+  // Owner decision 22 Nov: no model name on a gallery card; it travels only in the Studio link. Scoped to the gallery: the model
+  // tiles and the ribbon (kept by the owner on 27 Nov) name theirs, each inside its sample's box.
+  it("no gallery card names its model, in text or any attribute but its Studio link", () => {
+    const { container } = landing();
+    const gallery = container.querySelector(GALLERY)!;
+    for (const card of gallery.querySelectorAll(SAMPLE_CARD)) {
+      const words = [card.textContent ?? "", ...[...card.querySelectorAll("*"), card].flatMap((n) => [...n.attributes].filter((a) => a.name !== "href").map((a) => a.value))].join("\n");
+      for (const name of ["Runway Gen-4.5", "runway-gen4.5", "MiniMax H3", "minimax-h3"]) expect(words).not.toContain(name);
+    }
   });
 
   it("nothing in the grid or the tiles looks dead: each tile plays its sample's loop like the grid, and every poster drifts until its clip plays, stopped by the pause switch and absent under reduced motion", () => {

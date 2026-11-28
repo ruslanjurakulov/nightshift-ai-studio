@@ -261,6 +261,7 @@ export interface DiscoverySpec {
   audioOut: boolean;
   upscaleFactors: number[];
   upscaleTargets: string[];
+  /** spec.languages: a dub or captions model's sold languages; a voice model's covers only the three checked (uz, ru, en). */
   languages: string[];
   endFrame: boolean;
   maxSourceSeconds: number | null;
@@ -656,17 +657,17 @@ export function matchesQuery(haystack: string, q: string): boolean {
  * tasks and output — and its id and provider only where the provider is shown
  * (a search must not reveal a name the screen hides).
  */
-export function searchText(m: DiscoveryModel, words: readonly string[] = [], withProvider = false): string {
-  const own = withProvider ? [m.id, m.provider, providerName(m.provider)] : [];
+export function searchText(m: DiscoveryModel, words: readonly string[] = [], providers: ProviderLabels | null = null): string {
+  const own = providers ? [m.id, m.provider, providerLabel(providers, m.provider)] : [];
   return [m.displayName, ...own, ...m.capabilities, ...words].join(" \u0001 ");
 }
 
-export function matchesFilters(m: DiscoveryModel, f: Filters, words: readonly string[] = [], withProvider = false): boolean {
+export function matchesFilters(m: DiscoveryModel, f: Filters, words: readonly string[] = [], providers: ProviderLabels | null = null): boolean {
   if (f.task !== "all" && !taskCaps(f.task).some((c) => m.capabilities.includes(c))) return false;
   if (f.input !== "all" && !inputKindsOf(m).includes(f.input)) return false;
   if (f.output !== "all" && m.spec.output !== f.output) return false;
   if (f.state !== "all" && m.state !== f.state) return false;
-  return matchesQuery(searchText(m, words, withProvider), f.q);
+  return matchesQuery(searchText(m, words, providers), f.q);
 }
 
 const STATE_RANK: Record<DiscoveryState, number> = { available: 0, plan_gated: 1, needs_probe: 2, not_on_sale: 3, unavailable: 4 };
@@ -683,11 +684,11 @@ export function taskCounts(
   models: DiscoveryModel[],
   f: Filters,
   words: (m: DiscoveryModel) => readonly string[] = () => [],
-  withProvider = false,
+  providers: ProviderLabels | null = null,
 ): Record<TaskId, number> {
   const out = Object.fromEntries(TASKS.map((t) => [t.id, 0])) as Record<TaskId, number>;
   for (const m of models) {
-    if (!matchesFilters(m, { ...f, task: "all" }, words(m), withProvider)) continue;
+    if (!matchesFilters(m, { ...f, task: "all" }, words(m), providers)) continue;
     for (const t of tasksOf(m.capabilities)) out[t] += 1;
   }
   return out;
@@ -772,8 +773,9 @@ export function linksFor(m: Pick<DiscoveryModel, "id" | "capabilities">, task: T
 /**
  * The model the Studio is asked to start with (`/create?tool=…&model=…`),
  * added to a prefill the tool already produced. Shape only: a model that is
- * not one the Studio offers for that tool is ignored by the panel, which then
- * picks the first it does offer. Without a tool there is no prefill to add to.
+ * not one the Studio offers for that tool is not taken by the panel, which then
+ * picks the first it does offer and says so in one line (owner decision 22 Nov,
+ * CLAUDE.md #4: never a silent swap). Without a tool there is no prefill to add to.
  */
 export function prefillModel<T extends { model: string }>(initial: T | null, raw: unknown): T | null {
   if (!initial) return initial;
@@ -783,25 +785,16 @@ export function prefillModel<T extends { model: string }>(initial: T | null, raw
 
 // ── identity ────────────────────────────────────────────────────────────────
 
-/**
- * How the registry's provider slugs are written: the companies themselves, as
- * they spell their names. An unknown slug is shown as it is, never guessed.
- * The logged-in app may name them; the public site does not.
- */
-const PROVIDER_NAMES: Record<string, string> = {
-  openai: "OpenAI",
-  anthropic: "Anthropic",
-  google: "Google",
-  elevenlabs: "ElevenLabs",
-  bfl: "Black Forest Labs",
-  ideogram: "Ideogram",
-  kling: "Kling",
-  minimax: "MiniMax",
-  runway: "Runway",
-  luma: "Luma",
-  bytedance: "ByteDance",
-  alibaba: "Alibaba",
-};
+// The provider display names (openai -> "OpenAI", bfl -> "Black Forest Labs", ...) are lib/server/provider-names.ts,
+// server-only: this module is in the public pages' chunk. A screen that names a provider gets the labels as a prop.
+
+/** The display names a screen may print for the provider slugs it shows (lib/server/provider-names.ts providerLabels). */
+export type ProviderLabels = Readonly<Record<string, string>>;
+
+/** The label for a slug from the labels a screen was handed; the slug itself when it has none, never a guess. */
+export function providerLabel(labels: ProviderLabels | null | undefined, slug: string): string {
+  return labels && Object.hasOwn(labels, slug) ? labels[slug] : slug;
+}
 
 /**
  * Whether a CUSTOMER sees who makes a model. Off: the Studio shows a model by
@@ -815,9 +808,6 @@ export function showsProvider(operator: boolean): boolean {
   return operator || SHOW_PROVIDER_TO_CUSTOMERS;
 }
 
-export function providerName(slug: string): string {
-  return PROVIDER_NAMES[slug] ?? slug;
-}
 
 /** Every shape the registry lists for the model (all its tools), first one first. */
 export function shapesOf(spec: Pick<DiscoverySpec, "aspectRatios" | "aspectRatiosByCapability">): string[] {

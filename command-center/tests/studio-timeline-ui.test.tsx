@@ -10,6 +10,7 @@ import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@t
 import type { ReactNode } from "react";
 import { studioTimelineEn as c } from "../lib/i18n/studio-timeline/en";
 import { FILM, S1, S2, filmJson, sceneJson } from "./films-fixtures";
+import { en } from "../lib/i18n/en";
 
 vi.mock("@/lib/i18n/context", async () => {
   const { en } = await import("../lib/i18n/en");
@@ -170,6 +171,18 @@ describe("Assemble", () => {
     await waitFor(() => expect(screen.getAllByTestId("assemble-note")[0].textContent).toContain(c.noPrice));
     expect(screen.getAllByTestId("assemble-amount")[0].textContent).not.toMatch(/\d/);
   });
+
+  it.each(["prompt_too_long", "negative_prompt_not_supported", "seed_not_supported"] as const)(
+    "a scene line refused %s says what to change, not that the price can't be worked out",
+    async (word) => {
+      answer = (url) => (url.endsWith("/quote") ? { status: 200, body: { quote: { priced: false, total: null, quote_id: null, refusals: [{ reason: word }], blocked_by: [] } } } : { status: 200, body: { film: film() } });
+      await open();
+      fireEvent.click(screen.getAllByTestId("assemble-key")[0]);
+      await waitFor(() => expect(screen.getAllByTestId("assemble-note")[0].textContent).toBe(en.creative.errors[word]));
+      expect(screen.getAllByTestId("assemble-note")[0].textContent).not.toContain(c.noPrice);
+      expect(screen.getAllByTestId("assemble-amount")[0].textContent).not.toMatch(/\d/);
+    },
+  );
 
   it("a failed quote read is said as one: not 'pricing is not live', and still no number", async () => {
     answer = (url) => (url.endsWith("/quote") ? { status: 502, body: { error: "failed" } } : { status: 200, body: { film: film() } });

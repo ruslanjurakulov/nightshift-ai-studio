@@ -42,6 +42,7 @@ export const billingLedgerEn = {
   usdUnknown: "{qty} {unit}, USD unknown",
   rowsUsdUnknown: "{unit}: {n} rows, USD unknown",
   billingUnknown: "failed probes that may have been billed: {n}",
+  // The vendor-named units (gemini_*, pexels_*) are in lib/server/ledger-unit-labels.ts: this dictionary ships to the browser.
   units: {
     second: "s",
     image: "images",
@@ -51,8 +52,6 @@ export const billingLedgerEn = {
     tokens: "tokens",
     probe: "probes",
     tts_characters: "characters",
-    gemini_input_tokens: "tokens",
-    gemini_output_tokens: "tokens",
     video_gen_clips: "clips",
     image_generations: "images",
   } as Record<string, string>,

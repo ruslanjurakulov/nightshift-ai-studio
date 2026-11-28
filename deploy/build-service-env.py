@@ -63,6 +63,8 @@ OPTIONAL: Dict[str, frozenset] = {
         "OPERATOR_DIGEST_HOUR", "OPERATOR_STUCK_MINUTES", "OPERATOR_ALERT_MAX_PER_HOUR", "OPERATOR_DEADMAN_HOURS",
         # The owner's pause of the scheduled pipeline (empty = running): docs/VIDEO_GO_LIVE.md.
         "NIGHTSHIFT_PIPELINE_PAUSED",
+        # The film spend watch's lines (empty = USD 6 and 8); the bot itself refuses a malformed one at start.
+        "NIGHTSHIFT_FILM_SPEND_WARN_USD", "NIGHTSHIFT_FILM_SPEND_STOP_USD",
         # The owner's e-mail copy (docs/OWNER_EMAIL.md): off while NIGHTSHIFT_OWNER_EMAIL is empty.
         "NIGHTSHIFT_OWNER_EMAIL", "OWNER_EMAIL_KINDS", "RESEND_API_KEY", "NIGHTSHIFT_EMAIL_FROM",
     }),

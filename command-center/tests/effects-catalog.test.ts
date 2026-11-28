@@ -29,7 +29,7 @@ import { dictionaries, type Locale } from "@/lib/i18n";
 import { afterSignupPath, studioNext } from "@/lib/safe-redirect";
 import { DESKS, MEDIA_DESKS, deskFromQuery } from "@/lib/creative/desks";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
-import { effectSample } from "@/components/effects/EffectFrame";
+import { effectSample } from "@/components/effects/effect-sample";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 
 const LOCALES: Locale[] = ["en", "ru", "uz"];
@@ -279,7 +279,9 @@ describe("previews", () => {
       if (!e.previewJobId) continue;
       const entry = SHOWCASE_ENTRIES.find((s) => s.jobId === e.previewJobId);
       expect(entry, `${e.id}: ${e.previewJobId} is not in lib/site/showcase.json`).toBeTruthy();
-      expect(effectSample(e), `${e.id}: the entry is not this effect's clip (tool, model, words or files)`).not.toBeNull();
+      // The full entries, not the default client slice: only they carry the words, so only this call checks all four.
+      expect(effectSample(e, SHOWCASE_ENTRIES), `${e.id}: the entry is not this effect's clip (tool, model, words or files)`).not.toBeNull();
+      expect(effectSample(e), `${e.id}: the client slice has no clip for it (tool, model or files)`).not.toBeNull();
     }
   });
 

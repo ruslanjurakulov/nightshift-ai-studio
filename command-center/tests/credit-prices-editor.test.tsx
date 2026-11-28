@@ -43,6 +43,22 @@ function render(t: typeof en, locale: string, canEdit = true) {
 }
 
 describe("CreditPricesEditor", () => {
+  it("suggests the ledger units it is handed by the server, and holds no list of its own", () => {
+    dict.current = en;
+    dict.locale = "en";
+    const options = (html: string) =>
+      Array.from(new DOMParser().parseFromString(html, "text/html").querySelectorAll("#credit-price-units option")).map((o) => o.getAttribute("value"));
+    // The Credits page passes lib/server/ledger-units.ts LEDGER_UNITS: the vendor-named units never sit in this chunk.
+    expect(options(renderToStaticMarkup(<CreditPricesEditor prices={prices} canEdit ledgerUnits={["gemini_input_tokens", "tts_characters"]} />))).toEqual([
+      "video_minute",
+      "usd",
+      "job_minimum",
+      "gemini_input_tokens",
+      "tts_characters",
+    ]);
+    expect(options(renderToStaticMarkup(<CreditPricesEditor prices={prices} canEdit />))).toEqual(["video_minute", "usd", "job_minimum"]);
+  });
+
   it("renders a phone row per price with its value, margin and charge in view", () => {
     const { doc } = render(en, "en");
     const rows = Array.from(doc.querySelectorAll("ul li"));

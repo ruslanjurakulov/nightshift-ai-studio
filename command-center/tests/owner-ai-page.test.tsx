@@ -46,6 +46,25 @@ describe("/owner/ai", () => {
     expect(html).not.toMatch(/\$\d/);
   });
 
+  it("passes only configuration booleans from the server to the picker", async () => {
+    vi.stubEnv("AI_CHAT_ANTHROPIC_API_KEY", "");
+    vi.stubEnv("AI_CHAT_OPENAI_API_KEY", " ");
+    vi.stubEnv("AI_CHAT_GEMINI_API_KEY", "test-only");
+    try {
+      const { default: Page } = await import("../app/owner/ai/page");
+      const page = (await Page()) as ReactElement<{ children: ReactElement<{ configuredModels: unknown; preferredModel: unknown }> }>;
+      expect(page.props.children.props.configuredModels).toEqual({
+        "anthropic-claude-sonnet-5-5": false,
+        "openai-gpt-6-luna": false,
+        "gemini-3.6-flash": true,
+      });
+      // The picker's starting model comes from the server: a constant in the component was a vendor model id in a static chunk.
+      expect(page.props.children.props.preferredModel).toBe("gemini-3.6-flash");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("greets the owner by first name, and with a plain hello when there is no name (never by an address)", async () => {
     const { default: Page } = await import("../app/owner/ai/page");
     const html = renderToStaticMarkup((await Page()) as ReactElement);
@@ -71,6 +90,10 @@ describe("the panel's failures", () => {
     expect(failureText(a, 429, { error: "daily_cap", limit: 200 }).retry).toBeFalsy();
     expect(failureText(a, 502, { error: "model_failed", reason: "vendor_auth" }).retry).toBe(false);
     expect(failureText(a, 502, { error: "model_failed", reason: "timeout" }).retry).toBe(true);
+    // The server's region and a model the vendor does not know refuse again on every ask: each says its own fix, and no "ask again".
+    for (const reason of ["vendor_region", "model_not_found"] as const) {
+      expect(failureText(a, 502, { error: "model_failed", reason })).toEqual({ message: a.errors.model_failed[reason], retry: false });
+    }
     expect(failureText(a, 503, { error: "unavailable" }).retry).toBe(true);
     // A conversation too long to send says how to get out of it, not "ask again".
     expect(failureText(a, 413, { error: "payload_too_large" })).toEqual({ message: a.errors.tooMuchHistory, clear: true });

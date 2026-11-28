@@ -8,6 +8,7 @@
  */
 import {
   CREATIVE_ERRORS,
+  WORDLESS_CAPABILITIES,
   type CreativeCapability,
   type CreativeError,
   DESCRIBE_LANGUAGES,
@@ -44,7 +45,7 @@ import {
   isImageQuality,
   isUuid,
 } from "@/lib/creative/operations";
-import { VOICES } from "@/lib/ttsModels";
+import { VOICES } from "@/lib/voices";
 import { registryName } from "@/lib/creative/model-names";
 import { planGate } from "@/lib/models-discovery";
 import { formatCredits } from "@/lib/credits";
@@ -250,7 +251,7 @@ export function takesStyle(c: string): boolean {
   return (STYLE_CAPABILITIES as readonly string[]).includes(c);
 }
 
-/** 0046 / 0050 / 0052 / 0055: the prompt is required for these, optional for i2v / upscale, refused for remove_bg, the voice and video tools and describe. */
+/** 0046 / 0050 / 0052 / 0055: the prompt is required for these, optional for i2v, refused for remove_bg, upscale, the voice and video tools and describe. */
 export function promptRule(
   c: StudioCapability,
   model?: Pick<StudioModel, "wordsRequired"> | null,
@@ -258,10 +259,13 @@ export function promptRule(
   // A video edit is asked by its words (0100); the other video tools take none.
   if (c === "video_edit") return "required";
   if (c === "remove_bg" || c === "describe" || needsRecording(c) || needsVideo(c)) return "none";
+  // Picture upscale's only model (Ideogram's Topaz Standard V2) takes no words, and the server refuses a prompt for it
+  // (lib/creative/route-around WORDLESS_CAPABILITIES): the box must not invite words that are refused after the press.
+  if (WORDLESS_CAPABILITIES.includes(c)) return "none";
   // expand (what the new areas show) and relight (the light, instead of a look) are asked by a choice; their words are optional.
   // Optional for the kind, unless the picked model's registry entry says it needs words for it (inputs.prompt_required): MiniMax
   // H3 refuses an animation with no words, and a job sent without them used to fail after the press with a vague message.
-  if (c === "i2v" || c === "upscale" || c === "expand" || c === "relight") return model?.wordsRequired?.includes(c) ? "required" : "optional";
+  if (c === "i2v" || c === "expand" || c === "relight") return model?.wordsRequired?.includes(c) ? "required" : "optional";
   return "required";
 }
 
@@ -904,7 +908,8 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
         ...(isUuid(form.endFrameId) ? { end_asset_id: form.endFrameId } : {}),
       };
     case "upscale":
-      return { ...(prompt ? { prompt } : {}), source_asset_id: source, factor: form.factor ?? 2 };
+      // Never the words, even a stale draft's or the price check's stand-in: the server refuses a prompt for upscale.
+      return { source_asset_id: source, factor: form.factor ?? 2 };
     case "expand": {
       // The shape is the ask; the words (optional) say what the new areas show.
       const words = oneLine(form.prompt, PICTURE_OP_PROMPT_MAX.expand);
@@ -1343,6 +1348,10 @@ const REASON_GROUPS: Record<string, keyof Dictionary["gen"]["reasons"]> = {
   mode_not_supported: "service",
   submit_interrupted: "service",
   worker_lost: "service",
+  // The worker's last look before the paid call (modules/creative_worker.py, "Still on sale"): the model went off sale, or was
+  // switched off, while the job waited. Nothing was sent and the hold was released; the remedy is another model.
+  model_not_available: "service",
+  model_temporarily_off: "service",
   credits_unavailable: "credits",
   no_credit_hold: "credits",
   hold_not_open: "credits",

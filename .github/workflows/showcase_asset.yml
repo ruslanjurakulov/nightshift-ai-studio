@@ -27,6 +27,21 @@ on:
         required: false
         default: ""
         type: string
+      card_line_en:
+        description: "Optional: the card's short line in English (at most 140 characters; give all three languages or none)"
+        required: false
+        default: ""
+        type: string
+      card_line_ru:
+        description: "Optional: the card's short line in Russian (at most 140 characters; give all three languages or none)"
+        required: false
+        default: ""
+        type: string
+      card_line_uz:
+        description: "Optional: the card's short line in Uzbek (at most 140 characters; give all three languages or none)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -99,6 +114,9 @@ jobs:
           JOB_ID: ${{ steps.id.outputs.job_id }}
           SLOT: ${{ github.event.inputs.slot }}
           CAPTION: ${{ github.event.inputs.caption }}
+          CARD_LINE_EN: ${{ github.event.inputs.card_line_en }}
+          CARD_LINE_RU: ${{ github.event.inputs.card_line_ru }}
+          CARD_LINE_UZ: ${{ github.event.inputs.card_line_uz }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           MEDIA_URL_SECRET: ${{ secrets.MEDIA_URL_SECRET }}
@@ -107,6 +125,7 @@ jobs:
           set +e
           # `--x=value`: a caption or slot that starts with "-" is a value, never read as another option.
           python tools/export_showcase.py --job-id="$JOB_ID" --slot="$SLOT" --caption="$CAPTION" \
+            --card-line-en="$CARD_LINE_EN" --card-line-ru="$CARD_LINE_RU" --card-line-uz="$CARD_LINE_UZ" \
             --summary "$RUNNER_TEMP/summary.md" --outcome "$RUNNER_TEMP/outcome" --stage showcase-export --job-out "$RUNNER_TEMP/job"
           rc=$?
           set -e

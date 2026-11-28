@@ -27,7 +27,7 @@ import { siteCarouselCopy } from "@/lib/i18n/site-carousel";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { FORMATS } from "@/lib/site/formats";
 import { STILL_MS, beforeAfterPairs, carouselOrder, clock, firstSentence, ringIndex, ringOffset, sliderKey } from "@/lib/site/carousel";
-import { showcaseItems } from "@/components/site/ShowcaseGallery";
+import { showcaseItems, showcaseItemsWithSources } from "@/components/site/ShowcaseGallery";
 import { PHONE_TURNS, SHOW_RATIO, WIDE_TURNS, pickTurns, shownRatio } from "@/components/site/clip-turns";
 import { SampleCarousel, SampleCompare, SampleTicker, effectPreviewJobs, landingGalleryJobs, sampleSectionJobs } from "@/components/site/landing-samples";
 import { LANDING_LEFT_OUT, landingExcludedJobs } from "@/components/site/slots";
@@ -77,6 +77,12 @@ const items = showcaseItems();
 // carousel's own order after picture → video and the ticker have taken theirs.
 const SLOT_JOBS = landingExcludedJobs();
 const shown = items.filter(({ e }) => !SLOT_JOBS.includes(e.jobId));
+// Picture → video shows a starting frame beside its clip (the grids leave it out: Atlas/owner decision 22 Nov, a starting frame is
+// not its own sample), so the pairs are built from every entry, frames included.
+const withSources = showcaseItemsWithSources();
+// Less the effects' previews, as picture → video itself leaves them out (landing-samples.tsx items()): the photo-to-life clip, whose
+// starting frame shipped in #942, is an effect's preview and is shown in the Effects section instead.
+const shownPairs = withSources.filter(({ e }) => !SLOT_JOBS.includes(e.jobId) && !effectPreviewJobs().includes(e.jobId));
 const carouselJobs = () => {
   // The carousel takes what the other landing surfaces leave: picture → video, the ticker, the explore grid's share and the
   // Effects section's previews (components/site/landing-samples.tsx landingSplit).
@@ -166,7 +172,7 @@ describe("the arithmetic", () => {
 
 describe("the pairs are real", () => {
   it("each pair is a shipped clip whose input is a shipped picture's own output: its job and its library asset", () => {
-    const pairs = beforeAfterPairs(items);
+    const pairs = beforeAfterPairs(withSources);
     for (const { clip, picture } of pairs) {
       expect(clip.e.kind).toBe("video");
       expect(picture.e.kind).toBe("image");
@@ -368,7 +374,7 @@ describe("picture → video", () => {
     env();
     const { container } = render(<SampleCompare t={t} locale="en" />);
     const sliders = container.querySelectorAll<HTMLElement>("[role='slider']");
-    expect(sliders.length).toBe(beforeAfterPairs(shown).length);
+    expect(sliders.length).toBe(beforeAfterPairs(shownPairs).length);
     if (sliders.length === 0) return;
     const s = sliders[0];
     expect(s.getAttribute("aria-valuenow")).toBe("50");
@@ -412,7 +418,7 @@ describe("picture → video", () => {
 
   it("names both models, the picture's and the clip's, inside the clip's box", () => {
     const { container } = render(<SampleCompare t={t} locale="en" />);
-    for (const { clip, picture } of beforeAfterPairs(shown)) {
+    for (const { clip, picture } of beforeAfterPairs(shownPairs)) {
       const box = container.querySelector(`[data-showcase-entry="${clip.e.jobId}"]`)!;
       expect(box.textContent).toContain(clip.e.modelName);
       expect(box.textContent).toContain(picture.e.modelName);

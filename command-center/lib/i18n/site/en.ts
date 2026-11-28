@@ -1,6 +1,7 @@
 import { studioPageEn } from "../studio-page/en";
 import { roadmapEn } from "../roadmap/en";
 import { trustEn } from "../trust/en";
+import { megaMenuEn } from "../megamenu/en";
 import { siteAutopilotEn } from "../site-autopilot/en";
 import { publicStatsEn } from "../public-stats/en";
 
@@ -154,6 +155,8 @@ export const siteEn = {
   },
   fx: {
     pause: "Pause motion",
+    /** The title of the models strip (ModelMarquee): models that made a sample on this page; never "partners". */
+    modelsTitle: "Models in Nightshift Studio",
   },
   bar: {
     label: "Quick start",
@@ -162,6 +165,11 @@ export const siteEn = {
     dismiss: "Hide this bar",
   },
   samples: {
+    /**
+     * The speaker toggle on a clip that has sound (components/site/SoundToggle.tsx): a toggle button, so one name and aria-pressed
+     * say whether it is on. Shown only where the clip's files carry an audio track.
+     */
+    sound: "Clip sound",
     tag: "Example frame (stock photo)",
     frameTag: "Example frame (stock footage)",
     clipTag: "Example clip (stock footage)",
@@ -199,13 +207,14 @@ export const siteEn = {
   },
   /**
    * The model samples (components/site/ShowcaseGallery.tsx): real generations from the operator's Studio. No model or maker is named
-   * here; each card names its own, from the data file. "Try this prompt" only opens the Studio form. Nothing here says a model is on
-   * sale: some samples are made with models only the operator can try yet (`notInStudio` on their card).
+   * on a gallery card (owner decision 22 Nov: it travels only in the Studio link); a card only opens the Studio form. The model
+   * tiles under the ribbon (components/landing/Landing.tsx ModelTiles, kept by the owner on 27 Nov) name theirs and use `prompt`,
+   * `notInStudio` and `gone`; `model`, `altClip` and `altImage` serve the sample pieces a page may draw on its own.
    */
   gallery: {
     label: "Made in Nightshift Studio",
     title: "Made with Nightshift",
-    lead: "Real generations, made by our team in Nightshift Studio. Open one to see the model that made it and the words it was given.",
+    lead: "Real generations by our team in Nightshift Studio. Hover or tap a card to see what it is; tap again to open its prompt in the Studio.",
     /**
      * The mark on every one of our samples, as seen: just "AI" (the owner, 2026-11-22: no longer phrases on the pictures). It is
      * never shown alone to a screen reader: `badgeName` is what it says, in words (components/site/AiMark.tsx).
@@ -215,16 +224,12 @@ export const siteEn = {
     model: "Model",
     prompt: "Prompt",
     noPrompt: "No words: made from the picture alone.",
-    made: "Made {date}",
-    try: "Try this prompt",
-    /** The button's accessible name where its link names the model too, so each card's button says which sample it opens. */
-    tryAria: "Try this prompt: {model}",
     /** On a card whose model only the operator can try yet: its button opens the tool with the words, without the model. */
     notInStudio: "This model is not in the Studio yet",
     /** On a card whose model the vendor has shut down (its announced date has come): the button no longer names it. */
     gone: "This model is no longer in the Studio",
-    tryNote: "“Try this prompt” and “Use this prompt” open the Studio with that tool and those words. Before anything starts, the Studio shows which model it will use and the price.",
-    tryNoteSignedOut: "“Try this prompt” and “Use this prompt” ask you to create an account first, then open the Studio with that tool and those words. Nothing starts until you press Generate there, and the price is shown before you do.",
+    tryNote: "Each card opens the Studio with its tool and its words in the form. The Studio shows which model it will use, and the price, before anything starts.",
+    tryNoteSignedOut: "Each card asks you to create an account first, then opens the Studio with its tool and its words in the form. Nothing starts until you press Generate there, and the Studio shows which model and the price before you do.",
     altClip: "AI-generated clip made by {model}",
     altImage: "AI-generated picture made by {model}",
     /**
@@ -236,14 +241,6 @@ export const siteEn = {
     /** A page's backdrop when it is one of our samples (components/site/PlaceFill.tsx placeAlt): what it is, without the model. */
     bgClip: "AI-generated clip",
     bgImage: "AI-generated picture",
-    /** On a clip animated from one of the samples' own pictures: that picture, small, with the model that made it. */
-    source: "Made from this picture:",
-    altSource: "The AI-generated picture this clip was made from, made by {model}",
-    /** The explore grid's card is the picture alone: pressing it opens the sample in a dialog with its prompt, model and day. */
-    open: "Open this sample",
-    /** The dialog's name. */
-    detail: "About this sample",
-    close: "Close",
   },
   /**
    * The landing's prompt bar (components/landing/PromptBar.tsx): it only opens the Studio form with the words (and, once a file is
@@ -609,6 +606,8 @@ export const siteEn = {
   roadmap: roadmapEn,
   /** The public /trust page (lib/i18n/trust; English is the source). */
   trust: trustEn,
+  /** The public header's panels and the phone sheet's sections (lib/i18n/megamenu). */
+  megaMenu: megaMenuEn,
   /** The autopilot walk-through on the landing and the Shorts feed on a phone (lib/i18n/site-autopilot). */
   autopilot: siteAutopilotEn,
   /** The live counters strip (components/site/LiveStats.tsx; lib/i18n/public-stats), hidden until the owner turns it on. */

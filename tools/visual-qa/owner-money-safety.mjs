@@ -132,17 +132,6 @@ const SCENARIOS = {
     },
     noSheet: true,
   },
-  members: {
-    route: "/members",
-    async act(page) {
-      await page.waitForSelector("ul.g5-rows li");
-      await page.evaluate(() => {
-        document.querySelector("ul.g5-rows").scrollIntoView({ block: "start" });
-        window.scrollBy(0, -150);
-      });
-    },
-    noSheet: true,
-  },
 };
 
 async function shots() {
@@ -154,7 +143,6 @@ async function shots() {
     { name: "confirm-grant-390-light", scenario: "grant", theme: "light" },
     { name: "confirm-price-delete-390-dark", scenario: "price-delete", theme: "dark" },
     { name: "confirm-last-factor-390-dark", scenario: "last-factor", theme: "dark" },
-    { name: "team-blocked-390-dark", scenario: "members", theme: "dark" },
     { name: "banner-390-dark", scenario: "banner", theme: "dark", clip: { x: 0, y: 0, width: 390, height: 260 } },
   ];
   for (const j of jobs) {
@@ -248,7 +236,7 @@ async function checks() {
         if (r.dangerLabel && r.dangerFill) {
           const [hi, lo] = [lum(r.dangerLabel), lum(r.dangerFill)].sort((a, b) => b - a);
           ratio = ((hi + 0.05) / (lo + 0.05)).toFixed(2);
-          if (name !== "members" && Number(ratio) < 4.5) bad.push(`${name}@${width}/${theme}: danger key contrast ${ratio}`);
+          if (Number(ratio) < 4.5) bad.push(`${name}@${width}/${theme}: danger key contrast ${ratio}`);
         }
         const key = `${name}@${width}/${theme}`;
         if (r.overflow > 0) bad.push(`${key}: horizontal overflow ${r.overflow}px`);

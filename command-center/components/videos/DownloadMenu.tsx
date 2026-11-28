@@ -10,7 +10,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import { StatusPill } from "@/components/ui";
 import { atLeast, type Role } from "@/lib/auth/roles-shared";
 import { downloadName } from "@/lib/publish";
-import type { PriceMap } from "@/lib/credits";
+import type { DownloadRates } from "@/lib/downloads";
 import {
   DOWNLOAD_REQUEST_COLUMNS,
   availableQualities,
@@ -42,7 +42,7 @@ export interface DownloadMenuProps {
   available: boolean;
   host: boolean;
   master: DownloadMaster | null;
-  prices: PriceMap;
+  prices: DownloadRates;
   requests: DownloadRequestRow[];
   balance: number | null;
   exempt: boolean;
