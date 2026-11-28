@@ -268,6 +268,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
   const [planOther, setPlanOther] = useState(false);
   /** What a streamed press has delivered so far (LIVE_CREATION_PLAN §3.5): real phases and checked windows only, dropped at `end`. */
   const [live, setLiveState] = useState<LivePlan | null>(null);
+  /** Whether this press told the canvas a null-session thinking, so its end can be closed the same way (lib/brain/canvas-events). */
+  const nullThinkingRef = useRef(false);
   const liveRef = useRef<LivePlan | null>(null);
   /** The stream was cut and the plan is followed through its lease: the last live view stays, with words that say so. */
   const [streamCut, setStreamCut] = useState(false);
@@ -640,7 +642,10 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     const sid = sessionRef.current;
     if (!next.phase) return;
     // A first send has no session yet: only its "thinking" is told, with session_id null (the contract in lib/brain/canvas-events).
-    if (!sid) { if (next.phase === "thinking") dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "thinking" } }); return; }
+    if (!sid) {
+      if (next.phase === "thinking" && dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "thinking" } })) nullThinkingRef.current = true;
+      return;
+    }
     dispatchBrainCanvas({ kind: "activity", detail: { session_id: sid, phase: next.phase,
       ...(next.windows ? { plan: { windows: next.arrived, of: next.windows, chapters_written: writtenChapters(next).length, chapters: next.chapters } } : {}) } });
   };
@@ -654,6 +659,10 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     const res = { ok: a.ok, status: a.status };
     const d = a.body;
     if (a.streamed && sessionRef.current) dispatchBrainCanvas({ kind: "activity", detail: { session_id: sessionRef.current, phase: "end" } });
+    // A first send that ended with no session (model down, a cap): close the null thinking it told the canvas, or the board would keep
+    // its planning skeleton beside the panel's error (S3). Only ever after a null thinking actually went out.
+    else if (a.streamed && nullThinkingRef.current) dispatchBrainCanvas({ kind: "activity", detail: { session_id: null, phase: "end" } });
+    nullThinkingRef.current = false;
     if (d.quota && typeof d.quota === "object") {
       const q = d.quota as { used: number; limit: number | null; trial_left?: number | null; reserved?: unknown };
       // A turn's own answer says what is held now (0232); without it, what the panel last read stays.

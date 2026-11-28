@@ -41,6 +41,8 @@ const send = async (e: BrainStreamEvent | Record<string, unknown>) => {
   });
 };
 let historyReads = 0;
+/** A brand-new chat: the panel holds no conversation yet, so its first send is a start (no session id until the server makes one). */
+let noSession = false;
 
 function stub() {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
@@ -60,7 +62,7 @@ function stub() {
       return new Response(body, { status: 200, headers: { "content-type": "application/x-ndjson" } });
     }
     return json(200, { plan: { used: 0, limit: 30, trial_left: null, max_input_chars: 2000 }, model: "available", canEdit: true, canRun: true,
-                       session: { id: S1 }, gate: null });
+                       session: noSession ? null : { id: S1 }, gate: null });
   }));
 }
 
@@ -73,6 +75,7 @@ beforeEach(() => {
   sent = [];
   ctl = null;
   historyReads = 0;
+  noSession = false;
   answer = { kind: "stream" };
   activity.length = 0;
   briefs.length = 0;
@@ -212,6 +215,24 @@ describe("Nightshift AI panel: the stream", () => {
     expect(screen.queryByText(en.errors.unavailable)).toBeNull();
     expect(screen.queryByRole("button", { name: en.retry })).toBeNull();
     expect(sent).toHaveLength(1);
+  });
+
+
+  it("a first send that fails before any session exists tells the canvas a null thinking, then closes it with a null end (S3)", async () => {
+    noSession = true;
+    render(<I18nProvider locale="en"><NightshiftAiPanel channelId="c1" channelSlug="chronos" /></I18nProvider>);
+    await waitFor(() => expect(screen.getAllByRole("textbox").some((b) => !(b as HTMLTextAreaElement).disabled)).toBe(true));
+    const box = screen.getAllByRole("textbox").find((b) => !(b as HTMLTextAreaElement).disabled)!;
+    await act(async () => fireEvent.change(box, { target: { value: "a touching film about a father far away" } }));
+    await act(async () => { fireEvent.keyDown(box, { key: "Enter" }); });
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]).toMatchObject({ action: "start", stream: true });
+    await waitFor(() => expect(ctl).not.toBeNull());
+    await send({ type: "phase", phase: "thinking" });
+    await send({ type: "end", status: 409, body: { error: "model_unavailable" } });
+    await act(async () => { ctl!.close(); await new Promise((r) => setTimeout(r, 0)); });
+    await waitFor(() => expect(activity).toContainEqual({ session_id: null, phase: "end" }));
+    expect(activity).toEqual([{ session_id: null, phase: "thinking" }, { session_id: null, phase: "end" }]);
   });
 
   it("a server with the stream off answers JSON, and the panel reads it as before", async () => {
