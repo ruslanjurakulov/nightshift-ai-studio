@@ -81,8 +81,9 @@ describe("preview rows from operator_preview_models()", () => {
     // the overview's composer was once missing them.
     // The Effects desk gets the same list (lib/effects/catalog.ts): an effect may name a preview model only where the panel it
     // opens offers that model, and the effect's own banner resolves over panelModels too.
-    expect(page.match(/models=\{panelModels\}/g)).toHaveLength(4);
-    expect(page).toContain("<EffectsDesk models={panelModels} />");
+    expect(page.match(/models=\{panelModels\}/g)).toHaveLength(3);
+    // The desk's cards are resolved on the server over the same list (the effects data is server-only).
+    expect(page).toContain("<EffectsDesk cards={effectDeskCards(panelModels)} />");
     expect(page).toContain("resolveEffect(effectAsk.effect, panelModels)");
     // The Assistant plans only with the models on sale.
     expect(page).toMatch(/const assistant: AssistantData = \{\s*orgId: genOrgId,\s*models,/);

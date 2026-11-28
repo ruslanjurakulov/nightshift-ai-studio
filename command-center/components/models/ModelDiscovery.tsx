@@ -22,7 +22,7 @@ import {
   longestDuration,
   matchesFilters,
   promptLimit,
-  providerName,
+  providerLabel,
   shapesOf,
   showsProvider,
   widestShape,
@@ -41,12 +41,16 @@ import {
   type Filters,
   type OutputKind,
   type PriceView,
+  type ProviderLabels,
   type Reason,
   type RegistryCapability,
   type TaskId,
   type UseLink,
 } from "@/lib/models-discovery";
 import styles from "./ModelDiscovery.module.css";
+
+/** An operator's screen handed no labels: every slug is shown as it is (providerLabel), never guessed. */
+const NO_LABELS: ProviderLabels = {};
 
 const LAMP: Record<DiscoveryState, LampTone> = { available: "ok", plan_gated: "info", needs_probe: "warn", not_on_sale: "off", unavailable: "off" };
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -72,9 +76,13 @@ export function ModelDiscovery({
   probesRead,
   initialFilters = NO_FILTERS,
   initialModel = null,
+  providerNames,
 }: {
   models: DiscoveryModel[];
   operator: boolean;
+  /** The provider display names for these models' slugs, from the server (lib/server/provider-names.ts), and only where
+   *  the provider is shown: the vendor map itself is never in a chunk. */
+  providerNames?: ProviderLabels;
   pricesRead: boolean;
   probesRead: boolean;
   initialFilters?: Filters;
@@ -93,6 +101,7 @@ export function ModelDiscovery({
   const chipsRef = useRef<HTMLDivElement>(null);
   // Who makes a model is the operator's business; a customer sees the display name, as in the Studio.
   const withProvider = showsProvider(operator);
+  const providers = withProvider ? (providerNames ?? NO_LABELS) : null;
 
   // The words a person might search in, in their language: task names and what the model makes.
   const words = useCallback(
@@ -100,13 +109,13 @@ export function ModelDiscovery({
     [c],
   );
   const shown = useMemo(
-    () => sortModels(models.filter((m) => matchesFilters(m, filters, words(m), withProvider))),
-    [models, filters, words, withProvider],
+    () => sortModels(models.filter((m) => matchesFilters(m, filters, words(m), providers))),
+    [models, filters, words, providers],
   );
-  const counts = useMemo(() => taskCounts(models, filters, words, withProvider), [models, filters, words, withProvider]);
+  const counts = useMemo(() => taskCounts(models, filters, words, providers), [models, filters, words, providers]);
   const allCount = useMemo(
-    () => models.filter((m) => matchesFilters(m, { ...filters, task: "all" }, words(m), withProvider)).length,
-    [models, filters, words, withProvider],
+    () => models.filter((m) => matchesFilters(m, { ...filters, task: "all" }, words(m), providers)).length,
+    [models, filters, words, providers],
   );
   // A customer is not shown keys for tasks nothing in their catalog does (the picked one always stays).
   const offered = useMemo(() => taskCounts(models, NO_FILTERS), [models]);
@@ -194,7 +203,7 @@ export function ModelDiscovery({
                   number={frameNo}
                   selected={m.id === picked}
                   task={filters.task}
-                  showProvider={withProvider}
+                  provider={providers ? providerLabel(providers, m.provider) : null}
                   onPick={(el) => pick(m.id, el)}
                 />
               );
@@ -322,7 +331,7 @@ export function ModelDiscovery({
         <aside className={`hidden lg:block ${styles.aside}`} aria-label={c.details}>
           <Panel tone="lifted" padded>
             {current ? (
-              <ModelDetail model={current} task={filters.task} operator={operator} />
+              <ModelDetail model={current} task={filters.task} operator={operator} providers={providers} />
             ) : (
               <p className={styles.pickHint}>{c.pickHint}</p>
             )}
@@ -332,7 +341,7 @@ export function ModelDiscovery({
 
       {sheetOpen && current && (
         <DetailSheet title={current.displayName} onClose={() => setSheetOpen(false)} returnTo={opener}>
-          <ModelDetail model={current} task={filters.task} operator={operator} />
+          <ModelDetail model={current} task={filters.task} operator={operator} providers={providers} />
         </DetailSheet>
       )}
     </div>
@@ -377,14 +386,15 @@ function ModelFrame({
   number,
   selected,
   task,
-  showProvider,
+  provider,
   onPick,
 }: {
   model: DiscoveryModel;
   number: number;
   selected: boolean;
   task: TaskId | "all";
-  showProvider: boolean;
+  /** Who makes it, where the provider is shown; null hides it. */
+  provider: string | null;
   onPick: (el: HTMLElement) => void;
 }) {
   const { t, fmt } = useI18n();
@@ -431,7 +441,7 @@ function ModelFrame({
       >
         <FramingGuides ratios={ratios} />
         <span className={styles.slateText}>
-          {showProvider && <span className={styles.slateProvider}>{providerName(m.provider)}</span>}
+          {provider !== null && <span className={styles.slateProvider}>{provider}</span>}
           <span className={styles.slateName}>{m.displayName}</span>
         </span>
         <span className={styles.slateFoot}>
@@ -535,7 +545,17 @@ function reasonText(c: Copy, r: Reason, operator: boolean): string {
   }
 }
 
-function ModelDetail({ model: m, task, operator }: { model: DiscoveryModel; task: TaskId | "all"; operator: boolean }) {
+function ModelDetail({
+  model: m,
+  task,
+  operator,
+  providers,
+}: {
+  model: DiscoveryModel;
+  task: TaskId | "all";
+  operator: boolean;
+  providers: ProviderLabels | null;
+}) {
   const { t, fmt, locale } = useI18n();
   const c = t.modelDiscovery;
   const path = useChannelPath();
@@ -544,7 +564,7 @@ function ModelDetail({ model: m, task, operator }: { model: DiscoveryModel; task
   const links = linksFor(m, "all");
   const ordered = [...links].sort((a, b) => Number(taskFor(b.cap, task) === task) - Number(taskFor(a.cap, task) === task));
   const gated = m.state === "plan_gated";
-  const withProvider = showsProvider(operator);
+  const withProvider = providers !== null;
   const dur = (sec: number) => formatTimecode(sec, "duration");
 
   // What it is given: words, reference pictures, and the library file each of its tools starts from.
@@ -618,7 +638,7 @@ function ModelDetail({ model: m, task, operator }: { model: DiscoveryModel; task
   return (
     <div className={styles.detail}>
       <header className={styles.detailHead}>
-        {withProvider && <span className="ns-eyebrow">{providerName(m.provider)}</span>}
+        {withProvider && <span className="ns-eyebrow">{providerLabel(providers, m.provider)}</span>}
         <h2 className={styles.detailName}>{m.displayName}</h2>
         <div className={styles.detailMeta}>
           <StatusLamp tone={LAMP[m.state]} label={c.states[m.state]} size="md" />
@@ -684,7 +704,7 @@ function ModelDetail({ model: m, task, operator }: { model: DiscoveryModel; task
           {withProvider && (
             <>
               <dt>{c.provider}</dt>
-              <dd>{providerName(m.provider)}</dd>
+              <dd>{providerLabel(providers, m.provider)}</dd>
             </>
           )}
         </dl>

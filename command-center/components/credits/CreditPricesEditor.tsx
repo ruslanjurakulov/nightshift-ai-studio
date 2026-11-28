@@ -16,7 +16,6 @@ import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { relativeTime } from "@/lib/format";
 import {
-  LEDGER_UNITS,
   SPECIAL_UNITS,
   chargePerUnit,
   formatCredits,
@@ -65,10 +64,16 @@ export function CreditPricesEditor({
   prices,
   canEdit,
   rpc,
+  ledgerUnits = [],
+  unitMeanings,
 }: {
   prices: CreditPrice[];
   canEdit: boolean;
   rpc?: { maxRatio: number | null };
+  /** The cost ledger's units to suggest (lib/server/ledger-units.ts), from the server: they name vendors, so no chunk holds them. */
+  ledgerUnits?: readonly string[];
+  /** The ledger units' meanings, built on the server (lib/server/ledger-units.ts ledgerUnitMeanings). */
+  unitMeanings?: Readonly<Record<string, string>>;
 }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -85,7 +90,7 @@ export function CreditPricesEditor({
 
   /** What the owner calls a price: its plain meaning when there is one, else the code. */
   function nameOf(u: string) {
-    return unitMeaning(u, t.credits.unitMeaning) ?? u;
+    return unitMeaning(u, t.credits.unitMeaning, unitMeanings) ?? u;
   }
 
   async function save() {
@@ -298,7 +303,7 @@ export function CreditPricesEditor({
   const inputClass =
     "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-base text-[var(--color-fg)] outline-none sm:text-[13px] focus:border-[var(--color-primary)]";
   const fieldLabel = "text-xs leading-tight text-[var(--color-muted)]";
-  const suggestions = [...SPECIAL_UNITS, ...LEDGER_UNITS];
+  const suggestions = [...SPECIAL_UNITS, ...ledgerUnits];
 
   return (
     <div id="credit-prices" className="panel flex scroll-mt-7 flex-col gap-3 p-5 sm:p-6">
@@ -313,7 +318,7 @@ export function CreditPricesEditor({
           {/* Phone: one row per price, every value in view — no sideways scroll. */}
           <ul className="flex flex-col md:hidden" aria-label={t.credits.pricesTitle}>
             {prices.map((p) => {
-              const meaning = unitMeaning(p.unit, t.credits.unitMeaning);
+              const meaning = unitMeaning(p.unit, t.credits.unitMeaning, unitMeanings);
               return (
                 <li key={p.unit} className="flex flex-col gap-2 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-0">
                   <div className="min-w-0">
@@ -386,7 +391,7 @@ export function CreditPricesEditor({
               </thead>
               <tbody>
                 {prices.map((p) => {
-                  const meaning = unitMeaning(p.unit, t.credits.unitMeaning);
+                  const meaning = unitMeaning(p.unit, t.credits.unitMeaning, unitMeanings);
                   return (
                     <tr key={p.unit} className="border-t border-[var(--color-border)] align-top">
                       <td className="py-2 pr-3">

@@ -165,7 +165,7 @@ function mount({ tools = UNKNOWN_TOOLS, filmStudio = false, operator = false }: 
     <I18nProvider locale="en">
       <ShellProvider operator={operator} tools={tools}>
         <StudioCanvas
-          data={{ orgId: ORG, models: [], unavailable: [], plans: null, dna: null, defaultStyleKitId: null }}
+          data={{ orgId: ORG, models: [], unavailable: [], plans: null, dna: null, defaultStyleKitId: null, effects: [] }}
           userId="u1"
           channel="chronos"
           filmStudio={filmStudio}
@@ -925,7 +925,7 @@ describe("Lens mediums", () => {
     render(
       <I18nProvider locale="ru">
         <ShellProvider operator={false} tools={UNKNOWN_TOOLS}>
-          <StudioCanvas data={{ orgId: ORG, models: [], unavailable: [], plans: null, dna: null, defaultStyleKitId: null }} userId="u1" channel="chronos" filmStudio={false} />
+          <StudioCanvas data={{ orgId: ORG, models: [], unavailable: [], plans: null, dna: null, defaultStyleKitId: null, effects: [] }} userId="u1" channel="chronos" filmStudio={false} />
         </ShellProvider>
       </I18nProvider>,
     );

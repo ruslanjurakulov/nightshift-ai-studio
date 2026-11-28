@@ -31,7 +31,7 @@ import { DeskBar, YouTubeDesk, type CreditsReading, type ProjectsReading } from 
 import { createClient, getUser } from "@/lib/supabase/server";
 import { readCreditAccount } from "@/lib/server/credits";
 import { loadEditorProjects } from "@/lib/server/editor";
-import { effectFromQuery, effectPrefill, resolveEffect } from "@/lib/effects/catalog";
+import { effectChoice, effectDeskCards, effectFace, effectFromQuery, effectPrefill, resolveEffect } from "@/lib/effects/catalog";
 import { EffectBanner } from "@/components/effects/EffectBanner";
 import { EffectsDesk } from "@/components/effects/EffectsDesk";
 import { AgeGate, MinorNotice } from "@/components/age/AgeGate";
@@ -312,9 +312,9 @@ export default async function CreatePage({
         />
       )}
       {desk === "effects" &&
-        (genOrgId ? <EffectsDesk models={panelModels} /> : <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.effects.desk.noOrg}</p>)}
+        (genOrgId ? <EffectsDesk cards={effectDeskCards(panelModels)} /> : <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.effects.desk.noOrg}</p>)}
       {isMediaDesk(desk) && effectAsk && effectPick && (
-        <EffectBanner effect={effectAsk.effect} availability={effectPick} subject={effectAsk.subject} />
+        <EffectBanner effect={effectFace(effectAsk.effect)} availability={effectChoice(effectPick)} subject={effectAsk.subject} />
       )}
       {isMediaDesk(desk) &&
         effectPick?.state !== "unavailable" &&

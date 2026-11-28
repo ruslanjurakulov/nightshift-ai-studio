@@ -29,7 +29,7 @@ import { dictionaries, type Locale } from "@/lib/i18n";
 import { afterSignupPath, studioNext } from "@/lib/safe-redirect";
 import { DESKS, MEDIA_DESKS, deskFromQuery } from "@/lib/creative/desks";
 import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
-import { effectSample } from "@/components/effects/EffectFrame";
+import { effectSample } from "@/components/effects/effect-sample";
 import { PROVIDER_BRANDS } from "./helpers/brands";
 
 const LOCALES: Locale[] = ["en", "ru", "uz"];

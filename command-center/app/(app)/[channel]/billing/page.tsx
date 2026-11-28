@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { StateBlock } from "@/components/states/StateBlock";
 import "../../app-pages-g5.css";
 import { getDictionary } from "@/lib/i18n/server";
+import { ledgerUnitLabels } from "@/lib/server/ledger-unit-labels";
 import { PROVIDERS } from "@/lib/providers";
 import { MODEL_KEY_PROVIDERS } from "@/lib/model-keys";
 import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/github-secrets";
@@ -427,9 +428,10 @@ export default async function BillingPage() {
           </StateBlock>
         </section>
       )}
-      {costsFailed ? null : <UnitEconomicsCard ue={ue} scope={ueScope} />}
+      {costsFailed ? null : <UnitEconomicsCard ue={ue} scope={ueScope} unitLabels={ledgerUnitLabels(locale, "long")} />}
       {operatorView ? (
         <BillingBoard
+          unitLabels={ledgerUnitLabels(locale, "measure")}
           providers={views}
           runway={runway}
           githubConfigured={isGithubConfigured}

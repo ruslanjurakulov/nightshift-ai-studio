@@ -120,10 +120,18 @@ jobs:
       - name: Browser bundles carry no showcase vendor data
         if: ${{ !cancelled() }}
         run: node scripts/showcase-bundle-check.mjs
-
       # Vendor billing URLs, a vendor's credit price and our routing map lived in lib/billing.ts and reached the chunk every
       # public page loads through one pure helper import. Every file under .next/static is scanned, the signed-in operator
       # chunks too: a static chunk is downloadable by anyone, signed in or not.
       - name: Static chunks carry no vendor billing data
         if: ${{ !cancelled() }}
         run: node scripts/billing-bundle-check.mjs
+      # Each effect's model preference order and prompt (lib/effects/effects.json), the provider display map and the cost
+      # ledger's vendor-named units each reached a static chunk through a client module. They are server-only now; this reads
+      # them from those sources and fails if any .js under .next/static, or a file the build wrote for a browser under
+      # .next/server (a prerendered page or route body, when there is one), still carries them. Pages rendered per request
+      # are not build files and are not covered here (it prints how many app pages were prerendered, usually 0); their
+      # props are held by tests/pricing-finder-props.test.tsx and tests/effects-gallery-props.test.tsx.
+      - name: Static chunks carry no vendor routing, vendor map or vendor metering units
+        if: ${{ !cancelled() }}
+        run: node scripts/vendor-bundle-check.mjs
