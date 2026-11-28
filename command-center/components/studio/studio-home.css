@@ -39,6 +39,38 @@
   text-wrap: pretty;
 }
 
+/* ── the hero: our own templates fanned over the question ─────────────────────
+   Posters only (no clip), sized by a fixed box so nothing below moves when they load. Five on a wide screen, the middle three on a
+   phone; the cards lean only as a still pose (no animation), so reduced motion needs nothing of its own. */
+.sh-hero { display: flex; flex-direction: column; align-items: center; gap: 18px; padding-top: 8px; }
+.sh-hero .sh-head { align-items: center; text-align: center; padding-top: 0; }
+.sh-fan {
+  --card-w: clamp(84px, 9vw, 128px);
+  position: relative;
+  width: calc(var(--card-w) * 3.6);
+  height: calc(var(--card-w) * 16 / 9 + 24px);
+  max-width: 100%;
+}
+.sh-fan-card {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  width: var(--card-w);
+  aspect-ratio: 9 / 16;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--color-panel-2);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08), 0 18px 40px -16px rgb(0 0 0 / 0.8);
+  transform: translateX(calc(-50% + var(--i) * var(--card-w) * 0.62)) translateY(calc(var(--i) * var(--i) * 6px)) rotate(calc(var(--i) * 7deg));
+  z-index: calc(10 - var(--i) * var(--i));
+}
+.sh-fan-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
+@media (max-width: 639.98px) {
+  .sh-fan { --card-w: 78px; width: calc(var(--card-w) * 2.6); }
+  /* The outer two would sit off a 390 px screen's edge: the middle three only. */
+  .sh-fan-card:first-child, .sh-fan-card:last-child { display: none; }
+}
+
 /* ── the five kinds ───────────────────────────────────────────────────────── */
 .sh-modes {
   display: flex;
