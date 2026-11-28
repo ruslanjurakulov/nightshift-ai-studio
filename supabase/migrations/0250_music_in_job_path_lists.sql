@@ -1,8 +1,11 @@
 -- 0250_music_in_job_path_lists.sql — sellable_models knows `music`: the last closed capability list on the creative job path that
 -- did not. Stream S6; number assigned by Atlas.
 --
--- *** LIVE ON APPLY. *** It changes NO answer for any capability but music, and puts nothing on sale: it replaces one function
---   (sellable_models, 0192's body) with that body plus `music` in its list of known capabilities, and writes no row. No grant changes.
+-- *** LIVE ON APPLY. *** It changes NO answer for any capability but music, and puts nothing on sale. It replaces two functions and
+--   writes no row; no grant changes:
+--     sellable_models (0192's body): `music` is in its list of known capabilities, and, as captions, music is listed on the web and
+--       on no other surface (BR-S6-06: without that second hunk the API would sell a music row whose api_exposure is 'any');
+--     api_creative_model_ok (0188's body): its "temporarily off" word leaves music out, as it leaves captions out.
 --
 -- EVIDENCE (measured in a PG16 lab with every migration through 0238 applied, 2026-11-28).
 --   * 0228 added `music` to model_registry_capabilities_check, model_probe_runs_capability_check, creative_params_problem and
@@ -15,7 +18,13 @@
 --         worker instead of moving the job to its next candidate or returning null;
 --       - api_creative_model_ok / api_creative_models (0188, 0162) answered a music call with 22023 read as invalid_params, the
 --         word for a capability that does not exist. Music is web_only (Lyria's registry entry; the API list leaves it out), so the
---         right answer there is "not sold through the API", which sellable_models' surface rule gives once music is known.
+--         right answer there is "not sold through the API".
+--   * BR-S6-06 (Breach, on 0250's first draft): knowing music on every surface let sellable_models('music', 'api') list a music row
+--     whose api_exposure is 'any' or absent (absent reads as 'any'), and api_creative_quote / api_creative_create, exact and routed
+--     (creative_route_quote, route_model), quoted, held and queued it for an API key. The 22023 had kept music off the API by
+--     accident; the public route checks API_CREATIVE_CAPABILITIES only on its model list. Fixed here the way 0072/0192 keep
+--     captions off the API and MCP: an early return for p_capability = 'music' off the web, and the same row filter for the full list
+--     (p_capability null). Reproduced by tests/security/test_sec_breach_music_0250.py.
 --   * The exact (Studio) path never asks sellable_models: quote_creative_job and create_creative_job price through creative_price,
 --     so an exact music job was already quoted, held and claimed. The task brief said "every music job would fail"; that is true of
 --     routed jobs and the failover, not of exact ones.
@@ -24,7 +33,9 @@
 --   main; md5 is the comment-cut fingerprint 0230 introduced, folded-only in brackets where 0192's or 0228's guards pin that one).
 --   MUST ADD music (changed here):
 --     sellable_models(text, text)             0192  85aaba9a2ec82dc7f276dd2135b4c7cf [40f61462ddae2fc0e83a0956f4d8b75b]
---       its `not in (...)` list of known capabilities; raised 22023 for music (above).
+--       its `not in (...)` list of known capabilities; raised 22023 for music (above). Music is web only here (BR-S6-06).
+--     api_creative_model_ok(text, text)       0188  861978aa7b3d2d072433a9f6f8d7e857 [cbe9f5d42dcdcfddb604d4a30c2f80ae]
+--       its "temporarily off" branch excludes captions by name; music joins it (below).
 --   ALREADY KNOW music (unchanged):
 --     creative_capability_supported(text)     0100  c727aa5796222618ff0654aa04dcbb7d  `in (...)` names music
 --     creative_params_problem(text, jsonb)    0228  ec909e6459c3d5affdd717cf4354d9d7  timed list names music
@@ -54,8 +65,8 @@
 --     oauth_creative_model_state(text, text)  0191  294f8718e9256f840dbe1799dd75131b  and oauth_creative_org_model_state (0219,
 --       6fefb08e3f85f10a2aa5d214d60c8a90), oauth_creative_models (0219, a3d86be5c4f3e9a72379c38b7e9b5e0c): gated by that list first
 --       (and by blocked_countries, which Lyria has), so they answer not_offered before sellable_models is asked.
---     api_creative_model_ok(text, text)       0188  861978aa7b3d2d072433a9f6f8d7e857  no list of its own: asks sellable_models
---       for 'api', which after this file answers "not sold here" for a web_only music model instead of 22023.
+--     api_creative_model_ok's sale answer asks sellable_models for 'api', which after this file never lists music (BR-S6-06):
+--       the exact API path (api_creative_quote / api_creative_create) refuses it as not sold through the API.
 --     film_check_model 0166 6b3aae8fcd8468604c644b7d6e10e0a5, film_model_problem 0171 d828ee349aa5da3aa05ea9db4d8f1b94, film_price
 --       0218 beff044dd6641ed67aa929a485c57108, film_precheck 0171 ff4fa7e8a6386420f32ab6a3a85a778c, film_resume_precheck 0215
 --       aa7275ed5e8520af52cabd03c2f930d8, film_take_job 0198 19a8f09549092d04cdf7af1de227f209, film_apply_settings 0166
@@ -68,21 +79,26 @@
 --     workflow_makes_picture / workflow_takes_picture 0073 (9af722d2d16503fc4d55b8a0be4d7bb9 / 9e191800bfd00671129285ee766cd339):
 --       which steps make or take a picture; a song is neither.
 --     ai_chat_set_model 0199 e20b91784ca19561a47b1a8688ba87c2: the chat's model is a describe model.
---   STAY UNKNOWN: the other two registry-only capabilities (REGISTRY_ONLY_CAPABILITIES in modules/capabilities/base.py, the
---     video soundtrack and the character swap). This file does not name them (tests/test_sonilo.py keeps every migration from
+--   STAY UNKNOWN: the two registry-only capabilities (REGISTRY_ONLY_CAPABILITIES in modules/capabilities/base.py, the video
+--     soundtrack and the character swap). This file does not name them (tests/test_sonilo.py keeps every migration from
 --     doing so); sellable_models still raises 22023 for both (tests/security/test_sec_music_job_path_0250.py).
 --
--- CHANGE. sellable_models: 0192's body, with `'music'` appended to its list of known capabilities (one marked line). Nothing else.
+-- CHANGE. sellable_models: 0192's body, with `'music'` appended to its list of known capabilities, and two marked hunks that keep
+--   music to the web (the captions pattern). api_creative_model_ok: 0188's body, `p_capability <> 'captions'` widened to
+--   `not in ('captions', 'music')`. Nothing else.
 -- REPLACES (drift guard: md5 of prosrc with every `--` comment cut to the end of its line, chr(10) or chr(13), then white space
 --   folded, 0230's fingerprint; the pattern is written [-][-] so that no literal in this file holds two dashes in a row):
---   sellable_models(text, text) 0192's 85aaba9a2ec82dc7f276dd2135b4c7cf -> 0250's c7697dbcd9312d1e4756fbe3997c15a0.
---   (Folded only: 40f61462ddae2fc0e83a0956f4d8b75b -> cc33fd2dc2947f5c7680236a53446aa2.) No migration after 0192 replaces it.
+--   sellable_models(text, text) 0192's 85aaba9a2ec82dc7f276dd2135b4c7cf -> 0250's 58c81cd592628820d3bd348353e6a5a8.
+--   (Folded only: 40f61462ddae2fc0e83a0956f4d8b75b -> c6320684517e3487a8f536105d2d25a2.) No migration after 0192 replaces it.
+--   api_creative_model_ok(text, text) 0188's 861978aa7b3d2d072433a9f6f8d7e857 -> 0250's ab087bc94fd3b9337f94d8dbea5b56ea.
+--   (Folded only: cbe9f5d42dcdcfddb604d4a30c2f80ae -> 38d1ab91f7a18f4ff6fe10dbf642e3da.) No migration after 0188 replaces it.
 --   A replay of 0250 is a no-op. A replay of 0192, 0188, 0125 or 0124 refuses (their guards); a replay of an older file that
 --   replaces sellable_models (0035 to 0100) puts an older body back: apply the chain after it again, ending with 0192 and 0250.
 -- ORDER. Apply after 0228, 0230 and 0238 (as numbered). Needs only 0192's body; on a database without 0228 the registry still
 --   refuses a music row, so listing music here sells nothing (a NOTICE says so).
 -- No backslash anywhere in this file (0219's header: the live apply path once rewrote backslash escapes inside SQL text).
--- Rollback: docs/sql/rollback_0250_music_in_job_path_lists.sql (owner-applied; puts 0192's body back and asserts it).
+-- Rollback: docs/sql/rollback_0250_music_in_job_path_lists.sql (owner-applied; refuses while a music model is on sale, else puts
+--   0192's and 0188's bodies back and asserts them).
 
 -- APPLY AS ONE TRANSACTION (the Supabase SQL editor, apply_migration, or psql --single-transaction -v ON_ERROR_STOP=1).
 set local lock_timeout = '5s';
@@ -96,8 +112,13 @@ begin
   end if;
   select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p
    where p.oid = 'public.sellable_models(text, text)'::regprocedure;
-  if h is null or h <> all (array['85aaba9a2ec82dc7f276dd2135b4c7cf', 'c7697dbcd9312d1e4756fbe3997c15a0']) then
+  if h is null or h <> all (array['85aaba9a2ec82dc7f276dd2135b4c7cf', '58c81cd592628820d3bd348353e6a5a8']) then
     raise exception '0250 found a sellable_models() that is neither 0192''s body nor 0250''s (md5 %): a migration after 0192 changed it, or an older one was replayed over it; read the live body first', h;
+  end if;
+  select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p
+   where p.oid = to_regprocedure('public.api_creative_model_ok(text, text)');
+  if h is null or h <> all (array['861978aa7b3d2d072433a9f6f8d7e857', 'ab087bc94fd3b9337f94d8dbea5b56ea']) then
+    raise exception '0250 found an api_creative_model_ok() that is neither 0188''s body nor 0250''s (md5 %): a migration after 0188 changed it, or an older one was replayed over it; read the live body first', h;
   end if;
   if position('''music''' in coalesce(pg_get_constraintdef((select oid from pg_constraint
                                                              where conname = 'model_registry_capabilities_check')), '')) = 0 then
@@ -105,7 +126,7 @@ begin
   end if;
 end $$;
 
--- 0192's sellable_models, with music known (0250's line is marked).
+-- 0192's sellable_models, with music known on the web and on no other surface (0250's lines are marked).
 create or replace function public.sellable_models(p_capability text default null, p_surface text default 'web')
   returns table (
     id text, display_name text, provider text, capabilities text[], availability text,
@@ -131,6 +152,12 @@ begin
   -- for a job whose result it can never fetch. No other surface lists them,
   -- whatever the registry says.
   if p_capability = 'captions' and p_surface <> 'web' then
+    return;
+  end if;
+  -- 0250 (BR-S6-06): music is a web tool, as captions are. Before 0250 the 22023 above kept it off the API and MCP by accident;
+  -- once known, a music row whose api_exposure is 'any' (or absent, which reads as 'any') would be quoted, held and queued for an
+  -- API key. No surface but the web lists it, whatever the registry row says.
+  if p_capability = 'music' and p_surface <> 'web' then
     return;
   end if;
   return query
@@ -194,12 +221,36 @@ begin
        and (p_surface = 'web' or coalesce(m.spec ->> 'api_exposure', 'any') = 'any'
             or (p_surface = 'mcp' and m.spec ->> 'api_exposure' = 'web_mcp'))
        and (p_surface = 'web' or not ('captions' = any (m.capabilities)))
+       -- 0250 (BR-S6-06): nor a music row in the API's or MCP's full list (p_capability null), as captions above.
+       and (p_surface = 'web' or not ('music' = any (m.capabilities)))
      order by m.provider, m.id;
 end
 $$;
 
 revoke all on function public.sellable_models(text, text) from public, anon;
 grant execute on function public.sellable_models(text, text) to authenticated, service_role;
+
+-- 0188's api_creative_model_ok, with music kept out of its "temporarily off" word (0250's line is marked): a music model the owner
+-- switched off would otherwise answer an API key "temporarily unavailable", the word for a model the API sells.
+create or replace function public.api_creative_model_ok(p_capability text, p_model text) returns boolean
+  language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  -- 0124: a model the owner switched off that the API would otherwise sell is refused with its own word, so a caller is told "temporarily
+  -- unavailable" and not "not available through the API". Nothing is held. Every other model is judged as before.
+  if not public.model_is_available(p_model)
+     and exists (select 1 from public.model_registry r
+                  where r.id = p_model and p_capability = any (r.capabilities)
+                    and r.availability in ('beta', 'ga') and r.verified_at is not null
+                    -- 0188: only a model the API would otherwise sell ('any') gets the "temporarily off" word here.
+                    and coalesce(r.spec ->> 'api_exposure', 'any') = 'any'
+                    -- 0250 (BR-S6-06): nor music, which no surface but the web sells (sellable_models).
+                    and p_capability not in ('captions', 'music')) then
+    perform public.creative_refuse('model_temporarily_off', format('%s is temporarily unavailable', p_model));
+  end if;
+  return exists (select 1 from public.sellable_models(p_capability, 'api') s where s.id = p_model);
+end
+$$;
+revoke all on function public.api_creative_model_ok(text, text) from public, anon, authenticated, service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- End state (refuses the whole transaction if any of it is not so)
@@ -211,7 +262,7 @@ declare
   st text;
 begin
   if (select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) from pg_proc p
-       where p.oid = 'public.sellable_models(text, text)'::regprocedure) is distinct from 'c7697dbcd9312d1e4756fbe3997c15a0' then
+       where p.oid = 'public.sellable_models(text, text)'::regprocedure) is distinct from '58c81cd592628820d3bd348353e6a5a8' then
     raise exception '0250 end state: sellable_models() is not 0250''s body';
   end if;
   if not (select prosecdef and proconfig = array['search_path=public, pg_temp'] from pg_proc
@@ -222,6 +273,24 @@ begin
      or not has_function_privilege('authenticated', 'public.sellable_models(text, text)', 'EXECUTE')
      or not has_function_privilege('service_role', 'public.sellable_models(text, text)', 'EXECUTE') then
     raise exception '0250 end state: sellable_models() grants are not 0192''s (authenticated and service_role only)';
+  end if;
+  if (select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) from pg_proc p
+       where p.oid = 'public.api_creative_model_ok(text, text)'::regprocedure) is distinct from 'ab087bc94fd3b9337f94d8dbea5b56ea' then
+    raise exception '0250 end state: api_creative_model_ok() is not 0250''s body';
+  end if;
+  if not (select prosecdef and proconfig = array['search_path=public, pg_temp'] from pg_proc
+           where oid = 'public.api_creative_model_ok(text, text)'::regprocedure)
+     or has_function_privilege('anon', 'public.api_creative_model_ok(text, text)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.api_creative_model_ok(text, text)', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.api_creative_model_ok(text, text)', 'EXECUTE') then
+    raise exception '0250 end state: api_creative_model_ok() is not 0188''s definer function closed to every API role';
+  end if;
+  -- BR-S6-06: no music row on the API's or MCP's list, by capability or in the full list, whatever its api_exposure says.
+  if exists (select 1 from public.sellable_models(null, 'api') x where 'music' = any (x.capabilities))
+     or exists (select 1 from public.sellable_models(null, 'mcp') x where 'music' = any (x.capabilities))
+     or exists (select 1 from public.sellable_models('music', 'api'))
+     or exists (select 1 from public.sellable_models('music', 'mcp')) then
+    raise exception '0250 end state: sellable_models() lists a music model off the web';
   end if;
   -- Music is known on every surface (each call raised 22023 before this file); a name nobody registered still is not.
   select count(*) into n from public.sellable_models('music', 'web');
@@ -242,8 +311,12 @@ end $$;
 -- unknown capability music instead):
 --   select
 --     (select md5(regexp_replace(regexp_replace(prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g'))
---        from pg_proc where oid = 'public.sellable_models(text,text)'::regprocedure) = 'c7697dbcd9312d1e4756fbe3997c15a0' as sellable_is_0250s,
+--        from pg_proc where oid = 'public.sellable_models(text,text)'::regprocedure) = '58c81cd592628820d3bd348353e6a5a8' as sellable_is_0250s,
 --     (select count(*) from public.sellable_models('music', 'web')) >= 0 as music_is_known,
 --     position('''music''' in pg_get_constraintdef((select oid from pg_constraint where conname = 'model_registry_capabilities_check'))) > 0 as registry_knows_music,
 --     has_function_privilege('authenticated', 'public.sellable_models(text,text)', 'EXECUTE') as members_can_list,
---     not has_function_privilege('anon', 'public.sellable_models(text,text)', 'EXECUTE') as anon_cannot_list;
+--     not has_function_privilege('anon', 'public.sellable_models(text,text)', 'EXECUTE') as anon_cannot_list,
+--     (select md5(regexp_replace(regexp_replace(prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g'))
+--        from pg_proc where oid = 'public.api_creative_model_ok(text,text)'::regprocedure) = 'ab087bc94fd3b9337f94d8dbea5b56ea' as model_ok_is_0250s,
+--     not exists (select 1 from public.sellable_models(null, 'api') x where 'music' = any (x.capabilities)) as no_music_on_the_api,
+--     not exists (select 1 from public.sellable_models(null, 'mcp') x where 'music' = any (x.capabilities)) as no_music_on_mcp;

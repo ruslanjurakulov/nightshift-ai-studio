@@ -45,6 +45,7 @@ U_OWN = str(uuid.UUID(int=0x250F))
 KEY = "lab-only-geo-claim-key-0250-not-a-secret-xxxxxxxx"
 SONG = {"prompt": "a calm solo piano piece"}
 SM = "public.sellable_models(text, text)"
+OK = "public.api_creative_model_ok(text, text)"
 GATE = "terms_review_required"
 
 REGISTRY = {m["id"]: m for m in json.loads((sec_db.REPO / "schemas" / "model_registry.json").read_text(encoding="utf-8"))["models"]}
@@ -250,10 +251,9 @@ def test_a_routed_music_job_is_routed_and_failed_over(db):
 def test_without_0250_the_failover_raises_and_the_route_finds_nothing(db):
     """Red then green: 0192's body (the rollback) brings back the finding; 0250 again takes it away."""
     jid = routed_job(db, "m250-w3")
-    rollback = strip_tx(sec_db.ROLLBACK_0250)
     try:
         with psycopg.connect(db.dsn, autocommit=False) as c:
-            c.execute(rollback)
+            sec_db.rollback_0250_on_sale(c)                              # the rollback refuses while music is on sale
             assert sec_db.cut_md5(c, SM) == sec_db.SELLABLE_MODELS_0192
             c.execute("savepoint s")
             as_role(c, "service_role")
@@ -276,7 +276,7 @@ def test_without_0250_the_failover_raises_and_the_route_finds_nothing(db):
 def test_the_api_answers_music_as_not_sold_there(db):
     assert db.su("select public.api_creative_model_ok('music', %s)", [LYRIA]) == [(False,)]
     with psycopg.connect(db.dsn, autocommit=False) as c:
-        c.execute(strip_tx(sec_db.ROLLBACK_0250))
+        sec_db.rollback_0250_on_sale(c)
         st, msg = raised(lambda: c.execute("select public.api_creative_model_ok('music', %s)", [LYRIA]))
         assert st == "22023" and "unknown capability music" in msg, (st, msg)
         c.rollback()
@@ -310,26 +310,48 @@ def _body_0192():
     return m.group(1)
 
 
-def prosrc(c):
-    return c.execute("select prosrc from pg_proc where oid = to_regprocedure(%s)", [SM]).fetchone()[0]
+def _body_0188_ok():
+    """api_creative_model_ok's body as 0188's file writes it."""
+    text = (sec_db.MIGRATIONS / "0188_recraft_web_mcp.sql").read_text(encoding="utf-8")
+    return re.search(r"create or replace function public\.api_creative_model_ok\(.*?as \$\$(.*?)\$\$;", text, re.S).group(1)
+
+
+def prosrc(c, sig=SM):
+    return c.execute("select prosrc from pg_proc where oid = to_regprocedure(%s)", [sig]).fetchone()[0]
 
 
 def test_rollback_and_replay(db):
     mig = sec_db.MIGRATION_0250.read_text(encoding="utf-8")
     with psycopg.connect(db.dsn, autocommit=False) as c:
-        live = prosrc(c)
+        live, live_ok = prosrc(c), prosrc(c, OK)
         c.execute(mig)                                                   # a replay changes nothing
-        assert prosrc(c) == live
+        assert (prosrc(c), prosrc(c, OK)) == (live, live_ok)
+        c.execute("update public.model_registry set availability = 'hidden' where 'music' = any (capabilities)")
         c.execute(strip_tx(sec_db.ROLLBACK_0250))
         assert prosrc(c) == _body_0192()                                 # 0192's body, byte for byte
+        assert prosrc(c, OK) == _body_0188_ok()                          # and 0188's api_creative_model_ok
         assert sec_db.cut_md5(c, SM) == sec_db.SELLABLE_MODELS_0192
         c.execute(strip_tx(sec_db.ROLLBACK_0250))                        # twice: harmless
         assert prosrc(c) == _body_0192()
         for role, want in (("anon", False), ("authenticated", True), ("service_role", True)):
             assert c.execute("select has_function_privilege(%s, %s, 'EXECUTE')", [role, SM]).fetchone()[0] is want, role
         c.execute(mig)
-        assert prosrc(c) == live
+        assert (prosrc(c), prosrc(c, OK)) == (live, live_ok)
         c.rollback()
+
+
+def test_the_rollback_refuses_while_a_music_model_is_on_sale(db):
+    """Without 0250 a music model on sale is a dead end again (routed quotes find nothing, the failover raises 22023): the rollback
+    names the models and changes nothing until they are off sale."""
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        live = prosrc(c)
+        st, msg = raised(lambda: c.execute(strip_tx(sec_db.ROLLBACK_0250)))
+        assert "rollback 0250: these music models are on sale" in msg, msg
+        for m, level in ((LYRIA, "ga"), (SONG_A, "beta"), (SONG_B, "beta")):
+            assert f"{m} ({level})" in msg, msg
+        c.rollback()
+    with psycopg.connect(db.dsn) as c:
+        assert prosrc(c) == live and sec_db.has_0250(c)
 
 
 def test_the_guards_refuse_a_drifted_body(db):

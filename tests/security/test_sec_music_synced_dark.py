@@ -145,13 +145,17 @@ def test_a_synced_music_row_is_hidden_unverified_gated_and_unpriced_and_a_resync
 
 
 def _no_music_offered(d):
+    # This lab builds every migration (sec_db.build), so 0250 is live: sellable_models knows music (listing and routing do), and
+    # lists it on the web only (BR-S6-06). Quoting never went through sellable_models; it is creative_price's, which 0228 owns.
+    (live,), = d.su("select md5(regexp_replace(regexp_replace(prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), "
+                    "'[[:space:]]+', ' ', 'g')) from pg_proc where oid = 'public.sellable_models(text, text)'::regprocedure")
+    assert live == sec_db.SELLABLE_MODELS_0250, live
     for role, uid in (("authenticated", U_A), ("service_role", None)):
-        got = d.act(role, uid, "select id from public.sellable_models(null)")
-        assert not {r[0] for r in got} & set(MUSIC_IDS), role
-        # sellable_models' own capability list (0192) does not hold music: asking for it is refused, never an empty list. That
-        # is a listing barrier only: quote_creative_job does not go through sellable_models.
-        assert refusal(lambda r=role, u=uid: d.act(r, u, "select id from public.sellable_models('music')")) == \
-            ("22023", "unknown capability music", "")
+        for surface in ("web", "api", "mcp"):
+            got = d.act(role, uid, "select id from public.sellable_models(null, %s)", [surface])
+            assert not {r[0] for r in got} & set(MUSIC_IDS), (role, surface)
+            # Nothing sellable is music here (hidden, gated, or unpriced): an empty list, not a refusal.
+            assert d.act(role, uid, "select id from public.sellable_models('music', %s)", [surface]) == [], (role, surface)
 
 
 def test_no_caller_is_offered_music(db):

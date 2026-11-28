@@ -1581,7 +1581,7 @@ MIGRATION_0250 = MIGRATIONS / "0250_music_in_job_path_lists.sql"
 ROLLBACK_0250 = REPO / "docs" / "sql" / "rollback_0250_music_in_job_path_lists.sql"
 #: sellable_models(text, text) by 0230's fingerprint (`--` comments cut, then white space folded): 0192's body, and 0250's (music known).
 SELLABLE_MODELS_0192 = "85aaba9a2ec82dc7f276dd2135b4c7cf"
-SELLABLE_MODELS_0250 = "c7697dbcd9312d1e4756fbe3997c15a0"
+SELLABLE_MODELS_0250 = "58c81cd592628820d3bd348353e6a5a8"
 
 
 def cut_md5(conn_or_session, sig: str) -> Optional[str]:
@@ -1602,6 +1602,21 @@ def take_off_0250(conn_or_session) -> None:
     if has_0250(conn):
         text = ROLLBACK_0250.read_text(encoding="utf-8")
         conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+
+
+def rollback_0250_on_sale(conn_or_session) -> None:
+    """Lab only: 0250's rollback where music models are on sale. The rollback refuses that (it would bring the routing dead end and
+    the failover 22023 back), so the rows go hidden for it and back to what they were after it: what a database without 0250 and
+    with a music model on sale looks like, the red half of a test. Run inside a transaction the test rolls back."""
+    conn = getattr(conn_or_session, "conn", conn_or_session)
+    rows = conn.execute("select id, availability from public.model_registry "
+                        "where 'music' = any (capabilities) and availability in ('beta', 'ga')").fetchall()
+    for mid, _ in rows:
+        conn.execute("update public.model_registry set availability = 'hidden' where id = %s", [mid])
+    text = ROLLBACK_0250.read_text(encoding="utf-8")
+    conn.execute("\n".join(ln for ln in text.splitlines() if ln.strip() not in ("begin;", "commit;")))
+    for mid, level in rows:
+        conn.execute("update public.model_registry set availability = %s where id = %s", [level, mid])
 
 
 def put_back_0250(conn_or_session) -> None:

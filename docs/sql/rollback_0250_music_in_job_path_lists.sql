@@ -1,15 +1,17 @@
--- rollback_0250_music_in_job_path_lists.sql — takes migration 0250 (music in sellable_models' list of known capabilities) out again.
+-- rollback_0250_music_in_job_path_lists.sql — takes migration 0250 (music known to sellable_models, on the web only) out again.
 -- OWNER-APPLY: paste into the Supabase SQL editor, as one transaction. Nothing in the app runs it. Idempotent.
 --
--- WHAT COMES BACK: 0192's sellable_models, verbatim (md5 85aaba9a2ec82dc7f276dd2135b4c7cf with comments cut and white space folded,
+-- WHAT COMES BACK: 0192's sellable_models and 0188's api_creative_model_ok (861978aa7b3d2d072433a9f6f8d7e857 comment-cut,
+--   cbe9f5d42dcdcfddb604d4a30c2f80ae folded), verbatim. sellable_models (md5 85aaba9a2ec82dc7f276dd2135b4c7cf with comments cut and white space folded,
 --   0230's fingerprint; 40f61462ddae2fc0e83a0956f4d8b75b folded only, as 0192 pins it). sellable_models('music', ...) then raises
 --   22023 "unknown capability music" again: a routed music quote answers no_model_available (route_model reads the 22023 as no
 --   candidates), a routed music job's worker failover raises 22023, and the API answers a music call invalid_params. An exact
 --   Studio music job is quoted, held and run as before (that path prices through creative_price, which 0228 owns).
 -- WHAT IS KEPT: everything else. 0228's checks and functions, the grants (authenticated and service_role, as 0192's), every row.
--- WHAT IT DOES: 0. REFUSES (changes nothing) if sellable_models is neither 0250's body nor 0192's (a later file changed it: take that
---   out first). 1. Says, in a NOTICE, which music models are on sale (they stay on sale; routing and failover stop finding them).
---   2. Puts 0192's body back. 3. Asserts the end state.
+-- WHAT IT DOES: 0. REFUSES (changes nothing) if sellable_models is neither 0250's body nor 0192's, or api_creative_model_ok neither
+--   0250's nor 0188's (a later file changed it: take that out first). 1. REFUSES, naming them, while any music model is beta or ga:
+--   with it on sale, the rollback would bring back the dead end above (routed quotes find nothing, the worker's failover raises
+--   22023). Take them off sale (availability hidden) first. 2. Puts both earlier bodies back. 3. Asserts the end state.
 -- No backslash anywhere in this file (0219's header); the pattern is written [-][-] so that no literal holds two dashes in a row.
 
 begin;
@@ -22,13 +24,18 @@ declare
 begin
   select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p
    where p.oid = to_regprocedure('public.sellable_models(text, text)');
-  if h is null or h <> all (array['c7697dbcd9312d1e4756fbe3997c15a0', '85aaba9a2ec82dc7f276dd2135b4c7cf']) then
+  if h is null or h <> all (array['58c81cd592628820d3bd348353e6a5a8', '85aaba9a2ec82dc7f276dd2135b4c7cf']) then
     raise exception 'rollback 0250: sellable_models() is neither 0250''s body nor 0192''s (md5 %): a later file changed it; take that file out first', h;
+  end if;
+  select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) into h from pg_proc p
+   where p.oid = to_regprocedure('public.api_creative_model_ok(text, text)');
+  if h is null or h <> all (array['ab087bc94fd3b9337f94d8dbea5b56ea', '861978aa7b3d2d072433a9f6f8d7e857']) then
+    raise exception 'rollback 0250: api_creative_model_ok() is neither 0250''s body nor 0188''s (md5 %): a later file changed it; take that file out first', h;
   end if;
   select string_agg(id || ' (' || availability || ')', ', ' order by id) into onsale
     from public.model_registry where 'music' = any (capabilities) and availability in ('beta', 'ga');
   if onsale is not null then
-    raise notice 'rollback 0250: these music models stay on sale, but routing finds none of them and a failover raises 22023 until 0250 is applied again: %', onsale;
+    raise exception 'rollback 0250: these music models are on sale, and without 0250 routing finds none of them and a failover raises 22023: %. Take them off sale (availability hidden) first', onsale;
   end if;
 end $$;
 
@@ -125,6 +132,26 @@ $$;
 revoke all on function public.sellable_models(text, text) from public, anon;
 grant execute on function public.sellable_models(text, text) to authenticated, service_role;
 
+-- api_creative_model_ok: 0188's body, verbatim (0188_recraft_web_mcp.sql).
+create or replace function public.api_creative_model_ok(p_capability text, p_model text) returns boolean
+  language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  -- 0124: a model the owner switched off that the API would otherwise sell is refused with its own word, so a caller is told "temporarily
+  -- unavailable" and not "not available through the API". Nothing is held. Every other model is judged as before.
+  if not public.model_is_available(p_model)
+     and exists (select 1 from public.model_registry r
+                  where r.id = p_model and p_capability = any (r.capabilities)
+                    and r.availability in ('beta', 'ga') and r.verified_at is not null
+                    -- 0188: only a model the API would otherwise sell ('any') gets the "temporarily off" word here.
+                    and coalesce(r.spec ->> 'api_exposure', 'any') = 'any'
+                    and p_capability <> 'captions') then
+    perform public.creative_refuse('model_temporarily_off', format('%s is temporarily unavailable', p_model));
+  end if;
+  return exists (select 1 from public.sellable_models(p_capability, 'api') s where s.id = p_model);
+end
+$$;
+revoke all on function public.api_creative_model_ok(text, text) from public, anon, authenticated, service_role;
+
 do $$
 begin
   if (select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) from pg_proc p
@@ -135,6 +162,10 @@ begin
      or not has_function_privilege('authenticated', 'public.sellable_models(text, text)', 'EXECUTE')
      or not has_function_privilege('service_role', 'public.sellable_models(text, text)', 'EXECUTE') then
     raise exception 'rollback 0250 end state: sellable_models() grants are not 0192''s';
+  end if;
+  if (select md5(regexp_replace(regexp_replace(p.prosrc, '[-][-][^' || chr(10) || chr(13) || ']*', '', 'g'), '[[:space:]]+', ' ', 'g')) from pg_proc p
+       where p.oid = 'public.api_creative_model_ok(text, text)'::regprocedure) is distinct from '861978aa7b3d2d072433a9f6f8d7e857' then
+    raise exception 'rollback 0250 end state: api_creative_model_ok() is not 0188''s body';
   end if;
 end $$;
 
