@@ -207,6 +207,10 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         spoken_language=_str(p.get("language")) if request.capability == "captions" else None,
         # t2i / edit on a model that bills by quality (0060): the tier quoted.
         quality=_str(p.get("quality")),
+        # t2i / edit on a model priced by picture size (0208): the size quoted. Without it Flux 3 and Nano Banana 2.1 refused every
+        # Studio job (their price depends on it, so they never default one), and the Gemini image models made the vendor's default
+        # size for a 2K or 4K quote (S9 measurement, docs/studio/S9_PARAM_PARITY.md, G1).
+        image_size=_str(p.get("image_size")),
         # t2v / i2v on a model that prices the soundtrack apart (0070).
         audio=_bool(p.get("audio")),
         # relight (0099): the light, by name; the prompt carries it otherwise.
