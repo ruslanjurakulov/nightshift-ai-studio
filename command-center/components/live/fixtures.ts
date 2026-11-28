@@ -1,0 +1,101 @@
+/**
+ * Fixtures for the live canvas's cards: one per state, for the style guide's specimen and the tests. Not a real run, and the
+ * specimen says so on the page. The prices, models and timings are made-up sample values for drawing the card; nothing
+ * here is ever shown as a quote.
+ */
+import type { LiveNodeProps } from "./LiveNode";
+
+/** A drawn sample picture (an inline SVG), so the "arrived" card is shown without a network or a signed URL. */
+export const SAMPLE_STILL =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><defs><linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b2a4a"/><stop offset="1" stop-color="#e58a4b"/></linearGradient></defs><rect width="320" height="180" fill="url(#s)"/><circle cx="232" cy="118" r="26" fill="#ffd27a"/><path d="M0 140 L70 112 L130 132 L200 104 L320 136 L320 180 L0 180 Z" fill="#0b1324"/><rect x="58" y="70" width="10" height="46" fill="#e6eefc"/><path d="M56 70 h14 l-7 -10 z" fill="#ff5c6c"/></svg>`,
+  );
+
+export type LiveFixture = Omit<LiveNodeProps, "onOpen" | "retry"> & { id: string; retryPrice?: number | null };
+
+export function liveFixtures(now: number): LiveFixture[] {
+  return [
+    { id: "ghost", kind: "shot", shot: 4, state: "ghost", title: "The keeper climbs the stairs" },
+    {
+      id: "queued",
+      kind: "character",
+      state: "queued",
+      title: "Mara, the keeper",
+      prompt: "Woman in her sixties, wind-cut face, oilskin coat, grey braid; warm lamplight from below.",
+      model: "image-model-a",
+      price: 12,
+    },
+    {
+      id: "working",
+      kind: "still",
+      shot: 2,
+      state: "working",
+      phase: "making",
+      title: "Shot 02: the letter on the table",
+      prompt: "Close-up, an envelope dated 1952 on a scarred oak table, a brass lamp at frame left, dust in the light.",
+      model: "image-model-a",
+      startedAt: now - 65_000,
+      price: 12,
+    },
+    {
+      id: "measured",
+      kind: "clip",
+      shot: 3,
+      state: "working",
+      phase: "making",
+      title: "Shot 03: the beam sweeps the sea",
+      model: "video-model-b",
+      startedAt: now - 92_000,
+      progress: 0.42,
+      queuePosition: null,
+    },
+    {
+      id: "arrived",
+      kind: "still",
+      shot: 1,
+      state: "arrived",
+      title: "Shot 01: the lighthouse at dusk",
+      prompt: "Wide, a white lighthouse on black rocks at dusk, the sun low over a calm sea.",
+      model: "image-model-a",
+      media: { src: SAMPLE_STILL, alt: "A lighthouse on dark rocks at dusk" },
+      selected: true,
+    },
+    {
+      id: "failed",
+      kind: "clip",
+      shot: 5,
+      state: "failed",
+      title: "Shot 05: the storm reaches the window",
+      model: "video-model-b",
+      failure: {
+        cause: "The provider refused this shot's prompt.",
+        remedy: "Change the prompt in Details, then retry this shot only.",
+      },
+      retryPrice: 40,
+    },
+    {
+      id: "failed-unpriced",
+      kind: "voice",
+      state: "failed",
+      title: "Narration, chapter 2",
+      failure: { cause: "The voice provider did not answer in time.", remedy: "Retry when its price is available again." },
+      retryPrice: null,
+    },
+    {
+      id: "disabled",
+      kind: "music",
+      state: "disabled",
+      title: "Score",
+      reason: "Music is not available on this workspace's plan yet.",
+    },
+    {
+      id: "insufficient",
+      kind: "film",
+      state: "insufficient",
+      title: "Assembly",
+      price: 60,
+      shortfall: { credits: 18, topUpHref: "#credits" },
+    },
+  ];
+}

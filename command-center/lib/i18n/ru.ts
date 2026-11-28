@@ -20,6 +20,7 @@ import { studioHubRu } from "./studio-hub/ru";
 import { studioCanvasRu } from "./studio-canvas/ru";
 import { studioTimelineRu } from "./studio-timeline/ru";
 import { studioLiveRu } from "./studio-live/ru";
+import { liveNodesRu } from "./live-nodes/ru";
 import { ownerSafetyRu } from "./owner-safety/ru";
 import { confirmSheetsRu } from "./confirm-sheets/ru";
 import { ownerRpcRu } from "./owner-rpc/ru";
@@ -90,6 +91,7 @@ export const ru: Dictionary = {
   studioCanvas: studioCanvasRu,
   studioTimeline: studioTimelineRu,
   studioLive: studioLiveRu,
+  liveNodes: liveNodesRu,
   ownerSafety: ownerSafetyRu,
   confirmSheets: confirmSheetsRu,
   ownerRpc: ownerRpcRu,

@@ -1,0 +1,70 @@
+import type { LiveNodesDictionary } from "./en";
+
+/** Jonli kanvas kartalari (components/live). Manba — ./en.ts. Bosh harflarni CSS qoʻyadi, bu yerda oddiy yozuv. */
+export const liveNodesUz: LiveNodesDictionary = {
+  kind: {
+    script: "Ssenariy",
+    shot: "Kadr {n}",
+    character: "Qahramon",
+    location: "Joy",
+    prop: "Buyum",
+    still: "Surat",
+    clip: "Klip",
+    voice: "Ovoz",
+    music: "Musiqa",
+    film: "Film",
+  },
+  state: {
+    ghost: "Rejada",
+    queued: "Navbatda",
+    working: "Ishlanmoqda",
+    arrived: "Tayyor",
+    failed: "Sizning qaroringiz kerak",
+    disabled: "Mavjud emas",
+    insufficient: "Kredit yetmaydi",
+  },
+  phase: {
+    queued: "Navbatda",
+    making: "Yaratilmoqda",
+    storing: "Saqlanmoqda",
+  },
+  queuePosition: "Provayder navbatida {n}-oʻrin",
+  elapsed: "Oʻtdi: {time}",
+  measured: "Provayder maʼlumotiga koʻra {pct}% tayyor",
+  progressLabel: "Jarayon",
+  written: "Yozildi",
+  prompt: "Prompt",
+  model: "Model",
+  price: "{n} {unit}",
+  priceLabel: "Narx",
+  open: "Ochish: {name}",
+  failed: {
+    cause: "Nima boʻldi",
+    remedy: "Nima qilish kerak",
+    retry: "Faqat shuni qayta urinish · {n} {unit}",
+    retryUnpriced: "Qayta urinish · narx mavjud emas",
+    retrying: "Qayta urinilmoqda…",
+  },
+  insufficient: {
+    shortfall: "Sizda {n} {unit} yetishmaydi.",
+    topUp: "Kredit qoʻshish",
+  },
+  ready: "Tayyor: {kind}.",
+  resultAlt: "Natija: {name}",
+  empty: {
+    title: "Kanvas boʻsh",
+    prompt: "Chatga bitta gap yozing, reja shu yerda paydo boʻladi.",
+    examplesLabel: "Mana bulardan birini sinab koʻring",
+    examples: [
+      "Mayoq qorovuli 1952-yilgi xatni topib oladi",
+      "Kichik qahva qovuruvchi uchun 30 soniyalik reklama",
+      "Shaharga suv qanday keladi — qiziquvchan bolalar uchun",
+    ],
+  },
+  specimen: {
+    title: "Jonli kanvas kartalari",
+    note: "Bular namunalar, haqiqiy ishga tushirish emas. Har bir karta jonli kanvasning bitta holatini koʻrsatadi.",
+    replay: "Paydo boʻlishni yana koʻrsatish",
+    connectors: "Maʼlumot turi boʻyicha bogʻlanishlar",
+  },
+};

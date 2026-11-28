@@ -1,0 +1,70 @@
+import type { LiveNodesDictionary } from "./en";
+
+/** Карточки живого холста (components/live). Источник — ./en.ts. Заглавные буквы ставит CSS, здесь — обычный регистр. */
+export const liveNodesRu: LiveNodesDictionary = {
+  kind: {
+    script: "Сценарий",
+    shot: "Кадр {n}",
+    character: "Персонаж",
+    location: "Локация",
+    prop: "Предмет",
+    still: "Кадр-картинка",
+    clip: "Клип",
+    voice: "Голос",
+    music: "Музыка",
+    film: "Фильм",
+  },
+  state: {
+    ghost: "В плане",
+    queued: "В очереди",
+    working: "В работе",
+    arrived: "Готово",
+    failed: "Нужно ваше решение",
+    disabled: "Недоступно",
+    insufficient: "Не хватает кредитов",
+  },
+  phase: {
+    queued: "В очереди",
+    making: "Создаётся",
+    storing: "Сохраняется",
+  },
+  queuePosition: "Место {n} в очереди провайдера",
+  elapsed: "Прошло {time}",
+  measured: "Готово на {pct}%, по данным провайдера",
+  progressLabel: "Прогресс",
+  written: "Написано",
+  prompt: "Промпт",
+  model: "Модель",
+  price: "{n} {unit}",
+  priceLabel: "Цена",
+  open: "Открыть: {name}",
+  failed: {
+    cause: "Что случилось",
+    remedy: "Что сделать",
+    retry: "Повторить только это · {n} {unit}",
+    retryUnpriced: "Повторить · цена недоступна",
+    retrying: "Повторяем…",
+  },
+  insufficient: {
+    shortfall: "Не хватает {n} {unit}.",
+    topUp: "Пополнить кредиты",
+  },
+  ready: "Готово: {kind}.",
+  resultAlt: "Результат: {name}",
+  empty: {
+    title: "Холст пуст",
+    prompt: "Напишите в чате одно предложение — здесь появится план.",
+    examplesLabel: "Попробуйте",
+    examples: [
+      "Смотритель маяка находит письмо из 1952 года",
+      "30-секундная реклама небольшой обжарки кофе",
+      "Как вода попадает в город — для любопытных детей",
+    ],
+  },
+  specimen: {
+    title: "Карточки живого холста",
+    note: "Это образцы, а не настоящий запуск. Каждая карточка показывает одно состояние живого холста.",
+    replay: "Показать появление ещё раз",
+    connectors: "Связи по типу данных",
+  },
+};
