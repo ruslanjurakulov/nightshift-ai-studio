@@ -19,6 +19,7 @@ import { coerceQuote, type FilmQuote } from "@/lib/studio/timeline";
 import { pluralForm } from "@/lib/plural";
 // The gate's client-safe vocabulary (#898): the codes and their remedies are the gate's own, never retyped here.
 import { CHAT_GATE_REMEDY, isChatGateError, type ChatGateRemedy, type ChatGateVerdict } from "@/lib/brain/chat-gate";
+import { emitBrainActivity } from "@/lib/studio/brainActivity";
 import "./nightshift-ai-panel.css";
 
 /**
@@ -618,6 +619,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     setBusy(true);
     setProblem(null);
     setAsking(label || null);
+    emitBrainActivity({ session_id: sessionRef.current, phase: "thinking" });
     try {
       const { res, d } = await post(body);
       const sid = (d.session as { id?: string } | undefined)?.id ?? sessionRef.current;
@@ -685,6 +687,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     } finally {
       inFlight.current = false;
       setBusy(false);
+      emitBrainActivity({ session_id: sessionRef.current, phase: "idle" });
       // A card's option that was pressed is gone with the card: focus goes back to the box, not to <body> (Pixel P5).
       setTimeout(refocus, 0);
     }
@@ -729,6 +732,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     setBusy(true);
     setPlanning(true);
     setPlanOther(!!w.other);
+    emitBrainActivity({ session_id: sid, phase: "storyboard" });
     setProblem(null);
     setAsking(w.title);
     let failed: string | null = null;
@@ -760,6 +764,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
                    retry: NO_RETRY_REASONS.has(reason) ? null : () => void chooseRef.current(w.index) });
     } finally {
       inFlight.current = false;
+      emitBrainActivity({ session_id: sid, phase: "idle" });
       if (!signal.aborted) {
         setPlanning(false);
         setBusy(false);
@@ -809,6 +814,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     const writes = brief?.kind !== "long" && !!outline && !outline.scenes?.length;
     if (writes && outline) {
       setPlanning(true);
+      emitBrainActivity({ session_id: session, phase: "storyboard" });
       // The server stores this choice as the person's message: it is drawn as theirs while the storyboard is written.
       setAsking(outline.title);
       keepPlan(session, { rid, index, title: outline.title, at: Date.now() });
@@ -850,6 +856,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
       inFlight.current = false;
       setPlanning(false);
       setBusy(false);
+      emitBrainActivity({ session_id: session, phase: "idle" });
       setTimeout(refocus, 0);
       if (waiting && life.current) void waitForPlan(session, waiting, life.current.signal);
     }

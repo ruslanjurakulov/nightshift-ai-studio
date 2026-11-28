@@ -85,9 +85,53 @@
   .lv-activity { margin-bottom: calc(96px + env(safe-area-inset-bottom)); }
 }
 
+/* A card new since the last reading rises in, one after another in reading order (StoryBoard's `enter`, the Plan column only). The
+   delay steps are S5's motion tokens where they exist; the first reading after a load enters nothing (lib/studio/planBoard.ts). */
+.lv-card[data-enter] {
+  animation: lv-enter var(--ds-dur-page, 300ms) var(--ds-ease-out, cubic-bezier(0.2, 0, 0, 1)) both;
+  animation-delay: calc(var(--lv-enter-i, 0) * 50ms);
+}
+@keyframes lv-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* The Studio's column beside Nightshift AI (PlanColumn.tsx): the plan, or the person's own canvas, which stays mounted under it. */
+.plan-col { display: grid; gap: 8px; min-width: 0; align-content: start; }
+.plan-switch { display: inline-flex; justify-self: start; gap: 4px; padding: 4px; border: 1px solid var(--rule); border-radius: 999px; background: var(--console); }
+.plan-switch button {
+  min-height: 44px; padding: 0 16px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--dim); background: transparent;
+  transition: background-color var(--ds-dur-panel, 200ms) var(--ds-ease-out, ease-out), color var(--ds-dur-panel, 200ms) var(--ds-ease-out, ease-out);
+}
+.plan-switch button[aria-pressed="true"] { background: var(--key-hi); color: var(--text); box-shadow: inset 0 0 0 1px var(--rule-strong, var(--rule)); }
+.plan-switch button:focus-visible { outline: 2px solid var(--focus, var(--run)); outline-offset: 2px; }
+/* Both panes in one cell: the hidden canvas keeps its size and place (its own height reads its top, StudioCanvas --cv-top), so it is
+   exactly as it was when the person comes back to it. */
+.plan-col-stack { display: grid; min-width: 0; }
+.plan-col-stack > * { grid-area: 1 / 1; min-width: 0; }
+.plan-col-canvas[data-hidden] { visibility: hidden; pointer-events: none; }
+.plan-root { z-index: 1; align-self: start; border-radius: 14px; }
+.plan-title { margin: 0; font-size: 20px; font-weight: 600; overflow-wrap: anywhere; }
+.plan-empty { margin: 0; padding: 24px 0; font-size: 14px; color: var(--dim); max-width: 46ch; }
+.plan-quiet { margin: 0; font-size: 13px; color: var(--dim); animation: plan-breathe 1.8s ease-in-out infinite; }
+@keyframes plan-breathe { 50% { opacity: 0.6; } }
+.plan-stage { position: relative; }
+.plan-writing {
+  display: grid; gap: 4px; padding: 10px 14px 14px; border: 1px solid var(--rule); border-radius: 12px; background: var(--console);
+  position: relative; overflow: hidden; min-width: 0;
+}
+.plan-stage > .plan-writing { position: absolute; bottom: 12px; left: 12px; right: 12px; z-index: 5; pointer-events: none;
+  box-shadow: 0 8px 24px -12px rgb(0 0 0 / 0.5); }
+.plan-stage.has-details > .plan-writing { right: calc(min(360px, 40%) + 24px); }
+.plan-writing-head { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
+.plan-writing-note { margin: 0; font-size: 13px; color: var(--dim); }
+/* Indeterminate: a band that moves along and never fills, because there is no count to fill it with (CLAUDE.md rule 5). */
+.plan-sweep { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; overflow: hidden; background: color-mix(in srgb, var(--run) 18%, transparent); }
+.plan-sweep::before { content: ""; position: absolute; top: 0; bottom: 0; width: 35%; background: var(--run); animation: plan-sweep 1.6s var(--ds-ease-in-out, ease-in-out) infinite; }
+@keyframes plan-sweep { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+
 @media (prefers-reduced-motion: reduce) {
   .lv-card, .lv-board .react-flow__edge-path { transition: none; }
   .lv-card.is-working { transform: none; }
-  .lv-card.is-working::after, .lv-card[data-lit] { animation: none; }
+  .lv-card.is-working::after, .lv-card[data-lit], .lv-card[data-enter] { animation: none; }
+  .plan-quiet, .plan-sweep::before { animation: none; }
+  .plan-switch button { transition: none; }
   .lv-board .lv-edge.is-live .react-flow__edge-path { animation: none; }
 }

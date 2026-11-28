@@ -655,6 +655,9 @@ export function StudioCanvas({
       return !!e && (e.tagName === "INPUT" || e.tagName === "TEXTAREA" || e.tagName === "SELECT" || e.isContentEditable);
     };
     function onKey(e: KeyboardEvent) {
+      // Kept mounted but hidden behind the Studio's Plan column (PlanColumn.tsx, inert): its keys are not the canvas's, or Backspace
+      // on the page would delete a card nobody can see, and ⌘K would open a search nobody can see.
+      if (rootRef.current?.closest("[inert]")) return;
       // ⌘K belongs to the canvas while it is open: it adds and opens, like the prototype's bar. Caught before the app's palette.
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();

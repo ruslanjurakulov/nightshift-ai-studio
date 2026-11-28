@@ -310,6 +310,15 @@ function assemblyStatus(s: string | null): LiveStatus {
   }
 }
 
+/**
+ * A scene's card, keyed by the scene's place in the plan (1-based), never by a scene id. The brief's scene ids are the conversation's
+ * ("s1", or the model's own words) and the film's are film_scenes uuids: keyed by id, every scene card was a different card after
+ * Create, so the board re-mounted and re-animated the whole storyboard at the moment the person pressed it (LIVE_CREATION_PLAN §3.8).
+ */
+export function sceneNodeId(position: number, kind: "keyframe" | "clip"): string {
+  return `scene#${position}:${kind}`;
+}
+
 export function filmGraph(r: FilmReading): LiveGraph {
   const { view } = r.film;
   const fs = view.film.status;
@@ -345,7 +354,7 @@ export function filmGraph(r: FilmReading): LiveGraph {
               : "unknown"
           : "none";
     const kfDone = scene.firstFrame === "asset" ? null : chosenKeyframe(scene, takes);
-    const kfId = `scene:${scene.id}:keyframe`;
+    const kfId = sceneNodeId(i + 1, "keyframe");
     nodes.push({
       id: kfId,
       kind: "keyframe",
@@ -372,7 +381,7 @@ export function filmGraph(r: FilmReading): LiveGraph {
     });
     const clipStatus = chosenShots(scene, takes) ? "done" : combine(shotStatuses);
     const failedShot = shots.find((s) => s.status === "failed");
-    const clipId = `scene:${scene.id}:clip`;
+    const clipId = sceneNodeId(i + 1, "clip");
     nodes.push({
       id: clipId,
       kind: "clip",
@@ -756,8 +765,8 @@ export function briefGraph(b: Brief): LiveGraph {
     }
   }
   b.scenes.forEach((s, i) => {
-    const kf = `scene:${s.id}:keyframe`;
-    const clip = `scene:${s.id}:clip`;
+    const kf = sceneNodeId(i + 1, "keyframe");
+    const clip = sceneNodeId(i + 1, "clip");
     nodes.push({ id: kf, kind: "keyframe", status: "draft", scene: s.n, sceneTitle: s.title ?? undefined, text: s.visualPrompt, col: 2, row: i });
     // brief.price.nodes is per scene: the scene's number sits on its clip, the step that costs it.
     nodes.push({ id: clip, kind: "clip", status: "draft", scene: s.n, sceneTitle: s.title ?? undefined, text: s.visualPrompt, price: price(s.id), col: 3, row: i });
@@ -775,7 +784,7 @@ export function briefGraph(b: Brief): LiveGraph {
   const music = b.music === "library";
   nodes.push({ id: "music", kind: "music", status: music ? "draft" : "none", price: price("music"), col: 4, row: rows });
   nodes.push({ id: "assembly", kind: "assembly", status: "draft", price: price("assembly"), col: 5, row: mid });
-  for (const s of b.scenes) edges.push({ from: `scene:${s.id}:clip`, to: "assembly" });
+  b.scenes.forEach((_, i) => edges.push({ from: sceneNodeId(i + 1, "clip"), to: "assembly" }));
   if (voiced) edges.push({ from: "voice", to: "assembly" });
   if (music) edges.push({ from: "music", to: "assembly" });
   nodes.push({ id: "final", kind: "final", status: "draft", col: 6, row: mid });

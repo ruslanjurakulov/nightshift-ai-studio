@@ -5,6 +5,7 @@ import { NotConfigured } from "@/components/NotConfigured";
 import { StudioCanvas } from "@/components/studio-canvas/StudioCanvas";
 import { StudioTimeline } from "@/components/studio-timeline/StudioTimeline";
 import { LiveView } from "@/components/studio-live/LiveView";
+import { PlanColumn } from "@/components/studio-live/PlanColumn";
 import { parseFilmId } from "@/lib/films";
 import { VideosShelf } from "@/components/studio-hub/VideosShelf";
 import { ProjectsShelf } from "@/components/studio-hub/ProjectsShelf";
@@ -129,6 +130,7 @@ export default async function StudioPage({
   if (!orgId || !aiChatOpenFor(orgId, aiChatEnv())) return canvas;
   const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
   const brain = one(sp.brain);
+  const initialSession = one(sp.ai) === "new" ? null : brain && /^[0-9a-f-]{36}$/i.test(brain) ? brain : null;
   return (
     <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)]">
       <NightshiftAiPanel
@@ -136,13 +138,14 @@ export default async function StudioPage({
         channelSlug={slug}
         // "Salom, {name}", as the owner's chat greets: the auth profile's first name, never an address or a guess.
         greetingName={firstNameOf(user?.user_metadata)}
-        initialSession={one(sp.ai) === "new" ? null : brain && /^[0-9a-f-]{36}$/i.test(brain) ? brain : null}
+        initialSession={initialSession}
         // The landing page's idea (S4): ?ai=new&idea=1 opens a new conversation with it typed in, never sent.
         fresh={one(sp.ai) === "new"}
         takeIdea={one(sp.ai) === "new" && one(sp.idea) === "1"}
         initialPrompt={(one(sp.prompt) ?? "").slice(0, 2000) || null}
       />
-      <div className="min-w-0">{canvas}</div>
+      {/* The plan the conversation is building, drawn beside it; the person's own canvas stays one switch away (S3). */}
+      <PlanColumn initialSession={initialSession}>{canvas}</PlanColumn>
     </div>
   );
 }

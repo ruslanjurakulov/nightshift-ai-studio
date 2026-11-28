@@ -48,6 +48,8 @@ async function readBrief(session: string): Promise<BriefLoad> {
  */
 export function useBrainBrief(session: string | null) {
   const [load, setLoad] = useState<BriefLoad>({ state: "loading" });
+  // A re-read that failed while a brief was on screen: the brief stays, and a reader that wants to can say it is the last one read.
+  const [stale, setStale] = useState(false);
   const gen = useRef(0);
   // Each read's own number: of two overlapping reads, only the newer may land (Lens).
   const seq = useRef(0);
@@ -61,7 +63,11 @@ export function useBrainBrief(session: string | null) {
     const next = await readBrief(session);
     if (from !== gen.current || mine !== seq.current) return;
     // A failed re-read keeps the brief on screen: the panel's next change reads again.
-    if (next.state === "error" && last.current.state === "ready") return;
+    if (next.state === "error" && last.current.state === "ready") {
+      setStale(true);
+      return;
+    }
+    setStale(false);
     setLoad(next);
   }, [session]);
 
@@ -69,6 +75,7 @@ export function useBrainBrief(session: string | null) {
     if (!session) return;
     gen.current += 1;
     setLoad({ state: "loading" });
+    setStale(false);
     void read();
     const onBrief = (e: Event) => {
       const d = (e as CustomEvent<{ session_id?: unknown }>).detail;
@@ -92,5 +99,5 @@ export function useBrainBrief(session: string | null) {
   }, [read]);
 
   // No conversation (?brain= taken off the URL: the panel found it gone, or New chat): the last one's brief is not drawn on.
-  return { load: session ? load : IDLE, retry };
+  return { load: session ? load : IDLE, retry, stale: !!session && stale };
 }

@@ -74,3 +74,8 @@
 .ns-ai-problem-ic { flex-shrink: 0; margin-top: 0.2rem; color: #fbbf24; }
 /* In the status slot, which is already framed: no second border inside it (Pixel minor on the age state). */
 .ns-ai-problem--bare { padding: 0; border: 0; background: none; }
+
+/* Create's inline confirmation (FilmCreateButton ConfirmPanel) focuses Cancel, and focus scrolls only Cancel into the thread's view:
+   at 1440x900 the primary key, wrapped onto the line below it, stayed half under the composer (docs/studio/S3_LIVE_MEASURE.md,
+   frame L8_w2_r0/f0044). Room below Cancel brings the key and the panel's edge in with it. */
+.ns-ai-dock [data-testid="film-create-cancel"] { scroll-margin-bottom: 5rem; }
