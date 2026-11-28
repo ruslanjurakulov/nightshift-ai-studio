@@ -11,23 +11,24 @@
  */
 
 import { assignTop } from "@/components/view-mode/frame-nav";
-import type { DodoCheckoutItem } from "@/lib/dodo";
+import type { DodoCheckoutRequest } from "@/lib/dodo";
 
 /**
  * How opening a checkout ended. `too_many` is the database's cap (50 checkouts a day per organization, 0146) and
  * `not_on_sale` an item this deployment no longer sells: both say what to do instead of "try again".
  */
-export type DodoOpenResult = "redirecting" | "already_subscribed" | "too_many" | "not_on_sale" | "failed";
+export type DodoOpenResult = "redirecting" | "already_subscribed" | "too_many" | "not_on_sale" | "outdated" | "requires_plan" | "failed";
 
 const BALANCE_KEY = "ns:dodo:balance-before";
 
-export async function openDodoCheckout(item: DodoCheckoutItem, returnPath: string, balanceBefore: number | null): Promise<DodoOpenResult> {
+export async function openDodoCheckout(item: DodoCheckoutRequest, returnPath: string, balanceBefore: number | null): Promise<DodoOpenResult> {
   try {
     const res = await fetch("/api/billing/dodo/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // A credit count goes alone: the server prices it, so no price the page computed is ever sent.
       body: JSON.stringify(
-        item.kind === "amount" ? { kind: "amount", usd_cents: item.usdCents, return_path: returnPath } : { kind: item.kind, id: item.id, return_path: returnPath },
+        item.kind === "credits" ? { kind: "credits", credits: item.credits, return_path: returnPath } : { kind: item.kind, id: item.id, return_path: returnPath },
       ),
     });
     const data = (await res.json().catch(() => ({}))) as { url?: unknown; error?: unknown };
@@ -46,6 +47,8 @@ export async function openDodoCheckout(item: DodoCheckoutItem, returnPath: strin
     if (data.error === "already_subscribed") return "already_subscribed";
     if (data.error === "too_many_checkouts") return "too_many";
     if (data.error === "not_on_sale") return "not_on_sale";
+    if (data.error === "checkout_changed") return "outdated";
+    if (data.error === "topup_requires_plan") return "requires_plan";
     return "failed";
   } catch {
     return "failed";

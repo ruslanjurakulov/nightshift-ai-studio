@@ -14,32 +14,38 @@ export const addCreditsEn = {
   autoChip: "Not available yet",
   autoBody:
     "Auto recharge isn't available yet: charging a saved card automatically needs our payment provider's written approval first. Add credits any time with a one-time purchase.",
-  presetsLabel: "Choose an amount",
-  customLabel: "Or type an amount in US dollars",
-  bounds: "Minimum {min}, maximum {max}",
+  customLabel: "How many credits?",
+  sliderLabel: "Credits",
+  bounds: "Minimum {min} credits. One purchase is up to {max} credits ({maxPrice}).",
   creditsToAdd: "Credits to add",
+  perCredit: "Price per credit",
   total: "Total",
   totalUnknown: "—",
   taxNote: "Price in US dollars. Any tax is calculated by Dodo Payments and shown on the checkout page before you pay.",
-  rate: "At this rate $1 = {n} credits.",
-  /** Only when some pack below really gives more than the typed rate (packBonusPercent). */
-  ratePacks: "The packs marked below give more credits per dollar.",
+  /** The volume rates (lib/topup.ts TOPUP); the more credits, the lower the price per credit. */
+  tiers: "{lo1}–{hi1} credits: {p1} each · {lo2}–{hi2}: {p2} each · {lo3} and more: {p3} each.",
+  contactTitle: "More than {max} credits?",
+  contactBody: "One purchase is at most {maxPrice}. Write to us and we'll arrange a larger purchase.",
+  contactLink: "Contact us",
   /** Dodo's docs: "When amount is provided, the checkout uses that exact amount"; said in case its page ever lets it be edited. */
   keepAmount: "Dodo's page should show exactly this amount. Don't change it there: a payment of a different amount isn't credited and has to be refunded.",
   invalid: {
-    empty: "Enter an amount.",
-    format: "Enter dollars and cents, like 25 or 25.50.",
-    below: "The minimum is {min}.",
-    above: "The maximum is {max} per payment.",
+    empty: "Enter a number of credits.",
+    format: "Enter a whole number of credits, like 5000.",
+    below: "The minimum is {min} credits.",
   },
   payWith: "Payment: card or another method, entered on Dodo's secure checkout page. Your card details never reach us.",
   submit: "Add credits",
   processing: "Processing…",
   tooMany: "The checkout was opened too many times today. Try again tomorrow, or contact support.",
   notOnSale: "This isn't on sale right now. Refresh the page and try again.",
-  packsTitle: "Packs · better value",
-  packsLead: "The packs marked with a bonus give more credits per dollar than a typed amount.",
-  bonus: "+{pct}% credits",
+  /** An old tab still posting the retired typed-dollar purchase (the route answers checkout_changed). */
+  outdated: "Refresh the page to see the new top-up.",
+  /** Owner decision 2026-11-22: extra credits are an add-on for subscribers; a workspace without a paid plan sees only this. */
+  subscribersOnly: "Extra credits are for subscribers. Choose a plan first.",
+  choosePlan: "See the plans",
+  /** The plan could not be read: neither "subscribe first" nor the field is claimed then. */
+  planUnknown: "We couldn't check your plan, so extra credits can't be offered right now. Refresh the page to try again.",
   history: {
     title: "Purchase history",
     lead: "Payments that added credits to this workspace. Invoices are issued by Dodo Payments, our Merchant of Record.",

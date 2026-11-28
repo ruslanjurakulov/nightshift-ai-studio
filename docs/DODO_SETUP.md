@@ -46,11 +46,20 @@ Qoidalar (Paddle'dagi bilan bir xil):
   katalog narxiga teng bo'lmasa (USD'da, soliqsiz yoki soliq ichida) — kredit **berilmaydi**,
   hodisa `rejected` bo'lib yoziladi (pul olingan — odam hal qiladi).
 - **Ixtiyoriy summa ("Kredit qo'shish") — yagona istisno, lekin kreditni baribir brauzer belgilamaydi.**
-  Brauzer faqat sentni aytadi (butun son, $5 dan $300 gacha — serverda tekshiriladi). Server shu sentni
-  imzoli metadata'ga yozadi (`nightshift_item = pack:amount_<sent>`, nonce qatorida ham aynan shu) va
-  Dodo'ning Pay What You Want mahsulotiga `amount` qilib beradi. Webhook kreditni **imzolangan sent ×
-  `DODO_AMOUNT.creditsPerCent`** (1 kredit = 1 sent) dan hisoblaydi va faqat Dodo xuddi shu sentni
-  to'langan deb aytsa beradi (paketlardagi o'sha soliq qoidasi). Statik PWYW havolasida xaridor istalgan
+  Brauzer faqat **kredit sonini** aytadi (butun son, kamida 1 000 — serverda tekshiriladi; boshqa hech
+  qanday kalit, narx ham, qabul qilinmaydi). Narxni server hisoblaydi (`command-center/lib/topup.ts`, `TOPUP`):
+  1 000–4 999 kredit — kreditiga 1,2 sent; 5 000–19 999 — 1,1 sent; 20 000 va undan ko'p — 1,0 sent
+  (egasi qarori 2026-11-22: qo'shimcha kredit hech bir tarifning o'z kreditidan arzon emas).
+  **Faqat obunachilar uchun**: checkout route tashkilotda jonli pullik tarif bo'lmasa `kind` qanday bo'lmasin
+  (`credits` ham, eski `pack` ham) 403 `topup_requires_plan` qaytaradi — nonce va Dodo'dan oldin. Webhook buni
+  qayta tekshirmaydi: obuna paytida yozilgan buyurtma to'langan bo'lsa, kreditlanadi.
+  Eng kam buyurtma $12, bitta xarid eng ko'pi $1 000 (100 000 kredit); undan ko'pi uchun sahifa "biz bilan
+  bog'laning" deydi va checkout ochilmaydi. Server buyurtmani imzoli metadata'ga yozadi
+  (`nightshift_item = pack:credits_<kredit>_<sent>`, nonce qatorida ham aynan shu) va narxni
+  Dodo'ning Pay What You Want mahsulotiga `amount` qilib beradi. Webhook **imzolangan kreditni** beradi va
+  faqat Dodo imzolangan sentni to'langan deb aytsa (paketlardagi o'sha soliq qoidasi); narxni qayta
+  hisoblamaydi. Eski `pack:amount_<sent>` (1 sent = 1 kredit) bilan ochilgan checkout'lar hali ham
+  bajariladi, lekin yangisi ochilmaydi. Statik PWYW havolasida xaridor istalgan
   narxni yoza oladi (`paymentAmount`) — imzolangan summaga teng bo'lmasa `rejected`, kredit yo'q.
 - **Kreditlar Paddle'dagi funksiyalar orqali**: paket — `add_purchased_credits`, tarif davri —
   `grant_subscription_credits_for('dodo', …)` (0146, 0034'ning o'sha tanasi), qaytarish va
@@ -85,7 +94,7 @@ mahsulot narxini aynan shunday qo'ying — boshqa narxda to'langan xarid kredit 
 | Plus (`creator`) | 2 000 / oy | 19 / oy | Subscription, har 1 oy | `DODO_PLAN_CREATOR` |
 | Pro (`pro`) | 6 000 / oy | 49 / oy | Subscription, har 1 oy | `DODO_PLAN_PRO` |
 | Business (`studio`) | 18 000 / oy | 129 / oy | Subscription, har 1 oy | `DODO_PLAN_STUDIO` |
-| Ixtiyoriy summa ("Kredit qo'shish") | 1 sentga 1 kredit | 5 – 300 (xaridor tanlaydi; tugmalar 10 / 20 / 50 / 100) | One-time, **Pay What You Want** | `DODO_PRODUCT_AMOUNT` |
+| Ixtiyoriy kredit soni ("Kredit qo'shish") | Kredit yoziladi (kamida 1 000); narx 3 hajm stavkasi: 1,2 / 1,1 / 1,0 sent; faqat obunachilar | $12 (eng kam) – $1 000 (eng ko'p; undan ko'pi — "biz bilan bog'laning") | One-time, **Pay What You Want** | `DODO_PRODUCT_AMOUNT` |
 
 Ixtiyoriy summaning stavkasi va chegaralari ham kodda (`DODO_AMOUNT`, ikkala faylda; test bir xilligini
 tekshiradi). 1 kredit = 1 sent — Starter paketining o'z stavkasi (1 000 kredit / $10), shuning uchun
@@ -198,9 +207,10 @@ Har biri uchun (6 ta, yuqoridagi katalog jadvali):
 **7-mahsulot: ixtiyoriy summa** (`DODO_PRODUCT_AMOUNT`, "Kredit qo'shish" oynasi uchun):
 
 - Pricing Type: **One Time**; valyuta **USD**; **Pay What You Want** — yoqiq.
-- **Minimum Price: `5.00`** (bizning eng kam summamizdan katta bo'lmasin — aks holda $5 lik xarid Dodo'da
-  rad etiladi). Suggested Price — ixtiyoriy. Eng ko'p summa sozlamasi Dodo'da yo'q ("There is no maximum
-  price setting"): $300 chegarasini kod qo'yadi (sahifa, checkout route va webhook).
+- **Minimum Price: eng kichik buyurtmadan (`12.00`) katta bo'lmasin** (`≤ 12.00`; `10.00` ham yaraydi — aks
+  holda eng kam $12 lik xarid Dodo'da rad etiladi). Suggested Price — ixtiyoriy. Eng ko'p summa sozlamasi
+  Dodo'da yo'q ("There is no maximum price setting"): $1 000 chegarasini kod qo'yadi (sahifa va checkout
+  route; webhook ham imzolangan buyurtmani shu chegarada va eng arzon stavkadan past emasligini tekshiradi).
 - Soliq toifasi va `inclusive` / `exclusive` — **qolgan 6 mahsulot bilan bir xil** (`DODO_TAX_MODE`).
 - Localized Pricing — o'chiq (PWYW u bilan birga ishlamaydi; webhook faqat USD'ni kreditlaydi).
 - Agar mahsulotda PWYW yoqilmasa, Dodo `amount` ni e'tiborsiz qoldiradi va mahsulot narxini oladi — webhook
@@ -343,10 +353,10 @@ Test karta: `4242 4242 4242 4242`, muddati `06/32`, CVV `123` (rad etiladigan ka
       bir necha soniyada balans +1 000; `credit_transactions` da `purchase` qatori
       (`external_id` = `pay_…`), `payment_events` da `processed`. Qaytish `/api/billing/dodo/return`
       orqali o'tadi: manzil satrida `email` yo'q.
-- [ ] **Ixtiyoriy summa.** Credits → "Kredit qo'shish" → $25.50 yozing: "Qo'shiladigan kredit 2,550",
+- [ ] **Ixtiyoriy summa.** Credits → "Kredit qo'shish" → 2 550 kredit yozing: "Qo'shiladigan kredit 2,550",
       "Jami $25.50". Tugma "Processing…" deydi, Dodo sahifasida summa $25.50 (+ soliq). To'lovdan keyin
-      balans +2 550; `payment_events` da `processed`, `credits = 2550`. $4.99 va $300.01 — sahifa
-      xabar beradi, tugma bosilmaydi. "Avtomatik to'ldirish" yorlig'i — faqat "hozircha mavjud emas".
+      balans +2 550; `payment_events` da `processed`, `credits = 2550`. 999 kredit — sahifa xabar beradi,
+      tugma bosilmaydi; 125 001 va undan ko'pi — narx ham, tugma ham yo'q, "biz bilan bog'laning". "Avtomatik to'ldirish" yorlig'i — faqat "hozircha mavjud emas".
 - [ ] **Dodo sahifasida summani o'zgartirish.** "Kredit qo'shish" → $25.50 → Dodo'ning to'lov sahifasida
       summani o'zgartirishga urinib ko'ring (agar Dodo bunga yo'l qo'ysa — hujjat "When `amount` is provided,
       the checkout uses that exact amount" deydi, ya'ni o'zgartirib bo'lmasligi kerak) va to'lang. Kutilgan:
@@ -463,7 +473,7 @@ select org_id, plan_id, status, current_period_end, cancel_at_period_end, update
 | Metadata | Tashkilot faqat bizning imzomiz (`ns_sig`, `DODO_METADATA_SECRET`, konstant vaqtda tekshiriladi) bo'lgan metadata'dan olinadi. Imzosiz yoki noto'g'ri imzoli metadata — `rejected`, hech qaysi tashkilot nomlanmaydi. |
 | Test mode | `DODO_WEBHOOK_MODE` aynan `live` bo'lmasa, faqat `DODO_TEST_ORG_IDS` dagi tashkilotlarga kredit va tarif; qolgani `rejected`. Qaytarish (refund, nizo) cheklanmaydi. |
 | Paket | `status = succeeded`; USD; chegirma yo'q; imzolangan tashkilot; aynan bitta qator, imzolangan paket, soni 1; `DODO_TAX_MODE=inclusive` bo'lsa `total_amount` = katalog narxi, `exclusive` bo'lsa `total_amount − tax` = katalog narxi. Tashkilot mavjud. |
-| Ixtiyoriy summa | Paketdagidek, plus: qator mahsuloti `DODO_PRODUCT_AMOUNT`; imzolangan item aynan `pack:amount_<sent>` (bosh nolsiz, 500 – 30000); soni 1; `total_amount` (yoki `total_amount − tax`) = **imzolangan sent**. Kredit = imzolangan sent × 1. Boshqa narx (statik havolada xaridor tanlagani ham) — `rejected`. Nonce bir marta. |
+| Ixtiyoriy summa | Paketdagidek, plus: qator mahsuloti `DODO_PRODUCT_AMOUNT`; imzolangan item aynan `pack:credits_<kredit>_<sent>` (bosh nolsiz; kredit ≥ 1 000, sent ≤ 100000 va eng arzon stavkadan past emas) yoki eski `pack:amount_<sent>` (500 – 30000); soni 1; `total_amount` (yoki `total_amount − tax`) = **imzolangan sent**. Kredit = imzolangan kredit (eski shaklda sent × 1). Boshqa narx (statik havolada xaridor tanlagani ham) — `rejected`. Nonce bir marta. |
 | Tarif davri | Yuqoridagidek, plus: `charge_type` `new` yoki `renewal`; obuna bazada bor (yo'q bo'lsa 503 — Dodo qayta yuboradi), uning tashkiloti metadata'dagiga mos; obuna mahsuloti shu deployment'dagi tarif; summa o'sha tarif narxi; `service_periods` dagi davr. `plan_change` to'lovi — `rejected` (qo'lda). |
 | Obuna holati | `active`, `past_due` → imkoniyatlar bor; `on_hold`, `paused` → `paused`; `cancelled`, `expired` → `canceled`; `cancel_at_next_billing_date` → davr oxirida tugaydi. Eskirgan hodisa (vaqt bo'yicha) hech narsani o'zgartirmaydi. |
 | Refund | Faqat `succeeded`; to'liq — qolgan hammasi, qisman — pulga mutanosib; xariddan oldin kelsa 503 (qayta). Hech qachon kreditlanganidan ko'p emas (baza cheklaydi). |

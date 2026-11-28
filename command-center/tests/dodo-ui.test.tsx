@@ -151,7 +151,7 @@ describe("Credits: buying a pack through Dodo", () => {
   function renderBuy(v = view) {
     return render(
       <I18nProvider locale="en">
-        <DodoBuyCredits view={v} balance={100} />
+        <DodoBuyCredits view={v} balance={100} eligibility="subscriber" />
       </I18nProvider>,
     );
   }
@@ -233,7 +233,7 @@ describe("back from Dodo's checkout", () => {
     await act(async () => {
       render(
         <FreshProvider locale="en">
-          <Fresh view={view} balance={100} />
+          <Fresh view={view} balance={100} eligibility="subscriber" />
         </FreshProvider>,
       );
     });
@@ -251,7 +251,7 @@ describe("back from Dodo's checkout", () => {
     await act(async () => {
       render(
         <FreshProvider locale="en">
-          <Fresh view={view} balance={100} />
+          <Fresh view={view} balance={100} eligibility="subscriber" />
         </FreshProvider>,
       );
     });

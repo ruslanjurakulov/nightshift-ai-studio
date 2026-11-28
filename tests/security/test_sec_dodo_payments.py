@@ -257,6 +257,27 @@ def test_a_nonce_is_spent_once_for_its_own_org_user_and_item(conn, sc):
     assert consume(conn, "f" * 32, sc.alice.org, uid, "pack:starter", "pay_Spend000003") == "unknown"
 
 
+def test_a_credit_count_order_is_recorded_and_bound_to_its_exact_credits_and_cents(conn, sc):
+    # TOPUP-CUSTOM (owner decision 2026-11-21): the checkout records `pack:credits_<n>_<cents>` here BEFORE Dodo is called.
+    # The longest order the $1 000 cap allows must fit 0146's item check, and a payment whose signed order names other
+    # credits or other cents (a bigger grant, a cheaper price) must not spend it.
+    item = "pack:credits_100000_100000"
+    out = issue(conn, sc.alice.actor, sc.alice.org, item)
+    assert out.ok, out
+    n = out.rows[0][0]
+    uid = sc.alice.actor.uid
+    with as_superuser(conn, commit=False) as s:
+        assert s.rows("select org_id::text, user_id::text, item, created_at is not null, consumed_at from public.dodo_checkout_nonces "
+                      "where nonce = %s", [n]) == [(sc.alice.org, uid, item, True, None)]
+    assert consume(conn, n, sc.alice.org, uid, "pack:credits_100000_1200", "pay_Order0000001") == "mismatch"
+    assert consume(conn, n, sc.alice.org, uid, "pack:credits_200000_100000", "pay_Order0000001") == "mismatch"
+    assert consume(conn, n, sc.alice.org, uid, item, "pay_Order0000001") == "ok"
+    assert consume(conn, n, sc.alice.org, uid, item, "pay_Order0000002") == "consumed"
+    # Someone who is not an owner/admin of the workspace cannot record an order for it.
+    denied = issue(conn, sc.bob.actor, sc.alice.org, item)
+    assert not denied.ok and denied.sqlstate == "42501", denied
+
+
 def test_a_missing_org_user_or_item_is_a_mismatch_and_does_not_spend_the_nonce(conn, sc):
     # R2-L1: with `<>`, a NULL organization or item made the comparison NULL, the IF read it as false, and the nonce was spent
     # with 'ok' for a payment that named no organization or no item.

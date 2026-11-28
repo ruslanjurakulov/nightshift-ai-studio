@@ -3768,7 +3768,7 @@ export const uz: Dictionary = {
     priceAtCheckout: "Narx toʻlov oynasida koʻrsatiladi",
     planTerms: "Bekor qilmaguningizcha har oy yangilanadi. Istalgan vaqtda bekor qilish mumkin: tarif toʻlangan davr oxirigacha amal qiladi. Tarif kreditlari har bir davr oxirida yonadi.",
     packsTitle: "Toʻldirish paketlari",
-    packsLead: "Bir martalik toʻlov, obunasiz. Tarif kreditlaridan keyin sarflanadi.",
+    packsLead: "Bir martalik toʻlov, yangilanmaydi. Obunachilar uchun; tarif kreditlaridan keyin sarflanadi.",
     packTermsMonths: "Bir martalik toʻlov, yangilanmaydi. Paket kreditlari {months} oy amal qiladi.",
     packTermsNever: "Bir martalik toʻlov, yangilanmaydi. Paket kreditlari yonmaydi.",
     packTermsBase: "Bir martalik toʻlov, yangilanmaydi.",
@@ -4345,7 +4345,7 @@ export const uz: Dictionary = {
     pricing: {
       eyebrow: "Narxlar",
       title: "Oʻrinlar uchun emas, yaratganingiz uchun toʻlang.",
-      lead: "Nightshift kreditlarda ishlaydi. Tarif oylik ajratma beradi, bir martalik paketlar tarif bilan ham, tarifsiz ham balansni toʻldiradi, har bir ish esa avval narxini koʻrsatadi.",
+      lead: "Nightshift kreditlarda ishlaydi. Tarif oylik ajratma beradi, obunachilar bir martalik xarid bilan qoʻshimcha kredit olishi mumkin, har bir ish esa avval narxini koʻrsatadi.",
       points: [
         { title: "Avval narx", body: "Har bir generatsiya va har bir pullik yuklab olish tasdiqlashdan oldin narxini kreditlarda koʻrsatadi." },
         { title: "Band, keyin yechish", body: "Kreditlar vazifa boshlanganda band qilinadi va natija kelganda yechiladi — hech qachon banddan koʻp emas." },
@@ -4423,7 +4423,7 @@ export const uz: Dictionary = {
     metaDescription: "Kredit paketlari, kredit nimaga yetishi, video daqiqasi narxi va qaytarishlar. Narx ishdan oldin koʻrinadi; muvaffaqiyatsiz ish kreditni qaytaradi.",
     eyebrow: "Tariflar va kreditlar",
     title: "Narxlar",
-    lead: "Doimiy kredit ajratmasi uchun oylik tarif tanlang yoki bir martalik paketlar bilan toʻldiring. Har bir generatsiya boshlanishidan oldin narxini koʻrsatadi, muvaffaqiyatsizi esa hech narsaga tushmaydi.",
+    lead: "Doimiy kredit ajratmasi uchun oylik tarif tanlang; obuna boʻlsangiz, bir martalik xarid bilan qoʻshimcha kredit olishingiz mumkin. Har bir generatsiya boshlanishidan oldin narxini koʻrsatadi, muvaffaqiyatsizi esa hech narsaga tushmaydi.",
     packsLabel: "Kredit paketlari",
     credits: "{n} kredit",
     oneTime: "Bir martalik toʻlov",
@@ -4482,7 +4482,7 @@ export const uz: Dictionary = {
     terms: [
       "Tarif siz bekor qilmaguningizcha har oy yangilanadi. Kreditlar sahifasidagi «Obunani boshqarish» orqali istalgan vaqtda bekor qilasiz.",
       "Bekor qilgandan keyin tarif toʻlangan davr oxirigacha amal qiladi, boshqa yechimlarsiz.",
-      "Toʻldirish paketlari bir martalik toʻlov va yangilanmaydi.",
+      "Qoʻshimcha kreditlar obunachilar uchun: tarif ustiga bir martalik toʻlov, yangilanmaydi.",
       "Muvaffaqiyatsiz generatsiya va ishga tushirishlar kreditlarini avtomatik qaytaradi.",
     ],
     faqTitle: "Narxlar haqida savollar",
@@ -4505,7 +4505,7 @@ export const uz: Dictionary = {
     compareCredits: "Oyiga kreditlar",
     eqSignedOut: "Bu kreditlarga bugungi narxlarda nima qilish mumkinligi akkauntga kirgandan keyin koʻrinadi.",
     packsTitle: "Toʻldirish paketlari",
-    packsLead: "Yangilanmaydigan bir martalik toʻlovlar. Istalgan tarifda — yoki umuman tarifsiz sotib oling. Ular tarif kreditlaridan keyin sarflanadi.",
+    packsLead: "Yangilanmaydigan bir martalik toʻlovlar, istalgan pullik tarif obunachilari uchun. Ular tarif kreditlaridan keyin sarflanadi.",
   },
   plans: {
     matrixTitle: "Tariflar",

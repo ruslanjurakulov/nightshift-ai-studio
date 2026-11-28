@@ -35,6 +35,10 @@ export function purchaseItem(raw: unknown): DodoPurchaseItem {
   if (typeof raw !== "string") return null;
   const amount = /^pack:amount_([1-9][0-9]{0,8})$/.exec(raw);
   if (amount) return { kind: "amount", cents: Number(amount[1]) };
+  // A credit-count order (`pack:credits_<n>_<cents>`) reads as a custom purchase of its recorded cents; the credits column is
+  // the ledger's own.
+  const order = /^pack:credits_[1-9][0-9]{0,8}_([1-9][0-9]{0,8})$/.exec(raw);
+  if (order) return { kind: "amount", cents: Number(order[1]) };
   const pack = /^pack:([a-z][a-z0-9_]{0,30})$/.exec(raw);
   const known = pack ? DODO_CATALOG_PACKS.find((p) => p.id === pack[1]) : undefined;
   return known ? { kind: "pack", id: known.id } : null;

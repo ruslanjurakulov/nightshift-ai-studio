@@ -3788,7 +3788,7 @@ export const en = {
     priceAtCheckout: "Price shown at checkout",
     planTerms: "Renews monthly until you cancel. Cancel any time: the plan stays active to the end of the period you paid for. Plan credits expire at the end of each period.",
     packsTitle: "Top-up packs",
-    packsLead: "Pay once, no subscription. Used after your plan credits.",
+    packsLead: "Pay once, never renews. For subscribers; used after your plan credits.",
     packTermsMonths: "One-time payment, never renews. Pack credits are valid for {months} months.",
     packTermsNever: "One-time payment, never renews. Pack credits don't expire.",
     packTermsBase: "One-time payment, never renews.",
@@ -4366,7 +4366,7 @@ export const en = {
     pricing: {
       eyebrow: "Pricing",
       title: "Pay for what you make, not for seats.",
-      lead: "Nightshift runs on credits. A plan brings a monthly allowance, one-time packs top up with or without a plan, and every run shows its price first.",
+      lead: "Nightshift runs on credits. A plan brings a monthly allowance, subscribers can add extra credits with one-time purchases, and every run shows its price first.",
       points: [
         { title: "Price first", body: "Every generation and every paid download shows its price in credits before you confirm it." },
         { title: "Held, then charged", body: "Credits are held when a job starts and charged when the result arrives — never more than the hold." },
@@ -4445,7 +4445,7 @@ export const en = {
     metaDescription: "Credit packs, what a credit buys, what a minute of video costs and how refunds work. Every run shows its price first; a failed run returns its credits.",
     eyebrow: "Plans and credits",
     title: "Pricing",
-    lead: "Pick a monthly plan for a steady credit allowance, or top up with one-time packs. Every generation shows its price before it starts, and a failed one costs nothing.",
+    lead: "Pick a monthly plan for a steady credit allowance; as a subscriber you can add extra credits with one-time purchases. Every generation shows its price before it starts, and a failed one costs nothing.",
     packsLabel: "Credit packs",
     credits: "{n} credits",
     oneTime: "One-time payment",
@@ -4506,7 +4506,7 @@ export const en = {
     terms: [
       "Plans renew monthly until you cancel. Cancel any time in Manage subscription on the Credits page.",
       "After you cancel, the plan stays active until the end of the period you paid for, with no further charges.",
-      "Top-up packs are one-time payments and never renew.",
+      "Extra credits are for subscribers: one-time payments on top of a plan that never renew.",
       "Failed generations and runs return their credits automatically.",
     ],
     faqTitle: "Pricing questions",
@@ -4529,7 +4529,7 @@ export const en = {
     compareCredits: "Credits each month",
     eqSignedOut: "Signed-in accounts see what these credits buy at today's prices.",
     packsTitle: "Top-up credit packs",
-    packsLead: "One-time payments that never renew. Buy them on any plan — or with no plan at all. They are used after plan credits.",
+    packsLead: "One-time payments that never renew, for subscribers on any paid plan. They are used after plan credits.",
   },
   plans: {
     matrixTitle: "Plans",

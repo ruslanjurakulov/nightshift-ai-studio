@@ -6,11 +6,12 @@ import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { fmt } from "@/lib/i18n";
-import { dodoPriceText, packBonusPercent, type DodoCheckoutItem, type DodoView } from "@/lib/dodo";
+import { dodoPriceText, type DodoCheckoutRequest, type DodoView } from "@/lib/dodo";
 import { openDodoCheckout, takeBalanceBefore, takeDodoReturn, type DodoOpenResult } from "@/lib/dodo-client";
 import { AddCreditsSheet } from "@/components/credits/AddCreditsSheet";
 import { purchaseArrived } from "@/lib/paddle";
 import type { GenerationRates } from "@/lib/plans";
+import type { TopupEligibility } from "@/lib/topup";
 import { Equivalents } from "@/components/credits/Equivalents";
 import { Chip } from "@/components/ui/Chip";
 import { PriceButton } from "@/components/ui/PriceButton";
@@ -26,13 +27,12 @@ import { Timecode } from "@/components/ui/Timecode";
  * grow, re-reading the page every few seconds, and says so plainly when it is
  * slow. The price on the button is the catalog price the webhook checks.
  *
- * With a Pay What You Want product configured (view.amount), the panel opens with the "Add credits" sheet: preset and typed
- * amounts at the base rate (1 credit per US cent, the Starter pack's own rate), and the packs below it as the better-value
- * cards, each saying how many more credits it gives than the same money typed. Both go through the same checkout route, the
- * same return and the same wait for the balance.
+ * With a Pay What You Want product configured (view.amount), the panel is ONLY the "Add credits" sheet (owner decision
+ * 2026-11-21): any credit count from 1,000, at the old packs' volume rates, priced by the server; no pack cards. Without that
+ * product the panel is the packs, as before. Both go through the same checkout route, return and wait for the balance.
  */
 
-type Phase = "idle" | "opening" | "paid" | "arrived" | "slow" | "cancelled" | "error" | "too_many" | "not_on_sale";
+type Phase = "idle" | "opening" | "paid" | "arrived" | "slow" | "cancelled" | "error" | "too_many" | "not_on_sale" | "outdated" | "requires_plan";
 
 const POLL_MS = 3000;
 const POLL_TRIES = 20;
@@ -43,12 +43,15 @@ export function DodoBuyCredits({
   rates = null,
   packValidMonths,
   extraOff = false,
+  eligibility,
 }: {
   view: DodoView;
   balance: number;
   rates?: GenerationRates | null;
   packValidMonths?: number | null;
   extraOff?: boolean;
+  /** topupEligibility() of the organization's billing summary, read on the server. Required: no default guesses a plan. */
+  eligibility: TopupEligibility;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
@@ -94,13 +97,23 @@ export function DodoBuyCredits({
     return () => clearTimeout(timer);
   }, [phase, balance, tick, router, go]);
 
-  async function open(item: DodoCheckoutItem) {
+  async function open(item: DodoCheckoutRequest) {
     // One checkout at a time: a second press while one is opening is dropped, not a second session.
     if (phaseRef.current === "opening") return;
     go("opening");
     const res: DodoOpenResult = await openDodoCheckout(item, path("/credits"), balance);
     if (res === "redirecting") return;
-    go(res === "too_many" ? "too_many" : res === "not_on_sale" ? "not_on_sale" : "error");
+    go(
+      res === "too_many"
+        ? "too_many"
+        : res === "not_on_sale"
+          ? "not_on_sale"
+          : res === "outdated"
+            ? "outdated"
+            : res === "requires_plan"
+              ? "requires_plan"
+              : "error",
+    );
   }
 
   const ac = t.addCredits;
@@ -112,9 +125,11 @@ export function DodoBuyCredits({
     error: { text: cp.loadFailed },
     too_many: { text: ac.tooMany },
     not_on_sale: { text: ac.notOnSale },
+    outdated: { text: ac.outdated },
+    // The plan lapsed after this page was drawn: the server refused, and says why.
+    requires_plan: { text: ac.subscribersOnly },
   };
   const amount = view.amount;
-  const packsBetter = amount !== null && view.packs.some((p) => packBonusPercent(p, amount.creditsPerCent) !== null);
   const msg = message[phase];
   const validity =
     packValidMonths === undefined ? cp.packTermsBase : packValidMonths === null ? cp.packTermsNever : fmt(cp.packTermsMonths, { months: packValidMonths });
@@ -151,37 +166,31 @@ export function DodoBuyCredits({
         </Link>
       </p>
 
-      {amount && (
-        <AddCreditsSheet
-          amount={amount}
-          busy={phase === "opening"}
-          packsBetter={packsBetter}
-          onSubmit={(usdCents) => open({ kind: "amount", usdCents })}
-        />
-      )}
-
-      {/* "Better value" is claimed only when some pack on sale here really gives more than the typed rate; Starter is the
-          same rate, so a panel of Starter alone is just "Top-up packs", and only a card with a bonus chip claims anything. */}
-      {amount && view.packs.length > 0 && (
-        <div className="flex flex-col gap-1">
-          <h3 className="text-[15px] font-medium">{packsBetter ? ac.packsTitle : cp.packsTitle}</h3>
-          {packsBetter && <p className="text-sm font-light text-[var(--color-muted)]">{ac.packsLead}</p>}
-        </div>
-      )}
-
+      {/* Owner decision 2026-11-21: with the credit-count sheet on sale it is the ONLY way to buy here, no pack cards; the
+          volume rates are the old packs' own, so nothing is lost. Without the PWYW product the packs stay, as before. */}
+      {/* Owner decision 2026-11-22: extra credits are an add-on for subscribers. Without a paid plan there is no field and no
+          price, only the honest line and the way to a plan; the checkout route refuses it too (topup_requires_plan). An
+          unread plan claims neither. */}
+      {eligibility === "no_plan" ? (
+        <p className="text-sm leading-relaxed" data-topup-gate="no_plan">
+          {ac.subscribersOnly}{" "}
+          <Link href={path("/credits") + "#plans"} className="tap-link text-[var(--color-primary)] underline underline-offset-2">
+            {ac.choosePlan}
+          </Link>
+        </p>
+      ) : eligibility === "unknown" ? (
+        <p className="text-sm leading-relaxed" style={{ color: "var(--color-fail)" }} data-topup-gate="unknown" role="status">
+          {ac.planUnknown}
+        </p>
+      ) : amount ? (
+        <AddCreditsSheet amount={amount} busy={phase === "opening"} rates={rates} onSubmit={(credits) => open({ kind: "credits", credits })} />
+      ) : (
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {view.packs.map((pack) => {
-          // Only next to a typed amount does "more credits than typed" mean anything; the figure is the two catalogs' own.
-          const bonus = amount ? packBonusPercent(pack, amount.creditsPerCent) : null;
           return (
             <li key={pack.id} className="flex flex-col gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <span className="text-[15px] font-medium">{t.credits.buy.pack[pack.id]}</span>
-                {bonus !== null && (
-                  <Chip plain tone="lit">
-                    {fmt(ac.bonus, { pct: bonus })}
-                  </Chip>
-                )}
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-[28px] font-semibold leading-none">
@@ -203,6 +212,7 @@ export function DodoBuyCredits({
           );
         })}
       </ul>
+      )}
       {rates && <p className="text-xs text-[var(--color-muted)]">{cp.eq.note}</p>}
 
       {msg && (

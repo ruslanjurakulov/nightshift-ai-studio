@@ -3,12 +3,14 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { requireOrgRole } from "@/lib/auth/org-roles";
 import { getOrgContext } from "@/lib/orgs-server";
 import { isCreditExempt } from "@/lib/credits";
-import { RETURN_PATH_RE, dodoItemKey, dodoReturnItem, dodoSellsTo, parseCheckoutItem } from "@/lib/dodo";
+import { RETURN_PATH_RE, dodoItemKey, dodoReturnItem, dodoSellsTo, isRetiredAmountRequest, parseCheckoutItem } from "@/lib/dodo";
 import { createDodoCheckout, dodoServer } from "@/lib/server/dodo-api";
 import { paymentsProvider } from "@/lib/server/payments";
 import { publicOrigin } from "@/lib/server/public-origin";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
+import { readBillingSummary } from "@/lib/server/plans";
+import { topupEligibility } from "@/lib/topup";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,12 +18,13 @@ export const dynamic = "force-dynamic";
 /**
  * Buy a credit pack or subscribe to a plan through Dodo Payments. POST
  * `{ kind: "pack" | "plan", id, return_path }` — OUR id ("starter", "pro"),
- * never a product id — or `{ kind: "amount", usd_cents, return_path }` for the
- * "Add credits" sheet's typed amount: a JSON integer of US cents inside
- * DODO_AMOUNT's bounds ($5 to $300), refused otherwise. The cents are signed
- * into the metadata (`pack:amount_<cents>`) and set as the Pay What You Want
- * line's price; the webhook credits the signed cents at its own rate, and only
- * when Dodo reports exactly that amount paid. The browser never names credits.
+ * never a product id — or `{ kind: "credits", credits, return_path }` for the
+ * "Add credits" sheet: a JSON integer of credits, at least 1 000 and at most
+ * $1 000 worth (lib/topup.ts), refused otherwise. The server prices it, and the
+ * order (`pack:credits_<n>_<cents>`) is recorded in the nonce row and signed
+ * into the metadata before Dodo is called; the cents are set as the Pay What You
+ * Want line's price. The webhook grants the recorded credits only when Dodo
+ * reports exactly the recorded cents paid. The browser never names a price.
  *
  * Dark unless PAYMENTS_PROVIDER is `dodo`: until then it answers 404 before it
  * reads the session, so nothing about the Paddle path changes. With it, the
@@ -49,6 +52,8 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
+  // A tab opened before the credit-count sheet still posts `kind: "amount"`: say so, so the sheet can ask for a refresh.
+  if (isRetiredAmountRequest(body)) return NextResponse.json({ error: "checkout_changed" }, { status: 400 });
   const item = parseCheckoutItem(body);
   const returnPath = typeof body?.return_path === "string" ? body.return_path : "";
   if (!item || !RETURN_PATH_RE.test(returnPath)) return NextResponse.json({ error: "bad_request" }, { status: 400 });
@@ -66,6 +71,18 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
 
   const productId = item.kind === "pack" ? cfg.packs[item.id] : item.kind === "plan" ? cfg.plans[item.id] : cfg.amountProduct;
   if (!productId) return NextResponse.json({ error: "not_on_sale" }, { status: 404 });
+
+  // Extra credits are an add-on for subscribers (owner decision 2026-11-22). Enforced here, not only by the sheet hiding
+  // its field: every top-up kind this route still sells (a credit count and a legacy pack alike) needs a live paid plan,
+  // checked before a nonce row or Dodo. Unknown is not "no plan" and not "subscribed": nothing opens until it reads.
+  // The webhook does not repeat this: it grants an order recorded here while the organization was subscribed.
+  if (item.kind !== "plan") {
+    const sb = await createClient();
+    if (!sb) return NextResponse.json({ error: "not_configured" }, { status: 503 });
+    const eligible = topupEligibility(await readBillingSummary(sb, orgId).catch(() => ({ state: "failed" as const })));
+    if (eligible === "unknown") return NextResponse.json({ error: "subscription_unavailable" }, { status: 503 });
+    if (eligible === "no_plan") return NextResponse.json({ error: "topup_requires_plan" }, { status: 403 });
+  }
 
   if (item.kind === "plan") {
     const supabase = await createClient();

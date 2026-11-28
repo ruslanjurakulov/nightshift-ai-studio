@@ -124,7 +124,6 @@ export const DODO_AMOUNT = {
   creditsPerCent: 1,
   minCents: 500,
   maxCents: 30000,
-  presetsCents: [1000, 2000, 5000, 10000],
 } as const;
 
 /**
@@ -137,6 +136,45 @@ export function dodoAmountFromItem(item: string | null | undefined): number | nu
   if (!m) return null;
   const cents = Number(m[1]);
   return Number.isSafeInteger(cents) && cents >= DODO_AMOUNT.minCents && cents <= DODO_AMOUNT.maxCents ? cents : null;
+}
+
+/**
+ * Any number of credits at volume rates (owner decision 2026-11-21; the Command Center's copy is command-center/lib/topup.ts
+ * TOPUP, a test keeps the two equal). The checkout signs the ORDER into the item, `pack:credits_<credits>_<cents>`, and the
+ * same text is stored in the nonce row (0146) before Dodo is called, so the order is recorded with its credits and its
+ * price. This copy only bounds what a signed order may say: the webhook grants the recorded credits when Dodo reports the
+ * recorded cents paid, and does not re-price it (an order opened before a rate change still fulfils as it was quoted).
+ * Typed-amount items (`pack:amount_<cents>`, DODO_AMOUNT above) from checkouts opened before this change still fulfil.
+ *
+ * Top-ups are for subscribers only (owner decision 2026-11-22), but that is the CHECKOUT's gate, not this one: the webhook
+ * grants what was recorded and paid. An order recorded while the organization was subscribed stays valid even if the plan
+ * lapsed before Dodo's event arrived; refusing it here would keep a customer's money for credits we agreed to sell.
+ * The rates rose the same day (1.2 / 1.1 / 1.0 cents); no credit-count order was recorded at the earlier rates (the
+ * credit-count checkout had not shipped), so the raised floor below rejects no order already paid for.
+ */
+export const TOPUP = {
+  minCredits: 1000,
+  maxCents: 100000,
+  tiers: [
+    { fromCredits: 1000, tenthCents: 12 },
+    { fromCredits: 5000, tenthCents: 11 },
+    { fromCredits: 20000, tenthCents: 10 },
+  ],
+} as const;
+
+/**
+ * The order a signed item names, only in its canonical spelling (no leading zero, no sign) and inside the bounds: at least
+ * the minimum credits, at most $1 000, and never cheaper than the lowest rate (cents × 10 >= credits × 10), so even a
+ * mis-signed item cannot price credits below what any tier sells them for. Null for anything else.
+ */
+export function dodoTopupFromItem(item: string | null | undefined): { credits: number; cents: number } | null {
+  const m = /^pack:credits_([1-9][0-9]{0,8})_([1-9][0-9]{0,8})$/.exec(item ?? "");
+  if (!m) return null;
+  const credits = Number(m[1]);
+  const cents = Number(m[2]);
+  const floor = TOPUP.tiers[TOPUP.tiers.length - 1].tenthCents;
+  if (credits < TOPUP.minCredits || cents > TOPUP.maxCents || cents * 10 < credits * floor) return null;
+  return { credits, cents };
 }
 
 /**
@@ -670,13 +708,18 @@ export function decideDodoPayment(
     // PWYW product lets a buyer pick any price (paymentAmount), so what Dodo reports paid must equal the signed cents too,
     // in the same tax shape as every pack. The product's cart line carries no amount in the payload (product_id and
     // quantity only, api-reference/payments/get-payments-1), so the total is what is checked.
-    const cents = dodoAmountFromItem(meta.item);
-    if (cents === null) return reject(`paid for the custom-amount product, but the signed item is ${meta.item} — not credited`);
+    // A credit-count order (`pack:credits_<n>_<cents>`) grants its recorded credits; a legacy typed amount
+    // (`pack:amount_<cents>`, opened before the credit-count sheet) grants its cents at the old base rate.
+    const order = dodoTopupFromItem(meta.item);
+    const legacyCents = order ? null : dodoAmountFromItem(meta.item);
+    if (!order && legacyCents === null) return reject(`paid for the custom-amount product, but the signed item is ${meta.item} — not credited`);
+    const cents = order ? order.cents : (legacyCents as number);
     if (line.quantity !== 1) return reject("paid, but the line's quantity is not 1 — not credited");
     if (!amountMatches(total, tax, cents, taxMode))
       return reject(`paid ${total} (tax ${tax ?? "none"}) USD cents, but the signed amount is ${cents} (${taxMode} of tax) — not credited`);
-    const credits = cents * DODO_AMOUNT.creditsPerCent;
-    const note = [`Dodo ${transactionId}: custom amount ${cents} USD cents`, userId ? `bought by user ${userId}` : null].filter(Boolean).join(" · ");
+    const credits = order ? order.credits : cents * DODO_AMOUNT.creditsPerCent;
+    const what = order ? `${credits} credits for ${cents} USD cents` : `custom amount ${cents} USD cents`;
+    const note = [`Dodo ${transactionId}: ${what}`, userId ? `bought by user ${userId}` : null].filter(Boolean).join(" · ");
     return { kind: "purchase", orgId: meta.orgId, userId, transactionId, credits, currency, amountMinor: total, note, item: meta.item, nonce: meta.nonce };
   }
   const pack = pid ? packs.get(pid) : undefined;

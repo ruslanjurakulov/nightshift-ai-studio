@@ -22,6 +22,8 @@
 import { atLeast, type Role } from "@/lib/auth/roles-shared";
 import { isCreditExempt } from "@/lib/credits";
 import { formatUsdAmount } from "@/lib/number-format";
+import { LEGAL } from "@/lib/legal";
+import { TOPUP, TOPUP_MAX_CREDITS, topupItemKey, topupQuote } from "@/lib/topup";
 
 /** Must equal DODO_PACKS in supabase/functions/_shared/dodo.ts (credits AND price, US cents before tax). */
 export const DODO_CATALOG_PACKS = [
@@ -38,9 +40,9 @@ export const DODO_CATALOG_PLAN_PRICES: Readonly<Record<string, number>> = {
 };
 
 /**
- * Buying credits for an amount the buyer types (the "Add credits" sheet). Must equal DODO_AMOUNT in
- * supabase/functions/_shared/dodo.ts, which is the copy that CREDITS: the webhook multiplies the signed amount by
- * `creditsPerCent`; this copy only shows the same arithmetic before anyone pays (a test keeps the two equal).
+ * The typed-DOLLAR amount the "Add credits" sheet sold until 2026-11-21 (`pack:amount_<cents>`). No longer sold: the sheet
+ * now sells a credit count at volume rates (lib/topup.ts). Kept because the webhook still fulfils a checkout opened before
+ * the change, with its copy of these numbers (DODO_AMOUNT in supabase/functions/_shared/dodo.ts; a test keeps them equal).
  *
  *   creditsPerCent  credits per US cent, before tax. 1 credit = 1¢ is the Starter pack's own rate (1,000 for $10), so the
  *                   base rate is unchanged; the larger packs stay the cheaper way to buy many credits.
@@ -48,54 +50,12 @@ export const DODO_CATALOG_PLAN_PRICES: Readonly<Record<string, number>> = {
  *   maxCents        $300. Dodo has no maximum price setting ("There is no maximum price setting. To cap the amount you
  *                   charge, enforce the cap in your own code": developer-resources/dynamic-pricing-checkout, read
  *                   2026-11-13), so this cap lives here, in the checkout route and again in the webhook.
- *   presetsCents    the sheet's four keys, $10 / $20 / $50 / $100: the same custom path at the base rate.
  */
 export const DODO_AMOUNT = {
   creditsPerCent: 1,
   minCents: 500,
   maxCents: 30000,
-  presetsCents: [1000, 2000, 5000, 10000],
 } as const;
-
-/** The credits an amount buys at the base rate: what the webhook will credit for exactly this many cents paid (before tax). */
-export function dodoAmountCredits(usdCents: number): number {
-  return usdCents * DODO_AMOUNT.creditsPerCent;
-}
-
-export type DodoAmountInput = { ok: true; cents: number } | { ok: false; reason: "empty" | "format" | "below" | "above" };
-
-/**
- * A USD amount as the buyer types it ("25", "25.5", "$25.50", "25,50") -> whole cents, or why not. A third decimal is a
- * format error, never rounded away ("25.555" is not $25.56): the sheet shows exactly the amount that will be charged.
- */
-export function parseDodoAmount(text: string): DodoAmountInput {
-  const s = text.trim().replace(/^\$\s*/, "").replace(",", ".");
-  if (s === "") return { ok: false, reason: "empty" };
-  if (!/^\d{1,6}(\.\d{1,2})?$/.test(s)) return { ok: false, reason: "format" };
-  const [whole, frac = ""] = s.split(".");
-  // Integer arithmetic: Number("19.99") * 100 is 1998.9999999999998.
-  const cents = Number(whole) * 100 + Number(frac.padEnd(2, "0"));
-  if (cents < DODO_AMOUNT.minCents) return { ok: false, reason: "below" };
-  if (cents > DODO_AMOUNT.maxCents) return { ok: false, reason: "above" };
-  return { ok: true, cents };
-}
-
-/**
- * How many more credits a pack gives than the same money typed as an amount, in whole percent (rounded down), or null when
- * it gives none more. Computed from the two catalogs the webhook credits, so the "+11% credits" a pack card says is exactly
- * the difference a buyer gets: Creator 5,000 for $45 against 4,500 typed; Studio 20,000 for $160 against 16,000.
- */
-export function packBonusPercent(pack: { credits: number; usdCents: number }, creditsPerCent: number = DODO_AMOUNT.creditsPerCent): number | null {
-  const base = pack.usdCents * creditsPerCent;
-  if (!(base > 0) || pack.credits <= base) return null;
-  const pct = Math.floor(((pack.credits - base) * 100) / base);
-  return pct > 0 ? pct : null;
-}
-
-/** The bound the server enforces on an amount it is sent: an integer number of cents within [min, max]. */
-export function dodoAmountInBounds(usdCents: unknown): usdCents is number {
-  return typeof usdCents === "number" && Number.isSafeInteger(usdCents) && usdCents >= DODO_AMOUNT.minCents && usdCents <= DODO_AMOUNT.maxCents;
-}
 
 export type DodoPackId = (typeof DODO_CATALOG_PACKS)[number]["id"];
 export type DodoEnvironment = "test" | "live";
@@ -227,10 +187,11 @@ export function dodoSellsTo(cfg: DodoServerConfig | null, orgId: string | null |
 
 /** The custom amount as a page may show it: the bounds, the rate and the preset keys (the same numbers the server enforces). */
 export interface DodoAmountView {
-  minCents: number;
+  minCredits: number;
+  maxCredits: number;
   maxCents: number;
-  creditsPerCent: number;
-  presetsCents: readonly number[];
+  /** The validated public contact address (LEGAL.contactEmail), or null when none is configured: then no mail link is shown. */
+  contactEmail: string | null;
 }
 
 /** What a page may know about Dodo: the mode (for the test badge) and WHICH items are on sale. No id, no key. */
@@ -254,7 +215,7 @@ export function dodoView(cfg: DodoServerConfig | null): DodoView | null {
     packs: DODO_CATALOG_PACKS.filter((p) => Boolean(cfg.packs[p.id])).map((p) => ({ id: p.id, credits: p.credits, usdCents: p.usdCents })),
     plans: Object.keys(cfg.plans),
     amount: cfg.amountProduct
-      ? { minCents: DODO_AMOUNT.minCents, maxCents: DODO_AMOUNT.maxCents, creditsPerCent: DODO_AMOUNT.creditsPerCent, presetsCents: DODO_AMOUNT.presetsCents }
+      ? { minCredits: TOPUP.minCredits, maxCredits: TOPUP_MAX_CREDITS, maxCents: TOPUP.maxCents, contactEmail: LEGAL.contactEmail }
       : null,
   };
 }
@@ -277,14 +238,38 @@ export function dodoBuyAccess(orgId: string | null | undefined, role: Role | nul
  * number of US cents inside DODO_AMOUNT's bounds. The credits are never the browser's: the server signs the cents, and the
  * webhook credits the signed cents times its own rate, and only when Dodo reports exactly that amount paid.
  */
-export type DodoCheckoutItem = { kind: "pack"; id: DodoPackId } | { kind: "plan"; id: string } | { kind: "amount"; usdCents: number };
+export type DodoCheckoutItem =
+  | { kind: "pack"; id: DodoPackId }
+  | { kind: "plan"; id: string }
+  | { kind: "amount"; usdCents: number }
+  | { kind: "credits"; credits: number; usdCents: number };
+
+/** What the browser sends for a credit-count purchase: the count only (the server prices it). */
+export type DodoCheckoutRequest = { kind: "pack"; id: DodoPackId } | { kind: "plan"; id: string } | { kind: "credits"; credits: number };
+
+/** The only keys a credit-count request may carry: return_path is read by the route, the rest is the order itself. */
+const CREDITS_REQUEST_KEYS: readonly string[] = ["kind", "credits", "return_path"];
+
+/**
+ * A request from the retired typed-dollar sheet (`kind: "amount"`): a tab opened before the credit-count sheet shipped. The
+ * route answers it with its own error so the sheet can say "refresh the page" instead of a generic failure.
+ */
+export function isRetiredAmountRequest(body: unknown): boolean {
+  return typeof body === "object" && body !== null && (body as { kind?: unknown }).kind === "amount";
+}
 
 export function parseCheckoutItem(body: unknown): DodoCheckoutItem | null {
-  const o = (body ?? {}) as { kind?: unknown; id?: unknown; usd_cents?: unknown };
+  const o = (body ?? {}) as { kind?: unknown; id?: unknown; credits?: unknown };
   if (o.kind === "pack" && typeof o.id === "string" && DODO_CATALOG_PACKS.some((p) => p.id === o.id)) return { kind: "pack", id: o.id as DodoPackId };
   if (o.kind === "plan" && typeof o.id === "string" && Object.prototype.hasOwnProperty.call(DODO_CATALOG_PLAN_PRICES, o.id)) return { kind: "plan", id: o.id };
-  // A JSON number, never a string: "2500", 2500.5 or a value out of bounds is refused, not coerced into some other amount.
-  if (o.kind === "amount" && o.id === undefined && dodoAmountInBounds(o.usd_cents)) return { kind: "amount", usdCents: o.usd_cents };
+  // The browser names a credit count and nothing else: any key outside CREDITS_REQUEST_KEYS (a price, an amount, cents, an
+  // id) makes the request malformed rather than being ignored, and the price is computed here (topupQuote), never read from
+  // the body. The typed-dollar `amount` kind is no longer sold (owner decision 2026-11-21: credits, minimum 1 000); its
+  // in-flight payments still fulfil in the webhook.
+  if (o.kind === "credits" && Object.keys(o).every((k) => CREDITS_REQUEST_KEYS.includes(k))) {
+    const q = topupQuote(o.credits);
+    return q.ok ? { kind: "credits", credits: q.credits, usdCents: q.cents } : null;
+  }
   return null;
 }
 
@@ -296,6 +281,7 @@ export function parseCheckoutItem(body: unknown): DodoCheckoutItem | null {
  * with "amount_" (a test pins it), so the two cannot be confused.
  */
 export function dodoItemKey(item: DodoCheckoutItem): string {
+  if (item.kind === "credits") return topupItemKey({ credits: item.credits, cents: item.usdCents });
   return item.kind === "amount" ? `pack:amount_${item.usdCents}` : `${item.kind}:${item.id}`;
 }
 

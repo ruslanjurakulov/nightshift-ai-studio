@@ -114,7 +114,7 @@ export async function createDodoCheckout(
     // `amount` × `quantity`" (developer-resources/dynamic-pricing-checkout; both read 2026-11-13) — so quantity stays 1. On a
     // product without PWYW Dodo ignores `amount` and charges the product's own price; the webhook then sees a total that is
     // not the signed amount and credits nothing.
-    product_cart: [{ product_id: args.productId, quantity: 1, ...(args.item.kind === "amount" ? { amount: args.item.usdCents } : {}) }],
+    product_cart: [{ product_id: args.productId, quantity: 1, ...(args.item.kind === "amount" || args.item.kind === "credits" ? { amount: args.item.usdCents } : {}) }],
     // The signed-in user's own address, not editable in the checkout, and always a NEW Dodo customer: Dodo otherwise
     // attaches a session to an existing customer found by e-mail, so someone typing a victim's address could end up on
     // the victim's customer (and its portal).
