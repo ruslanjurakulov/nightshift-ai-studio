@@ -46,7 +46,8 @@ ROLLBACK = sec_db.REPO / "docs" / "sql" / "rollback_0171_films_money.sql"
 # (id, provider, adapter, capabilities, credit unit, credits per unit, spec). Every one is made sellable.
 MODELS = [
     ("img-key", "acme", "image.acme", ["t2i", "edit"], "model_img_key_image", 3,
-     {"aspect_ratios": ["16:9", "9:16", "1:1"], "inputs": {"image_refs_max": 4}}),
+     # 0235 (refs path): a key frame is made from words, so a model that takes references there says so (registry inputs.ref_capabilities).
+     {"aspect_ratios": ["16:9", "9:16", "1:1"], "inputs": {"image_refs_max": 4, "ref_capabilities": ["t2i", "edit"]}}),
     ("img-norefs", "acme", "image.acme", ["t2i"], "model_img_norefs_image", 3,
      {"aspect_ratios": ["16:9", "9:16", "1:1"], "inputs": {"image_refs_max": 0}}),
     ("vid-clip", "acme", "video.acme", ["t2v", "i2v"], "model_vid_clip_second", 2, {"durations_s": [5, 10], "end_frame": True}),

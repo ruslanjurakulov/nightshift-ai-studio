@@ -61,6 +61,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from modules import creative_worker as cw
+from modules import credits as credit_rules
 
 logger = logging.getLogger("film_worker")
 
@@ -748,8 +749,15 @@ class FilmOrchestrator:
         modules/creative_worker.py "Still on sale"): a film is priced at start, and its takes run for hours after. Not on sale fails the
         take as ``bad_request`` (the closest word the live view has copy for: the person picks another model and starts again), charged
         0 by 0171; its one retry meets the same answer and fails for good, and the segment settles as takes_failed. Never another model.
-        An answer that cannot be read raises CreativeUnavailable: nothing is sent, and the drive is left for the next claim."""
-        gone = cw.not_on_sale(self.db, request.model, request.capability, request.org_id, previews=False)
+        An answer that cannot be read raises CreativeUnavailable: nothing is sent, and the drive is left for the next claim.
+
+        An operator preview (0139's hidden, ``operator_preview`` row) passes only for the operator's own credits-exempt organization,
+        whose films only a platform admin can start (start_film), and only while the row is still runnable for the take's capability
+        (cw.operator_preview_runnable: hidden, verified, listed, not past its shutdown date; and not switched off). Since 0235 the
+        quote and the start let such a film through for the operator; a customer's film never reaches here with a hidden model, and
+        its takes are still asked with previews off, so a model hidden after its start fails the take as before."""
+        gone = cw.not_on_sale(self.db, request.model, request.capability, request.org_id,
+                              previews=credit_rules.is_exempt(request.org_id))
         if gone is not None:
             code, _ = gone
             raise _TakeFailed("bad_request", f"{request.model} is no longer on sale for {request.capability} ({code}); "
