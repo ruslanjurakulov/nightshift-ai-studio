@@ -456,6 +456,87 @@ Any change to the wording re-pins `tests/test_series_template.py` and restarts t
 
 ---
 
+## 10. Lyria vocal activity (S6)
+
+`tools/vocal_activity.py` · `tools/lyria_vocal_probe.py` · `.github/workflows/lyria_vocal_probe.yml` ·
+`requirements-measure.txt` · detectors and licences: `docs/research/vocal-activity-detection.md`
+
+This section is measurement only (rule 8). Nothing in it changes what is sold, and no detector is wired into
+`GoogleLyriaAdapter`. Lyria stays unsellable until the decision rule below is set from real numbers, and a check built on it has
+passed its own review.
+
+**The question.** Can a check on the AUDIO tell a sung Lyria song from an instrumental one, where the product's text check
+(`returned_singing`) cannot see? And at what threshold?
+
+**Method.**
+
+1. **Open-Unmix UMX-HQ, vocals model.** It separates the vocals stem. For each second, the stem's RMS relative to the mix is
+   taken in dB. Reported: the p50, the p90 and the max, and, for each of -30, -25, -20, -15 and -10 dB, the share of seconds
+   above it and the longest run above it. A second of digital silence is counted apart and has no ratio.
+2. **PANNs Cnn14 on the full mix, in 10 s windows.** Each window's maximum probability over the AudioSet voice classes. Reported:
+   the max and the mean of those window maxima, the winning class by name, and the per-class maxima. Male singing and Female
+   singing are reported separately.
+3. **Silero VAD on the 16 kHz vocal stem.** Seconds of speech activity.
+4. **Timings and memory.** Model load, decode and inference wall times, and the process's peak RSS.
+
+`measure()` returns numbers and no verdict. A check that did not run raises; it never returns a partial result. A check that was
+not asked for reads "not requested" (rule 5).
+
+**Call budget.** At most **5 paid Lyria calls** per run. The cap is in the code (`MAX_CALLS`), and the workflow also requires
+the typed word `spend-5-lyria-calls`. The run is counted in calls; no price is written here.
+
+| id | prompt | sent as |
+| :-- | :-- | :-- |
+| P1 | English sung lyrics (original, `[Verse]`/`[Chorus]`) | no instrumental suffix, no product output check |
+| P2 | Russian sung lyrics | same as P1 |
+| P3 | Uzbek sung lyrics | same as P1 |
+| N1 | plain solo piano, instrumental | exactly what the product sends (prompt + `LYRIA_INSTRUMENTAL`) |
+| N2 | hard negative: expressive synth lead and saxophone melody, no vocals | exactly what the product sends |
+
+The positives go through a narrow request in the probe tool, not through the adapter. The adapter gained no way to skip its
+check (`tests/test_lyria_vocal_probe.py` pins this).
+
+**What a run publishes.** The repository is public, so each sample gives one JSON line of numbers in the job log and a table in
+the job summary. No lyrics or text are published, only the text's length, its line count and `returned_singing`. No audio is
+published either. The audio files are deleted at the end of the run, and nothing is uploaded as an artifact.
+
+**Local smoke (2026-11-28; a 4-core container, not the runner; no Lyria call).** All four pinned hashes matched.
+
+| input | UMX vocal-to-mix p50 / max dB | PANNs voice max (class) | Silero speech s | load s | UMX s | PANNs s | peak RSS MB |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| 12 s 440 Hz tone | -91.7 / -61.6 | 0.020 (Speech); the top class overall was Sine wave, 0.85 | 0.0 | 2.0 | 1.9 | 1.0 | 953 |
+| 12 s formant-filtered pulse train over a chord ("voice-like", not a voice) | -1.7 / -1.0 | 0.197 (Singing) | 0.0 | 2.0 | 1.8 | 1.0 | 951 |
+| the same, 180 s, as an MP3 | p50 -1.7 | 0.212 | 0.0 | 1.9 | 28.1 | 9.3 | 3182 |
+
+These show only that the pipeline runs and the models load correctly. They are not evidence about Lyria or about real voices.
+
+**Results: NOT YET RUN.**
+
+| id | text block | text len | lines | `returned_singing` | mime | rate | bytes | duration s | UMX p50 dB | UMX p90 dB | UMX max dB | share > -20 dB | longest run > -20 dB s | PANNs voice max | PANNs class | Silero speech s |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| P1 | | | | | | | | | | | | | | | | |
+| P2 | | | | | | | | | | | | | | | | |
+| P3 | | | | | | | | | | | | | | | | |
+| N1 | | | | | | | | | | | | | | | | |
+| N2 | | | | | | | | | | | | | | | | |
+
+**Decision rule, to be set from the results (not before).**
+
+- A threshold is adopted only if it separates **every** positive (P1, P2, P3) from **both** negatives (N1, N2), with a margin.
+  The margin is stated together with the threshold.
+- A sample counts as sung if the **chosen** signal crosses its threshold. That is one or more of:
+  - the UMX share or longest run above X dB;
+  - the PANNs voice max above Y;
+  - Silero speech above Z s.
+- If no threshold separates them, nothing is wired in and Lyria stays unsellable. The next step is a larger, owner-approved
+  sample, not a guessed threshold.
+- **Owner decision:** wordless vocals (humming, choir pads, "ooh"/"aah", vocalise) **count as vocals**, unless the owner decides
+  otherwise. When the run is read, a negative that PANNs tags as Humming or Choir is treated as a vocal (a failure of the
+  instrumental promise), not as a false positive of the detector.
+- Five samples is a smoke measurement. The rule says so wherever it is quoted.
+
+---
+
 # Shorts
 
 `modules/shorts.py` · migration `0003_shorts.sql`

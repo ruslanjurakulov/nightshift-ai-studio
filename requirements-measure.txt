@@ -1,0 +1,38 @@
+# Measurement only (S6, CLAUDE.md rule 8): the vocal-activity tools in tools/vocal_activity.py and tools/lyria_vocal_probe.py.
+# Deliberately NOT in requirements.txt: nothing in the product imports these, and a CPU torch build plus two models would
+# grow the worker image by about a gigabyte for a check that has no threshold yet. Installed only by
+# .github/workflows/lyria_vocal_probe.yml and by hand into a throwaway venv:
+#
+#     python3.11 -m venv /var/tmp/vam && /var/tmp/vam/bin/pip install -r requirements-measure.txt
+#
+# CPU-only torch: the default index serves the CUDA build (several GB of libraries a GitHub runner cannot use).
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.8.0+cpu
+# openunmix 1.3.0 declares torchaudio; the pair must be the same release as torch.
+torchaudio==2.8.0+cpu
+# Open-Unmix (MIT). Only the vocals model of UMX-HQ is loaded, from its own pinned file (tools/vocal_activity.py).
+openunmix==1.3.0
+tqdm==4.67.1
+numpy==2.2.6
+# Silero VAD (LICENSE file: MIT, read 2026-11-28). Its model file ships inside the wheel and is hash-pinned at load.
+silero-vad==6.2.1
+packaging==25.0
+# The ffmpeg binary that decodes the MP3 (the same package and version as constraints.txt).
+imageio-ffmpeg==0.6.0
+# The probe's one HTTP call, and modules/capabilities (imported for the Lyria constants and the returned_singing check).
+requests==2.33.1
+# Transitive, pinned so a re-run installs the same set the numbers were measured with.
+certifi==2026.11.20
+charset-normalizer==3.5.3
+idna==3.20
+urllib3==2.8.0
+filelock==4.3.2
+fsspec==2026.9.0
+Jinja2==3.1.6
+MarkupSafe==3.0.4
+mpmath==1.3.0
+networkx==3.6.1
+sympy==1.14.0
+typing_extensions==4.16.0
+# PANNs Cnn14 is NOT a dependency: its model code (MIT) is vendored in tools/vendor_panns/, so librosa, numba and
+# torchlibrosa's other imports are not installed for a 64-band log-mel front end whose weights come with the checkpoint.
