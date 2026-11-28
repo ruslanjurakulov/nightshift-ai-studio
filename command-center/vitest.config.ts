@@ -33,6 +33,9 @@ export default defineConfig({
           name: "brain-stream",
           include: ["tests/brain-*.test.ts", "tests/security-brain-*.test.ts"],
           env: { BRAIN_PARITY_MODE: "stream" },
+          // These files run twice in one `vitest run`; a test that imports a whole route inside itself (tests/brain-breach.test.ts)
+          // timed out at the default 5 s on a loaded machine while passing alone. Time, not behaviour: the assertions are the same.
+          testTimeout: 20_000,
         },
       },
     ],
