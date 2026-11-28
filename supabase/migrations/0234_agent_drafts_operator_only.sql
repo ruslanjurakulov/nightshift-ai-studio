@@ -3,7 +3,7 @@
 --
 -- *** LIVE ON APPLY. *** From the moment it commits, a signed-in person who is not a platform owner or admin can no longer save or
 --   delete an Agent Builder draft through the database. Nothing is deleted: drafts saved before this file stay, and their owners still
---   read them (0130's owner-only SELECT policies are not touched). No customer can reach them through the app either way (the page is
+--   read them (0130's owner-only SELECT policies are not touched), but a non-operator can no longer delete them. No customer can reach them through the app either way (the page is
 --   a 404 for them and the routes answer 403).
 --
 -- EVIDENCE. Breach, in the lab (throwaway Postgres 16 with the lab migrations): an authenticated non-admin called

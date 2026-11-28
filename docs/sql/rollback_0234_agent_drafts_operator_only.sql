@@ -251,6 +251,18 @@ begin
           and not has_function_privilege('service_role', delete_fn, 'EXECUTE')) then
     raise exception 'rollback 0234 end state: a draft function has the wrong grants (0130: EXECUTE for authenticated only)';
   end if;
+  -- The same shape checks 0234's own end state makes: the DDL above sets them, these catch a hand-edited copy.
+  if (select count(*) from pg_proc where pronamespace = 'public'::regnamespace
+        and proname in ('save_agent_workflow_draft', 'delete_agent_workflow_draft')) <> 2 then
+    raise exception 'rollback 0234 end state: a draft function has an unexpected overload';
+  end if;
+  if exists (select 1 from pg_proc p where p.oid in (save_fn, delete_fn)
+              and (not p.prosecdef
+                   or p.proacl is null
+                   or not exists (select 1 from unnest(p.proconfig) c where c = 'search_path=""')
+                   or exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0))) then
+    raise exception 'rollback 0234 end state: a draft function is not SECURITY DEFINER, is public or has no empty search_path';
+  end if;
 end $$;
 
 commit;

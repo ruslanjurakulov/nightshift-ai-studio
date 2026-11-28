@@ -2852,7 +2852,8 @@ BR-S6-03; the web half is PR #951.
 0234 (`0234_agent_drafts_operator_only.sql`, BR-S8-01 in `docs/security/LEDGER.md`) is the database half of the owner's decision of
 28 Nov that the Agent Builder is operators-only until launch; the web half (the page's `guardOperatorPage`, the four routes'
 `requireOperator`) is PR #960. Live on apply: a signed-in person who is not a platform owner or admin can no longer save or delete a
-draft through the database. No draft is deleted, and owners still read what they saved (0130's policies are not touched).
+draft through the database. No draft is deleted, and owners still read what they saved (0130's policies are not touched), but a non-operator can no
+longer delete a draft saved before 0234.
 
 - **The finding.** Both 0130 functions check only sign-in, so any authenticated non-admin saved and deleted drafts straight through
   PostgREST with the browser key, whatever the web gate said (Breach, in the lab). Revoking EXECUTE from `authenticated` is not the
