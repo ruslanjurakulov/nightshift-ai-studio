@@ -1,18 +1,23 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import { fmt, type Dictionary } from "@/lib/i18n";
-import { EFFECTS, publicEffectHref, type Effect } from "@/lib/effects/catalog";
-import { masonryColumns, masonrySpan } from "@/lib/effects/masonry";
+import { EFFECTS, effectFace } from "@/lib/effects/catalog";
+import { publicEffectHref, type Effect } from "@/lib/effects/shared";
+import { levelSpans, masonryColumns, masonrySpan } from "@/lib/effects/masonry";
 import { EffectFrame } from "@/components/effects/EffectFrame";
-import { effectFrameRatio } from "@/components/effects/effect-sample";
+import { effectFrameRatio, effectSample } from "@/components/effects/effect-sample";
+import { TapReveal } from "@/components/site/TapReveal";
+import { AiMark } from "@/components/site/AiMark";
 import "@/components/effects/effects.css";
+import "@/components/site/media-card.css";
 import "@/components/site/effects-gallery.css";
 
 /**
- * The public site's Effects section: each effect as a card with its sample (or a drawing that says, in words, that it is one), its
- * name, one line, what it starts from and its length, and "Use this effect", which is sign-up and then the Studio's video form
- * with the effect in it (lib/effects/catalog.ts publicEffectHref).
+ * The public site's Effects section, media first like the explore grid (components/site/media-card.css, owner decision 22 Nov):
+ * at rest a card is its sample (or a drawing that says, in words, that it is one) and one small corner mark, "AI-generated" on a
+ * real result and "Drawing" on a drawing, so neither is taken for the other. On hover, keyboard focus or a first tap on a phone
+ * (components/site/TapReveal.tsx) the effect's name, its one line and what it starts from show over a dark foot. The whole card
+ * is one link: sign-up and then the Studio's video form with the effect in it (lib/effects/catalog.ts publicEffectHref).
  *
  * It names no model and no maker, like the rest of the public site (tests/helpers/brands.ts): which model an effect uses depends
  * on what the visitor's workspace is offered, and the Studio card says it there, with the price, before anything runs. Nothing
@@ -34,6 +39,9 @@ export function EffectsGallery({ t, effects = EFFECTS }: { t: Dictionary; effect
   const n3 = effects.map((e) => masonrySpan(effectFrameRatio(e), 3));
   const c2 = masonryColumns(n2, 2);
   const c3 = masonryColumns(n3, 3);
+  // Media first, a card is its frame alone, so the columns are stretched to end level and each frame grows into its rows.
+  const r2 = levelSpans(n2, c2, 2);
+  const r3 = levelSpans(n3, c3, 3);
   return (
     <section id="effects" aria-labelledby="effects-title" className="nx-section efx">
       <div className="nx-wrap">
@@ -46,30 +54,52 @@ export function EffectsGallery({ t, effects = EFFECTS }: { t: Dictionary; effect
           {effects.map((e, i) => {
             const copy = fx.items[e.id];
             const rows = {
-              "--efx-n2": n2[i],
-              "--efx-n3": n3[i],
+              "--efx-n2": r2[i],
+              "--efx-n3": r3[i],
               ...(c2 && { "--efx-c2": c2[i] }),
               ...(c3 && { "--efx-c3": c3[i] }),
             } as CSSProperties;
+            const capId = `efx-cap-${e.id}`;
+            const badgeId = `efx-badge-${e.id}`;
+            const aiId = `efx-ai-${e.id}`;
+            const sampled = effectSample(e) !== null;
             return (
-              <li key={e.id} className="efx-card" data-effect={e.id} style={rows}>
-                <EffectFrame effect={e} label={label} className="fx-frame efx-frame" />
-                <div className="efx-body">
-                  <p className="efx-kind">
-                    {fx.kinds[e.capability]} · {fmt(fx.desk.seconds, { n: e.duration })}
-                  </p>
-                  <h3 className="efx-name">{copy.name}</h3>
-                  <p className="efx-line">{copy.line}</p>
-                  <p className="efx-needs">{fx.needs[e.input]}</p>
-                  <Link href={publicEffectHref(e)} prefetch={false} className="nx-btn efx-use" aria-label={fmt(s.useAria, { name: copy.name })}>
-                    {s.use}
-                    <ArrowRight aria-hidden />
-                  </Link>
-                </div>
+              <li key={e.id} className="efx-card mf-card" data-mf-card="" data-effect={e.id} style={rows}>
+                {/* The face only (effectFace): this is a Client Component's prop, so the effect's models and prompt would be in the
+                    public page's payload otherwise. */}
+                <EffectFrame effect={effectFace(e)} label={label} className="fx-frame efx-frame" badgeId={badgeId} />
+                {/* "AI" on a real result (owner decision 22 Nov: the mark is "AI" in every language); a drawing is not one, and says
+                    "Drawing". The frame's badge (badgeId) says which in full, and the link's description reads it. */}
+                {sampled ? (
+                  <span id={aiId} className="mf-ai">
+                    <AiMark short={t.site.gallery.badge} name={t.site.gallery.badgeName} />
+                  </span>
+                ) : (
+                  <span className="mf-ai" aria-hidden>
+                    {s.drawing}
+                  </span>
+                )}
+                <span id={capId} className="mf-cap" aria-hidden>
+                  <span className="mf-title efx-name">{copy.name}</span>
+                  <span className="mf-desc efx-line">{copy.line}</span>
+                  <span className="mf-facts efx-kind">
+                    {fx.kinds[e.capability]} · {fmt(fx.desk.seconds, { n: e.duration })} · {fx.needs[e.input]}
+                  </span>
+                </span>
+                {/* The stretched link over the whole card (media-card.css): named "Use this effect: …", described by the caption's
+                    line and facts, and by whether the frame is a real result (AI-generated) or a drawing. */}
+                <Link
+                  href={publicEffectHref(e)}
+                  prefetch={false}
+                  className="mf-card-link"
+                  aria-label={fmt(s.useAria, { name: copy.name })}
+                  aria-describedby={[capId, badgeId, sampled ? aiId : null].filter(Boolean).join(" ")}
+                />
               </li>
             );
           })}
         </ul>
+        <TapReveal />
         <p className="nx-show-note">{s.note}</p>
       </div>
     </section>

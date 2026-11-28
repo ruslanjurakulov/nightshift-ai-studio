@@ -34,7 +34,7 @@ describe.each(["en", "ru", "uz"] as const)("Inspector action context in %s", (lo
       <I18nProvider locale={locale}>
         <ShellProvider operator={false} tools={tools}>
           <Inspector node={node} state={state} jobs={new Map()} status={mode === "closed" ? "closed" : "idle"} closed={mode === "closed"}
-            data={{ orgId: "synthetic-org", models: [], unavailable: [], plans: null, dna: null, defaultStyleKitId: null }}
+            data={{ orgId: "synthetic-org", models: [], unavailable: [], plans: null, dna: null, defaultStyleKitId: null, effects: [] }}
             previews={new Map()} nodeName={() => "Synthetic node"} {...handlers} />
         </ShellProvider>
       </I18nProvider>,

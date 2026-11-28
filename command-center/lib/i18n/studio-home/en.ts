@@ -100,6 +100,35 @@ export const studioHomeEn = {
     },
     presets: "Presets",
   },
+  /**
+   * The explore grid below the fold (components/studio/StudioExplore.tsx): media first, no model names. A card only fills the
+   * Studio form; nothing is priced or started until Create is pressed there.
+   */
+  explore: {
+    label: "Examples and formats",
+    samples: "Made in the Studio",
+    trending: "Trending now",
+    topics: "Videos by topic",
+    brand: "Brand-style pictures",
+    /** The heading over the formats while they load, failed, are not switched on, or the session ended. */
+    formats: "Ready-made formats",
+    seeAll: "All trends",
+    /** After a card's title and line, for a screen reader: what the card does. */
+    use: "Open in the Studio with this prompt",
+    useTemplate: "Open this format in the Studio",
+    note: "A card only fills the Studio form. Nothing starts and nothing is charged until you press Create and see the price.",
+    loading: "Loading formats…",
+    error: "Couldn't load the formats.",
+    retry: "Try again",
+    /** The registry or the templates route could not say what is on sale (rule 5: never read as "nothing yet"). */
+    unread: "We couldn't load the examples right now.",
+    /** No sample or format to show: true whether nothing is live yet or this workspace cannot buy it yet (a first purchase, an age check). */
+    soon: "No examples to show here yet.",
+    soonAction: "Write your own prompt above",
+    notEnabled: "Ready-made formats are not switched on here yet.",
+    signedOut: "Your session ended. Sign in again to see the formats.",
+    signIn: "Sign in",
+  },
   actions: {
     animate: "Make a video from this image",
     enhance: "Enhance this image",

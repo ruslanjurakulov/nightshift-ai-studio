@@ -304,8 +304,9 @@ def test_the_lab_takes_the_whole_chain_off_and_puts_it_back_from_0153s_body(conn
         sec_db.take_off_0139(session)
         assert _md5_conn(conn) == "e0c4a7806642086398558cf322c95a0d", "0125's body"
         sec_db.put_back_0139(session)
-        # put_back_0153 puts 0155 (and 0156 on it, and 0159 on that) back with it: the whole chain, as the lab was built
-        assert _md5_conn(conn) == sec_db.CREATIVE_PRICE_0159
+        # put_back_0153 puts 0155 (and 0156 on it, 0159 on that, 0208 on that and 0218 on that) back with it: the whole chain, as the
+        # lab was built
+        assert _md5_conn(conn) == sec_db.CREATIVE_PRICE_0228  # the chain ends at 0228 (on 0224, on 0218)
 
 
 def _md5_conn(conn):

@@ -16,6 +16,19 @@ or failed-upload video, the scheduled readiness check and stale provider balance
 ``health``. Their keys end in the UTC date (one alert per cause per channel per day) and the engine follows a
 delivered one that has cleared with a single "recovered" note (:meth:`AlertEngine._recovered`).
 
+Film Studio is one more kind, ``film`` (switch-on gates G3 and G4, docs/FILM_STUDIO.md): a settle that could not
+capture a charge (critical, once per event), a segment the claim or the sweep skipped, from film_events or 0171's
+security_events fallback (warn, once per event), a segment queued with no claim or holding a stale lease (warn, every
+STUCK_COOLDOWN), and the sweep overdue by 0212's own measure (critical). Ids cut to 8, amounts, statuses, closed call
+words and SQLSTATEs only; "never recorded" is not an alert and never reads as fine.
+
+The film spend watch rides the same kind (the paid test film's hard cap, docs/studio/S2_LIVE_TEST.md): per film with an
+open or recently settled segment, the KNOWN vendor dollars of its takes (a recorded usd_estimate, else quantity x the
+registry's figure, labelled an estimate) against NIGHTSHIFT_FILM_SPEND_WARN_USD (warn, ``film:spend:<film>:<line>``)
+and NIGHTSHIFT_FILM_SPEND_STOP_USD (critical, the same key with the stop line, naming runbook step 6's stop ladder), and
+a warning ``film:spend_unrecorded:<film>`` when a line has no dollar figure at all, because the cap cannot be watched
+for it. Each once. It only reads: a person stops the film.
+
 Detection is pure over the sources (:func:`detect`). Delivery is
 :class:`AlertEngine`, which is where the restraint lives:
 
@@ -48,6 +61,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Callable, Optional
 
 from modules.operator_bot import analysis, reliability
@@ -82,6 +96,11 @@ MARKETING_WINDOW = timedelta(hours=24)
 #: Dedupe-key prefix of the drafts-waiting alert and of its silent markers
 #: (``marketing:drafts:<count>[:<epoch>]``); see ``AlertEngine._gate_marketing_drafts``.
 MARKETING_DRAFTS = "marketing:drafts:"
+#: How far back a film event (a charge not captured, a skipped segment) is still news: inside the 48 hours the store
+#: remembers, so one is announced once.
+FILM_WINDOW = timedelta(hours=24)
+#: The overdue sweep is a standing condition with customers' holds open: repeated like a lost worker.
+FILM_SWEEP_COOLDOWN = WORKER_COOLDOWN
 
 #: Critical alerts are not subject to quiet hours, mutes of "all" or the normal
 #: hourly budget, but they are not unlimited: a flood of forged or merely noisy
@@ -180,14 +199,30 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None, lang: str 
     ws = ops.workers()
     if ws.ok:
         rows = analysis.classify_workers(ws.data, now)
-        # The bot's own row is kind "other", shared with the e-mail worker: it
-        # must not hide that worker's silence, nor be hidden by it.
-        fresh_kinds = {w.get("kind") for w in rows if w.get("state") in ("running", "starting")
+        # A stale row is an old container's when a fresh one of the same role runs. Kind "other" is split by id
+        # prefix (analysis.worker_role), and the bot's own row is judged on its own: neither may hide another
+        # worker's silence. A later 'stopped' excuses a stale row ONLY from the same worker (analysis.worker_self):
+        # another host stopped on purpose says nothing about a host that crashed. The film worker's id carries its
+        # pid, so for it "the same worker" is the same host (restarted with its switch off).
+        fresh_roles = {analysis.worker_role(w) for w in rows if w.get("state") in ("running", "starting")
                        and not w["stale"] and w.get("worker_id") != BOT_WORKER_ID}
+        stopped_at: dict = {}
+        for w in rows:
+            at = parse_ts(w.get("updated_at"))
+            if w.get("state") == "stopped" and at is not None and w.get("worker_id") != BOT_WORKER_ID:
+                me = analysis.worker_self(w)
+                stopped_at[me] = max(at, stopped_at.get(me, at))
+
+        def accounted(w) -> bool:
+            if w.get("worker_id") == BOT_WORKER_ID:
+                return False
+            me, at = analysis.worker_self(w), parse_ts(w.get("updated_at"))
+            return analysis.worker_role(w) in fresh_roles or (at is not None and me in stopped_at and stopped_at[me] > at)
+
         for w in rows:
             wid = safe_id(w.get("worker_id"), 60)
             age = w["age_s"]
-            if w["stale"] and (w.get("kind") not in fresh_kinds or w.get("worker_id") == BOT_WORKER_ID) \
+            if w["stale"] and not accounted(w) \
                     and age is not None and timedelta(seconds=age) <= WORKER_LOST_MAX_AGE:
                 out.append(Alert("worker", f"worker:{wid}", "critical",
                                  t(lang, "alert.worker_lost", id=wid, kind=w.get("kind"),
@@ -212,6 +247,8 @@ def detect(ops: OperatorSources, low_credits: Optional[float] = None, lang: str 
     mk = ops.marketing_summary()
     if mk.ok:
         out += _marketing_alerts(mk.data, now, lang)
+
+    out += _film_alerts(ops, now, lang)
 
     au = ops.audit(since)
     if au.ok:
@@ -283,6 +320,148 @@ def _marketing_alerts(summary, now: datetime, lang: str) -> list[Alert]:
     except Exception as e:  # noqa: BLE001 - a malformed answer must not end the pass
         logger.warning("marketing alerts skipped (%s)", type(e).__name__)
         return []
+    return out
+
+
+def _film_alerts(ops: OperatorSources, now: datetime, lang: str) -> list[Alert]:
+    """Film Studio's switch-on gates G3 and G4 (docs/FILM_STUDIO.md). Each source on its own: one that cannot answer
+    (0171 or 0212 not applied, a read refused) says nothing here and /health says why, and a bug in one costs the
+    others nothing. Lines carry ids (cut to 8), amounts, statuses, closed call words and SQLSTATEs: never a prompt,
+    a scene, the database's message or a customer's name."""
+    out: list[Alert] = []
+    for name, fn in (("events", _film_event_alerts), ("fallbacks", _film_fallback_alerts),
+                     ("stuck", _film_stuck_alerts), ("sweep", _film_sweep_alerts), ("spend", _film_spend_alerts)):
+        try:
+            out += fn(ops, now, lang)
+        except Exception as e:  # noqa: BLE001 - a malformed row must not end the pass
+            logger.warning("film %s alerts skipped (%s)", name, type(e).__name__)
+    return out
+
+
+def _fid(value) -> str:
+    return safe_id(value, 8) or "?"
+
+
+def _film_event_alerts(ops: OperatorSources, now: datetime, lang: str) -> list[Alert]:
+    sec = ops.film_alert_events(now - FILM_WINDOW)
+    if not sec.ok:
+        return []
+    out = []
+    for r in sec.data or []:
+        eid = safe_id(r.get("id"), 20)
+        if not eid or (parse_ts(r.get("created_at")) or now) < now - FILM_WINDOW:
+            continue
+        if r.get("event") == "segment_settled":
+            amount = analysis.film_not_captured(r)
+            if amount is None:
+                continue
+            # CRITICAL: credits were spent on a vendor for this film and the customer's hold could no longer pay them.
+            out.append(Alert("film", f"film:not_captured:{eid}", "critical",
+                             t(lang, "alert.film_not_captured", amount=views.num(lang, amount, 2),
+                               org=_fid(r.get("org_id")), film=_fid(r.get("film_id")))))
+        elif r.get("event") == "segment_skipped":
+            out.append(Alert("film", f"film:skipped:{eid}", "warn",
+                             t(lang, "alert.film_skipped", segment=_fid(r.get("segment_id")),
+                               call=analysis.film_skip_call(r.get("call")), state=analysis.film_sqlstate(r.get("sqlstate")),
+                               org=_fid(r.get("org_id")), film=_fid(r.get("film_id")))))
+    return out
+
+
+def _film_fallback_alerts(ops: OperatorSources, now: datetime, lang: str) -> list[Alert]:
+    sec = ops.film_skip_fallbacks(now - FILM_WINDOW)
+    if not sec.ok:
+        return []
+    out = []
+    for r in sec.data or []:
+        eid = safe_id(r.get("id"), 20)
+        if not eid or (parse_ts(r.get("at")) or now) < now - FILM_WINDOW:
+            continue
+        out.append(Alert("film", f"film:skipped:sec:{eid}", "warn",
+                         t(lang, "alert.film_skipped_fallback", segment=_fid(r.get("target")),
+                           call=analysis.film_skip_call(r.get("call")), state=analysis.film_sqlstate(r.get("sqlstate")))))
+    return out
+
+
+def _film_stuck_alerts(ops: OperatorSources, now: datetime, lang: str) -> list[Alert]:
+    sec = ops.film_open_segments()
+    if not sec.ok:
+        return []
+    out = []
+    for r in analysis.film_stuck_segments(sec.data, now):
+        sid = safe_id(r.get("id"), 40)
+        if not sid:
+            continue
+        key = "alert.film_queued_stuck" if r["why"] == "queued" else "alert.film_lease_stuck"
+        out.append(Alert("film", f"film:stuck:{sid}", "warn",
+                         t(lang, key, segment=_fid(sid), status=views.status_word(lang, r.get("status")),
+                           age=age_label(r["since"], now), org=_fid(r.get("org_id"))),
+                         None, STUCK_COOLDOWN))
+    return out
+
+
+def _film_sweep_alerts(ops: OperatorSources, now: datetime, lang: str) -> list[Alert]:
+    sec = ops.film_sweep_status()
+    if not sec.ok:
+        return []
+    st = analysis.film_sweep_state(sec.data)
+    # Only an explicit true is an alert. None (never recorded, or a shape this reader does not know) is unknown: no
+    # alert, and /health and the digest say "never recorded" rather than reading it as fine (CLAUDE.md #5).
+    if st["overdue"] is not True:
+        return []
+    last = (t(lang, "film.sweep_last", age=age_label(st["last_at"], now)) if st["last_at"] is not None
+            else t(lang, "film.sweep_never_completed"))
+    # The stuck part only when 0212 says both numbers: a count with no age (or none at all) is not invented.
+    stuck = (t(lang, "film.sweep_stuck", n=st["stuck"], minutes=st["oldest_stuck_min"])
+             if st["stuck"] and st["oldest_stuck_min"] is not None else "")
+    return [Alert("film", "film:sweep_overdue", "critical",
+                  t(lang, "alert.film_sweep_overdue", minutes=st["after_min"] if st["after_min"] is not None else "?",
+                    open=st["open"] if st["open"] is not None else "?", stuck=views.Raw(stuck), last=views.Raw(last)),
+                  None, FILM_SWEEP_COOLDOWN)]
+
+
+def usd_line(value) -> str:
+    """A threshold as it appears in a dedupe key: ``6``, ``6.5`` (never ``6.00`` vs ``6``: one line, one key)."""
+    return format(Decimal(str(value)).normalize(), "f")
+
+
+SPEND_BASIS_KEYS = {"recorded": "film.spend_recorded", "estimated": "film.spend_estimated",
+                    "estimated_highest": "film.spend_estimated_highest", "estimated_mixed": "film.spend_estimated_mixed"}
+
+
+def spend_basis(lang: str, film: dict) -> views.Raw:
+    """How a film's dollars were arrived at, plus the lines that have none (never counted as 0)."""
+    basis = t(lang, SPEND_BASIS_KEYS.get(film.get("basis"), "film.spend_nothing_known"))
+    extra = t(lang, "film.spend_unknown_lines", n=film["unknown"]) if film.get("unknown") else ""
+    return views.Raw(basis + extra)
+
+
+def _film_spend_alerts(ops: OperatorSources, now: datetime, lang: str) -> list[Alert]:
+    cfg = ops.cfg
+    if getattr(cfg, "film_spend_error", ""):
+        # The pass refuses to start on this (tools/run_operator_alerts.py); a caller that did not check must still not
+        # judge a paid film against lines the owner did not set.
+        return []
+    sec = ops.film_spend(now - FILM_WINDOW)
+    if not sec.ok:
+        return []
+    warn, stop = cfg.film_spend_warn_usd, cfg.film_spend_stop_usd
+    out = []
+    for f in sec.data or []:
+        fid = safe_id(f.get("film_id"), 40)
+        if not fid:
+            continue
+        common = dict(film=_fid(fid), org=_fid(f.get("org_id")), usd=views.num(lang, f["usd"], 2),
+                      basis=spend_basis(lang, f), warn=views.num(lang, warn, 2), stop=views.num(lang, stop, 2))
+        if f["usd"] >= stop:
+            # CRITICAL: the next take could cross the owner's hard cap. The watch stops nothing: a person does.
+            out.append(Alert("film", f"film:spend:{fid}:{usd_line(stop)}", "critical",
+                             t(lang, "alert.film_spend_stop", **common)))
+        elif f["usd"] >= warn:
+            out.append(Alert("film", f"film:spend:{fid}:{usd_line(warn)}", "warn",
+                             t(lang, "alert.film_spend_warn", **common)))
+        if f.get("unknown"):
+            out.append(Alert("film", f"film:spend_unrecorded:{fid}", "warn",
+                             t(lang, "alert.film_spend_unrecorded", n=f["unknown"], **common)))
     return out
 
 

@@ -105,6 +105,8 @@ export type SwapError =
   | "not_found"
   | "unauthorized"
   | "forbidden"
+  // 0226: a swap spends the workspace's credits, which takes a seat in it (a platform admin who holds none reads, never spends).
+  | "not_a_member"
   | "not_configured"
   | "not_available"
   | "bad_request"
@@ -171,6 +173,7 @@ const REFUSALS: Partial<Record<SwapError, number>> = {
   platform_busy: 429,
   swap_hold_unavailable: 402,
   not_cancellable: 409,
+  not_a_member: 403,
 };
 
 export interface MappedError {

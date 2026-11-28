@@ -123,6 +123,9 @@ describe("jobs", () => {
     expect(failureReason(t, { status: "failed", error_code: "plan_required" })).toBe(t.gen.reasons.plan);
     expect(t.gen.reasons.plan).not.toBe(failureReason(t, { status: "failed", error_code: "quota" }));
     expect(failureReason(t, { status: "failed", error_code: "worker_lost" })).toBe(t.gen.reasons.service);
+    // A model taken off sale before the paid call: "pick another model", never the generic "try again" that would fail the same way.
+    expect(failureReason(t, { status: "failed", error_code: "model_not_available" })).toBe(t.gen.reasons.service);
+    expect(failureReason(t, { status: "failed", error_code: "model_temporarily_off" })).toBe(t.gen.reasons.service);
     expect(failureReason(t, { status: "expired", error_code: "not_picked_up" })).toBe(t.gen.reasons.expired);
     expect(failureReason(t, { status: "failed", error_code: "zzz_new" })).toBe(t.gen.reasons.generic);
     expect(statusView(t, "provider_pending")).toMatchObject({ tone: "run", live: true });

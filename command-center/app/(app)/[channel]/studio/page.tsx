@@ -20,7 +20,9 @@ import { isOperatorOrg } from "@/lib/channel-tokens";
 import { loadOperatorPreviewModels, loadStudioModels, loadSwitchedOffModels } from "@/lib/server/creative";
 import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { withPreviews } from "@/lib/creative/studio";
+import { canvasEffects } from "@/lib/effects/catalog";
 import { NightshiftAiPanel } from "@/components/brain/NightshiftAiPanel";
+import { firstNameOf } from "@/lib/owner-console/greeting";
 import { aiChatEnv, aiChatOpenFor, ideaNeedsCreate } from "@/lib/brain/flag";
 import { redirect } from "next/navigation";
 import { channelDnaForCreate } from "@/lib/server/channel-dna";
@@ -104,11 +106,15 @@ export default async function StudioPage({
   // Under `on`, filmOpen already is the open workspace's own switch (filmStudioOpen reads it), so it is the workspace answer too.
   const filmStudio = filmOpen && filmStudioListed(filmStudioMode(), asOperator, filmOpen);
 
+  const panelModels = withPreviews(models, previews);
   const canvas = (
     <StudioCanvas
       data={{
         orgId,
-        models: withPreviews(models, previews),
+        models: panelModels,
+        // Each effect's model is picked here, from the same offered list, and its composer prefill built here: the canvas is
+        // handed the result, never the effects' model order (lib/effects/catalog.ts canvasEffects).
+        effects: canvasEffects(panelModels),
         unavailable: switchedOff,
         plans,
         dna: dna.studio,
@@ -128,6 +134,8 @@ export default async function StudioPage({
       <NightshiftAiPanel
         channelId={scopedChannel?.channel_id ?? null}
         channelSlug={slug}
+        // "Salom, {name}", as the owner's chat greets: the auth profile's first name, never an address or a guess.
+        greetingName={firstNameOf(user?.user_metadata)}
         initialSession={one(sp.ai) === "new" ? null : brain && /^[0-9a-f-]{36}$/i.test(brain) ? brain : null}
         // The landing page's idea (S4): ?ai=new&idea=1 opens a new conversation with it typed in, never sent.
         fresh={one(sp.ai) === "new"}

@@ -31,10 +31,23 @@ from psycopg import sql
 
 from sec_db import ANON, acting, as_superuser
 from sec_expectations import TABLES, Kind
-from sec_scenario import DEFAULT_ORG
+from sec_scenario import DEFAULT_ORG, seed_model_terms_acceptance
 
 ALL = sorted(TABLES)
 SCOPED = sorted(t for t, k in TABLES.items() if k.kind in ("org", "channel", "video", "person"))
+
+
+@pytest.fixture(autouse=True)
+def _seed_closed_acceptance(request):
+    if "table" in request.fixturenames and request.getfixturevalue("table") == "model_terms_acceptance":
+        conn = request.getfixturevalue("conn")
+        sc = request.getfixturevalue("sc")
+        # The acceptance RPC tests use the shared scenario's empty table.
+        with as_superuser(conn, commit=False) as s:
+            seed_model_terms_acceptance(s, sc.operator.uid)
+            yield
+    else:
+        yield
 
 
 def T(table: str) -> sql.Composed:

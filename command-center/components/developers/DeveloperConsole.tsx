@@ -46,6 +46,11 @@ import {
  * a transaction the server created; the webhook credits the balance.
  */
 
+/** 0226's refusal: a key, its limit and the API's terms are a workspace member's (NS400 not_a_member), never a platform admin's alone. */
+function isNotAMember(e: { code?: string; message?: string } | null | undefined): boolean {
+  return e?.code === "NS400" && (e.message ?? "").trim() === "not_a_member";
+}
+
 type Tab = "keys" | "usage" | "apps";
 
 const TABS: Tab[] = ["keys", "usage", "apps"];
@@ -520,7 +525,8 @@ function Activate({
     const { error: e } = await supabase.rpc("api_activate", { p_org: orgId, p_terms_version: API_TERMS_VERSION });
     setBusy(false);
     if (e) {
-      setError(d.activateFailed);
+      // 0226: accepting the API terms is a member's act (a platform admin who holds no seat here reads, never activates).
+      setError(isNotAMember(e) ? d.settingsNotAMember : d.activateFailed);
       return;
     }
     onDone();
@@ -727,7 +733,8 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
     setBusy(false);
     const key = e ? null : mintedKey(data);
     if (!key) {
-      setError(e?.code === "NS409" ? d.keyLimitReached : isMissing(e) ? d.createNeedsMigration : d.createFailed);
+      // 0226: a key spends as the person who made it, so only an owner or admin MEMBER makes one (not_a_member, NS400).
+      setError(isNotAMember(e) ? d.keyNotAMember : e?.code === "NS409" ? d.keyLimitReached : isMissing(e) ? d.createNeedsMigration : d.createFailed);
       await load();
       return;
     }
@@ -784,7 +791,7 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
     });
     if (!ok) return;
     const { error: e } = await supabase.rpc("set_api_key_limit", { p_key_id: k.id, p_cents: limit.cents });
-    setError(e ? d.saveFailed : null);
+    setError(e ? (isNotAMember(e) ? d.settingsNotAMember : d.saveFailed) : null);
     await load();
   }
 
@@ -1191,7 +1198,7 @@ function Limits({ orgId, info, onSaved }: { orgId: string; info: Console; onSave
       });
       if (!ok) return;
       const { error } = await supabase.rpc("api_set_monthly_limit", { p_org: orgId, p_cents: limit.cents });
-      setMsg(error ? d.saveFailed : d.saved);
+      setMsg(error ? (isNotAMember(error) ? d.settingsNotAMember : d.saveFailed) : d.saved);
       if (!error) onSaved();
     } finally {
       asking.current = false;

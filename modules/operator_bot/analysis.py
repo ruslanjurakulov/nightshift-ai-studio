@@ -9,12 +9,13 @@ from __future__ import annotations
 import re
 from collections import Counter
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from modules.operator_bot.config import (
     OperatorConfig, STUCK_HEARTBEAT_MINUTES, WORKER_STALE_SECONDS,
 )
-from modules.operator_bot.sources import CREATIVE_ACTIVE, parse_ts
+from modules.operator_bot.sources import CREATIVE_ACTIVE, FILM_TAKE_DONE, parse_ts
 
 
 def _num(value) -> Optional[float]:
@@ -89,6 +90,214 @@ def classify_workers(rows, now: datetime) -> list[dict]:
             "stale": state in ("running", "starting") and (age is None or age > WORKER_STALE_SECONDS),
         })
     return out
+
+
+#: A queued film segment nobody claimed for this long: the film worker is not claiming (off, refusing to start, or
+#: gone). A customer's credits are on hold the whole time.
+FILM_QUEUED_STUCK = timedelta(minutes=15)
+#: A running / draining segment whose lease heartbeat is this old: its worker is gone. 0171 hands a stale lease to
+#: the next claim, but only a running worker claims, so past this a person should look.
+FILM_LEASE_STUCK = timedelta(minutes=20)
+_SQLSTATE = re.compile(r"[0-9A-Z]{5}")
+#: The calls 0171's film_record_skip names.
+FILM_SKIP_CALLS = ("claim", "sweep")
+
+
+def film_stuck_segments(rows, now: datetime) -> list[dict]:
+    """Open film segments that are stuck: ``{**row, "why": "queued"|"lease", "since": datetime}``.
+
+    queued = no claim (``claimed_at`` empty) for FILM_QUEUED_STUCK since it was created; lease = running or draining
+    with a heartbeat older than FILM_LEASE_STUCK. A running segment with no heartbeat at all is judged by its claim:
+    an unknown heartbeat is not a fresh one. A row with no usable time is never called stuck (we cannot tell)."""
+    out = []
+    for r in rows or []:
+        status = r.get("status")
+        if status == "queued" and not r.get("claimed_at"):
+            since = parse_ts(r.get("created_at"))
+            if since is not None and now - since > FILM_QUEUED_STUCK:
+                out.append({**r, "why": "queued", "since": since})
+        elif status in ("running", "draining"):
+            since = parse_ts(r.get("heartbeat_at")) or parse_ts(r.get("claimed_at"))
+            if since is not None and now - since > FILM_LEASE_STUCK:
+                out.append({**r, "why": "lease", "since": since})
+    return out
+
+
+def film_not_captured(row) -> Optional[float]:
+    """The credits a settle could not capture, when the event says a positive number; None otherwise (missing,
+    zero, negative or not a number is not an alert)."""
+    v = _num(row.get("not_captured") if isinstance(row, dict) else None)
+    return v if v is not None and v > 0 else None
+
+
+def film_sqlstate(value) -> str:
+    """A SQLSTATE as printed in an alert: five characters of the closed alphabet, else ``?``."""
+    text = str(value or "")
+    return text if _SQLSTATE.fullmatch(text) else "?"
+
+
+def film_skip_call(value) -> str:
+    return value if value in FILM_SKIP_CALLS else "?"
+
+
+def film_sweep_state(data) -> dict:
+    """0212's ``film_sweep_status()`` answer, read defensively (the function is still being revised): ``overdue`` is
+    True, False or None (never recorded, or a key this reader does not find: unknown, NEVER fine), plus the newest
+    completed sweep, the open segment count and the overdue line, each None when absent."""
+    d = data if isinstance(data, dict) else {}
+    raw = d.get("overdue")
+    overdue = raw if isinstance(raw, bool) else None
+    newest = parse_ts(d.get("last_at"))
+    if newest is None:
+        runners = d.get("runners") if isinstance(d.get("runners"), dict) else {}
+        stamps = [parse_ts(r.get("last_at")) for r in runners.values() if isinstance(r, dict)]
+        stamps = [s for s in stamps if s is not None]
+        newest = max(stamps) if stamps else None
+    open_n = _num(d.get("open_segments"))
+    after = _num(d.get("overdue_after_minutes"))
+    stuck = _num(d.get("stuck_segments"))
+    oldest = _num(d.get("oldest_stuck_minutes"))
+    # "answered": the function said null itself (never recorded), as opposed to a shape without the key.
+    return {"overdue": overdue, "answered": "overdue" in d and (raw is None or overdue is not None),
+            "last_at": newest, "open": None if open_n is None else int(open_n),
+            "after_min": None if after is None else int(after),
+            # Segments 0171's sweep rules could already have settled, and for how long the oldest has waited.
+            "stuck": None if stuck is None else int(stuck), "oldest_stuck_min": None if oldest is None else int(oldest)}
+
+
+def _usd(value) -> Optional[Decimal]:
+    """A non-negative finite money amount from a JSON number or string, else None (unknown, never 0)."""
+    if value is None or isinstance(value, bool) or value == "":
+        return None
+    try:
+        d = Decimal(str(value).strip())
+    except (InvalidOperation, ValueError):
+        return None
+    return d if d.is_finite() and d >= 0 else None
+
+
+def film_job_model(job) -> str:
+    """The model a film take's creative job ran on: the router's choice, else the one asked for (0036)."""
+    return str((job or {}).get("routed_model") or (job or {}).get("requested_model") or "")
+
+
+#: How a dollar figure was arrived at, worst first: a line with any estimate is an estimate. ``estimated_highest``: a
+#: model priced in variants (resolution, image size, quality, audio, ...), estimated at its dearest stated variant, because
+#: which variant the vendor billed is not read here and a cap watcher must not guess low.
+SPEND_BASES = ("estimated_highest", "estimated", "recorded")
+
+
+def film_unit_price(figure: Optional[dict]) -> tuple[str, Optional[Decimal]]:
+    """The registry's USD per unit for a model: ("estimated", the single figure), or for a model priced in variants
+    ("estimated_highest", the highest variant that states one). A variant table with no figure at all is unknown: the
+    base figure is never used in its place."""
+    f = figure or {}
+    variants = f.get("variant_prices")
+    if isinstance(variants, dict) and variants:
+        stated = [v for v in (_usd(x) for x in variants.values()) if v is not None]
+        return ("estimated_highest", max(stated)) if stated else ("unknown", None)
+    per = _usd(f.get("usd_per_unit"))
+    return ("estimated", per) if per is not None else ("unknown", None)
+
+
+def _cost_line(row, figure: Optional[dict]) -> tuple[str, Optional[Decimal]]:
+    """One creative_job_costs row: ("recorded", usd) when the worker stored dollars; an estimate, quantity x the
+    registry's price (film_unit_price), when it stored only a quantity in the price's unit; ("unknown", None)
+    otherwise: no quantity, no figure for the model (openai-gpt-image-2.6-* has none), or another unit."""
+    usd = _usd(row.get("usd_estimate"))
+    if usd is not None:
+        return "recorded", usd
+    qty = _usd(row.get("quantity"))
+    basis, per = film_unit_price(figure)
+    unit, price_unit = row.get("unit"), (figure or {}).get("price_unit")
+    # A quantity is only priced in the unit it was counted in: a missing unit on either side is not a match.
+    if qty is None or per is None or not unit or unit != price_unit:
+        return "unknown", None
+    return basis, qty * per
+
+
+def film_spend_rollup(films: dict, takes, jobs, costs, figures=()) -> list[dict]:
+    """Each film's vendor cost so far, from its takes' jobs' cost rows. Pure.
+
+    ``films`` maps film id -> org id. Returns, per film, ``{"film_id", "org_id", "usd" (Decimal, the KNOWN sum: recorded
+    plus estimated), "basis" ("recorded" | "estimated" | "estimated_highest" | "estimated_mixed" | None when nothing
+    is known), "unknown" (lines with no dollar
+    figure: a finished take whose job has no cost row, or a cost row that can be neither read nor estimated), "takes"}``,
+    and per take ``{"id", "kind", "attempt", "status", "usd", "basis", "unknown", "state"}`` where state is
+    ``costed`` (every row known), ``partial`` (some rows unknown), ``unknown`` (rows, none known), ``not_recorded`` (its
+    vendor call is over and there is no cost row), ``pending`` (in flight, no row yet) or ``no_job`` (no vendor call
+    was made through a job). An unknown is never counted as 0 (CLAUDE.md #5): the sum is a floor, and says so."""
+    fig = {str(f.get("id")): f for f in figures or ()}
+    job_of: dict = {}
+    model_of: dict = {}
+    for j in jobs or ():
+        job_of.setdefault(str(j.get("film_take_id")), []).append(str(j.get("id")))
+        model_of[str(j.get("id"))] = film_job_model(j)
+    rows_of: dict = {}
+    for c in costs or ():
+        rows_of.setdefault(str(c.get("job_id")), []).append(c)
+    out = {fid: {"film_id": fid, "org_id": org, "usd": Decimal(0), "basis": None, "unknown": 0, "takes": []}
+           for fid, org in films.items()}
+    for t in takes or ():
+        film = out.get(str(t.get("film_id")))
+        if film is None:
+            continue
+        job_ids = job_of.get(str(t.get("id")), [])
+        lines = [(_cost_line(c, fig.get(model_of.get(j, ""))))
+                 for j in job_ids for c in rows_of.get(j, [])]
+        known = [(b, v) for b, v in lines if v is not None]
+        unknown = len(lines) - len(known)
+        if not job_ids:
+            state = "no_job"
+        elif not lines:
+            state = "not_recorded" if t.get("status") in FILM_TAKE_DONE else "pending"
+            unknown = 1 if state == "not_recorded" else 0
+        else:
+            state = "costed" if not unknown else ("partial" if known else "unknown")
+        usd = sum((v for _b, v in known), Decimal(0)) if known else None
+        basis = _basis_of({k for k, _v in known})
+        film["takes"].append({"id": t.get("id"), "kind": t.get("kind"), "attempt": t.get("attempt"),
+                              "status": t.get("status"), "usd": usd, "basis": basis, "unknown": unknown,
+                              "state": state})
+        if usd is not None:
+            film["usd"] += usd
+        film["unknown"] += unknown
+        for b, _v in known:
+            film.setdefault("_bases", set()).add(b)
+    for film in out.values():
+        bases = film.pop("_bases", set())
+        film["basis"] = _basis_of(bases)
+    return list(out.values())
+
+
+def _basis_of(bases: set) -> Optional[str]:
+    """One word for a set of line bases: the worst, except that both kinds of estimate together say so."""
+    if {"estimated_highest", "estimated"} <= bases:
+        return "estimated_mixed"
+    return next((b for b in SPEND_BASES if b in bases), None)
+
+
+def worker_role(row) -> str:
+    """Which worker a worker_status row speaks for, for "is another one of these alive?".
+
+    Kind ``other`` is shared by unrelated workers (the e-mail worker ``email-…``, the film worker ``film-…``, the
+    deploy probe), so for it the id's prefix says which: a fresh e-mail worker must not hide a silent film worker, nor
+    the other way round. Every other kind is one role, whatever the container id."""
+    kind = str(row.get("kind") or "")
+    if kind != "other":
+        return kind
+    return "other:" + str(row.get("worker_id") or "").split("-", 1)[0]
+
+
+_FILM_PID = re.compile(r"^(film-.+)-\d+$")
+
+
+def worker_self(row) -> tuple:
+    """Which single worker a row is, for "did THIS worker later say it stopped?": its kind and id, except the film
+    worker (``film-<host>-<pid>``), whose pid changes on every restart: for it, the host (``film-<host>``)."""
+    kind, wid = str(row.get("kind") or ""), str(row.get("worker_id") or "")
+    m = _FILM_PID.match(wid) if kind == "other" else None
+    return (kind, m.group(1) if m else wid)
 
 
 def balance_flags(rows, low_credits: float) -> list[dict]:

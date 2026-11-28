@@ -1254,7 +1254,16 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     adult = sec_db.MIGRATION_0192.exists()
     if adult:
         # 0196 sits on 0192's video bodies and 0198 on its film bodies, and 0192's rollback refuses them: off first, on again after.
-        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0198, sec_db.ROLLBACK_0196, sec_db.ROLLBACK_0192])
+        # 0219 sits on 0192's (and 0191's) Studio doors, which 0192's rollback refuses: off first, on again last.
+        # 0215 sits on 0198's start_film and film_claim_segment, and 0198's rollback refuses it: off before 0198, on after it.
+        # 0208 sits on 0196's reroute_creative_job: off before 0196, on after it. 0218 sits on 0208's creative_price: off
+        # before 0208, on after it. 0224 sits on 0218's creative_price: off before 0218, on after it,
+        # and 0228 on 0224's: off before 0224, on after it.
+        # 0226 sits on 0093's api_begin, 0094's reserve_credits and request_download, 0147's oauth_ctx and 0192's bodies, and calls
+        # 0215's is_org_spender: off first of all, on again last.
+        sec_db.apply_files(db.dsn, [sec_db.ROLLBACK_0232, sec_db.ROLLBACK_0231, sec_db.ROLLBACK_0226, sec_db.ROLLBACK_0228, sec_db.ROLLBACK_0224, sec_db.ROLLBACK_0219, sec_db.ROLLBACK_0218,
+                                    sec_db.ROLLBACK_0215, sec_db.ROLLBACK_0208, sec_db.ROLLBACK_0198, sec_db.ROLLBACK_0196,
+                                    sec_db.ROLLBACK_0192])
     sec_db.apply_files(db.dsn, [path, path])
     after = (db.su("select count(*) from public.oauth_grants")[0][0], db.su("select count(*) from public.oauth_tokens")[0][0],
              db.su("select pepper from public.oauth_settings")[0][0])
@@ -1283,7 +1292,9 @@ def test_replaying_the_migration_twice_changes_nothing(db):
         # 0094 sits on 0093's oauth_create_video, and 0192 on 0094's: 0094 again (it has no guard and changes nothing else that
         # 0093 replaced), then 0192.
         sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0094_extra_credits_toggle.sql", sec_db.MIGRATION_0192,
-                                    sec_db.MIGRATION_0196, sec_db.MIGRATION_0198])
+                                    sec_db.MIGRATION_0196, sec_db.MIGRATION_0198, sec_db.MIGRATION_0208,
+                                    sec_db.MIGRATION_0215, sec_db.MIGRATION_0218, sec_db.MIGRATION_0219, sec_db.MIGRATION_0224, sec_db.MIGRATION_0228,
+                                    sec_db.MIGRATION_0226, sec_db.MIGRATION_0231])
         assert db.su("select to_regprocedure('public.film_adult_refusals(uuid, uuid)') is not null")[0][0] is True
 
 

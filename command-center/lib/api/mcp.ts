@@ -130,7 +130,9 @@ function oauthInstructions(has: (tool: string) => boolean): string {
         "quote_creative is free and returns the price in credits and a quote_id. ALWAYS tell the person that price and get their " +
         "confirmation before create_creative, which spends it (within this connection's monthly limit) and takes only the quote_id " +
         "and a fresh idempotency_key. Poll get_creative_job until it is completed for short-lived file links. What it makes stays " +
-        "private in the workspace's library: nothing is published (only publish_video publishes, and YouTube uploads are private).",
+        "private in the workspace's library: nothing is published" +
+        // Only a tool this grant is offered may be named: a Studio-only grant was told about publish_video, which it cannot see.
+        (has("publish_video") ? " (only publish_video publishes, and YouTube uploads are private)." : "."),
     );
   if (has("publish_video"))
     s.push(
@@ -548,7 +550,9 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
         description:
           "The Studio models this workspace can generate with through a connected app, each with what it makes and the shapes, " +
           "durations and resolutions it takes. Only models whose terms allow use through an assistant are offered, so the list can be " +
-          "short or empty; every model can still be used in the Studio itself. No prices: quote_creative gives the price of one request.",
+          "short or empty; every model can still be used in the Studio itself. A model marked operator_only: true is available only " +
+          "because this is the operator's own workspace (first-party use); it is not offered to other workspaces' connected apps. " +
+          "No prices: quote_creative gives the price of one request.",
         inputSchema: z.object({ capability: capabilityArg.optional() }).strict(),
         annotations: { readOnlyHint: true },
       },
@@ -577,7 +581,8 @@ export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer 
         description:
           "The price in credits of one picture, clip or edit with these exact settings, and a quote_id that holds that price for a " +
           "few minutes (expires_at). Free: nothing is held or charged. Tell the person the price and ask them to confirm before " +
-          "calling create_creative with this quote_id.",
+          "calling create_creative with this quote_id. Some models may be marked operator_only (in list_creative_models and in the " +
+          "quote): usable only in the operator's own workspace.",
         inputSchema: z
           .object({
             capability: capabilityArg,

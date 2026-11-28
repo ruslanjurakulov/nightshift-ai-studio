@@ -3,8 +3,13 @@
  * The model samples' files, imported (so each is a hashed file served from this origin) in a module the browser bundle includes:
  * ShowcaseClip, a Client Component, reads the clips from here, for the same reason as clip-assets.ts (a video imported only by
  * Server Components is never copied to /_next/static/media/).
+ *
+ * SHOWCASE_CARDS is the client-safe slice of the data file: only what client code places, sizes and links a sample with. The
+ * full manifest (lib/site/showcase.ts) is server-only, because it carries each job's vendor, vendor model, cost, maker credit and
+ * file hash, and it shipped in public JavaScript on every page that drew a slot or an effect.
  */
 import type { ShowcaseFiles } from "@/lib/site/showcase";
+import type { ShowcaseCard } from "@/lib/site/showcase-card";
 import s0Poster from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/poster.webp";
 import s0PosterSm from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/poster-sm.webp";
 import s0Mp4 from "@/components/site/showcase/a04d5d55-27ef-4cae-95a2-25488503829e/clip.mp4";
@@ -235,6 +240,10 @@ import s44Mp4 from "@/components/site/showcase/cf2af7b1-5433-4661-979b-f65f3f8a4
 import s44Webm from "@/components/site/showcase/cf2af7b1-5433-4661-979b-f65f3f8a4dbf/clip.webm";
 import s44SmMp4 from "@/components/site/showcase/cf2af7b1-5433-4661-979b-f65f3f8a4dbf/clip-sm.mp4";
 import s44SmWebm from "@/components/site/showcase/cf2af7b1-5433-4661-979b-f65f3f8a4dbf/clip-sm.webm";
+import s45Poster from "@/components/site/showcase/495ebf91-84df-4c76-a6c4-a3ca6e4eb82d/poster.webp";
+import s45PosterSm from "@/components/site/showcase/495ebf91-84df-4c76-a6c4-a3ca6e4eb82d/poster-sm.webp";
+import s46Poster from "@/components/site/showcase/94baf12a-60db-42f6-a000-fcc118e344a0/poster.webp";
+import s46PosterSm from "@/components/site/showcase/94baf12a-60db-42f6-a000-fcc118e344a0/poster-sm.webp";
 
 export const SHOWCASE_FILES: Readonly<Record<string, ShowcaseFiles>> = {
   "a04d5d55-27ef-4cae-95a2-25488503829e": { poster: s0Poster.src, posterSm: s0PosterSm.src, clip: { mp4: s0Mp4, webm: s0Webm, smMp4: s0SmMp4, smWebm: s0SmWebm } },
@@ -282,4 +291,56 @@ export const SHOWCASE_FILES: Readonly<Record<string, ShowcaseFiles>> = {
   "e35f41fb-3162-4f9d-ae17-6420d558840d": { poster: s42Poster.src, posterSm: s42PosterSm.src, clip: { mp4: s42Mp4, webm: s42Webm, smMp4: s42SmMp4, smWebm: s42SmWebm } },
   "49af4517-9ebf-44d9-80ed-f652cea6e071": { poster: s43Poster.src, posterSm: s43PosterSm.src, clip: { mp4: s43Mp4, webm: s43Webm, smMp4: s43SmMp4, smWebm: s43SmWebm } },
   "cf2af7b1-5433-4661-979b-f65f3f8a4dbf": { poster: s44Poster.src, posterSm: s44PosterSm.src, clip: { mp4: s44Mp4, webm: s44Webm, smMp4: s44SmMp4, smWebm: s44SmWebm } },
+  "495ebf91-84df-4c76-a6c4-a3ca6e4eb82d": { poster: s45Poster.src, posterSm: s45PosterSm.src, clip: null },
+  "94baf12a-60db-42f6-a000-fcc118e344a0": { poster: s46Poster.src, posterSm: s46PosterSm.src, clip: null },
 };
+
+export const SHOWCASE_CARDS: readonly ShowcaseCard[] = [
+  { jobId: "cf2af7b1-5433-4661-979b-f65f3f8a4dbf", modelId: "minimax-h3", capability: "i2v", kind: "video", width: 1280, height: 2240, slot: null, input: { kind: "operator_job", jobId: "94baf12a-60db-42f6-a000-fcc118e344a0" } },
+  { jobId: "94baf12a-60db-42f6-a000-fcc118e344a0", modelId: "ideogram-3", capability: "t2i", kind: "image", width: 1280, height: 2282, slot: null, input: { kind: "none" } },
+  { jobId: "49af4517-9ebf-44d9-80ed-f652cea6e071", modelId: "minimax-h3", capability: "i2v", kind: "video", width: 1280, height: 2240, slot: null, input: { kind: "operator_job", jobId: "495ebf91-84df-4c76-a6c4-a3ca6e4eb82d" } },
+  { jobId: "e35f41fb-3162-4f9d-ae17-6420d558840d", modelId: "minimax-h3", capability: "i2v", kind: "video", width: 1280, height: 1600, slot: null, input: { kind: "operator_job", jobId: "e3da9148-f2f8-443e-95b1-8ed36ef3dea4" } },
+  { jobId: "495ebf91-84df-4c76-a6c4-a3ca6e4eb82d", modelId: "ideogram-3", capability: "t2i", kind: "image", width: 1280, height: 2282, slot: null, input: { kind: "none" } },
+  { jobId: "99579363-b080-45b5-b1ed-06c712694042", modelId: "minimax-h3", capability: "t2v", kind: "video", width: 1280, height: 2240, slot: null, input: { kind: "none" } },
+  { jobId: "950e0667-4445-47c3-bbf4-3c681a22bb3c", modelId: "minimax-h3", capability: "t2v", kind: "video", width: 1280, height: 732, slot: null, input: { kind: "none" } },
+  { jobId: "9930ee16-a09b-4d55-aefe-5c2cb6f189de", modelId: "minimax-h3", capability: "t2v", kind: "video", width: 1280, height: 732, slot: null, input: { kind: "none" } },
+  { jobId: "ec9a7c43-0304-4da7-943a-134a259e4f90", modelId: "minimax-h3", capability: "t2v", kind: "video", width: 1280, height: 2240, slot: null, input: { kind: "none" } },
+  { jobId: "dd553f69-beb4-4f89-9722-91ad95a9d2cc", modelId: "minimax-h3", capability: "t2v", kind: "video", width: 1280, height: 1280, slot: null, input: { kind: "none" } },
+  { jobId: "9b0f23e8-e22b-4a27-b957-3aade8572fbd", modelId: "minimax-h3", capability: "t2v", kind: "video", width: 1280, height: 1280, slot: null, input: { kind: "none" } },
+  { jobId: "6a94865b-ac2f-4b1f-b273-fd4b10c8c477", modelId: "runway-gen4.5", capability: "t2v", kind: "video", width: 1280, height: 720, slot: null, input: { kind: "none" } },
+  { jobId: "dcb96246-9379-4c3a-aa33-a8ee6bb7f846", modelId: "runway-gen4-turbo", capability: "i2v", kind: "video", width: 1280, height: 720, slot: null, input: { kind: "operator_job", jobId: "1504b313-3a3c-4e78-bfda-5bca3ef7f3da" } },
+  { jobId: "4e85c7e4-fd1a-4771-97ee-66c1fb853367", modelId: "runway-gen4.5", capability: "t2v", kind: "video", width: 1280, height: 720, slot: null, input: { kind: "none" } },
+  { jobId: "3069ec2f-2f68-40a8-bcbe-fc4c5f9111bc", modelId: "ideogram-4.5", capability: "t2i", kind: "image", width: 1280, height: 2276, slot: null, input: { kind: "none" } },
+  { jobId: "ced854a6-ba49-4668-b9dd-91ca46b72f6d", modelId: "ideogram-4", capability: "t2i", kind: "image", width: 1280, height: 720, slot: null, input: { kind: "none" } },
+  { jobId: "9699e7fd-74a6-4d9e-8dcd-9dc88deec1d9", modelId: "minimax-h3-max", capability: "t2v", kind: "video", width: 1280, height: 732, slot: null, input: { kind: "none" } },
+  { jobId: "c7f8bb97-4725-4878-87a0-17d0b27027a6", modelId: "minimax-h3-max", capability: "t2v", kind: "video", width: 1280, height: 732, slot: null, input: { kind: "none" } },
+  { jobId: "d91578df-1084-4d2e-9273-bf52bd966118", modelId: "minimax-h3-max", capability: "t2v", kind: "video", width: 1280, height: 2240, slot: null, input: { kind: "none" } },
+  { jobId: "c2733488-980e-4a20-9a58-28401bbee8c4", modelId: "minimax-h3", capability: "t2v", kind: "video", width: 1280, height: 2240, slot: null, input: { kind: "none" } },
+  { jobId: "fcdba478-1a92-497d-adbb-1d2c9701e806", modelId: "minimax-h3", capability: "t2v", kind: "video", width: 1280, height: 732, slot: null, input: { kind: "none" } },
+  { jobId: "f3583fdc-25c4-42cb-96ce-1d92d80cbf68", modelId: "minimax-h3-lite", capability: "t2v", kind: "video", width: 1280, height: 2240, slot: null, input: { kind: "none" } },
+  { jobId: "c62d40e7-b1b5-4ba4-8bc9-487f9ef7382e", modelId: "minimax-h3-lite", capability: "t2v", kind: "video", width: 1280, height: 732, slot: null, input: { kind: "none" } },
+  { jobId: "7ee6f783-7c3c-4265-ade8-88c64b674127", modelId: "minimax-h3-highspeed", capability: "t2v", kind: "video", width: 1280, height: 732, slot: null, input: { kind: "none" } },
+  { jobId: "ab7cc0e2-8040-4643-8e14-74219fc1d8e2", modelId: "runway-gen4-turbo", capability: "i2v", kind: "video", width: 1280, height: 720, slot: null, input: { kind: "operator_job", jobId: "f17146fd-054c-4970-9dac-f7a0dc929bd6" } },
+  { jobId: "fc1fad12-16de-4cd5-9cd9-e77ed245f469", modelId: "minimax-h3-max", capability: "i2v", kind: "video", width: 1280, height: 1600, slot: null, input: { kind: "operator_job", jobId: "e3da9148-f2f8-443e-95b1-8ed36ef3dea4" } },
+  { jobId: "de53f364-eaf7-4cd1-8d44-7b56b21b03b6", modelId: "runway-gen4.5", capability: "t2v", kind: "video", width: 1280, height: 720, slot: null, input: { kind: "none" } },
+  { jobId: "f92a89ed-2145-4342-acd5-f24b8805a0f9", modelId: "minimax-h3-max", capability: "t2v", kind: "video", width: 1280, height: 732, slot: null, input: { kind: "none" } },
+  { jobId: "01c9f1f0-d54b-4fd3-a88f-ddf459aece73", modelId: "minimax-h3-max", capability: "t2v", kind: "video", width: 1280, height: 732, slot: null, input: { kind: "none" } },
+  { jobId: "b72e18cd-d9e5-4535-9fea-f24fbd8c3fd9", modelId: "minimax-h3", capability: "t2v", kind: "video", width: 1280, height: 732, slot: null, input: { kind: "none" } },
+  { jobId: "a6768488-04c6-4325-9465-62d61f888a70", modelId: "minimax-h3-max", capability: "t2v", kind: "video", width: 1280, height: 732, slot: null, input: { kind: "none" } },
+  { jobId: "e3da9148-f2f8-443e-95b1-8ed36ef3dea4", modelId: "ideogram-4", capability: "t2i", kind: "image", width: 1280, height: 1600, slot: null, input: { kind: "none" } },
+  { jobId: "28f164dc-809f-49a3-b2e2-ef0bdf88519b", modelId: "ideogram-4.5", capability: "t2i", kind: "image", width: 1280, height: 1280, slot: null, input: { kind: "none" } },
+  { jobId: "1b3d5f4b-f4f2-4e92-84db-77908a36df2a", modelId: "ideogram-3", capability: "t2i", kind: "image", width: 1280, height: 718, slot: null, input: { kind: "none" } },
+  { jobId: "639bbde5-dc70-4954-b71d-54db6a5b3ea9", modelId: "ideogram-3", capability: "t2i", kind: "image", width: 1280, height: 718, slot: null, input: { kind: "none" } },
+  { jobId: "1504b313-3a3c-4e78-bfda-5bca3ef7f3da", modelId: "ideogram-3", capability: "t2i", kind: "image", width: 1280, height: 718, slot: null, input: { kind: "none" } },
+  { jobId: "64a7c2b8-a6c1-4359-9961-a1a2760f1cbf", modelId: "ideogram-3", capability: "t2i", kind: "image", width: 1280, height: 718, slot: null, input: { kind: "none" } },
+  { jobId: "f17146fd-054c-4970-9dac-f7a0dc929bd6", modelId: "ideogram-3", capability: "t2i", kind: "image", width: 1280, height: 718, slot: null, input: { kind: "none" } },
+  { jobId: "ab0bcba2-8374-465d-b505-8dac19977948", modelId: "minimax-h3-highspeed", capability: "t2v", kind: "video", width: 1280, height: 732, slot: null, input: { kind: "none" } },
+  { jobId: "38c427b0-c41b-4d16-86ca-14dc2e69ec27", modelId: "ideogram-3", capability: "t2i", kind: "image", width: 1280, height: 718, slot: null, input: { kind: "none" } },
+  { jobId: "9a52ebf1-bbe3-473c-b77c-7553bc18e0d8", modelId: "runway-gen4.5", capability: "t2v", kind: "video", width: 1280, height: 720, slot: null, input: { kind: "none" } },
+  { jobId: "0e7b89cb-282b-43b8-8777-55001b398f67", modelId: "minimax-h3", capability: "t2v", kind: "video", width: 1280, height: 2240, slot: null, input: { kind: "none" } },
+  { jobId: "5778bf5a-f751-472b-bbc0-c59b10567d32", modelId: "minimax-h3-highspeed", capability: "t2v", kind: "video", width: 1280, height: 2240, slot: null, input: { kind: "none" } },
+  { jobId: "bf349995-6836-47fe-9481-a433b4fccb04", modelId: "minimax-h3-max", capability: "t2v", kind: "video", width: 1280, height: 2240, slot: null, input: { kind: "none" } },
+  { jobId: "826322ba-3ac9-4030-bc19-367b5ae1277a", modelId: "minimax-h3-lite", capability: "t2v", kind: "video", width: 1280, height: 2240, slot: null, input: { kind: "none" } },
+  { jobId: "f00c9666-0906-40cc-90d2-dd69680d5077", modelId: "runway-gen4.5", capability: "t2v", kind: "video", width: 1280, height: 720, slot: null, input: { kind: "none" } },
+  { jobId: "a04d5d55-27ef-4cae-95a2-25488503829e", modelId: "runway-gen4.5", capability: "t2v", kind: "video", width: 1280, height: 2276, slot: null, input: { kind: "none" } },
+];

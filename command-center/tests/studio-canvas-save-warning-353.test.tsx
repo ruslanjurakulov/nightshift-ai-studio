@@ -165,7 +165,7 @@ function mount({ tools = UNKNOWN_TOOLS, filmStudio = false, operator = false, lo
     <I18nProvider locale={locale}>
       <ShellProvider operator={operator} tools={tools}>
         <StudioCanvas
-          data={{ orgId: ORG, models: [], unavailable: [], plans: null, dna: null, defaultStyleKitId: null }}
+          data={{ orgId: ORG, models: [], unavailable: [], plans: null, dna: null, defaultStyleKitId: null, effects: [] }}
           userId="u1"
           channel="chronos"
           filmStudio={filmStudio}

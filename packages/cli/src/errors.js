@@ -53,6 +53,7 @@ const HINTS = {
   invalid_api_key: "Run `nightshift login` with a key from Developers > API keys.",
   api_not_activated: "Activate the API in Developers (an organization owner or admin does this once).",
   key_owner_not_admin: "The key's creator is no longer an owner or admin; make a new key in Developers > API keys.",
+  not_a_member: "The key's creator does not hold an owner or admin seat in its organization; a member who does must make a new key in Developers > API keys.",
   insufficient_scope: "This key lacks the scope the message names; make a new key with it in Developers > API keys.",
   insufficient_balance: "Top up the API balance in Developers > Billing. Nothing was charged.",
   monthly_limit_reached: "The organization's monthly limit is reached. An owner or admin can raise it in Developers > Limits.",

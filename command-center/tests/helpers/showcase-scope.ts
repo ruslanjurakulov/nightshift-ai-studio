@@ -11,6 +11,7 @@
 import type { Dictionary } from "@/lib/i18n";
 import { creditLine } from "@/lib/site/media";
 import { landingExcludedJobs, type PlaceMedia } from "@/components/site/samples";
+import { SHOWCASE_ENTRIES } from "@/lib/site/showcase";
 import { showcaseItems } from "@/components/site/ShowcaseGallery";
 import { landingGalleryJobs } from "@/components/site/landing-samples";
 
@@ -93,10 +94,14 @@ export function placeLabelProblems(el: Element, m: PlaceMedia, site: Dictionary[
   if (m.kind === "ai") {
     const box = el.closest(SAMPLE_CARD);
     if (box?.getAttribute("data-showcase-entry") !== m.entry.jobId) out.push("not inside its sample's box");
-    if (!text.includes(site.gallery.badge)) out.push("no AI-generated badge");
-    if (text.includes(m.entry.modelName)) out.push("names its model");
+    // The "AI" mark and, for a screen reader, what it means (components/site/AiMark.tsx): the long form is the unique one.
+    if (!text.includes(site.gallery.badge) || !text.includes(site.gallery.badgeName)) out.push("no AI-generated badge");
+    // A place's media holds the client-safe card, which has no model name: the full entry (the same data file) has it.
+    const modelName = SHOWCASE_ENTRIES.find((e) => e.jobId === m.entry.jobId)?.modelName;
+    if (!modelName) out.push("its entry is not in the data file");
+    else if (text.includes(modelName)) out.push("names its model");
     if (el.querySelector(".nx-ai-model")) out.push("has a model label");
-    if (el.querySelector(".nx-ai-try") || text.includes(site.gallery.try) || text.includes(site.gallery.use)) out.push("offers its prompt");
+    if (el.querySelector(".nx-ai-try") || text.includes(site.gallery.use)) out.push("offers its prompt");
     if (text.includes(site.gallery.useNote)) out.push("has a footnote");
     out.push(...makerCreditProblems(el));
     for (const w of [s.tag, s.frameTag, s.clipTag]) if (text.includes(w)) out.push(`says "${w}"`);
@@ -109,7 +114,7 @@ export function placeLabelProblems(el: Element, m: PlaceMedia, site: Dictionary[
     if (clip !== (m.clip ? s.clipTag : null)) out.push(`clip badge is ${clip}`);
     const credit = el.querySelector(".nx-result-credit")?.textContent;
     if (credit !== creditLine(m.id, s.credit)) out.push(`credit is ${credit}`);
-    if (text.includes(site.gallery.badge)) out.push("says AI-generated");
+    if (text.includes(site.gallery.badgeName)) out.push("says AI-generated");
   }
   return out;
 }

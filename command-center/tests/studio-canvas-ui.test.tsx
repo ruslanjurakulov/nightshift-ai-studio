@@ -165,7 +165,7 @@ function mount({ tools = UNKNOWN_TOOLS, filmStudio = false, operator = false }: 
     <I18nProvider locale="en">
       <ShellProvider operator={operator} tools={tools}>
         <StudioCanvas
-          data={{ orgId: ORG, models: [], unavailable: [], plans: null, dna: null, defaultStyleKitId: null }}
+          data={{ orgId: ORG, models: [], unavailable: [], plans: null, dna: null, defaultStyleKitId: null, effects: [] }}
           userId="u1"
           channel="chronos"
           filmStudio={filmStudio}
@@ -435,6 +435,35 @@ describe("the board's hand", () => {
     await screen.findByTestId("canvas-board");
     openNode("img");
     await waitFor(() => expect(document.querySelector('[data-wire="p->img"]')!.getAttribute("class")).toContain("is-hl"));
+  });
+});
+
+describe("the timeline lane under the dock", () => {
+  it("a wired clip is on the lane; pressing its segment selects that card on the board and opens no form", async () => {
+    store({
+      nodes: [node("p", "prompt", -400, { draft: "a fox" }), node("clip", "video", 0), node("alone", "video", 900)],
+      wires: [{ id: "w1", from: "p", to: "clip" }],
+    });
+    mount();
+    await screen.findByTestId("canvas-board");
+    const seg = await screen.findByTestId("lane-seg-clip");
+    // A clip card with no wire is not on the lane.
+    expect(screen.queryByTestId("lane-seg-alone")).toBeNull();
+    fireEvent.click(seg);
+    await waitFor(() => expect(document.querySelector('[data-node-id="clip"]')!.className).toContain("is-sel"));
+    expect(screen.queryByTestId("canvas-inspector")).toBeNull();
+    expect(panel.generateClicks).toBe(0);
+  });
+
+  it("the dock floats inside the board, and the board's keys stay off it: Backspace on a dock key deletes nothing", async () => {
+    store({ nodes: [node("img", "image")], wires: [] });
+    mount();
+    await screen.findByTestId("canvas-board");
+    openNode("img");
+    const key = screen.getByTestId("dock-add");
+    expect(key.closest(".cv-stage")).not.toBeNull();
+    fireEvent.keyDown(key, { key: "Backspace" });
+    expect(document.querySelector('[data-node-id="img"]')).not.toBeNull();
   });
 });
 
@@ -896,7 +925,7 @@ describe("Lens mediums", () => {
     render(
       <I18nProvider locale="ru">
         <ShellProvider operator={false} tools={UNKNOWN_TOOLS}>
-          <StudioCanvas data={{ orgId: ORG, models: [], unavailable: [], plans: null, dna: null, defaultStyleKitId: null }} userId="u1" channel="chronos" filmStudio={false} />
+          <StudioCanvas data={{ orgId: ORG, models: [], unavailable: [], plans: null, dna: null, defaultStyleKitId: null, effects: [] }} userId="u1" channel="chronos" filmStudio={false} />
         </ShellProvider>
       </I18nProvider>,
     );

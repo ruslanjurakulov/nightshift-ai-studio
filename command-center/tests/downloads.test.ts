@@ -8,6 +8,7 @@ import {
   coerceDownloadRequests,
   contentDisposition,
   downloadCharge,
+  downloadPrices,
   downloadFilePath,
   freeRedownload,
   mapDownloadError,
@@ -187,5 +188,33 @@ describe("errors and the spent total", () => {
         4,
       ),
     ).toBe(10);
+  });
+});
+
+describe("downloadPrices: what the video page hands the Download menu", () => {
+  // The menu is a Client Component: its props are the page's payload. Before, it was handed the whole price list.
+  const LIST = parsePrices([
+    ...[
+      { unit: "download_720p_minute", credits_per_unit: 1.0, margin: 2.0, note: "internal" },
+      { unit: "download_1080p_minute", credits_per_unit: 1.25, margin: 3.0 },
+      { unit: "download_minimum", credits_per_unit: 5, margin: 0.5 },
+    ],
+    { unit: "gemini_input_tokens", credits_per_unit: 0.001, margin: 0.2 },
+    { unit: "video_minute", credits_per_unit: 10 },
+  ]);
+
+  it("keeps only the HD download units and their floor, as charged: { unit, credits } and nothing else", () => {
+    const p = downloadPrices(LIST);
+    expect(Object.keys(p).sort()).toEqual(["download_1080p_minute", "download_720p_minute", "download_minimum"]);
+    expect(JSON.stringify(p)).not.toMatch(/margin|note|updatedAt|creditsPerUnit/);
+    expect(p.download_720p_minute).toEqual({ unit: "download_720p_minute", credits: 3 });
+    // The floor is flat: its margin is ignored, as request_download ignores it.
+    expect(p.download_minimum).toEqual({ unit: "download_minimum", credits: 5 });
+  });
+
+  it("prices every download exactly as the full list did", () => {
+    for (const q of ["720p", "1080p"] as const) {
+      for (const s of [10, 59, 60, 61, 300, 3600]) expect(downloadCharge(s, q, downloadPrices(LIST)), `${q} ${s}s`).toBe(downloadCharge(s, q, LIST));
+    }
   });
 });

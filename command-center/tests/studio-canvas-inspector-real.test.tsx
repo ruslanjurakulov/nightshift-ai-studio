@@ -66,7 +66,7 @@ function mount(status: NodeStatus, onCreated = vi.fn(), onPressing?: (on: boolea
           jobs={new Map()}
           status={status}
           closed={false}
-          data={{ orgId: ORG, models: MODELS, unavailable: [], plans: null, dna: null, defaultStyleKitId: null }}
+          data={{ orgId: ORG, models: MODELS, unavailable: [], plans: null, dna: null, defaultStyleKitId: null, effects: [] }}
           previews={new Map()}
           nodeName={() => "Image"}
           sheet={false}

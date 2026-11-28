@@ -150,6 +150,22 @@ stored. It is off unless ``NIGHTSHIFT_REGION_EDITOR`` is on in THIS process's en
 * the result is one new library picture: ``source='generated'``, ``parent_asset_id`` = the picture it was made from, provenance
   ``ai_generated`` written HERE (never by the browser). A result that cannot be stored fails the job: nothing is charged for it.
 
+Still on sale at the moment of the paid call
+--------------------------------------------
+A job is priced when it is created and may wait in the queue; the model can be retired, hidden, unpriced or switched off in between
+(a registry sync, a retirement migration, the owner's switch). The claim does not look (0036/0198's ``claim_creative_job`` asks only
+for the oldest queued job), and 0124's ``advance 'submitting'`` asks only the owner's switch. So right before ``advance 'submitting'``
+the worker asks the database again, through the same ``sellable_models`` the Studio lists from (availability beta/ga, probed, no terms
+gate, priced, switch on, not past a shutdown date): a model that is not there for the job's capability now is NOT sent. The job fails
+with ``model_not_available`` (``model_temporarily_off`` when the owner's switch is what took it off, the word 0124 writes itself), and
+``finish_creative_job(ok=false)`` releases the hold through 0036's settle: no money code of its own, nothing captured. It never moves
+to another model, routed or not (rule 4). An operator preview (0139: a ``hidden`` model marked ``operator_preview``, quoted only in
+the operator's exempt organization) is not in that list by design; for that organization only, the model's own registry row is read
+instead, with 0139's and 0125's rules (hidden, marked, probed, the capability listed, not past its date). When the answer cannot be
+read (the database out of reach, an answer that is not a list), nothing is sent and the job is left to the stale sweep, which hands it
+back unsent: unknown is never "available" (rule 5). A job that already has a task id is polled as before and never asked: a task at
+the vendor is never abandoned.
+
 Outputs into the library
 ------------------------
 With a media volume configured, each output becomes a library asset of the
@@ -167,6 +183,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import math
 import mimetypes
 import re
 import shutil
@@ -174,6 +191,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field, replace
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, List, Mapping, Optional, Protocol, Sequence, Tuple
 
@@ -340,6 +358,11 @@ class ProviderUsage:
     route: Optional[str] = None
 
 
+#: BR-L-208: the only provenance keys an adapter may add to a library row (``ProviderPoll.provenance``), and how long a string may be.
+ADAPTER_PROVENANCE_KEYS = frozenset({"synthid", "vendor_model", "vocals_requested"})
+ADAPTER_PROVENANCE_MAX_CHARS = 200
+
+
 @dataclass
 class ProviderPoll:
     """One look at a submitted task. On SUCCEEDED the adapter has written the
@@ -349,6 +372,9 @@ class ProviderPoll:
     error_code: Optional[str] = None
     error: Optional[str] = None
     usage: Optional[ProviderUsage] = None
+    #: What the adapter says every output carries (Lyria: ``synthid``), added to each library row's provenance. Never overrides
+    #: what the worker itself records (the job, the model, the rights).
+    provenance: Mapping[str, Any] = field(default_factory=dict)
 
 
 class CreativeAdapter(Protocol):
@@ -362,6 +388,71 @@ class CreativeAdapter(Protocol):
 
 
 AdapterResolver = Callable[[str], Optional[CreativeAdapter]]
+
+
+# ── one vendor call, one cost row (0037) ────────────────────────────────────
+
+#: The price_source of a cost row for a vendor call that delivered nothing usable (failed, timed out, answered without a file, or
+#: was abandoned with nobody left to poll it). Its usd stays None and its quantity is what was ASKED for, never a measurement: the
+#: platform absorbs these calls (0171 charges the customer 0), the vendor may or may not bill them, and a spend total that left them
+#: out read as complete while it ran short.
+FAILED_CALL_PRICE_SOURCE = "failed_call"
+
+
+class VendorCall:
+    """One call that reached a vendor (a task id came back, or a synchronous answer did), so that it gets exactly one cost row
+    whatever happens next. ``recorded``: its row was written (or attempted: a record that raised is not retried as a second row,
+    and a success that reported no usage still owns the call). ``delivered``: the vendor's own usage for an answer that carried a
+    usable file, kept until the result is settled; a later failure records it, never a failed_call estimate in its place."""
+
+    __slots__ = ("recorded", "delivered")
+
+    def __init__(self, *, recorded: bool = False):
+        self.recorded = recorded
+        self.delivered: Optional[ProviderUsage] = None
+
+
+def failed_call_usage(adapter: Any, request: GenerationRequest,
+                      reported: Optional[ProviderUsage] = None) -> Optional[ProviderUsage]:
+    """The usage row for a call that delivered nothing: the adapter's own ``usage(request, 0)`` (the requested seconds, the
+    prompt's characters, 0 pictures), else what the vendor's answer reported, marked failed_call with no USD. None when neither
+    exists; nothing is made up."""
+    usage = None
+    fn = getattr(adapter, "usage", None)
+    if callable(fn):
+        try:
+            usage = fn(request, 0)
+        except Exception as e:  # noqa: BLE001 — reporting only
+            logger.warning("job %s: the failed call's usage could not be computed (%s)", request.job_id, type(e).__name__)
+            usage = None
+    if not isinstance(usage, ProviderUsage):
+        usage = reported if isinstance(reported, ProviderUsage) else None
+    if usage is None:
+        return None
+    return replace(usage, usd=None, price_source=FAILED_CALL_PRICE_SOURCE)
+
+
+def record_call_cost(sink: Any, job_id: str, usage: Optional[ProviderUsage], call: VendorCall) -> None:
+    """Write the call's one row (or nothing, if it already has one). Reporting only: it never raises and never changes the job's
+    outcome; only the exception's type is logged (its text could carry a URL or a vendor's body)."""
+    if call.recorded:
+        return
+    call.recorded = True
+    if usage is None:
+        return
+    try:
+        sink.record_cost(job_id, usage)
+    except Exception as e:  # noqa: BLE001 — reporting only
+        logger.warning("job %s: provider cost not recorded (%s)", job_id, type(e).__name__)
+
+
+def record_unfinished_call(sink: Any, adapter: Any, request: GenerationRequest, call: VendorCall,
+                           reported: Optional[ProviderUsage] = None) -> None:
+    """The call ended here without its row: the vendor's own usage if it delivered a file, else a failed_call estimate."""
+    if call.recorded:
+        return
+    usage = call.delivered if call.delivered is not None else failed_call_usage(adapter, request, reported)
+    record_call_cost(sink, request.job_id, usage, call)
 
 
 # ── the database (PostgREST, service key) ───────────────────────────────────
@@ -453,6 +544,43 @@ class CreativeRest:
             return None
         return [str(r["id"]) for r in rows if isinstance(r, dict) and isinstance(r.get("id"), str)]
 
+    def on_sale(self, capability: str) -> Optional[List[str]]:
+        """The ids of the models ``sellable_models`` lists on the web surface right now that list ``capability``, or None when the answer
+        cannot be read. Asked with no capability and filtered here, because ``sellable_models`` refuses a capability its own list does not
+        name (``music``), and a refusal must not read as "nothing is on sale"."""
+        rows = self._rpc("sellable_models", {"p_capability": None, "p_surface": "web"})
+        if not isinstance(rows, list):
+            return None
+        return [str(r["id"]) for r in rows
+                if isinstance(r, dict) and isinstance(r.get("id"), str)
+                and isinstance(r.get("capabilities"), list) and capability in r["capabilities"]]
+
+    def model_switched_on(self, model_id: str) -> Optional[bool]:
+        """0124's model_is_available for the platform's own caller: False when the owner's switch has the model (or its provider) off."""
+        out = self._rpc("model_is_available", {"p_model": model_id})
+        return out if isinstance(out, bool) else None
+
+    def registry_row(self, model_id: str) -> Optional[dict]:
+        """One model_registry row (service role: 0035 grants it select), for the operator-preview rule only. None when there is none."""
+        try:
+            with self._lock:
+                r = self._http.get(
+                    f"{self.url}/rest/v1/model_registry", timeout=self._timeout,
+                    params={"id": f"eq.{model_id}", "select": "id,availability,verified_at,capabilities,spec"},
+                    headers={"apikey": self._key, "Authorization": f"Bearer {self._key}"},
+                )
+        except Exception as e:
+            raise CreativeUnavailable(f"model_registry: {type(e).__name__}") from None
+        if r.status_code >= 300:
+            raise CreativeUnavailable(f"model_registry: HTTP {r.status_code}")
+        try:
+            rows = r.json()
+        except ValueError:
+            raise CreativeUnavailable("model_registry: unreadable answer") from None
+        if not isinstance(rows, list):
+            raise CreativeUnavailable("model_registry: unreadable answer")
+        return rows[0] if rows and isinstance(rows[0], dict) else None
+
     def job_source(self, job_id: str, worker_id: str) -> Optional[dict]:
         out = self._rpc("creative_job_source", {"p_job": job_id, "p_worker": worker_id})
         return out if isinstance(out, dict) else None
@@ -490,6 +618,67 @@ def error_code_of(exc: BaseException, default: str = "provider_error") -> str:
 def error_text_of(exc: BaseException) -> str:
     msg = getattr(exc, "message", None)
     return str(msg if isinstance(msg, str) and msg else exc) or type(exc).__name__
+
+
+_SHUTDOWN_DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+
+
+def past_shutdown(spec: Any, today: Optional[date] = None) -> bool:
+    """0125's model_past_shutdown, for the one row this worker reads itself (an operator preview). Fails closed as the SQL does: a
+    ``shutdown`` that is not an object, or a date that is not YYYY-MM-DD, reads as past. No ``shutdown`` is not past.
+    tests/security/test_sec_creative_model_recheck.py runs both on one corpus."""
+    if not isinstance(spec, Mapping) or "shutdown" not in spec:
+        return False
+    s = spec.get("shutdown")
+    on = s.get("on") if isinstance(s, Mapping) else None
+    if not isinstance(on, str) or not _SHUTDOWN_DATE_RE.match(on):
+        return True
+    try:
+        day = date.fromisoformat(on)
+    except ValueError:
+        return True
+    return day <= (today or datetime.now(timezone.utc).date())
+
+
+def not_on_sale(queue, model: str, capability: str, org_id: str, *, previews: bool) -> Optional[Tuple[str, str]]:
+    """Asked right before a paid submit of a job queued earlier (module doc, "Still on sale"). None: the model may be sent. Otherwise
+    ``(code, message)``: it must not be, and the caller fails the job with that code. Raises :class:`CreativeUnavailable` when the
+    database's answer cannot be read, so the caller sends nothing and leaves the job (unknown is not "available"). ``previews``: the
+    caller sells operator previews (the Studio's creative jobs do; Film Studio refuses them at start, 0166's film_check_model)."""
+    sold = queue.on_sale(capability)
+    if not isinstance(sold, list):
+        raise CreativeUnavailable("sellable_models: unreadable answer")
+    if model in sold:
+        return None
+    if previews and credit_rules.is_exempt(org_id) and operator_preview_runnable(queue.registry_row(model), capability):
+        # The switch is the one rule of 0124 a preview keeps; ask it here too rather than lean on advance alone.
+        if queue.model_switched_on(model) is not False:
+            return None
+    try:
+        switched_on = queue.model_switched_on(model)
+    except CreativeUnavailable:
+        switched_on = None  # the job is refused either way; only the word is less precise
+    if switched_on is False:
+        return ("model_temporarily_off",
+                "this model was switched off before the job was sent to the vendor; nothing was submitted and the credits were released")
+    return ("model_not_available",
+            f"{model} is no longer on sale for {capability} (retired, hidden, unpriced or past its shutdown date since the job was "
+            "queued); nothing was submitted and the credits were released")
+
+
+def operator_preview_runnable(row: Any, capability: str, today: Optional[date] = None) -> bool:
+    """Whether a model NOT in sellable_models may still be sent for a job of the operator's exempt organization: 0139's rule (hidden,
+    never disabled; spec.operator_preview the JSON true) with creative_price's other row checks (probed, the capability listed, not past
+    its shutdown date). The owner's switch is asked separately (model_switched_on) and again by advance 'submitting'."""
+    if not isinstance(row, Mapping):
+        return False
+    spec = row.get("spec")
+    caps = row.get("capabilities")
+    return (row.get("availability") == "hidden"
+            and isinstance(spec, Mapping) and spec.get("operator_preview") is True
+            and bool(row.get("verified_at"))
+            and isinstance(caps, list) and capability in caps
+            and not past_shutdown(spec, today))
 
 
 def describe_files(files: Sequence[Path]) -> List[dict]:
@@ -682,7 +871,9 @@ class CreativeWorker:
             adapter = self.resolve_adapter(model)
             if adapter is None:
                 raise _Refused("adapter_missing", f"this worker has no adapter for {model}")
-            return self._poll(job, request, adapter, str(task_id), beat)
+            # The worker that submitted it left without the call's row (it leaves a stored task for the next claim to poll): this
+            # claim's outcome is the call's one row.
+            return self._poll(job, request, adapter, str(task_id), beat, VendorCall())
 
         if request.capability in SOURCE_CAPABILITIES:
             # Before 'submitting': a refusal here costs nobody anything.
@@ -703,6 +894,11 @@ class CreativeWorker:
                 request = replace(base, model=model)
                 if cs.wants_style(request.capability, request.params):
                     request = self._style(request, adapter)
+                # The last look before the paid call (module doc, "Still on sale"): a model retired or hidden since the job was queued
+                # is not sent. A refusal here proves nothing about the vendor, so it is never a failover (not_accepted stays False).
+                gone = not_on_sale(self.queue, model, request.capability, request.org_id, previews=True)
+                if gone is not None:
+                    raise _Refused(*gone)
                 if not self.queue.advance(job_id, self.worker_id, "submitting"):
                     logger.warning("job %s: not ours to submit any more; leaving it", job_id)
                     return "left"
@@ -719,13 +915,22 @@ class CreativeWorker:
                 logger.info("job %s: %s answered %s; the database moved the job to %s", job_id, model, r.code,
                             moved["model"])
                 model, base, failovers = moved["model"], replace(base, params=moved["params"]), failovers + 1
+        # The vendor answered: from here the call has one cost row, whatever the outcome.
+        call = VendorCall()
         if not task_id or not isinstance(task_id, str):
+            record_unfinished_call(self.queue, adapter, request, call)
             raise _Refused("bad_response", "the provider accepted the job without a task id")
-        if not self.queue.advance(job_id, self.worker_id, "submitted", task_id,
-                                  {"model": model}):
+        try:
+            stored = self.queue.advance(job_id, self.worker_id, "submitted", task_id, {"model": model})
+        except BaseException:
+            # No task id stored: no later claim polls this call (the stale sweep fails the job), so its row is written here.
+            record_unfinished_call(self.queue, adapter, request, call)
+            raise
+        if not stored:
             logger.error("job %s: the task id could not be stored; leaving it", job_id)
+            record_unfinished_call(self.queue, adapter, request, call)
             return "left"
-        return self._poll(job, request, adapter, str(task_id), beat)
+        return self._poll(job, request, adapter, str(task_id), beat, call)
 
     # -- a region edit (migration 0126) ----------------------------------------
 
@@ -1062,7 +1267,20 @@ class CreativeWorker:
             raise _Refused("hold_below_quote", "the credit hold is smaller than the quote")
 
     def _poll(self, job: Mapping[str, Any], request: GenerationRequest,
-              adapter: CreativeAdapter, task_id: str, beat: _Heartbeat) -> str:
+              adapter: CreativeAdapter, task_id: str, beat: _Heartbeat, call: VendorCall) -> str:
+        """Poll the stored task to its end, and give the call its one cost row. A job that ends here (refused, failed, timed
+        out, an unexpected error) records it here; one left with its task id stored (the database out of reach, the job no longer
+        this worker's, the worker stopping) does not, because the claim that polls the same task next writes it."""
+        try:
+            return self._poll_task(job, request, adapter, task_id, beat, call)
+        except CreativeUnavailable:
+            raise
+        except Exception:
+            record_unfinished_call(self.queue, adapter, request, call)
+            raise
+
+    def _poll_task(self, job: Mapping[str, Any], request: GenerationRequest,
+                   adapter: CreativeAdapter, task_id: str, beat: _Heartbeat, call: VendorCall) -> str:
         job_id = request.job_id
         job_dir = self.out_dir / job_id
         deadline = self.clock() + self.max_poll_seconds
@@ -1085,8 +1303,9 @@ class CreativeWorker:
                     raise _Refused(code, error_text_of(e)) from None
                 result = ProviderPoll(PENDING)
             if result.state == SUCCEEDED:
-                return self._store(job, request, result)
+                return self._store(job, request, result, call)
             if result.state == FAILED:
+                record_unfinished_call(self.queue, adapter, request, call, result.usage)
                 raise _Refused(result.error_code if result.error_code and _CODE_RE.match(result.error_code)
                                else "provider_error", result.error or "the provider failed the task")
             if self.clock() >= deadline:
@@ -1094,21 +1313,24 @@ class CreativeWorker:
                                f"the provider did not finish within {int(self.max_poll_seconds)} s")
             self.sleep(self.poll_seconds)
 
-    def _store(self, job: Mapping[str, Any], request: GenerationRequest, result: ProviderPoll) -> str:
+    def _store(self, job: Mapping[str, Any], request: GenerationRequest, result: ProviderPoll, call: VendorCall) -> str:
         job_id = request.job_id
         files = [Path(f) for f in result.files]
         if not files or not all(f.is_file() and f.stat().st_size > 0 for f in files):
-            # Nothing usable came back: charging for it would be charging for nothing.
+            # Nothing usable came back: charging for it would be charging for nothing. The call is still the vendor's
+            # (a failed_call row, written by _poll).
             raise _Refused("bad_response", "the provider reported success without an output file")
+        # A file came back: the vendor's own usage is this call's row, even if storing or settling it fails below.
+        call.delivered = result.usage
         if request.capability in TEXT_CAPABILITIES:
-            return self._store_text(request, files, result)
+            return self._store_text(request, files, result, call)
         if request.capability in CAPTION_CAPABILITIES:
-            return self._store_captions(request, files, result)
+            return self._store_captions(request, files, result, call)
         if not self.queue.advance(job_id, self.worker_id, "processing"):
             logger.warning("job %s: no longer this worker's; its outputs are not recorded here", job_id)
             return "left"
         described = describe_files(files)
-        asset_ids = self._to_library(request, files, result.usage)
+        asset_ids = self._to_library(request, files, result.usage, getattr(result, "provenance", None))
         out = {"files": described, "storage": "library" if asset_ids else "worker"}
         if asset_ids:
             out["asset_ids"] = asset_ids
@@ -1118,15 +1340,11 @@ class CreativeWorker:
         if asset_ids:
             # The library holds the outputs now; the job folder is scratch.
             shutil.rmtree(self.out_dir / job_id, ignore_errors=True)
-        if result.usage is not None:
-            try:
-                self.queue.record_cost(job_id, result.usage)
-            except Exception as e:  # reporting only; the job is settled
-                logger.warning("job %s: provider cost not recorded (%s)", job_id, type(e).__name__)
+        record_call_cost(self.queue, job_id, result.usage, call)  # reporting only; the job is settled
         status = (done or {}).get("status") if isinstance(done, dict) else None
         return f"completed:{len(described)}" if status in (None, "completed") else str(status)
 
-    def _store_text(self, request: GenerationRequest, files: Sequence[Path], result: ProviderPoll) -> str:
+    def _store_text(self, request: GenerationRequest, files: Sequence[Path], result: ProviderPoll, call: VendorCall) -> str:
         """A description: the text kept on the job row (module doc). The
         provider's file is scratch; nothing goes to the library."""
         job_id = request.job_id
@@ -1146,15 +1364,11 @@ class CreativeWorker:
             out["width"], out["height"] = request.source_size
         done = self.queue.finish(job_id, self.worker_id, True, result=out)
         shutil.rmtree(self.out_dir / job_id, ignore_errors=True)
-        if result.usage is not None:
-            try:
-                self.queue.record_cost(job_id, result.usage)
-            except Exception as e:  # reporting only; the job is settled
-                logger.warning("job %s: provider cost not recorded (%s)", job_id, type(e).__name__)
+        record_call_cost(self.queue, job_id, result.usage, call)  # reporting only; the job is settled
         status = (done or {}).get("status") if isinstance(done, dict) else None
         return "completed:text" if status in (None, "completed") else str(status)
 
-    def _store_captions(self, request: GenerationRequest, files: Sequence[Path], result: ProviderPoll) -> str:
+    def _store_captions(self, request: GenerationRequest, files: Sequence[Path], result: ProviderPoll, call: VendorCall) -> str:
         """Captions: the cleaned words kept as a caption track (module doc).
         The provider's file is scratch; nothing goes to the library."""
         import json  # noqa: PLC0415 — one call site
@@ -1191,24 +1405,27 @@ class CreativeWorker:
                "storage": "table"}
         done = self.queue.finish(job_id, self.worker_id, True, result=out)
         shutil.rmtree(self.out_dir / job_id, ignore_errors=True)
-        if result.usage is not None:
-            try:
-                self.queue.record_cost(job_id, result.usage)
-            except Exception as e:  # reporting only; the job is settled
-                logger.warning("job %s: provider cost not recorded (%s)", job_id, type(e).__name__)
+        record_call_cost(self.queue, job_id, result.usage, call)  # reporting only; the job is settled
         status = (done or {}).get("status") if isinstance(done, dict) else None
         return "completed:captions" if status in (None, "completed") else str(status)
 
     def _to_library(self, request: GenerationRequest, files: Sequence[Path],
-                    usage: Optional[ProviderUsage]) -> List[str]:
+                    usage: Optional[ProviderUsage], said: Optional[Mapping[str, Any]] = None) -> List[str]:
         """Each output as a library asset of the job's organization, attached
         to the job. [] when there is no library or it could not take them —
         the job still completes (its files stay in the worker's folder)."""
         if self.library is None:
             return []
         source = str(request.params.get("source_asset_id") or "").lower() or None
-        provenance = {"job_id": request.job_id, "capability": request.capability, "model": request.model,
-                      "rights": "generated_for_org"}
+        # BR-L-208: an adapter may state only ADAPTER_PROVENANCE_KEYS (a watermark its maker documents, never a key SQL reads as
+        # authority: provider, origin, scan_id, job_id, film_take_id, source_asset_id ...), as scalars, strings capped so the row stays
+        # far under 0038's 16 KB CHECK. The worker's own keys are applied after it, so they always win.
+        provenance = {k: (v[:ADAPTER_PROVENANCE_MAX_CHARS] if isinstance(v, str) else v)
+                      for k, v in (said or {}).items()
+                      if k in ADAPTER_PROVENANCE_KEYS and isinstance(v, (bool, str, int, float))
+                      and not (isinstance(v, float) and not math.isfinite(v))}
+        provenance.update({"job_id": request.job_id, "capability": request.capability, "model": request.model,
+                           "rights": "generated_for_org"})
         if usage is not None and usage.provider:
             provenance["provider"] = usage.provider
         if source:
