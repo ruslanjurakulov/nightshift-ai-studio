@@ -4,7 +4,7 @@ import { creativeSession } from "@/lib/server/creative";
 import { requireSameOrigin } from "@/lib/server/same-origin";
 import { parseJsonCapped } from "@/lib/server/json-body";
 import { blockedModelsHere, geoRefusal } from "@/lib/server/geo";
-import { missingWords, quoteAround } from "@/lib/creative/route-around";
+import { missingWords, quoteAround, wordsNotTaken } from "@/lib/creative/route-around";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +38,9 @@ export const POST = requireSameOrigin(async function POST(request: Request) {
   if (!parsed.ok) return NextResponse.json(parsed.result.body, { status: parsed.result.status });
   const named = parsed.input.mode === "exact" && parsed.input.model ? geoRefusal(parsed.input.model, request.headers) : null;
   if (named) return NextResponse.json(named.body, { status: named.status });
+  // No price for words the tool would refuse after the press (picture upscale takes none), in every mode.
+  const unworded = wordsNotTaken(parsed.input.capability, parsed.input.params);
+  if (unworded) return NextResponse.json(unworded.body, { status: unworded.status });
   if (parsed.input.mode === "exact") {
     const words = await missingWords(session.db, parsed.input.capability, parsed.input.model, parsed.input.params);
     if (words) return NextResponse.json(words.body, { status: words.status });

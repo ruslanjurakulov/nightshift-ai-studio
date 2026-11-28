@@ -15,7 +15,6 @@
 import {
   BILLED_PROVIDERS,
   billingIdFor,
-  daysLeft,
   isTracked,
   providerBurn,
   providerLedger,
@@ -32,6 +31,7 @@ import {
   type StudioCostRow,
   type TopupRow,
 } from "@/lib/billing";
+import { daysLeft, runsOutAt } from "@/lib/stats";
 
 const DAY = 86_400_000;
 /** Below this many days at the 7-day pace a provider is "low". */
@@ -422,8 +422,6 @@ export function providerRunways(x: RunwayData): ProviderRunway[] {
   return out.sort((a, b) => order[a.status] - order[b.status] || (b.usd7d ?? -1) - (a.usd7d ?? -1) || a.name.localeCompare(b.name));
 }
 
-/** Days left at an expected volume: `share` of the last 7 days' daily spend (1 = the same, 2 = twice as much). */
-export function runsOutAt(leftUsd: number | null, burn7d: number | null, share: number): number | "never" | null {
-  if (burn7d === null || !(share >= 0)) return null;
-  return daysLeft(leftUsd, burn7d * share);
-}
+// runsOutAt moved to lib/stats.ts: the owner's runway slider (a client component) calls it, and importing it from here
+// shipped lib/billing.ts's vendor table into that chunk. Re-exported for the server code and tests that read it here.
+export { runsOutAt };

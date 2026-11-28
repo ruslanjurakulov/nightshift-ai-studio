@@ -177,6 +177,13 @@
           "uniqueItems": true,
           "items": {"type": "string", "pattern": "^[A-Z]{2}$"}
         },
+        "available_countries": {
+          "description": "For a vendor whose terms are an ALLOW-list (Google: use only 'within an available region'), the vendor's own list, as ISO 3166-1 alpha-2 codes plus XK (docs/GEO_BLOCK.md). blocked_countries stays its complement in ISO; this list is what the database's country gate (migration 0230) asks, so a code on neither list (a placeholder such as EU, or no country at all) is refused as unverified instead of allowed. Needs blocked_countries and shares no code with it; every google row carries it. command-center/lib/geo/blocked.ts GOOGLE_AVAILABLE_REGIONS is the same list (a test compares them).",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Z]{2}$"}
+        },
         "requires_acknowledgement": {
           "description": "The rights acknowledgement kinds a job of this model needs for each input it is given (migration 0174, docs/RIGHTS_ACKNOWLEDGEMENT.md): likeness_photo (a real person's face in an uploaded image or video), voice_clone (a real person's voice), third_party_content (copyrighted material the person owns or licensed). The database refuses the job (acknowledgement_required) until the person acknowledged each input at the current text version. Absent or empty: nothing is asked.",
           "type": "array",

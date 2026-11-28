@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { CreditCard, ExternalLink, Loader2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
-import { planTopups } from "@/lib/billing";
+import { planTopups } from "@/lib/topup-plan";
 import { formatUsdAmount } from "@/lib/number-format";
 import { ownerDateFull } from "@/lib/owner-time";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
@@ -148,8 +148,8 @@ export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested:
         />
       </label>
       <div className="g5-actions">
-        {p.billingUrl ? (
-          <a href={p.billingUrl} target="_blank" rel="noopener noreferrer" className="btn-quiet">
+        {p.payUrl ? (
+          <a href={p.payUrl} target="_blank" rel="noopener noreferrer" className="btn-quiet">
             {fmt(t.billing.payOpen, { name: p.name })}
             <ExternalLink className="size-4" aria-hidden />
           </a>
@@ -200,7 +200,7 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
   const [step, setStep] = useState<number | null>(null);
   // The walk is a copy taken when it starts: changing the horizon or ticking a
   // provider mid-way must not shift which provider and amount the next step records.
-  const [walk, setWalk] = useState<{ id: string; name: string; billingUrl: string | null; amount: number }[]>([]);
+  const [walk, setWalk] = useState<{ id: string; name: string; payUrl: string | null; amount: number }[]>([]);
   const [paidCount, setPaidCount] = useState(0);
   const [busy, setBusy] = useState(false);
 
@@ -367,7 +367,7 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
           type="button"
           disabled={queue.length === 0}
           onClick={() => {
-            setWalk(queue.map((p) => ({ id: p.id, name: p.name, billingUrl: p.billingUrl, amount: lineOf.get(p.id)?.amount ?? 0 })));
+            setWalk(queue.map((p) => ({ id: p.id, name: p.name, payUrl: p.payUrl, amount: lineOf.get(p.id)?.amount ?? 0 })));
             setPaidCount(0);
             setStep(0);
           }}
@@ -383,8 +383,8 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
           </p>
           <p className="g5-note">{fmt(t.billing.payCards, { name: current.name })}</p>
           <div className="g5-actions">
-            {current.billingUrl ? (
-              <a href={current.billingUrl} target="_blank" rel="noopener noreferrer" className="btn-primary">
+            {current.payUrl ? (
+              <a href={current.payUrl} target="_blank" rel="noopener noreferrer" className="btn-primary">
                 {fmt(t.billing.payOpen, { name: current.name })}
                 <ExternalLink className="size-4" aria-hidden />
               </a>

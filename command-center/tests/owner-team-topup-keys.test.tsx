@@ -165,7 +165,7 @@ describe("PayPanel (record a provider payment)", () => {
   const provider: ProviderView = {
     id: "elevenlabs",
     name: "ElevenLabs",
-    billingUrl: "https://elevenlabs.io/billing",
+    payUrl: "https://elevenlabs.io/billing",
     unitLabel: "characters",
     keySet: true,
     price: null,
@@ -333,7 +333,7 @@ describe("ProvidersBoard (replace a key)", () => {
 
 describe("BulkPay (pay all providers)", () => {
   const base = {
-    billingUrl: "https://x.test",
+    payUrl: "https://x.test",
     unitLabel: "u",
     keySet: true,
     price: 1,

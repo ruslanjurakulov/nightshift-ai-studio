@@ -24,7 +24,8 @@
  * Python twin for pricing work from a terminal is tools/unit_economics.py.
  */
 
-import { percentile, type CostRowLite } from "@/lib/billing";
+import type { CostRowLite } from "@/lib/billing";
+import { percentile } from "@/lib/stats";
 
 /** One `video_costs` row as this module needs it. */
 export interface LedgerRow extends CostRowLite {

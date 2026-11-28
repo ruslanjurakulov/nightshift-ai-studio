@@ -59,7 +59,7 @@ export function improvePromptMax(tool: ImproveStudioTool): number {
 
 /**
  * Whether the tool is asked by words — the same rule the Studio's box follows (lib/creative/studio promptRule):
- * "required" (edit by prompt), "optional" (upscale, animate) or "none" (cut out, the video and voice tools, captions).
+ * "required" (edit by prompt), "optional" (animate) or "none" (cut out, upscale, the video and voice tools, captions).
  */
 export function improveWords(tool: ImproveTool): "required" | "optional" | "none" {
   return isStudioTool(tool) ? promptRule(tool) : "none";

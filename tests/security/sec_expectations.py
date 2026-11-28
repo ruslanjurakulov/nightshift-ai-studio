@@ -868,3 +868,9 @@ sec_film_resume_0215.extend(TABLES, FUNCTIONS)
 # is creative_price's internal reader: no API role may call it (the schedule's future rows are the owner's plans).
 TABLES.update({"credit_price_schedule": Service()})
 FUNCTIONS.update({"credits_per_unit_now": SERVICE})
+
+# Migration 0230 (the country gate reads an allow-list vendor's own list, BR-S6-04): no table, no new function; 0208's trigger
+# function is replaced in place. tests/security/sec_geo_allowlist_0230.py
+import sec_geo_allowlist_0230  # noqa: E402
+
+sec_geo_allowlist_0230.extend(TABLES, FUNCTIONS)
