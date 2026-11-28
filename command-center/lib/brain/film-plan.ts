@@ -11,12 +11,13 @@
  * the cap check is the chat's own (`plan_over_cap`), and the storyboard adds up to the project's target_seconds by construction
  * (G1). The model writes only the words: titles, beats, characters, places.
  *
- * What that check does NOT promise: it reads today's messages left, it reserves none. A plan does not stop halfway for the cap
- * unless other chats or plans use today's messages meanwhile (Breach BR-FILM-03). And one plan at a time is per PERSON here (the
- * route checks all of the person's conversations for the project), not per project: two editors pressing on the same empty project
- * within ~5 min: one plan is superseded, its turns are spent, the project is never double-written (BR-FILM-02; closed by migration
- * 0232 later). The project's reference pictures and refs are not used by the writer yet: it reads the title, the source text
- * (whole, up to SOURCE_MAX code points), the language, the aspect and the length.
+ * That check is a read, said before the press. The press itself takes migration 0232's film lease (lib/server/brain/film-lease):
+ * one plan per PROJECT, whoever presses, with the worst case reserved under the workspace's cap lock, so a plan that begins can
+ * finish (Breach BR-FILM-02/03). Before 0232 is applied the read is all there is: a plan may stop halfway for the cap when other chats
+ * or plans use today's messages meanwhile, and one plan at a time is per PERSON (the route checks all of the person's conversations
+ * for the project): two editors pressing on the same empty project within ~5 min: one plan is superseded, its turns are spent, the
+ * project is never double-written. The project's reference pictures and refs are not used by the writer yet: it reads the title,
+ * the source text (whole, up to SOURCE_MAX code points), the language, the aspect and the length.
  */
 
 import { CAP, FILM, extractJson, arr, filmLength, obj, plain, readScenario, unsafeText, type BrainSlots, type Scenario } from "@/lib/brain/logic";
@@ -74,6 +75,18 @@ function skeleton(target: number, chapters: { id: string; seconds: number }[]): 
 }
 
 export interface FilmPlanTurns { about: number; at_most: number; windows: number }
+
+/** The most turns migration 0232 lets any plan of a film reserve, whatever its length. */
+export const FILM_LEASE_MAX_TURNS = 15;
+
+/**
+ * The most turns 0232 lets a plan of a film this long reserve: the TypeScript twin of ai_chat_film_plan_max_turns
+ * (least(15, 1 + 2 x ceil(t / 24))). The database refuses a bigger number, so both routes' worst cases must stay under it
+ * (tests/brain-film-lease-bound.test.ts runs both planners over every length and clip shape against it).
+ */
+export function filmLeaseMaxTurns(targetSeconds: number): number {
+  return Math.min(FILM_LEASE_MAX_TURNS, 1 + 2 * Math.ceil(targetSeconds / 24));
+}
 
 /**
  * How many of today's messages writing this project's storyboard takes: the outline call, then one call per window, each window
