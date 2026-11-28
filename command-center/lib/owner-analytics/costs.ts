@@ -195,7 +195,7 @@ export interface MonthResult {
   operating: number | null;
 }
 
-function monthsOf(p: Pick<Period, "startDay" | "endDay">): string[] {
+export function monthsOf(p: Pick<Period, "startDay" | "endDay">): string[] {
   const out: string[] = [];
   let y = Number(p.startDay.slice(0, 4));
   let m = Number(p.startDay.slice(5, 7));
