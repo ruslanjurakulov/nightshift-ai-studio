@@ -190,3 +190,43 @@ describe("on the shared Radix Dialog (S5 dialogs 2/2)", () => {
     expect(within(sheet).getAllByRole("button").map((b) => b.textContent)).toEqual([en.ux.confirmCancel, "Remove"]);
   });
 });
+
+describe("a replaced question never receives the old one's answer (Lens on S5 dialogs 2/2)", () => {
+  it("a run that finishes after a second ask replaced its question does not answer the second one", async () => {
+    // What would break: the first ask settles as "no" when a second ask arrives, but its run was still in flight; when it
+    // resolved, it answered the SECOND question "yes" — a confirmation nobody gave.
+    let finishFirst: (v: boolean) => void = () => {};
+    const first: ConfirmOptions = { title: "first", message: "m1", confirmLabel: "Go1", run: () => new Promise<boolean>((r) => (finishFirst = r)) };
+    const second: ConfirmOptions = { title: "second", message: "m2", confirmLabel: "Go2" };
+    const answers: Array<[string, boolean]> = [];
+    function Two() {
+      const { confirm, dialog } = useConfirm();
+      return (
+        <>
+          <button type="button" onClick={async () => answers.push(["first", await confirm(first)])}>
+            ask1
+          </button>
+          <button type="button" onClick={async () => answers.push(["second", await confirm(second)])}>
+            ask2
+          </button>
+          {dialog}
+        </>
+      );
+    }
+    render(<Two />);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "ask1" })));
+    await act(async () => within(screen.getByRole("alertdialog", { name: "first" })).getByRole("button", { name: "Go1" }).click());
+    // A second ask arrives while the first runs (a keyboard command or a timer; the page behind is inert to a pointer).
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "ask2", hidden: true })));
+    expect(answers).toEqual([["first", false]]);
+    await act(async () => finishFirst(true));
+    // The second question is still open and unanswered.
+    expect(screen.getByRole("alertdialog", { name: "second" })).toBeTruthy();
+    expect(answers).toEqual([["first", false]]);
+  });
+
+  it("sits at the bottom of a phone, in thumb reach: the shared Sheet's auto side", async () => {
+    await open({ title: "t", message: "m", confirmLabel: "Go" });
+    expect(screen.getByRole("alertdialog").getAttribute("data-side")).toBe("auto");
+  });
+});

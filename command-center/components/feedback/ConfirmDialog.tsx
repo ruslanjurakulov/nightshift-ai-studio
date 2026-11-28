@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { typedMatches } from "@/lib/confirm-tier";
 import { useToast } from "@/components/feedback/ToastProvider";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/Dialog";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/Sheet";
 
 export interface ConfirmDetail {
   label: string;
@@ -58,9 +58,10 @@ export interface ConfirmOptions {
  *
  * Focus moves to Cancel on open, so a stray Enter backs out rather than
  * destroying something; Tab is kept inside; Escape and the scrim cancel; and
- * focus returns to whatever opened it. The shell is the shared Dialog
- * (components/ui, Radix) with the alertdialog role; while the work runs,
- * neither Escape nor a press outside can close it.
+ * focus returns to whatever opened it. The shell is the shared Sheet
+ * (components/ui, Radix) with the alertdialog role: at the bottom of a phone,
+ * in thumb reach, and centred from 640px. While the work runs, neither Escape
+ * nor a press outside can close it.
  */
 export function ConfirmDialog({
   open,
@@ -90,13 +91,24 @@ export function ConfirmDialog({
     };
   }, []);
 
-  // Each new question starts clean.
+  // The question on screen now. A run that finishes after its question was replaced (a second ask settles the first as
+  // "no") must not answer the new one: its yes was given to a different question.
+  const asking = useRef<ConfirmOptions | null>(options);
+  asking.current = options;
+
+  // Each new question starts clean, with the safe key focused and the sheet at its top again.
   useEffect(() => {
     lock.current = false;
     setBusy(false);
     setFailure(null);
     setTyped("");
     setAcknowledged(false);
+    if (open && options) {
+      cancelRef.current?.focus({ preventScroll: true });
+      if (panel.current) panel.current.scrollTop = 0;
+    }
+    // Only a new question resets; `open` follows it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options]);
 
   // A failed attempt disabled the keys for a moment: put focus back on the safe one.
@@ -114,6 +126,7 @@ export function ConfirmDialog({
       onResolve(true);
       return;
     }
+    const question = options;
     lock.current = true;
     setBusy(true);
     setFailure(null);
@@ -125,7 +138,7 @@ export function ConfirmDialog({
     } catch {
       problem = t.ownerSafety.actionFailed;
     }
-    if (!alive.current) return;
+    if (!alive.current || asking.current !== question) return;
     if (problem === null) {
       onResolve(true);
       return;
@@ -148,12 +161,14 @@ export function ConfirmDialog({
   const wordOk = (!needsWord || matches(options.typeToConfirm ?? "")) && (!options.acknowledge || acknowledged);
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && cancel()}>
-      <DialogContent
+    <Sheet open={open} onOpenChange={(o) => !o && cancel()}>
+      <SheetContent
         ref={panel}
         role="alertdialog"
+        side="auto"
         closeLabel={null}
-        className="block max-h-[calc(100dvh-2rem)] w-[min(100%-2rem,28rem)] overflow-y-auto p-5"
+        className="block max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+        style={{ "--ui-sheet-w": "28rem" } as CSSProperties}
         onOpenAutoFocus={(e) => {
           // Focus the safe key WITHOUT scrolling to it: on a long sheet (a post's three texts) the key is at the bottom, and
           // focusing it the usual way opened the sheet scrolled down past the words and "this goes public". Start at the top.
@@ -176,12 +191,12 @@ export function ConfirmDialog({
         <div className="flex items-start gap-3">
           <AlertTriangle aria-hidden className="mt-0.5 size-5 shrink-0" style={{ color: danger ? "var(--color-fail)" : "var(--color-warn)" }} />
           <div className="min-w-0 flex-1">
-            <DialogTitle className="break-words text-base font-semibold leading-snug text-[var(--ds-text)]">
+            <SheetTitle className="break-words text-base font-semibold leading-snug text-[var(--color-fg)]">
               {options.title ?? t.ux.confirmTitle}
-            </DialogTitle>
-            <DialogDescription className="mt-1.5 break-words text-sm leading-relaxed text-[var(--ds-muted)]">
+            </SheetTitle>
+            <SheetDescription className="mt-1.5 break-words text-sm leading-relaxed text-[var(--color-muted)]">
               {options.message}
-            </DialogDescription>
+            </SheetDescription>
           </div>
         </div>
         {options.details && options.details.length > 0 && (
@@ -270,8 +285,8 @@ export function ConfirmDialog({
             {busy ? t.ownerSafety.confirmWorking : options.confirmLabel}
           </button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
 
