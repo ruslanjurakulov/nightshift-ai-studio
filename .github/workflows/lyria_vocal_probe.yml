@@ -41,12 +41,19 @@ jobs:
 
     steps:
       # Before anything is installed or fetched: a run without the exact word stops here and spends nothing.
+      # A re-run ("Re-run all jobs" / "Re-run failed jobs") replays the first attempt's inputs, so it would spend again on a
+      # word typed for another run. Only a first attempt proceeds.
       - name: Confirm the spend
         env:
           CONFIRM: ${{ inputs.confirm }}
           COUNT: ${{ inputs.count }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -eu
+          if [[ "$RUN_ATTEMPT" != "1" ]]; then
+            echo "::error::this is re-run attempt $RUN_ATTEMPT of an earlier run: start a new run and type the confirm word again; nothing was called"
+            exit 1
+          fi
           if [[ "$CONFIRM" != "spend-5-lyria-calls" ]]; then
             echo "::error::confirm must be exactly spend-5-lyria-calls; nothing was called"
             exit 1
@@ -77,7 +84,7 @@ jobs:
           key: vocal-measure-weights-${{ hashFiles('tools/vocal_activity.py') }}
 
       - name: Install the measurement requirements
-        run: pip install -r requirements-measure.txt
+        run: pip install --require-hashes -r requirements-measure.txt
 
       - name: Fetch and verify the weights
         run: python tools/vocal_activity.py --fetch-only
@@ -97,25 +104,34 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Every row goes to the JSONL file the moment it exists (the tool flushes and fsyncs it), and a call_started line
+      # goes there BEFORE each request: a cancelled or failed job still leaves every call it paid for.
       - name: Probe
+        id: probe
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           COUNT: ${{ inputs.count }}
         run: |
+          set -euo pipefail
+          python tools/lyria_vocal_probe.py --confirm spend-5-lyria-calls --count "$COUNT" \
+            --jsonl "$RUNNER_TEMP/lyria-samples.jsonl" | tee "$RUNNER_TEMP/lyria-probe.log"
+
+      # Runs whatever happened above (failure, cancel), from the file alone.
+      - name: Summary
+        if: always()
+        run: |
           set -eu
           out="$RUNNER_TEMP/lyria-samples.jsonl"
-          set +e
-          python tools/lyria_vocal_probe.py --confirm spend-5-lyria-calls --count "$COUNT" > "$out"
-          rc=$?
-          set -e
-          cat "$out"
+          if [[ ! -s "$out" ]]; then
+            echo "### Lyria vocal probe: no paid call was started" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           {
-            echo "### Lyria vocal probe: $(grep -c . "$out" || true) paid call(s)"
+            echo "### Lyria vocal probe"
             echo
             echo "Numbers only. No threshold is applied here: the decision rule is set from these numbers"
             echo "(docs/MEASUREMENT.md, Lyria vocal activity (S6))."
             echo
             python tools/lyria_vocal_probe.py --markdown "$out"
           } >> "$GITHUB_STEP_SUMMARY"
-          rm -f "$out"
-          exit "$rc"
+          rm -f "$out" "$RUNNER_TEMP/lyria-probe.log"

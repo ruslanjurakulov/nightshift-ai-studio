@@ -109,6 +109,15 @@ class NumbersTests(unittest.TestCase):
         u = r["umx_vocal_to_mix"]
         self.assertEqual((u["seconds"], u["silent_seconds"], u["p50_db"]), (0, 3, None))
 
+    def test_versions_are_read_from_what_is_installed(self):
+        from importlib import metadata
+
+        v = va.installed_versions()
+        self.assertEqual(set(v), set(va.MEASURED_WITH))
+        self.assertEqual(v["numpy"], metadata.version("numpy"))
+        with mock.patch.object(metadata, "version", side_effect=metadata.PackageNotFoundError("torch")):
+            self.assertEqual(set(va.installed_versions().values()), {"not installed"})
+
     def test_longest_run(self):
         self.assertEqual(va._longest_run([True, True, False, True, True, True, False]), 3)
 

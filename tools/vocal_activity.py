@@ -264,7 +264,7 @@ class TorchDetectors(Detectors):
         self._torch = torch
         torch.set_num_threads(max(1, os.cpu_count() or 1))
         self.load_s = {}
-        self.versions = {"torch": torch.__version__}
+        self.versions = installed_versions()
         umx_path = fetch(UMX_VOCALS, cache)
         cnn_path = fetch(PANNS_CNN14, cache)
         labels = fetch(PANNS_LABELS, cache)
@@ -273,7 +273,6 @@ class TorchDetectors(Detectors):
 
         t = time.perf_counter()
         try:
-            import openunmix
             from openunmix import utils as umx_utils
             from openunmix.model import OpenUnmix, Separator
 
@@ -296,7 +295,6 @@ class TorchDetectors(Detectors):
             self._separator = Separator(target_models={"vocals": target}, niter=1, residual=True, n_fft=4096, n_hop=1024,
                                         nb_channels=2, sample_rate=44100.0, wiener_win_len=300, filterbank="torch")
             self._separator.freeze()
-            self.versions["openunmix"] = getattr(openunmix, "__version__", "1.3.0")
         except MeasurementError:
             raise
         except Exception as e:
@@ -329,7 +327,6 @@ class TorchDetectors(Detectors):
                     raise MeasurementError("the Silero VAD model file's sha256 is not the pinned one")
                 self._silero = silero_vad.load_silero_vad(onnx=False)
                 self._silero_ts = silero_vad.get_speech_timestamps
-                self.versions["silero_vad"] = getattr(silero_vad, "__version__", "")
             except MeasurementError:
                 raise
             except Exception as e:
@@ -364,6 +361,23 @@ class TorchDetectors(Detectors):
             return float(sum(float(s["end"]) - float(s["start"]) for s in spans))
         except Exception as e:
             raise MeasurementError(f"Silero VAD failed ({type(e).__name__})") from None
+
+
+#: The distributions whose versions go into every result, read from what is INSTALLED (importlib.metadata), never from a
+#: module attribute or a default: a run on another torch must say so.
+MEASURED_WITH = ("torch", "torchaudio", "openunmix", "silero-vad", "numpy", "imageio-ffmpeg")
+
+
+def installed_versions() -> Dict[str, str]:
+    from importlib import metadata
+
+    out: Dict[str, str] = {}
+    for dist in MEASURED_WITH:
+        try:
+            out[dist] = metadata.version(dist)
+        except metadata.PackageNotFoundError:
+            out[dist] = "not installed"
+    return out
 
 
 def load_detectors(cache: Optional[Path] = None, *, silero: bool = True) -> Detectors:

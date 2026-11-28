@@ -26,6 +26,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from unittest import mock
+
 import yaml
 
 from modules.capabilities import build_adapter
@@ -73,6 +75,15 @@ class FakePost:
         return self.resp
 
 
+def rows(out):
+    """The sample rows of a probe's output (the call_started lines are the spend counter, not samples)."""
+    return [r for r in map(json.loads, out.splitlines()) if r.get("event") != "call_started"]
+
+
+def started(out):
+    return [r for r in map(json.loads, out.splitlines()) if r.get("event") == "call_started"]
+
+
 def fake_measure(seen):
     def m(path):
         seen.append(Path(path))
@@ -106,7 +117,7 @@ class BudgetTests(Case):
         many = probe.PROMPTS + probe.PROMPTS
         rc, out = self.run_probe(count=5, prompts=many)
         self.assertEqual(len(self.post.calls), 5)
-        self.assertEqual(len(out.splitlines()), 5)
+        self.assertEqual((len(rows(out)), len(started(out))), (5, 5))
         b = probe.CallBudget(5)
         for _ in range(5):
             b.spend()
@@ -121,16 +132,36 @@ class BudgetTests(Case):
         self.assertEqual(post.calls, [])
 
     def test_main_needs_the_confirm_word_and_refuses_six(self):
-        post_calls = []
-        err = io.StringIO()
         import contextlib
 
-        with contextlib.redirect_stderr(err):
+        from tools import vocal_activity
+
+        err = io.StringIO()
+        with mock.patch.object(probe, "_post", side_effect=AssertionError("POSTed")) as post, \
+                mock.patch.object(vocal_activity, "load_detectors", side_effect=AssertionError("models loaded")) as load, \
+                contextlib.redirect_stderr(err):
             self.assertEqual(probe.main(["--count", "1"], env=self.env, out=io.StringIO()), 2)
+            self.assertEqual(probe.main(["--count", "1", "--confirm", "yes"], env=self.env, out=io.StringIO()), 2)
             self.assertEqual(probe.main(["--count", "6", "--confirm", probe.CONFIRM], env=self.env, out=io.StringIO()), 2)
             self.assertEqual(probe.main(["--confirm", probe.CONFIRM], env={}, out=io.StringIO()), 2)
-        self.assertEqual(post_calls, [])
+        post.assert_not_called()
+        load.assert_not_called()
         self.assertEqual(probe.MAX_CALLS, 5)
+
+    def test_a_detector_that_does_not_load_is_a_clean_refusal_before_any_call(self):
+        import contextlib
+
+        from tools import vocal_activity
+
+        err = io.StringIO()
+        with mock.patch.object(probe, "_post", side_effect=AssertionError("POSTed")) as post, \
+                mock.patch.object(vocal_activity, "load_detectors",
+                                  side_effect=vocal_activity.MeasurementError("PANNs Cnn14 did not load")), \
+                contextlib.redirect_stderr(err):
+            self.assertEqual(probe.main(["--count", "1", "--confirm", probe.CONFIRM], env=self.env, out=io.StringIO()), 2)
+        post.assert_not_called()
+        self.assertIn("did not load", err.getvalue())
+        self.assertNotIn("Traceback", err.getvalue())
 
 
 class PublicLogTests(Case):
@@ -140,8 +171,7 @@ class PublicLogTests(Case):
         b64 = base64.b64encode(MP3).decode()
         for needle in ("marmalade", "unmistakable", "Verse", "Chorus", b64, b64[:40], KEY, KEY[:12]):
             self.assertNotIn(needle, out)
-        for line in out.splitlines():
-            row = json.loads(line)
+        for row in rows(out):
             self.assertTrue(row["has_text_block"])
             self.assertEqual(row["text_length"], len(LYRICS))
             self.assertEqual(row["text_lines"], 4)
@@ -156,9 +186,9 @@ class PublicLogTests(Case):
         rc, out = self.run_probe(count=1, post=post)
         self.assertEqual(rc, 1)
         self.assertNotIn("marmalade", out)
-        row = json.loads(out)
+        (row,) = rows(out)
         self.assertEqual(row["error"]["google_status"], "INVALID_ARGUMENT")
-        self.assertEqual(row["error"]["spend"], "unknown")
+        self.assertEqual(row["spend"], "unknown")
 
     def test_the_audio_files_are_deleted(self):
         self.run_probe(count=5)
@@ -177,7 +207,7 @@ class PublicLogTests(Case):
         rc, out = self.run_probe(count=1, measure=boom)
         self.assertFalse(seen[0].exists())
         self.assertEqual(list(self.tmp.iterdir()), [])
-        row = json.loads(out)
+        (row,) = rows(out)
         # A check that did not run is "measure_failed" with no numbers: never something that reads as "no vocals".
         self.assertEqual((row["ok"], row["measure"], row["error"]["kind"]), (False, None, "measure_failed"))
         self.assertNotIn("/some/where", out)
@@ -224,6 +254,117 @@ class RequestTests(Case):
         imported = {a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) for a in n.names}
         for name in ("GoogleLyriaAdapter", "build_adapter", "text_language", "_song_of", "_song"):
             self.assertNotIn(name, used | imported)
+
+
+class FailurePathTests(Case):
+    def test_a_transport_error_is_a_recorded_call_with_unknown_spend(self):
+        class Boom:
+            def __call__(self, *a):
+                raise TimeoutError("read timed out on https://generativelanguage.googleapis.com/?key=" + KEY)
+
+        rc, out = self.run_probe(count=1, post=Boom())
+        (row,) = rows(out)
+        self.assertEqual((row["ok"], row["error"], row["spend"]), (False, {"kind": "TimeoutError"}, "unknown"))
+        self.assertNotIn(KEY, out)
+        self.assertEqual(len(started(out)), 1)
+        self.assertEqual(rc, 1)
+
+    def test_a_completed_answer_without_audio(self):
+        body = answer()
+        body["steps"][0]["content"] = [c for c in body["steps"][0]["content"] if c["type"] != "audio"]
+        rc, out = self.run_probe(count=1, post=FakePost(FakeResp(200, body)))
+        (row,) = rows(out)
+        self.assertEqual((row["ok"], row["error"]["kind"], row["spend"]), (False, "no_audio", "likely"))
+        self.assertEqual(self.seen, [])
+
+    def test_bad_base64_and_an_oversize_answer_are_not_decoded(self):
+        for data in ("not base64!!", base64.b64encode(MP3).decode()[:-1]):
+            with self.subTest(data=data[:8]):
+                rc, out = self.run_probe(count=1, post=FakePost(FakeResp(200, answer(data=data))))
+                (row,) = rows(out)
+                self.assertEqual(row["error"]["kind"], "bad_base64_or_too_large")
+                self.assertNotIn(data, out)
+        with mock.patch.object(probe, "MAX_INLINE_BYTES", 1024), \
+                mock.patch.object(probe.base64, "b64decode", side_effect=AssertionError("decoded")):
+            rc, out = self.run_probe(count=1)
+        (row,) = rows(out)
+        self.assertEqual(row["error"]["kind"], "bad_base64_or_too_large")
+        self.assertEqual(self.seen, [])
+
+    def test_every_answered_row_says_whether_it_was_likely_billed(self):
+        body = answer()
+        body["status"] = "in_progress"
+        for resp, spend in ((FakeResp(200, answer()), "likely"), (FakeResp(200, body), "unknown"),
+                            (FakeResp(500, {"error": {"status": "INTERNAL"}}), "unknown")):
+            with self.subTest(spend=spend):
+                rc, out = self.run_probe(count=1, post=FakePost(resp))
+                self.assertEqual(rows(out)[0]["spend"], spend)
+
+    def test_only_known_media_types_are_echoed(self):
+        for mime, shown in (("audio/mpeg", "audio/mpeg"), ("audio/wav; rate=48000", "audio/wav"),
+                            ("audio/x-secret-lyric-marmalade", "other"), ("text/plain", "other")):
+            with self.subTest(mime=mime):
+                self.assertEqual(probe._mime({"mime_type": mime}), shown)
+
+    def test_a_run_stopped_after_spend_still_records_the_call_and_deletes_the_audio(self):
+        jsonl = self.tmp / "samples.jsonl"
+        seen = []
+
+        def cancelled(path):
+            seen.append(Path(path))
+            raise KeyboardInterrupt()      # what a cancel looks like from inside the call
+
+        out = io.StringIO()
+        with self.assertRaises(KeyboardInterrupt):
+            probe.run(5, env=self.env, out=out, post=FakePost(), measure=cancelled, jsonl=jsonl)
+        lines = [json.loads(x) for x in jsonl.read_text().splitlines()]
+        self.assertEqual(lines[0], {"event": "call_started", "prompt_id": "P1", "call": 1})
+        self.assertEqual(lines[1], {"prompt_id": "P1", "call": 1, "ok": False, "error": {"kind": "KeyboardInterrupt"},
+                                    "spend": "unknown"})
+        self.assertEqual(len(lines), 2)
+        self.assertFalse(seen[0].exists())
+        self.assertEqual([p.name for p in self.tmp.iterdir()], ["samples.jsonl"])
+        md = probe.markdown(jsonl.read_text().splitlines())
+        self.assertIn("Paid Lyria calls started: 1", md)
+
+    def test_the_transport_itself_being_interrupted_is_also_recorded(self):
+        jsonl = self.tmp / "samples.jsonl"
+
+        class Killed:
+            def __call__(self, *a):
+                raise probe.Terminated()
+
+        with self.assertRaises(probe.Terminated):
+            probe.run(5, env=self.env, out=io.StringIO(), post=Killed(), measure=lambda p: None, jsonl=jsonl)
+        lines = [json.loads(x) for x in jsonl.read_text().splitlines()]
+        self.assertEqual([x.get("event") for x in lines], ["call_started", None])
+        self.assertEqual((lines[1]["error"]["kind"], lines[1]["spend"]), ("Terminated", "unknown"))
+
+    def test_the_file_gets_each_row_as_it_happens_and_matches_stdout(self):
+        jsonl = self.tmp / "samples.jsonl"
+        out = io.StringIO()
+        probe.run(2, env=self.env, out=out, post=FakePost(), measure=fake_measure([]), jsonl=jsonl)
+        self.assertEqual(jsonl.read_text(), out.getvalue())
+        self.assertNotIn("marmalade", jsonl.read_text())
+        self.assertIn("Paid Lyria calls started: 2", probe.markdown(out.getvalue().splitlines()))
+
+
+class NotImportedByTheProductTests(unittest.TestCase):
+    def test_nothing_in_modules_or_main_imports_the_measurement_tools(self):
+        import ast
+
+        files = sorted((ROOT / "modules").rglob("*.py")) + [ROOT / "main.py"]
+        for f in files:
+            tree = ast.parse(f.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                names = []
+                if isinstance(node, ast.Import):
+                    names = [a.name for a in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    names = [node.module or ""] + [f"{node.module}.{a.name}" for a in node.names]
+                for n in names:
+                    for tool in ("tools.lyria_vocal_probe", "tools.vocal_activity", "tools.vendor_panns"):
+                        self.assertFalse(n == tool or n.startswith(tool + "."), f"{f.relative_to(ROOT)} imports {n}")
 
 
 # ── the product adapter is unchanged by this probe ─────────────────────────────────
@@ -278,6 +419,34 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("^[1-5]$", guard["run"])
         self.assertEqual(guard["env"]["CONFIRM"], "${{ inputs.confirm }}")
         self.assertEqual(probe.CONFIRM, "spend-5-lyria-calls")
+
+    def test_a_re_run_cannot_reuse_the_typed_word(self):
+        guard = workflow()["jobs"]["probe"]["steps"][0]
+        self.assertEqual(guard["env"]["RUN_ATTEMPT"], "${{ github.run_attempt }}")
+        self.assertIn('"$RUN_ATTEMPT" != "1"', guard["run"])
+        self.assertIn("start a new run and type the confirm word again", guard["run"])
+        self.assertLess(guard["run"].index("RUN_ATTEMPT"), guard["run"].index("exit 1"))
+
+    def test_the_rows_survive_a_failed_or_cancelled_probe(self):
+        steps = {s.get("name"): s for s in workflow()["jobs"]["probe"]["steps"]}
+        run = steps["Probe"]["run"]
+        self.assertIn("set -euo pipefail", run)
+        self.assertIn('--jsonl "$RUNNER_TEMP/lyria-samples.jsonl"', run)
+        self.assertIn("| tee", run)
+        summary = steps["Summary"]
+        self.assertEqual(summary["if"], "always()")
+        self.assertIn("--markdown", summary["run"])
+        self.assertIn("lyria-samples.jsonl", summary["run"])
+
+    def test_requirements_install_with_hashes_only(self):
+        install = {s.get("name"): s for s in workflow()["jobs"]["probe"]["steps"]}["Install the measurement requirements"]
+        self.assertEqual(install["run"], "pip install --require-hashes -r requirements-measure.txt")
+        text = (ROOT / "requirements-measure.txt").read_text()
+        pins = re.findall(r"^([A-Za-z0-9_.-]+)==(\S+) \\\n    --hash=sha256:([0-9a-f]{64})$", text, re.M)
+        reqs = [ln for ln in text.splitlines() if re.match(r"^[A-Za-z0-9_.-]+==", ln)]
+        self.assertEqual(len(pins), len(reqs))
+        self.assertGreaterEqual(len(pins), 21)
+        self.assertIn(("torch", "2.8.0+cpu"), [(n, v) for n, v, _h in pins])
 
     def test_no_artifact_is_uploaded_and_no_audio_is_cached(self):
         text = WORKFLOW.read_text()

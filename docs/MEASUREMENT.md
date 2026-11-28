@@ -500,6 +500,11 @@ check (`tests/test_lyria_vocal_probe.py` pins this).
 the job summary. No lyrics or text are published, only the text's length, its line count and `returned_singing`. No audio is
 published either. The audio files are deleted at the end of the run, and nothing is uploaded as an artifact.
 
+**What a run counts.** A `call_started` line is written (and fsynced) before each request leaves, and every row is written the
+moment it exists. A cancelled or failed job therefore still reports every call it paid for, through an `if: always()` summary
+step; a call cut off mid-way reads spend "unknown". A re-run of an earlier run is refused: a new run, with the word typed
+again, is required. The measurement requirements install only with `--require-hashes`.
+
 **Local smoke (2026-11-28; a 4-core container, not the runner; no Lyria call).** All four pinned hashes matched.
 
 | input | UMX vocal-to-mix p50 / max dB | PANNs voice max (class) | Silero speech s | load s | UMX s | PANNs s | peak RSS MB |

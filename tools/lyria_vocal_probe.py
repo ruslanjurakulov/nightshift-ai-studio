@@ -13,7 +13,9 @@ done by ``_lyria_call`` below, a narrow request of this tool's own: ``GoogleLyri
 that skips its check. The negatives are sent with the product's exact suffix (``negative_input`` must equal what the
 adapter would send; a test pins it), so they measure what the product would actually receive.
 
-What reaches stdout: ONE JSON line per sample, numbers and fixed words only. The lyrics or structure text Google returns is
+What reaches stdout (and ``--jsonl FILE``, written and fsynced the moment each line exists, so a cancelled run keeps every
+row it paid for): a ``call_started`` line before each request leaves, then ONE JSON line per sample, numbers and fixed words
+only. A run stopped mid-call (a cancel, a crash) leaves a row whose spend is "unknown". The lyrics or structure text Google returns is
 reduced to its length, its line count and ``returned_singing(text)``; the audio to its byte count and ``measure()``'s
 numbers. Neither the text nor the audio, base64 or decoded, is printed, logged or kept: the audio files live in a private
 temporary directory that is deleted when the run ends, whatever happens. The repository is public, so its Actions log is.
@@ -29,6 +31,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -146,13 +149,16 @@ def _reported_rate(block: dict) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
+#: The media types echoed by name; anything else Google labels its audio with reads "other" (the log is public).
+_MIME_ECHOED = ("audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav")
+
+
 def _mime(block: dict) -> Optional[str]:
     raw = block.get("mime_type")
     if not isinstance(raw, str):
         return None
     mime = raw.split(";", 1)[0].strip().lower()
-    # A media type is a short token pair; anything else is not echoed (the log is public).
-    return mime if re.fullmatch(r"[a-z0-9.+-]{1,40}/[a-z0-9.+-]{1,60}", mime) else "unreadable"
+    return mime if mime in _MIME_ECHOED else "other"
 
 
 def _decoded_rate(path: Path) -> Optional[int]:
@@ -166,28 +172,69 @@ def _decoded_rate(path: Path) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
+class Sink:
+    """Where rows go, each one AS SOON AS it exists: first the JSONL file (flushed and fsynced, so a cancelled or killed job
+    still leaves every row it paid for), then stdout for the log. The file is the record; stdout is only its mirror."""
+
+    def __init__(self, out: TextIO, jsonl: Optional[Path] = None):
+        self.out = out
+        self.fh = open(jsonl, "a", encoding="utf-8") if jsonl else None
+
+    def __call__(self, row: dict) -> None:
+        line = json.dumps(row, sort_keys=True, ensure_ascii=True) + "\n"
+        if self.fh:
+            self.fh.write(line)
+            self.fh.flush()
+            os.fsync(self.fh.fileno())
+        try:
+            self.out.write(line)
+            self.out.flush()
+        except (BrokenPipeError, ValueError):
+            # The log's reader (tee) went away first, as it does when a job is cancelled. The row is already in the file.
+            pass
+
+    def close(self) -> None:
+        if self.fh:
+            self.fh.close()
+
+
 def sample(pid: str, prompt: str, sung: bool, *, key: str, budget: CallBudget, workdir: Path, measure: Callable,
-           post: Post = _post) -> dict:
-    """One call and its numbers. Never raises for anything Google answers: a failed call is a recorded sample."""
-    text_in = prompt if sung else negative_input(prompt)
+           emit: Callable[[dict], None], post: Post = _post) -> dict:
+    """One call and its numbers. Never raises for anything Google answers: a failed call is a recorded sample. Anything that
+    stops the run after the call was counted (a cancel, a crash) still leaves a row saying the spend is unknown."""
     row: Dict[str, object] = {"prompt_id": pid, "asked_for": "sung lyrics" if sung else "instrumental",
                               "product_suffix_sent": not sung, "product_output_check_applied": False}
     budget.spend()
+    row["call"] = budget.used
+    # Before the request leaves: even a job killed mid-call has counted it.
+    emit({"event": "call_started", "prompt_id": pid, "call": budget.used})
+    try:
+        _fill(row, pid, prompt if sung else negative_input(prompt), key=key, workdir=workdir, measure=measure, post=post)
+    except BaseException as e:
+        emit({"prompt_id": pid, "call": budget.used, "ok": False, "error": {"kind": type(e).__name__}, "spend": "unknown"})
+        raise
+    emit(row)
+    return row
+
+
+def _fill(row: Dict[str, object], pid: str, text_in: str, *, key: str, workdir: Path, measure: Callable, post: Post) -> None:
     try:
         status, data = _lyria_call(key, text_in, post=post)
     except Exception as e:      # timeout, connection lost: the call may have run and billed
-        row.update({"ok": False, "error": {"kind": type(e).__name__, "spend": "unknown"}})
-        return row
+        row.update({"ok": False, "error": {"kind": type(e).__name__}, "spend": "unknown"})
+        return
     row["http_status"] = status
     if status != 200 or data is None:
         err = (data or {}).get("error") if isinstance(data, dict) else None
         err = err if isinstance(err, dict) else {}
         google_status = err.get("status") if isinstance(err.get("status"), str) and re.fullmatch(r"[A-Z_]{1,40}", err["status"]) else None
-        row.update({"ok": False, "error": {"kind": "http", "google_status": google_status,
-                                           "block_reason": _structured_block(err), "spend": "unknown"}})
-        return row
+        row.update({"ok": False, "error": {"kind": "http", "google_status": google_status, "block_reason": _structured_block(err)},
+                    "spend": "unknown"})
+        return
     istatus = data.get("status")
     row["interaction_status"] = istatus if isinstance(istatus, str) and re.fullmatch(r"[a-z_]{1,20}", istatus) else "unreadable"
+    # A completed interaction has most likely been billed; anything else is not known either way (BILLING_UNKNOWN).
+    row["spend"] = "likely" if istatus == "completed" else "unknown"
     text = _InteractionsBase._text(data)
     has_text = bool(_InteractionsBase._contents(data, "text"))
     row.update({"has_text_block": has_text, "text_length": len(text), "text_lines": len(text.splitlines()) if text else 0,
@@ -196,11 +243,11 @@ def sample(pid: str, prompt: str, sung: bool, *, key: str, budget: CallBudget, w
     raw = block.get("data") if block else None
     if not isinstance(raw, str) or not raw:
         row.update({"ok": False, "error": {"kind": "no_audio", "block_reason": _structured_block(data)}})
-        return row
+        return
     row.update({"mime": _mime(block), "reported_sample_rate": _reported_rate(block)})
     if len(raw) * 3 // 4 > MAX_INLINE_BYTES or len(raw) % 4 or not _B64.fullmatch(raw):
         row.update({"ok": False, "error": {"kind": "bad_base64_or_too_large", "base64_chars": len(raw)}})
-        return row
+        return
     audio = base64.b64decode(raw, validate=True)
     del raw
     row["audio_bytes"] = len(audio)
@@ -217,38 +264,39 @@ def sample(pid: str, prompt: str, sung: bool, *, key: str, budget: CallBudget, w
 
             detail = str(e)[:200] if isinstance(e, MeasurementError) else ""
             row.update({"ok": False, "measure": None, "error": {"kind": "measure_failed", "type": type(e).__name__, "detail": detail}})
-            return row
+            return
         row.update({"ok": True, "duration_s": m.get("duration_s"), "measure": m})
-        return row
     finally:
         if path.exists():
             path.unlink()
 
 
 def run(count: int, *, env: Mapping[str, str], out: TextIO, measure: Optional[Callable] = None, post: Post = _post,
-        prompts: Iterable = PROMPTS) -> int:
+        prompts: Iterable = PROMPTS, jsonl: Optional[Path] = None) -> int:
     budget = CallBudget(count)          # refuses > MAX_CALLS before anything else
     key = (env.get("GEMINI_API_KEY") or "").strip()
     if not key:
         raise ProbeRefused("GEMINI_API_KEY is not set: nothing was called")
     if measure is None:
         # The models load BEFORE the first paid call (rule 6): a missing weight costs nothing.
-        from tools.vocal_activity import load_detectors, measure as _measure
+        from tools.vocal_activity import MeasurementError, load_detectors, measure as _measure
 
-        det = load_detectors()
+        try:
+            det = load_detectors()
+        except MeasurementError as e:
+            raise ProbeRefused(f"the detectors did not load, so nothing was called: {e}") from None
         measure = lambda p: _measure(p, detectors=det)  # noqa: E731
     base = env.get("RUNNER_TEMP") or None
     workdir = Path(tempfile.mkdtemp(prefix="lyria-probe-", dir=base))
     os.chmod(workdir, 0o700)
+    emit = Sink(out, jsonl)
     failures = 0
     try:
         for pid, prompt, sung in list(prompts)[:count]:
-            row = sample(pid, prompt, sung, key=key, budget=budget, workdir=workdir, measure=measure, post=post)
-            row["call"] = budget.used
+            row = sample(pid, prompt, sung, key=key, budget=budget, workdir=workdir, measure=measure, emit=emit, post=post)
             failures += 0 if row.get("ok") else 1
-            out.write(json.dumps(row, sort_keys=True, ensure_ascii=True) + "\n")
-            out.flush()
     finally:
+        emit.close()
         shutil.rmtree(workdir, ignore_errors=True)
     return 1 if failures else 0
 
@@ -267,8 +315,9 @@ def markdown(lines: Iterable[str]) -> str:
     """A table of the samples' numbers. Only known numeric and fixed-word fields are read, so nothing else reaches it."""
     head = ["id", "asked for", "ok", "HTTP", "text block", "text len", "lines", "returned_singing", "mime", "rate (rep/dec)",
             "bytes", "duration s", "UMX p50 dB", "UMX p90 dB", "UMX max dB", "share > -20 dB", "run > -20 dB s",
-            "PANNs voice max", "PANNs class", "PANNs mean", "Silero speech s", "error"]
+            "PANNs voice max", "PANNs class", "PANNs mean", "Silero speech s", "spend", "error"]
     rows = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
+    started = 0
     for line in lines:
         line = line.strip()
         if not line:
@@ -276,6 +325,11 @@ def markdown(lines: Iterable[str]) -> str:
         try:
             r = json.loads(line)
         except ValueError:
+            continue
+        if not isinstance(r, dict):
+            continue
+        if r.get("event") == "call_started":
+            started += 1
             continue
         m = r.get("measure") or {}
         u = m.get("umx_vocal_to_mix") or {}
@@ -288,10 +342,19 @@ def markdown(lines: Iterable[str]) -> str:
                  f"{_cell(r.get('reported_sample_rate'))}/{_cell(r.get('decoded_sample_rate'))}", r.get("audio_bytes"),
                  r.get("duration_s"), u.get("p50_db"), u.get("p90_db"), u.get("max_db"), th.get("share_above"),
                  th.get("longest_run_s"), p.get("voice_max"), p.get("voice_max_class"), p.get("voice_mean"),
-                 s.get("speech_s") if s.get("ran") else ("not run" if m else None),
+                 s.get("speech_s") if s.get("ran") else ("not run" if m else None), r.get("spend"),
                  "/".join(str(err[k]) for k in ("kind", "google_status", "block_reason") if err.get(k)) or None]
         rows.append("| " + " | ".join(_cell(c).replace("|", "/") for c in cells) + " |")
-    return "\n".join(rows) + "\n"
+    # The count is of calls STARTED (one per spend()), not of rows completed: a call cut off mid-way may still have billed.
+    return f"Paid Lyria calls started: {started}\n\n" + "\n".join(rows) + "\n"
+
+
+class Terminated(BaseException):
+    """SIGTERM, raised so that every finally runs."""
+
+
+def _terminated(signum, frame):
+    raise Terminated()
 
 
 def main(argv: Optional[List[str]] = None, *, env: Optional[Mapping[str, str]] = None, out: TextIO = sys.stdout) -> int:
@@ -299,6 +362,7 @@ def main(argv: Optional[List[str]] = None, *, env: Optional[Mapping[str, str]] =
     ap.add_argument("--count", type=int, default=MAX_CALLS)
     ap.add_argument("--confirm", default="")
     ap.add_argument("--markdown", type=Path, help="print the summary table of a samples file and stop (no call)")
+    ap.add_argument("--jsonl", type=Path, help="also append every row to this file the moment it exists (flushed)")
     args = ap.parse_args(argv)
     if args.markdown:
         out.write(markdown(args.markdown.read_text(encoding="utf-8").splitlines()))
@@ -306,7 +370,13 @@ def main(argv: Optional[List[str]] = None, *, env: Optional[Mapping[str, str]] =
     try:
         if args.confirm != CONFIRM:
             raise ProbeRefused(f"pass --confirm {CONFIRM}: each sample is a paid call")
-        return run(args.count, env=os.environ if env is None else env, out=out)
+        # A cancelled job gets SIGTERM, which would end Python without running a finally: as an exception it leaves the
+        # "spend unknown" row for the call in flight and deletes the audio.
+        previous = signal.signal(signal.SIGTERM, _terminated)
+        try:
+            return run(args.count, env=os.environ if env is None else env, out=out, jsonl=args.jsonl)
+        finally:
+            signal.signal(signal.SIGTERM, previous)
     except ProbeRefused as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
