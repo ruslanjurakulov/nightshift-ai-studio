@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { clipPrompt, scenePrompt, type BrainSlots, type SceneParts, type Scenario } from "@/lib/brain/logic";
+import { clipPrompt, scenePrompt, speechAllowed, type BrainSlots, type SceneParts, type SceneSpeech, type Scenario } from "@/lib/brain/logic";
 import { PLAN, mergePlan, outlineText, planRequestId, planWindows, readWindow, refsOf, shotRules, type PlanLimits, type PlanWindow } from "@/lib/brain/plan";
 import { PLAN_SYSTEM_PROMPT, planDataBlock } from "@/lib/brain/prompt";
 import { PLAN_CALL_TIMEOUT_MS, callChatModel, type ChatModelId } from "@/lib/server/brain/llm";
@@ -55,6 +55,9 @@ export interface PlanRun {
   startedAt?: number;
   /** The catalogue's model names and providers (lib/server/brain/clip catalogueClaimNames): never claimed to have made the film. */
   claimNames?: readonly string[];
+  /** How a scene may be heard in this film today (lib/brain/logic speechAllowed, from the film's own voice): told to every call and
+   *  checked on every answer. Absent = what a film with no quotable voice can be: wordless. */
+  speechAllowed?: readonly SceneSpeech[];
 }
 
 export type PlanResult = { ok: true; scenario: Scenario; quota: Quota | null } | { ok: false; res: Response; reason: string };
@@ -64,6 +67,7 @@ type Step =
   | { ok: false; kind: "length"; problem: string }
   | { ok: false; kind: "prompt"; problem: string; chapter: number; scene: number }
   | { ok: false; kind: "rules"; problem: string }
+  | { ok: false; kind: "speech"; problem: string }
   | { ok: false; kind: "narration"; problem: string; chapter: number; scene: number }
   | { ok: false; kind: "narration_too_long"; chapter: number; scene: number }
   | { ok: false; kind: "mismatch" }
@@ -88,6 +92,7 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
   const promptOf = (sc: SceneParts) => { const a = scenePrompt(film, sc); const b = clipPrompt(film, sc); return a.length >= b.length ? a : b; };
   // The story grammar binds a story outline (one that picked a format); a project's own outline and a stored one keep the older rules.
   const rules = run.outline.format ? shotRules(run.outline, run.slots.language ?? null) : undefined;
+  const allowed = run.speechAllowed ?? speechAllowed(false);
   let quota: Quota | null = null;
   let forgiven = 0;
   // The plan's cap forgives what was not the person's doing; the Free trial counts every outcome (0199 ai_chat_trial_left), so a
@@ -129,7 +134,7 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
       const llm = await callChatModel(run.model, PLAN_SYSTEM_PROMPT, planDataBlock({
         outline: run.outline, parts: w.parts, window: { n: w.n, of: windows.length },
         limits: { sceneMin: run.limits.sceneMin, sceneMax: run.limits.sceneMax, maxScenes: w.maxScenes, promptMax: run.limits.promptMax, aim: w.aim },
-        speechAllowed: run.outline.format ? undefined : ["in_clip", "none"],
+        speechAllowed: [...allowed],
         style: run.slots.style ?? null, language: run.slots.language ?? null, aspect: run.slots.aspect ?? null, problem,
       }), { endUser: run.endUser, size: "plan" });
       if (!llm.ok) {
@@ -141,7 +146,7 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
                      llm.error === "not_configured" ? null : llm.tokensIn, llm.error === "not_configured" ? null : llm.tokensOut);
         return { ok: false, kind: "failed", reason: llm.error };
       }
-      const read = readWindow(llm.text, w, refs, run.limits, echo, promptOf, run.claimNames ?? [], rules);
+      const read = readWindow(llm.text, w, refs, run.limits, echo, promptOf, run.claimNames ?? [], rules, allowed);
       if (!read.ok && read.why === "refused") {
         await finish("refused", llm.tokensIn, llm.tokensOut);
         return { ok: false, kind: "content_refused" };
@@ -152,6 +157,7 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
       if (read.why === "length") return { ok: false, kind: "length", problem: read.problem };
       if (read.why === "prompt") return { ok: false, kind: "prompt", problem: read.problem, chapter: read.chapter, scene: read.scene };
       if (read.why === "rules") return { ok: false, kind: "rules", problem: read.problem };
+      if (read.why === "speech") return { ok: false, kind: "speech", problem: read.problem };
       if (read.why === "narration") return { ok: false, kind: "narration", problem: read.problem, chapter: read.chapter, scene: read.scene };
       return { ok: false, kind: "failed", reason: "invalid_output" };
     } catch {
@@ -164,7 +170,7 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
   const late = () => now() - started > PLAN_BUDGET_MS - PLAN_CALL_TIMEOUT_MS - POST_PLAN_MS;
   const runWindow = async (w: PlanWindow): Promise<Step> => {
     const first = await call(w, false);
-    if (first.ok || (first.kind !== "length" && first.kind !== "prompt" && first.kind !== "rules" && first.kind !== "narration")) return first;
+    if (first.ok || (first.kind !== "length" && first.kind !== "prompt" && first.kind !== "rules" && first.kind !== "narration" && first.kind !== "speech")) return first;
     // Once, with the reason in the data block (G1, and a prompt over the models' limit, S9). A second wrong answer fails the plan:
     // never stretched, cut or shortened to fit.
     if (late()) return { ok: false, kind: "failed", reason: "timeout" };
@@ -174,6 +180,8 @@ export async function writeStoryboard(run: PlanRun): Promise<PlanResult> {
     // A voice-over still too long to be said in its scene: refused by name before any price, never sped up or cut.
     if (again.kind === "narration") return { ok: false, kind: "narration_too_long", chapter: again.chapter, scene: again.scene };
     if (again.kind === "rules") return { ok: false, kind: "failed", reason: "shot_rules" };
+    // Still a speaking plan where only a wordless film can be made: refused by that name, never saved to be made silent.
+    if (again.kind === "speech") return { ok: false, kind: "failed", reason: "speech_not_available" };
     if (again.kind !== "length") return again;
     return { ok: false, kind: "mismatch" };
   };

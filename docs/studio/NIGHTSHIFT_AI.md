@@ -97,7 +97,7 @@ The BRIEF is stored per conversation and returned by `GET /api/brain/session/<se
 - **Long = Run now.** 60, 180, 300, 600 or 1200 s. A request outside that is offered the nearest lengths, with the reason.
 - **Voice.**
   - No film voice can be chosen from the app yet (the chat's draft sets none and the film editor has no voice picker), so the Brain never proposes a narration model and never accepts a typed voice id.
-  - A story film's scenes each say how they are heard (`speech`, see "Story grammar" below). A voice-over scene's words go to `film_scenes.narration`; `quote_film` refuses a narration with no voice (`voice_not_set`), and the plan card says "voice-over needs a voice model that isn't available for films yet" and offers no Create. A scene spoken in its clip asks the clip for its sound (`clip_params.audio`), but the cut drops clip sound today (`render_backend` cuts video with `-an`; `film_assembly` mixes only the narration and the music), so the card says "clip sound is not yet kept in the final film" and offers no Create (`CLIP_SOUND_IN_CUT` in lib/brain/logic.ts is the one switch S2's fix flips).
+  - **Only what can be made is planned** (`speechAllowed` in lib/brain/logic.ts, one helper for the chat and the film editor): a scene may be a voice-over only when the film has a voice a quote can price (`voiceQuotable`: a creative_tts voice with its model and voice id), and spoken in its clip only when the cut keeps clip sound (`CLIP_SOUND_IN_CUT`; today `render_backend` cuts video with `-an`) AND a clip has a prompt of its own (`CLIP_PROMPT_SAVED`; today one `visual_prompt` makes both pictures). Today that is wordless only: the plan is told `speech_allowed: ["none"]`, a speaking answer is asked again once and then refused as `speech_not_available`, and each scene and outline keeps the format's `speech_intent`. No clip is ever asked for its sound while the cut drops it, and no line reaches any prompt. The card says "This story is planned without spoken lines: voices and in-clip sound aren't available for films yet." The blocked-Create state (`voice.blocked`, no quote id in the answer) stays as a defence for a storyboard saved before this.
   - If `quote_film` refuses a voice line (voice_not_set, channel_voice_not_priced), that reason is shown and nothing is substituted.
 - **Characters from a photo.** An uploaded reference photo becomes `characters[].asset_id` with `source: upload`. It passes the existing rights acknowledgement (0174/0187), likeness and 18+ (0192) gates at quote and start. The Brain never bypasses them.
 
@@ -128,18 +128,18 @@ always replaces the inference. `kind`, `target_seconds` and `style` are never in
 **Scenes** (the plan step; shot grammar ported from HKUDS/ViMax `agents/storyboard_artist.py`, MIT, see THIRD_PARTY_NOTICES):
 `shot` (wide | two_shot | medium | close | extreme_close | over_shoulder | insert), `camera` {position, move: static | push_in |
 pull_out | pan | tilt | tracking | handheld}, `lighting`, `first_frame` and `last_frame` (pure snapshots), `motion`, `variation`
-(small | medium | large), `in_frame` [{character_id, age_stage}], `speech` (in_clip | voice_over | none), `narration`, `sfx`,
+(small | medium | large), `in_frame` [{character_id, age_stage}], `speech` (in_clip | voice_over | none, within `speech_allowed`), `speech_intent`, `narration`, `sfx`,
 `hook`, `text_layers` [{text, position}], and the server's own `chapter_id` and `chain_from` (the scene before it in the SAME
 chapter, whose last frame it continues; never across chapters). Checked: every shot field present, the first scene of the film and
 of each chapter a `wide` shot, a staged character shown at a stage, in_clip with lines and voice_over with words, and a voice-over
 that can be said in its seconds (words ÷ `SPOKEN_WPS`, an estimate to be measured against the TTS, within 90 % of the scene;
 asked again once, then `narration_too_long`). `brief.text_layers` lists every on-screen word (scene id, text, position, the
-closing card on the last scene): never drawn by a model, and the scene's prompt says "No text, no letters, no signage."
+closing card on the last scene): never drawn by a model; EVERY prompt says "No text, no letters, no signage." (text is always added in the edit). Look sheets that could not fit a shot's prompt with three characters in frame are refused at choose before any turn (`looks_too_long`).
 
 **Prompts.** Visual fields are English whatever the film's language; titles, narration, lines and text layers stay in it. The code
 folds the shot, the camera, the light, the first frame (key frame) or the motion (clip), each in-frame character's look verbatim (at
 its age stage) and the setting into each prompt (`keyframePrompt`, `clipPrompt`); the saved `visual_prompt` is both without any
-spoken line, because one column makes both today. A voice-over scene's prompt says "No one speaks; mouths closed."
+spoken line, because one column makes both today. A voice-over scene's prompt says "No one speaks; mouths closed." The narration fit counts words split at spaces, hyphens and underscores (`SPOKEN_WPS`) and a script written without spaces by its characters (`SPOKEN_CPS`), both estimates.
 
 **Pacing.** About 3 s a shot for a film up to 240 s (`STORY` in lib/brain/plan.ts): scenes of 3–5 s, the timeline cut into
 ceil(t / 40) windows of ≤ 15 scenes. The 3 s floor is today's: `film_scenes.planned_seconds` is an integer CHECKed 3–30 (0166),

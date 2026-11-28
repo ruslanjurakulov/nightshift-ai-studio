@@ -97,7 +97,7 @@ describe("a scenario becomes BRIEF parts, checked", () => {
     expect(cut.target_seconds).toBe(60);
   });
 
-  it("dialogue is kept only for known characters, and is spoken in the clip prompt only (never the key frame)", () => {
+  it("dialogue is kept only for known characters, and kept out of every prompt and clip-audio request while the cut drops clip sound", () => {
     const s = readScenario(scen(), SHORT)!;
     expect(s.scenes[0].dialogue).toEqual([{ character_id: "c1", line: "Hold the line!" }]);
     const b = buildBrief("sess", SHORT, s, "ready");
@@ -105,11 +105,11 @@ describe("a scenario becomes BRIEF parts, checked", () => {
     const f = filmFromBrief(b)!;
     expect(f.settings).toMatchObject({ language: "uz", aspect: "9:16", target_seconds: 60 });
     expect(f.scenes[0]).toMatchObject({ narration: "", planned_seconds: 30 });
-    // Spoken inside the clip (a stored scene with lines is "in_clip"): the lines reach the CLIP prompt only, never the saved one
-    // that also makes the key frame (S1 story grammar), and the clip is asked for its sound.
+    // A stored scene with lines is "in_clip": while the cut drops clip sound and one prompt makes both pictures, its lines reach NO
+    // prompt and the clip is asked for no sound (S1 story grammar, BR-SG-01); the BRIEF keeps them for when both open.
     expect(String(f.scenes[0].visual_prompt)).not.toContain("says:");
-    expect(clipPrompt(b, b.scenes![0])).toContain('Aziz says: "Hold the line!"');
-    expect(f.scenes[0]).toMatchObject({ clip_params: { audio: true } });
+    expect(clipPrompt(b, b.scenes![0])).not.toContain("Hold the line");
+    expect(f.scenes[0]).not.toHaveProperty("clip_params");
   });
 
   it("a long video has no film, keeps Run now's own voice, and opens Run now prefilled, never a spend endpoint", () => {

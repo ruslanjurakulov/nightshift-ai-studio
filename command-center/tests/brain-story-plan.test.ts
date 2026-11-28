@@ -28,8 +28,8 @@ const windows = planWindows(outline, limits)!;
 const answer = (o: (i: number, chapter: string) => Record<string, unknown> = () => ({})) => JSON.stringify({
   chapters: windows[0].parts.map((p) => ({ id: p.chapter_id, scenes: [5, 5].map((d, i) => storyScene(d, i, { ...(p.chapter_id === "ch1" && i === 0 ? { hook: true } : {}), ...o(i, p.chapter_id) })) })),
 });
-const run = () => writeStoryboard({ supabase: { rpc } as never, sessionId: "s", model: "m" as never, endUser: "u", requestBase: "plxxxxxxxx", choiceStored: false,
-                                    choiceText: "Far city", outline, slots, limits });
+const run = (speechAllowed?: ("none" | "voice_over" | "in_clip")[]) => writeStoryboard({ supabase: { rpc } as never, sessionId: "s", model: "m" as never, endUser: "u",
+                                    requestBase: "plxxxxxxxx", choiceStored: false, choiceText: "Far city", outline, slots, limits, speechAllowed });
 
 beforeEach(() => { answers.length = 0; llm.mockReset(); rpc.mockClear(); });
 
@@ -46,7 +46,8 @@ describe("writeStoryboard with the story grammar", () => {
   it("a voice-over too long for its seconds is asked again once, then refused as narration_too_long by chapter and scene", async () => {
     const long = { speech: "voice_over", narration: "Ota har kuni ertalab uzoq shaharga ketadi va qizi uni kutadi" };
     answers.push(answer(() => long), answer(() => long));
-    const r = await run();
+    // As for a film with a quotable voice (speechAllowed(true)): none has one today.
+    const r = await run(["none", "voice_over"]);
     expect(r.ok).toBe(false);
     const res = (r as { res: Response }).res;
     expect(res.status).toBe(422);
@@ -62,6 +63,23 @@ describe("writeStoryboard with the story grammar", () => {
     expect(await (r as { res: Response }).res.json()).toMatchObject({ error: "plan_failed", reason: "shot_rules" });
     answers.push(answer(() => ({ shot: "close" })), answer());
     expect((await run()).ok).toBe(true);
+  });
+
+  it("a speaking answer where only a wordless film can be made is asked again once, then refused as speech_not_available", async () => {
+    const talk = { speech: "in_clip", dialogue: [{ character_id: "c1", line: "Salom" }] };
+    answers.push(answer(() => talk), answer(() => ({ speech: "voice_over", narration: "Ota ketdi" })));
+    const r = await run();
+    expect(await (r as { res: Response }).res.json()).toMatchObject({ error: "plan_failed", reason: "speech_not_available" });
+    expect(llm).toHaveBeenCalledTimes(2);
+    const first = JSON.parse(String((llm.mock.calls[0] as unknown[])[2]).split("\n")[1]);
+    expect(first.speech_allowed).toEqual(["none"]);
+    const second = JSON.parse(String((llm.mock.calls[1] as unknown[])[2]).split("\n")[1]);
+    expect(second.previous_answer_problem).toMatch(/can only be planned with "speech" in \["none"\]/);
+    // A second answer that keeps the intent and plans it wordless is used.
+    answers.push(answer(() => talk), answer(() => ({ speech: "none", speech_intent: "in_clip" })));
+    const ok = await run();
+    expect(ok.ok).toBe(true);
+    expect((ok as { scenario: { scenes: { speech_intent?: string }[] } }).scenario.scenes[0].speech_intent).toBe("in_clip");
   });
 
   it("a scene not spoken in its clip loses any line the model wrote (it would never be heard)", async () => {

@@ -100,6 +100,8 @@ export interface StoryCraft {
   closing_card?: string;
   /** The title on a 9:16 cover. */
   cover_title?: string;
+  /** How the format would be heard (in_clip, voice_over or none), recorded even while only wordless films can be made. */
+  speech_intent?: SceneSpeech;
 }
 /** On-screen words (a bill, a name tag, a time-skip card, the closing card): NEVER drawn by an image or video model, which spell
  *  them wrong and in the wrong script. Each is a layer the editor puts on top later; the scene's prompt says "no text". */
@@ -123,6 +125,8 @@ export interface BriefScene {
   keyframe_model: string | null; clip_model: string | null;
   // The story grammar's fields: all optional, so a BRIEF stored before them still reads.
   speech?: SceneSpeech;
+  /** How the format meant this scene to be heard, when that cannot be made today (speechAllowed): kept, so nothing is lost. */
+  speech_intent?: SceneSpeech;
   /** The voice-over over this scene (speech `voice_over`), in the film's language (0166 film_scenes.narration). */
   narration?: string;
   shot?: ShotSize;
@@ -499,6 +503,7 @@ export function readSceneParts(raw: unknown, kind: BrainKind, known: SceneRefs):
     // The model never picks a model: a film's defaults are the Studio's, and a named one is checked by save_film anyway.
     keyframe_model: null, clip_model: null,
     ...(speech ? { speech } : {}),
+    ...(oneOf(o.speech_intent, SCENE_SPEECH) ? { speech_intent: oneOf(o.speech_intent, SCENE_SPEECH) } : {}),
     ...(typeof o.narration === "string" && modelText(o.narration, CAP.narration, true) ? { narration: modelText(o.narration, CAP.narration, true) } : {}),
     ...(oneOf(o.shot, SHOT_SIZES) ? { shot: oneOf(o.shot, SHOT_SIZES) } : {}),
     ...(move ? { camera: { position: modelText(cam.position, CAP.camera), move } } : {}),
@@ -549,6 +554,8 @@ function readCraft(r: Record<string, unknown>, chapterIds: Set<string>, propIds:
   if (closing) out.closing_card = closing;
   const cover = modelText(r.cover_title, CAP.title);
   if (cover) out.cover_title = cover;
+  const intent = oneOf(r.speech_intent, SCENE_SPEECH);
+  if (intent) out.speech_intent = intent;
   return out;
 }
 
@@ -822,7 +829,7 @@ export function buildBrief(sessionId: string, slots: BrainSlots, chosen: Scenari
                        chapters: chosen.chapters.map(({ id, title, start_s, beats, beat, emotion, music_cue }) =>
                          ({ id, title, start_s, beats, ...(beat ? { beat } : {}), ...(emotion ? { emotion } : {}), ...(music_cue ? { music_cue } : {}) })),
                        characters: chosen.characters, locations: chosen.locations, props: chosen.props, scenes: chosen.scenes });
-    for (const k of ["visual_style", "format", "hook", "planted_object", "twist", "closing_card", "cover_title"] as const) {
+    for (const k of ["visual_style", "format", "hook", "planted_object", "twist", "closing_card", "cover_title", "speech_intent"] as const) {
       if (chosen[k] !== undefined) Object.assign(b, { [k]: chosen[k] });
     }
     const layers = textLayers(chosen);
@@ -866,6 +873,28 @@ export function draftSettings(b: Brief): { settings: Record<string, unknown>; so
  * it, and nothing else needs to change for in-clip speech to be offered at Create.
  */
 export const CLIP_SOUND_IN_CUT = false;
+
+/**
+ * Whether an in-clip line can reach the clip without reaching the key frame. It cannot today: film_scenes has ONE visual_prompt
+ * (0166/0171), which makes both, and an image model told 'says: "…"' draws the words. S2's clip-prompt path flips it.
+ */
+export const CLIP_PROMPT_SAVED = false;
+
+/**
+ * How a scene may be heard in a film planned NOW, from the same inputs as speechBlocks: a voice-over only when the film has a voice
+ * a quote can price, in-clip speech only when the cut keeps clip sound AND the lines have a clip prompt of their own. Today that is
+ * "none" alone, so a speaking film is never planned (and never paid for to be made silent); the format's intended speech is kept as
+ * `speech_intent`. ONE helper, used by the chat's choose and the film editor's writer alike.
+ */
+export function speechAllowed(voiceQuotable: boolean): SceneSpeech[] {
+  return ["none", ...(voiceQuotable ? (["voice_over"] as const) : []), ...(CLIP_SOUND_IN_CUT && CLIP_PROMPT_SAVED ? (["in_clip"] as const) : [])];
+}
+
+/** A film voice a quote can price (0171 prices only a creative_tts voice with its model): the one input speechAllowed takes. */
+export function voiceQuotable(voice: unknown): boolean {
+  const v = voice && typeof voice === "object" && !Array.isArray(voice) ? (voice as { source?: unknown; model?: unknown; voice_id?: unknown }) : null;
+  return !!v && v.source === "creative_tts" && typeof v.model === "string" && v.model !== "" && typeof v.voice_id === "string" && v.voice_id !== "";
+}
 
 /** Why Create is not offered for a film yet, by name (the panel says each in its own words; nothing is ever shipped silent). */
 export type SpeechBlock = "clip_sound_not_kept" | "voice_unavailable";
@@ -930,6 +959,9 @@ function characterLine(c: BriefCharacter, stageId: string | null): string {
   return `${c.name}${stage ? ` (${stage.label})` : ""}: ${parts.join("; ")}`;
 }
 
+/** What every visual prompt ends with before its style (BR-SG-05: the closing card's scene used to be drawn with text). */
+export const NO_TEXT = "No text, no letters, no signage.";
+
 function promptParts(b: PromptFilm, s: PromptScene, role: "keyframe" | "clip" | "scene"): string {
   const chars = b.characters ?? [];
   const inFrame = s.in_frame?.length ? s.in_frame : s.character_ids.map((id) => ({ character_id: id, age_stage: null }));
@@ -939,10 +971,10 @@ function promptParts(b: PromptFilm, s: PromptScene, role: "keyframe" | "clip" | 
   const speech = speechOf(s);
   const camera = s.camera ? `Camera: ${[s.camera.position, role === "keyframe" ? "" : MOVE_WORDS[s.camera.move]].filter(Boolean).join(", ")}.` : "";
   const head = s.shot ? `${SHOT_WORDS[s.shot]}. ${camera}`.trim() : camera;
-  // The spoken lines reach the CLIP only: a key frame is a still picture, and an image model told "says: …" draws a speech bubble
-  // or the words themselves.
+  // The spoken lines reach the CLIP only, and only once a clip has a prompt of its own and the cut keeps its sound: a key frame is a
+  // still picture (an image model told "says: …" draws a speech bubble or the words), and today one prompt makes both.
   const names = new Map(chars.map((c) => [c.id, c.name]));
-  const lines = role === "clip" && speech === "in_clip"
+  const lines = role === "clip" && speech === "in_clip" && CLIP_SOUND_IN_CUT && CLIP_PROMPT_SAVED
     ? s.dialogue.map((d) => `${names.get(d.character_id) ?? "A character"} says: "${d.line}"`).join(" ") : "";
   const style = b.visual_style || b.style;
   return plain([
@@ -956,8 +988,9 @@ function promptParts(b: PromptFilm, s: PromptScene, role: "keyframe" | "clip" | 
     lines,
     // A voice-over scene's characters must not appear to talk over the narrator; never said of a scene spoken in its clip.
     speech === "voice_over" ? "No one speaks; mouths closed." : "",
-    // On-screen words are layers added later, never drawn (they come out misspelt and in the wrong script).
-    s.text_layers?.length ? "No text, no letters, no signage." : "",
+    // On EVERY prompt: on-screen words (a card, a bill, the closing card) are always layers added in the edit, never drawn (they
+    // come out misspelt and in the wrong script), and a scene with no text layer of its own can still sprout a sign.
+    NO_TEXT,
     style ? `Style: ${style}` : "",
   ].filter(Boolean).join("\n"), Number.MAX_SAFE_INTEGER, true);
 }
@@ -1002,7 +1035,8 @@ export function filmFromBrief(b: Brief, clip: ClipShape | null = null, promptMax
     return {
       title: s.title, narration: speech === "voice_over" ? s.narration ?? "" : "", visual_prompt: scenePrompt(b, s), planned_seconds: s.duration_s,
       ...(shots !== null ? { shot_count: shots } : {}),
-      ...(speech === "in_clip" ? { clip_params: { audio: true } } : {}),
+      // Never while the cut drops clip sound: the dearer audio variant would be paid for and thrown away (BR-SG-01).
+      ...(speech === "in_clip" && CLIP_SOUND_IN_CUT ? { clip_params: { audio: true } } : {}),
     };
   });
   return {

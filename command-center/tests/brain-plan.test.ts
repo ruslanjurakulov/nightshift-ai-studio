@@ -154,7 +154,7 @@ describe("G4: scenes within what the clip model makes", () => {
 });
 
 describe("G3: a dialogue scene asks for sound", () => {
-  it("a scene with lines is saved with clip_params.audio; one without keeps the film's default", () => {
+  it("no scene asks for clip audio while the cut drops clip sound, a scene with lines included", () => {
     const o = outline([60], 60);
     const b = buildBrief("s", SHORT(60), { ...o, scenes: [
       { id: "s1", n: 1, title: "a", duration_s: 30, visual_prompt: "v", dialogue: [{ character_id: "c1", line: "Hold!" }], character_ids: ["c1"], location_id: null, prop_ids: [], keyframe_model: null, clip_model: null },
@@ -162,7 +162,9 @@ describe("G3: a dialogue scene asks for sound", () => {
     ] }, "ready");
     expect(b.voice.mode).toBe("clip_audio");
     const f = filmFromBrief(b, { durations: [10], maxShots: 3 })!;
-    expect(f.scenes[0]).toMatchObject({ clip_params: { audio: true }, shot_count: 3 });
+    // S1 story grammar (BR-SG-01): no clip is asked for its sound while the cut drops it, lines or not.
+    expect(f.scenes[0]).toMatchObject({ shot_count: 3 });
+    expect(f.scenes[0]).not.toHaveProperty("clip_params");
     expect(f.scenes[1]).not.toHaveProperty("clip_params");
     expect(filmFromBrief(b)!.scenes[0]).not.toHaveProperty("shot_count");
     const silent = buildBrief("s", SHORT(60), { ...o, scenes: [{ ...b.scenes![1], duration_s: 60 }] }, "ready");

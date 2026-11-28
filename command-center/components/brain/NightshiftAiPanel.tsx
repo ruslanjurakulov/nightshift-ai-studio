@@ -9,6 +9,7 @@ import { takeLandingIdea } from "@/lib/brain/handoff";
 import { pluralText } from "@/lib/plural";
 import { changeOptions, isInferable, readSlots, runLink, speechOf, type Brief, type BrainCard, type BrainSlots, type InferableSlot, type Scenario } from "@/lib/brain/logic";
 import { CONTACT_HREF, LEGAL } from "@/lib/legal";
+import { HOME_LANGUAGES } from "@/lib/home";
 import { formatCredits } from "@/lib/credits";
 import { ChatShell, type ChatTurn } from "@/components/chat/ChatShell";
 import { ChatHistoryFrame, type ChatHistorySource, type HistoryResult } from "@/components/chat/ChatHistory";
@@ -105,6 +106,10 @@ const NO_RETRY = [
   "film_conversation",
   // A scene over the models' prompt limit was already asked again once: another press spends turns on the same outline.
   "prompt_too_long",
+  // The outline's looks cannot fit any shot's prompt: the same press meets the same outline (a new proposal is the remedy).
+  "looks_too_long",
+  // A stored storyboard that speaks where only a wordless film can be made: choosing it again meets the same refusal.
+  "speech_not_available",
   // The account's own 18+ answer (0192): a Retry would meet the same refusal; the remedy is where the age is answered (Pixel on #900).
   "adult_only_service", "adult_attestation_required",
   // The gate's other refusals whose remedy is not "retry": the same press meets the same region or support case.
@@ -490,7 +495,13 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     // Which chapter failed is the server's count, not the model's words; nothing was priced either way.
     const step = d.step && typeof d.step === "object" ? (d.step as { chapter?: unknown; chapters?: unknown }) : null;
     const at = step && typeof step.chapter === "number" && typeof step.chapters === "number" ? { n: step.chapter, total: step.chapters } : null;
-    if (e === "story_arc_invalid") return c.errors.story_arc_invalid;
+    // The turns this press used are the server's count; never a "nothing was charged" after turns were spent (Lens M1).
+    if (e === "story_arc_invalid") return fmt(c.errors.story_arc_invalid, { messages: pluralText(c.messageCount, typeof d.used === "number" ? d.used : 1, locale) });
+    if (e === "speech_not_available") return c.errors.speech_not_available;
+    if (e === "plan_failed" && d.reason === "speech_not_available") return c.errors.speech_not_available;
+    if (e === "looks_too_long" && typeof d.length === "number" && typeof d.limit === "number") {
+      return fmt(c.errors.looks_too_long, { n: typeof d.in_frame === "number" ? d.in_frame : "?", length: d.length, limit: d.limit });
+    }
     if (e === "narration_too_long") return fmt(c.errors.narration_too_long, { chapter: typeof d.chapter === "number" ? d.chapter : "?" });
     if (e === "plan_failed" && d.reason === "shot_rules") return c.errors.plan_shot_rules;
     if (e === "plan_failed") return at ? fmt(c.errors.plan_failed, at) : c.errors.plan_failed_plain;
@@ -665,7 +676,8 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (!session) return Promise.resolve(false);
     const value = choice ? changeOptions(slot)[choice - 1] : ownWords.trim();
     if (!value) return Promise.resolve(false);
-    return run(`${c.slotNames[slot]}: ${value}`, { action: "change", session, slot, request_id: pressId(), ...(choice ? { choice } : { own: value }) });
+    const label = slot === "language" ? HOME_LANGUAGES.find((l) => l.value === value)?.label ?? value : value;
+    return run(`${c.slotNames[slot]}: ${label}`, { action: "change", session, slot, request_id: pressId(), ...(choice ? { choice } : { own: value }) });
   };
   const send = (raw: string): Promise<boolean> => {
     const words = raw.trim();
@@ -997,7 +1009,9 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
 
   // Under the newest answer: its question card, or the plan with its price and its one way on.
   const inferred = (slots.inferred ?? []).filter(isInferable).filter((k) => slots[k] !== undefined);
-  const chipValue = (k: InferableSlot) => String(slots[k] ?? "");
+  // A language is shown by its own name (HOME_LANGUAGES label), never the stored English value.
+  const shown = (k: InferableSlot, v: string) => (k === "language" ? HOME_LANGUAGES.find((l) => l.value === v)?.label ?? v : v);
+  const chipValue = (k: InferableSlot) => shown(k, String(slots[k] ?? ""));
   const tail: ReactNode = (
     <>
       {inferred.length > 0 && step !== "ready" && step !== "created" && (
@@ -1017,7 +1031,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
           <p className="text-sm font-semibold">{fmt(c.changeQuestion, { slot: c.slotNames[changing] })}</p>
           {changeOptions(changing).map((o, i) => (
             <button key={o} type="button" className="btn-quiet flex min-h-11 !items-start !justify-start gap-2 px-3 text-left text-sm" onClick={() => void change(changing, i + 1)}>
-              <span className="font-semibold">{i + 1}</span> <span className="break-words">{o}</span>
+              <span className="font-semibold">{i + 1}</span> <span className="break-words">{shown(changing, o)}</span>
             </button>
           ))}
           {changeOptions(changing).length === 0 && <p className="text-xs text-[var(--color-muted)]">{fmt(c.changeOwn, { slot: c.slotNames[changing].toLowerCase() })}</p>}
@@ -1196,6 +1210,8 @@ function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, cre
   const p = brief.price;
   const slots: BrainSlots = { kind: brief.kind ?? undefined };
   const speech = new Set((brief.scenes ?? []).map(speechOf));
+  const meantWords = (brief.speech_intent !== undefined && brief.speech_intent !== "none")
+    || (brief.scenes ?? []).some((s) => s.speech_intent !== undefined && s.speech_intent !== "none");
   // What stops this film at Create today, by name (lib/brain/logic speechBlocks): no Create is offered then, never a silent film.
   const blocked = brief.kind === "short" && film ? brief.voice?.blocked ?? [] : [];
   // The number printed the way every price in the app is (lib/credits formatCredits), with its own plural word.
@@ -1205,9 +1221,11 @@ function ReadyBlock({ brief, film, models, channelSlug, lengthLabel, canRun, cre
       <h3 className="text-sm font-semibold text-[var(--color-fg)]">{brief.title}</h3>
       <p className="text-sm">{brief.idea}</p>
       <p className="text-xs text-[var(--color-muted)]">{fmt(c.scenarioFacts, { len: lengthLabel(brief.target_seconds ?? 0), scenes: brief.scenes?.length ?? 0, characters: brief.characters?.length ?? 0 })}</p>
+      {/* Planned wordless where the format meant words (speechAllowed today): said plainly, so the missing voice is no surprise. */}
+      {brief.kind === "short" && meantWords && !speech.has("voice_over") && !speech.has("in_clip") && <p className="text-xs" data-note="planned-wordless">{c.plannedWordless}</p>}
       {brief.kind === "short" && speech.has("voice_over") && <p className="text-xs text-[var(--color-muted)]">{c.voiceOverNote}</p>}
       {brief.kind === "short" && speech.has("in_clip") && <p className="text-xs text-[var(--color-muted)]">{c.inClipNote}</p>}
-      {brief.kind === "short" && (brief.scenes?.length ?? 0) > 0 && speech.size === 1 && speech.has("none") && <p className="text-xs text-[var(--color-muted)]">{c.wordlessNote}</p>}
+      {brief.kind === "short" && !meantWords && (brief.scenes?.length ?? 0) > 0 && speech.size === 1 && speech.has("none") && <p className="text-xs text-[var(--color-muted)]">{c.wordlessNote}</p>}
       {(brief.text_layers?.length ?? 0) > 0 && <p className="text-xs text-[var(--color-muted)]">{pluralText(c.textLayersNote, brief.text_layers!.length, locale)}</p>}
       {/* What the film is made with, as the server chose it (lib/brain/film-models): said, never hidden behind the price. A role
           with no model on sale shows no line; the quote's own "choose a model" says what to do. */}

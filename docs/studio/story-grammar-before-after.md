@@ -42,6 +42,7 @@ Outline:
 ```json
 {
   "format": "F3",
+  "speech_intent": "voice_over",
   "hook": "Avtobus eshigi ota bilan qiz orasida yopiladi.",
   "planted_object": {"text":"qogʻoz yulduz","prop_id":"p1","planted_chapter":"ch1","payoff_chapter":"ch4"},
   "twist": "time_skip",
@@ -55,14 +56,14 @@ Storyboard: 8 shots for 30 s (3 s wide, 3 s close, 4 s wide, 4 s insert, 4 s wid
 
 ```json
 [
-  {"id":"s1","chapter":"ch1","chain_from":null,"shot":"wide","camera":{"position":"bus stop, eye level","move":"static"},"speech":"voice_over","narration":"Dadam har yili ketardi.","in_frame":[{"character_id":"c1","age_stage":null},{"character_id":"c2","age_stage":"a1"}]},
+  {"id":"s1","chapter":"ch1","chain_from":null,"shot":"wide","camera":{"position":"bus stop, eye level","move":"static"},"speech":"none","speech_intent":"voice_over","in_frame":[{"character_id":"c1","age_stage":null},{"character_id":"c2","age_stage":"a1"}]},
   {"id":"s2","chapter":"ch1","chain_from":"s1","shot":"close","camera":{"position":"bus stop, eye level","move":"push_in"},"speech":"none","in_frame":[{"character_id":"c2","age_stage":"a1"}]},
-  {"id":"s3","chapter":"ch2","chain_from":null,"shot":"wide","camera":{"position":"bedroom, window","move":"static"},"speech":"voice_over","narration":"Men kutardim.","in_frame":[{"character_id":"c2","age_stage":"a1"}]},
+  {"id":"s3","chapter":"ch2","chain_from":null,"shot":"wide","camera":{"position":"bedroom, window","move":"static"},"speech":"none","speech_intent":"voice_over","in_frame":[{"character_id":"c2","age_stage":"a1"}]},
   {"id":"s4","chapter":"ch2","chain_from":"s3","shot":"insert","camera":{"position":"bedroom, window","move":"static"},"speech":"none","text_layers":[{"text":"Yana bir kun","position":"top"}]}
 ]
 ```
 
-Voice: {"mode":"narration"} before the draft; the chat adds `blocked: ["voice_unavailable"]` while no film voice can be priced.
+Voice: {"mode":"off"}: planned wordless, because only "none" can be made today (speech_allowed); each scene keeps its `speech_intent` (here voice_over) for when a film voice can be priced.
 
 Scene 1's key-frame prompt:
 
@@ -73,7 +74,7 @@ The bus door closes between the father and his daughter
 Characters: Dada: face warm oval face, thick black moustache, tired kind eyes; hair short black hair, greying at the temples; build tall, broad shoulders; outfit navy work jacket, grey trousers, brown boots; palette navy, grey, warm brown; signature a red thermos on his shoulder strap. Malika (6 yosh): face round face, big dark eyes; hair two long black braids with yellow ribbons; build small; outfit yellow coat, red boots; palette yellow, red, black; signature a yellow paper star pinned to her coat
 Setting: Bekat. a village bus stop at dawn, poplar trees, dusty road
 Lighting: cold blue dawn, warm bus window light
-No one speaks; mouths closed.
+No text, no letters, no signage.
 Style: warm hand-drawn 2D cartoon, soft paper texture
 ```
 
@@ -86,8 +87,8 @@ Motion: Static camera. The door slides shut; the girl in the yellow coat steps f
 Characters: Dada: face warm oval face, thick black moustache, tired kind eyes; hair short black hair, greying at the temples; build tall, broad shoulders; outfit navy work jacket, grey trousers, brown boots; palette navy, grey, warm brown; signature a red thermos on his shoulder strap. Malika (6 yosh): face round face, big dark eyes; hair two long black braids with yellow ribbons; build small; outfit yellow coat, red boots; palette yellow, red, black; signature a yellow paper star pinned to her coat
 Setting: Bekat. a village bus stop at dawn, poplar trees, dusty road
 Lighting: cold blue dawn, warm bus window light
-No one speaks; mouths closed.
+No text, no letters, no signage.
 Style: warm hand-drawn 2D cartoon, soft paper texture
 ```
 
-Saved to film_scenes: narration "Dadam har yili ketardi.", clip_params null.
+Saved to film_scenes: narration "", clip_params null.

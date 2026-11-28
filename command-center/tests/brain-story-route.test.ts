@@ -170,28 +170,75 @@ describe("S1 story grammar through /api/brain/turn", () => {
     expect(called("ai_chat_finish_turn").map((c) => (c[1] as { p_outcome: string }).p_outcome)).toEqual(["invalid_output", "invalid_output"]);
   });
 
-  it("G': a voice-over storyboard is drafted with its narration, and the plan says by name why Create is not offered", async () => {
+  it("G': a stored storyboard that speaks where only a wordless film can be made is refused by name, and nothing is saved", async () => {
     state.session = { ...state.session!, slots: FULL_SHORT, step: "proposing" };
     const vo = (t: string) => ({ title: t, duration_s: 30, visual_prompt: "v", speech: "voice_over", narration: "Dad left at dawn." });
     state.payload = { scenarios: [scen({ scenes: [vo("a"), vo("b")] }), scen()] };
-    const d = await (await post({ action: "choose", session: SESSION, index: 0 })).json();
-    expect(d.brief.voice).toEqual({ mode: "narration", blocked: ["voice_unavailable"] });
-    const patch = called("save_film")[0][1] as { p_patch: { scenes: Record<string, unknown>[] } };
-    expect(patch.p_patch.scenes[0]).toMatchObject({ narration: "Dad left at dawn." });
-    expect(patch.p_patch.scenes[0]).not.toHaveProperty("clip_params");
-    expect(String(patch.p_patch.scenes[0].visual_prompt)).toContain("No one speaks; mouths closed.");
-    expect(rpc.mock.calls.map((c) => c[0])).not.toContain("start_film");
+    const res = await post({ action: "choose", session: SESSION, index: 0 });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "speech_not_available" });
+    expect(called("save_film")).toHaveLength(0);
+    expect(called("quote_film")).toHaveLength(0);
   });
 
-  it("G': a scene spoken in its clip is refused at Create while the cut drops clip sound; a wordless film is not refused", async () => {
+  it("G': a wordless storyboard is drafted with no clip audio and no narration, and Create is not blocked", async () => {
     state.session = { ...state.session!, slots: FULL_SHORT, step: "proposing" };
-    const talk = (t: string) => ({ title: t, duration_s: 30, visual_prompt: "v", speech: "in_clip", dialogue: [{ character_id: "c1", line: "Hi" }], character_ids: ["c1"] });
-    state.payload = { scenarios: [scen({ characters: [{ id: "c1", name: "A", description: "a", image_prompt: "a" }], scenes: [talk("a"), talk("b")] }), scen()] };
-    const d = await (await post({ action: "choose", session: SESSION, index: 0 })).json();
-    expect(d.brief.voice.blocked).toEqual(["clip_sound_not_kept"]);
-    const quiet = (t: string) => ({ title: t, duration_s: 30, visual_prompt: "v", speech: "none" });
+    const quiet = (t: string) => ({ title: t, duration_s: 30, visual_prompt: "v", speech: "none", speech_intent: "voice_over" });
     state.payload = { scenarios: [scen({ scenes: [quiet("a"), quiet("b")] }), scen()] };
-    const w = await (await post({ action: "choose", session: SESSION, index: 0 })).json();
-    expect(w.brief.voice).toEqual({ mode: "off" });
+    const d = await (await post({ action: "choose", session: SESSION, index: 0 })).json();
+    expect(d.brief.voice).toEqual({ mode: "off" });
+    const patch = called("save_film")[0][1] as { p_patch: { scenes: Record<string, unknown>[] } };
+    for (const sc of patch.p_patch.scenes) {
+      expect(sc).not.toHaveProperty("clip_params");
+      expect(sc.narration).toBe("");
+      expect(String(sc.visual_prompt)).toContain("No text, no letters, no signage.");
+    }
+    expect(d.film_quote.quote_id).toMatch(/^fq-/);
+  });
+
+  it("M2: a first answer that took over 120 s is not asked again: refused by name at once, with the one message it used", async () => {
+    state.session = { ...state.session!, slots: { kind: "short", target_seconds: 60, aspect: "9:16", style: "x", language: "English", audience: "y" } };
+    const bad = storyOutline([15, 15, 15, 15], { hook: "" });
+    const now = Date.now;
+    let t = 0;
+    Date.now = () => (t += 130_000);
+    try {
+      state.llm = ANSWER({ scenarios: [bad, bad] });
+      const res = await post({ action: "turn", session: SESSION, text: "a story" });
+      expect(await res.json()).toMatchObject({ error: "story_arc_invalid", used: 1 });
+      expect(llm).toHaveBeenCalledTimes(1);
+    } finally { Date.now = now; }
+  });
+
+  it("a chip's change that ends in story_arc_invalid still stores the person's choice", async () => {
+    const slots = { kind: "short", target_seconds: 60, style: "x", aspect: "9:16", language: "English", audience: "y", inferred: ["aspect"] };
+    state.session = { ...state.session!, slots, step: "proposing" };
+    const bad = storyOutline([15, 15, 15, 15], { hook: "" });
+    state.queue = [ANSWER({ scenarios: [bad, bad] })];
+    state.llm = ANSWER({ scenarios: [bad, bad] });
+    const res = await post({ action: "change", session: SESSION, slot: "aspect", choice: 1 });
+    expect(await res.json()).toMatchObject({ error: "story_arc_invalid", used: 2, slots: { aspect: "16:9" } });
+    const fin = called("ai_chat_finish_turn").map((c) => c[1] as Record<string, unknown>);
+    expect(fin[fin.length - 1]).toMatchObject({ p_outcome: "ok", p_text: "", p_slots: expect.objectContaining({ aspect: "16:9" }) });
+  });
+
+  it("a language chip is shown and stored by its own name, never the English value", async () => {
+    const slots = { kind: "short", target_seconds: 60, style: "x", aspect: "9:16", language: "English", audience: "y", inferred: ["language"] };
+    state.session = { ...state.session!, slots, step: "proposing" };
+    state.llm = ANSWER({ scenarios: [storyOutline([15, 15, 15, 15]), storyOutline([15, 15, 15, 15])] });
+    await post({ action: "change", session: SESSION, slot: "language", choice: 2 });
+    expect(called("ai_chat_reserve_turn")[0][1]).toMatchObject({ p_text: "Language: Русский" });
+  });
+
+  it("M3: look sheets too long for any shot are refused before the lease and any turn", async () => {
+    state.session = { ...state.session!, slots: FULL_SHORT, step: "proposing" };
+    const huge = { face: "f".repeat(160), hair: "h".repeat(160), build: "b".repeat(160), outfit: "o".repeat(160), palette: "p".repeat(160), signature: "s".repeat(160) };
+    const o = storyOutline([15, 15, 15, 15], { characters: [1, 2, 3].map((i) => ({ id: `c${i}`, name: `N${i}`, description: "d", image_prompt: "i", look: huge })) });
+    state.payload = { scenarios: [o, o] };
+    const res = await post({ action: "choose", session: SESSION, index: 0 });
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ error: "looks_too_long", limit: 2000, in_frame: 3 });
+    expect(called("ai_chat_plan_begin")).toHaveLength(0);
+    expect(called("ai_chat_reserve_turn")).toHaveLength(0);
   });
 });

@@ -27,11 +27,16 @@
 import {
   FILM,
   arr,
+  clipPrompt,
+  scenePrompt,
   extractJson,
   foldForCheck,
   namesVendor,
   obj,
   readSceneParts,
+  speechAllowed,
+  speechOf,
+  type SceneSpeech,
   type BriefScene,
   type ClipShape,
   type OutlineChapter,
@@ -69,13 +74,19 @@ export const STORY = { sceneMax: 5, typicalSceneS: 3.3, windowSeconds: 40, upToS
  */
 export const SPOKEN_WPS: Record<string, number> = { English: 2.5, Russian: 2.2, Uzbek: 2.0 };
 export const STORY_SPOKEN_FILL = 0.9;
+/** Characters a narrator speaks per second in a script written without spaces. ESTIMATE, to be measured against the TTS. */
+export const SPOKEN_CPS = 4;
 
 /** How long a narration takes to say, in seconds (an estimate: words ÷ SPOKEN_WPS), or null when the language has no rate. */
 export function spokenSeconds(text: string, language: string | null | undefined): number | null {
   const wps = language ? SPOKEN_WPS[language] : undefined;
   if (!wps) return null;
-  const words = (text.match(/[\p{L}\p{N}][\p{L}\p{N}ʻʼ'’-]*/gu) ?? []).length;
-  return words / wps;
+  // Words are split at hyphens and underscores too (BR-SG-04: forty words joined by "-" read as one). A script written without
+  // spaces (Han, kana, Thai…) is counted by its characters instead, at SPOKEN_CPS: one "word" of 40 such characters is not 0.4 s.
+  const noSpace = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/gu;
+  const chars = (text.match(noSpace) ?? []).length;
+  const words = (text.replace(noSpace, " ").split(/[\s_\-‐‑‒–—―/]+/u).filter((w) => /[\p{L}\p{N}]/u.test(w))).length;
+  return words / wps + chars / SPOKEN_CPS;
 }
 
 export interface PlanLimits {
@@ -267,6 +278,33 @@ function allot(windows: PlanWindow[], limits: PlanLimits, target: number): PlanW
   return windows;
 }
 
+/** The most characters one shot is assumed to hold when the looks are measured (looksOverLimit): a two-shot plus one. */
+export const LOOKS_IN_FRAME = 3;
+/** Room kept for what the plan writes itself in a scene's prompt (visual_prompt, first frame or motion, light, camera). */
+export const LOOKS_RESERVE = 400;
+
+/**
+ * Whether the outline's look sheets can fit a scene's prompt at all (Lens M3): the LOOKS_IN_FRAME longest characters (each at its
+ * longest age stage), the longest setting, the style and the fixed lines, plus LOOKS_RESERVE for the plan's own words, against the
+ * models' prompt limit. Checked at choose BEFORE the plan's lease and turns: otherwise every window would come back
+ * prompt_too_long after its turns were spent. Null when it fits.
+ */
+export function looksOverLimit(o: Scenario, style: string | null, limit: number): { length: number; limit: number; in_frame: number } | null {
+  const film = { characters: o.characters, locations: o.locations, style, visual_style: o.visual_style ?? null };
+  const base = { visual_prompt: "x".repeat(LOOKS_RESERVE), dialogue: [], character_ids: [] as string[], location_id: null as string | null,
+                 shot: "over_shoulder" as const, camera: { position: "", move: "tracking" as const }, speech: "voice_over" as const };
+  const longest = (sc: Parameters<typeof scenePrompt>[1]) => Math.max(scenePrompt(film, sc).length, clipPrompt(film, sc).length);
+  // Each character at its longest stage, measured on its own; the longest few together.
+  const each = o.characters.map((c) => {
+    const stages: (string | null)[] = [null, ...(c.age_stages ?? []).map((a) => a.id)];
+    const best = stages.map((st) => ({ st, n: longest({ ...base, in_frame: [{ character_id: c.id, age_stage: st }] }) })).sort((a, b) => b.n - a.n)[0];
+    return { id: c.id, stage: best.st, n: best.n };
+  }).sort((a, b) => b.n - a.n).slice(0, LOOKS_IN_FRAME);
+  const place = [...o.locations].sort((a, b) => (b.image_prompt || b.description).length - (a.image_prompt || a.description).length)[0];
+  const length = longest({ ...base, location_id: place?.id ?? null, in_frame: each.map((x) => ({ character_id: x.id, age_stage: x.stage })) });
+  return length > limit ? { length, limit, in_frame: each.length } : null;
+}
+
 export function refsOf(outline: Scenario): SceneRefs {
   return { c: new Set(outline.characters.map((c) => c.id)), l: new Set(outline.locations.map((l) => l.id)), p: new Set(outline.props.map((p) => p.id)) };
 }
@@ -279,6 +317,8 @@ export type WindowRead =
   | { ok: false; why: "invalid" }
   /** The lengths are wrong. `problem` is the server's own words (numbers and ids only), for the one re-ask. */
   | { ok: false; why: "length"; problem: string }
+  /** A scene heard in a way that cannot be made today (speechAllowed), for the one re-ask. */
+  | { ok: false; why: "speech"; problem: string }
   /** The shot grammar is broken (a chapter not opened wide, a shot field missing, a stage or a speech that does not fit), for the
    *  one re-ask. */
   | { ok: false; why: "rules"; problem: string }
@@ -464,13 +504,15 @@ export function outlineText(o: Scenario): string {
  *  `promptOf` assembles a scene's whole prompt (logic scenePrompt, with the outline's characters, locations and style): a scene
  *  over limits.promptMax is a problem for the one re-ask, never cut. */
 export function readWindow(text: string, w: PlanWindow, refs: SceneRefs, limits: PlanLimits, outline = "",
-                           promptOf?: (s: SceneParts) => string, extraClaimNames: readonly string[] = [], rules?: ShotRules): WindowRead {
+                           promptOf?: (s: SceneParts) => string, extraClaimNames: readonly string[] = [], rules?: ShotRules,
+                           allowed: readonly SceneSpeech[] = speechAllowed(false)): WindowRead {
   const json = extractJson(text);
   if (!json) return { ok: false, why: "invalid" };
   if (json.refused === true || (typeof json.refused === "string" && json.refused.trim() !== "")) return { ok: false, why: "refused" };
   const answered = arr(json.chapters).map(obj);
   const problems: string[] = [];
   const grammar: string[] = [];
+  const speech: string[] = [];
   let spoken: { chapter: number; at: number; text: string } | null = null;
   const prompts: { chapter: number; at: number; text: string }[] = [];
   const out: SceneParts[][] = [];
@@ -491,20 +533,28 @@ export function readWindow(text: string, w: PlanWindow, refs: SceneRefs, limits:
     if (scenes.some((s) => s === null)) return { ok: false, why: "invalid" };
     // A line spoken inside a clip belongs only to a scene that says it is (speech in_clip); the scene knows its chapter, which is
     // where its last frame may chain to the next one's first (mergePlan).
-    const ok = (scenes as SceneParts[]).map((s) => ({ ...s, chapter_id: p.chapter_id, ...(s.speech && s.speech !== "in_clip" ? { dialogue: [] } : {}) }));
+    // A line or a narration belongs only to a scene heard that way (speechOf, so a scene that leaves "speech" out is read by what it
+    // carries: BR-SG-03); one heard in a way that cannot be made today is sent back below, never saved.
+    const ok = (scenes as SceneParts[]).map((s) => {
+      const heard = speechOf(s);
+      return { ...s, chapter_id: p.chapter_id, ...(heard !== "in_clip" ? { dialogue: [] } : {}), ...(heard !== "voice_over" ? { narration: undefined } : {}) };
+    }).map((s) => { if (s.narration === undefined) delete s.narration; return s; });
+    const unheard = ok.findIndex((s, i) => !allowed.includes(speechOf((scenes as SceneParts[])[i])));
+    if (unheard >= 0) {
+      speech.push(`chapter ${p.chapter_id}: scene ${unheard + 1} is "${speechOf((scenes as SceneParts[])[unheard])}", but this film can only be planned with "speech" in ${JSON.stringify(allowed)}: write it with no dialogue and no narration, and put how it would be heard in "speech_intent"`);
+    }
     // A vendor's name the outline does not carry, or any claim that a vendor made it: the plan fails rather than a picture or a
     // spoken line carrying it (an injected chapter can ask for either).
-    if (ok.some((s) => [s.title, s.visual_prompt, ...s.dialogue.map((d) => d.line), s.narration ?? "", s.first_frame ?? "", s.last_frame ?? "", s.motion ?? "",
-                        ...(s.text_layers ?? []).map((t) => t.text)].some((t) => planNamesVendor(t, outline, extraClaimNames)))) return { ok: false, why: "invalid" };
+    // Every field that is folded into a prompt or saved, lighting and the camera's position included (BR-SG-02), and the raw lines and
+    // narration too (dropped or not, the model wrote them).
+    const raws = scenes as SceneParts[];
+    if (ok.some((s, i) => [s.title, s.visual_prompt, ...raws[i].dialogue.map((d) => d.line), raws[i].narration ?? "", s.first_frame ?? "", s.last_frame ?? "",
+                           s.motion ?? "", s.lighting ?? "", s.camera?.position ?? "", s.sfx ?? "",
+                           ...(s.text_layers ?? []).map((t) => t.text)].some((t) => planNamesVendor(t, outline, extraClaimNames)))) return { ok: false, why: "invalid" };
     if (rules) {
       const r = sceneRules(p, ok, rules);
       grammar.push(...r.rules);
       if (r.narration && !spoken) spoken = { chapter: p.chapter_n, at: r.narration.at, text: r.narration.text };
-    } else {
-      // Not a story outline (a project's own, or one stored before the grammar): it has no narrator, as before. A voice-over here
-      // would be saved as narration the project has no voice for, so it goes back to the model rather than into the film.
-      const vo = ok.findIndex((s) => s.speech === "voice_over");
-      if (vo >= 0) grammar.push(`chapter ${p.chapter_id}: scene ${vo + 1} is "voice_over", but this film has no narrator: use "in_clip" or "none"`);
     }
     count += ok.length;
     if (promptOf && longRaw < 0) {
@@ -525,8 +575,10 @@ export function readWindow(text: string, w: PlanWindow, refs: SceneRefs, limits:
   }
   if (count > w.maxScenes) problems.push(`this answer has ${count} scenes; at most ${w.maxScenes} are allowed`);
   const sp = spoken as { chapter: number; at: number; text: string } | null;
-  const rest = [...grammar, ...(sp ? [sp.text] : []), ...prompts.map((x) => x.text)];
+  const rest = [...speech, ...grammar, ...(sp ? [sp.text] : []), ...prompts.map((x) => x.text)];
   if (problems.length) return { ok: false, why: "length", problem: [...problems, ...rest].join(". ") };
+  // A speaking plan where only wordless films can be made: its own kind, so a second one is refused by that name.
+  if (speech.length) return { ok: false, why: "speech", problem: rest.join(". ") };
   if (grammar.length) return { ok: false, why: "rules", problem: rest.join(". ") };
   if (sp) return { ok: false, why: "narration", problem: [sp.text, ...prompts.map((x) => x.text)].join(". "), chapter: sp.chapter, scene: sp.at };
   // Only a prompt over the limit: its own kind, so a second such answer is refused as prompt_too_long, not as a length mismatch.

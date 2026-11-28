@@ -36,12 +36,13 @@ export const aiChatEn = {
   trialLeft: { one: "Free trial: {n} message left.", few: "Free trial: {n} messages left.", many: "Free trial: {n} messages left.", other: "Free trial: {n} messages left." },
   planReady: "The plan",
   /** How a story film is heard (lib/brain/logic speechBlocks), said on the plan; never a claim that is not true of the cut. */
+  plannedWordless: "This story is planned without spoken lines: voices and in-clip sound aren't available for films yet.",
   voiceOverNote: "A narrator tells the story in a voice-over; no one speaks on screen in those scenes.",
   inClipNote: "In some scenes the characters speak inside the clip.",
   wordlessNote: "This film has no words: pictures, music cues and sound only.",
   speechBlocked: {
-    clip_sound_not_kept: "Clip sound is not yet kept in the final film, so a film whose characters speak inside the clips can't be created yet. Nothing was charged. The storyboard is saved in the project.",
-    voice_unavailable: "Voice-over needs a voice model that isn't available for films yet, so this film can't be created yet. Nothing was charged. The storyboard is saved in the project.",
+    clip_sound_not_kept: "Clip sound is not yet kept in the final film, so a film whose characters speak inside the clips can't be created yet. Nothing was priced. The storyboard is saved in the project.",
+    voice_unavailable: "Voice-over needs a voice model that isn't available for films yet, so this film can't be created yet. Nothing was priced. The storyboard is saved in the project.",
   },
   createBlocked: "Create",
   textLayersNote: { one: "{n} on-screen text is added as a layer, never drawn into the picture.", few: "{n} on-screen texts are added as layers, never drawn into the picture.", many: "{n} on-screen texts are added as layers, never drawn into the picture.", other: "{n} on-screen texts are added as layers, never drawn into the picture." },
@@ -137,7 +138,9 @@ export const aiChatEn = {
     busy: "An answer is still on its way. Open that chat once it has arrived.",
   },
   errors: {
-    story_arc_invalid: "The scenarios didn't follow a clear story (setup, longing, turn and payoff, with a hook and looks for every character), even when asked again, so none is shown. Nothing was charged. Ask again, or describe the story a little more.",
+    speech_not_available: "The storyboard gave its scenes spoken lines, but only films without spoken lines can be made today, even after asking again. Nothing was priced. Try again.",
+    looks_too_long: "The characters' looks are too long for the picture models: with {n} characters in one shot, a scene's description would be {length} of {limit} characters. No messages were used. Ask Nightshift AI for shorter looks or fewer characters.",
+    story_arc_invalid: "The scenarios didn't follow a clear story (setup, longing, turn and payoff, with a hook and looks for every character), even when asked again, so none is shown. That used {messages}; nothing was priced. Ask again, or describe the story a little more.",
     narration_too_long: "The voice-over of a scene in chapter {chapter} is too long to be said in its seconds, even after asking again. Nothing was priced. Try again, or choose a longer film.",
     plan_shot_rules: "The storyboard didn't follow the shot rules (each chapter opens with a wide shot, every shot has its frames and light), even when asked again. Nothing was priced. Try again.",
     session_ended: "Your session ended. Sign in again to continue.",

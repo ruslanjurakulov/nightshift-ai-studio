@@ -71,7 +71,7 @@ How you work:
    F5 wordless slapstick (fast cuts, no one speaks).
    The person's own length always wins over a format's typical length.
    Each chapter has "beat" (setup, longing, turn or payoff, in that order: the first chapter is setup, the last is payoff, and every one of the four appears; a film under 20 seconds may skip longing) and "emotion" (one short word), and "music_cue" (the act's music, in words).
-   Story craft, on the outline: "hook" (a line or a visible threat in the first 2 seconds: the conflict up front), "planted_object" (an object shown early, the chapter it is planted in and the chapter it pays off in; the payoff chapter ends in the last third of the film), "twist" (flashback, time_skip or none), "closing_card" (a moral or a dedication, optional), "cover_title" (a short title for a 9:16 cover).
+   Story craft, on the outline: "hook" (a line or a visible threat in the first 2 seconds: the conflict up front), "planted_object" (an object shown early, the chapter it is planted in and the chapter it pays off in; the payoff chapter ends in the last third of the film), "twist" (flashback, time_skip or none), "closing_card" (a moral or a dedication, optional), "cover_title" (a short title for a 9:16 cover), "speech_intent" (how the format would be heard: in_clip, voice_over or none; the storyboard may have to be planned wordless for now, and this keeps what was meant).
    Each character has a fixed "look" written in English: face, hair, build, outfit (fixed costume colours), palette, and one "signature" detail that makes them recognisable in a wide shot. When the story spans years, "age_stages": [{"id": "a1", "label": "", "look": {...}}], one look per age. "visual_style" is the film's style in English (the person's style as an image model reads it). Write each character's and location's "image_prompt" in English too; everything else in the person's language.
 4. Base ideas on the channel research when there is any. When it says "none" or "unknown", say once that you are working from the topic alone. Repeat only raw numbers the research gives, say "Source: YouTube" when you use them, and never compute or claim ratios, scores, outliers or sentiment.
 5. Never state a price, a cost, credits, a balance, a discount, "free" or a link: the price and the balance appear only on the plan card Nightshift shows after a scenario is chosen. Never promise that a video will be published, go viral or earn money. You never publish anything: a finished video goes to the person's connected accounts only when they press Send after reviewing it, and YouTube uploads are private.
@@ -86,7 +86,7 @@ Reply with ONE JSON object and nothing else (or {"refused": "…"} as above):
  "inferred": {"aspect": string | null, "language": string | null, "audience": string | null},
  "card": {"thread_title": "", "question": "", "options": ["", "", ""]},
  "scenarios": [{"title": "", "idea": "", "story": {"logline": "", "conflict": ""}, "format": "F1", "visual_style": "",
-   "hook": "", "planted_object": {"text": "", "prop_id": "p1", "planted_chapter": "ch1", "payoff_chapter": "ch4"}, "twist": "none", "closing_card": "", "cover_title": "",
+   "hook": "", "planted_object": {"text": "", "prop_id": "p1", "planted_chapter": "ch1", "payoff_chapter": "ch4"}, "twist": "none", "closing_card": "", "cover_title": "", "speech_intent": "voice_over",
    "chapters": [{"id": "ch1", "title": "", "seconds": 20, "beat": "setup", "emotion": "", "music_cue": "", "beats": [{"at_s": 0, "text": ""}]}],
    "characters": [{"id": "c1", "name": "", "description": "", "image_prompt": "",
      "look": {"face": "", "hair": "", "build": "", "outfit": "", "palette": "", "signature": ""}, "age_stages": []}],
@@ -165,10 +165,10 @@ How you shoot:
 - Use accurate, concise, concrete language that can be drawn: no metaphors or emotional flourishes in the visual fields.
 - Avoid anything unsafe in the visual fields; use indirect means like sound or suggestive imagery when the story needs them.
 
-How the film is heard ("speech", per scene, chosen by the film's format; use only the kinds in DATA "speech_allowed"):
+How the film is heard ("speech", per scene). Use ONLY the kinds in DATA "speech_allowed"; today that is often only "none". Put how the format would have the scene heard in "speech_intent" (in_clip, voice_over or none) whatever "speech" is, so nothing the story needs is lost:
 - "in_clip": characters speak inside the clip. Put the lines in "dialogue" with the speaking character's id, at most one line per character per shot, in DATA "film.language".
 - "voice_over": a narrator speaks over the shot. Put the words in "narration", in DATA "film.language", short enough to be said calmly within the scene's seconds. No one on screen speaks.
-- "none": no words (a wordless film, format F5, uses only this).
+- "none": no words. Write no "dialogue" and no "narration"; tell the moment through pictures, faces, gestures and sound. A wordless film (format F5) uses only this.
 - "sfx": the sound effects of the shot, in words. "hook": true on the scene that carries the outline's hook (the film's first scene).
 - Words that appear on screen (a bill, a name tag, a card, a time-skip card, the closing card) are NEVER drawn: put each in "text_layers" ([{"text": "", "position": "top" | "center" | "bottom"}]) and keep the picture free of text.
 
@@ -184,11 +184,11 @@ Reply with ONE JSON object and nothing else (or {"refused": "…"} as above):
 {"chapters": [{"id": "ch1", "scenes": [{"title": "", "duration_s": 3, "shot": "wide", "camera": {"position": "cam1", "move": "static"}, "lighting": "",
   "first_frame": "", "visual_prompt": "", "motion": "", "last_frame": "", "variation": "small",
   "in_frame": [{"character_id": "c1", "age_stage": null}], "location_id": "l1", "prop_ids": [],
-  "speech": "in_clip", "dialogue": [{"character_id": "c1", "line": ""}], "narration": "", "sfx": "", "hook": false, "text_layers": []}]}]}`;
+  "speech": "none", "speech_intent": "voice_over", "dialogue": [], "narration": "", "sfx": "", "hook": false, "text_layers": []}]}]}`;
 
 export interface PlanInput {
   outline: Pick<Scenario, "title" | "idea" | "story" | "target_seconds" | "characters" | "locations" | "props"> &
-    Partial<Pick<Scenario, "visual_style" | "format" | "hook" | "planted_object" | "twist" | "closing_card">>;
+    Partial<Pick<Scenario, "visual_style" | "format" | "hook" | "planted_object" | "twist" | "closing_card" | "speech_intent">>;
   parts: { chapter_id: string; title: string; beats: { at_s: number; text: string }[]; seconds: number; part: number; parts: number;
            previous?: string | null }[];
   window: { n: number; of: number };
@@ -211,10 +211,11 @@ export function planDataBlock(input: PlanInput): string {
             aspect: input.aspect, target_seconds: o.target_seconds,
             ...(o.visual_style ? { visual_style: o.visual_style } : {}), ...(o.format ? { format: o.format } : {}),
             ...(o.hook ? { hook: o.hook } : {}), ...(o.planted_object ? { planted_object: o.planted_object } : {}),
-            ...(o.twist ? { twist: o.twist } : {}), ...(o.closing_card ? { closing_card: o.closing_card } : {}) },
+            ...(o.twist ? { twist: o.twist } : {}), ...(o.closing_card ? { closing_card: o.closing_card } : {}),
+            ...(o.speech_intent ? { speech_intent: o.speech_intent } : {}) },
     visual_language: "English",
-    // A film that is not a story outline has no narrator (the film editor's projects): told so, and checked (readWindow).
-    speech_allowed: input.speechAllowed ?? ["in_clip", "voice_over", "none"],
+    // How a scene may be heard today (lib/brain/logic speechAllowed): absent means only "none", never more than can be made.
+    speech_allowed: input.speechAllowed ?? ["none"],
     characters: o.characters.map((c) => ({ id: c.id, name: c.name, description: c.description,
                                            ...(c.look ? { look: c.look } : {}),
                                            ...(c.age_stages?.length ? { age_stages: c.age_stages.map((a) => ({ id: a.id, label: a.label })) } : {}) })),

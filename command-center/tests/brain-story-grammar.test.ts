@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  CLIP_PROMPT_SAVED,
   CLIP_SOUND_IN_CUT,
+  NO_TEXT,
+  speechAllowed,
+  voiceQuotable,
   buildBrief,
   clipPrompt,
   filmFromBrief,
@@ -18,8 +22,8 @@ import {
   type BriefScene,
   type Scenario,
 } from "@/lib/brain/logic";
-import { STORY, mergePlan, planLimits, planTurns, planWindows, readWindow, refsOf, shotRules, spokenSeconds, withPlanTurns } from "@/lib/brain/plan";
-import { filmPlanTurns } from "@/lib/brain/film-plan";
+import { SPOKEN_CPS, STORY, looksOverLimit, mergePlan, planLimits, planTurns, planWindows, readWindow, refsOf, shotRules, spokenSeconds, withPlanTurns } from "@/lib/brain/plan";
+import { filmLeaseMaxTurns, filmPlanTurns } from "@/lib/brain/film-plan";
 import { PLAN_SYSTEM_PROMPT, SYSTEM_PROMPT, dataBlock, planDataBlock } from "@/lib/brain/prompt";
 import { aiChatEn } from "@/lib/i18n/ai-chat/en";
 import { aiChatRu } from "@/lib/i18n/ai-chat/ru";
@@ -38,8 +42,8 @@ const SHORT = (t: number, language = "English"): BrainSlots => ({ kind: "short",
 const story = (seconds: number[], o: Record<string, unknown> = {}, t = seconds.reduce((a, b) => a + b, 0)) =>
   readScenario(storyOutline(seconds, o), SHORT(t), { outline: true }) as Scenario;
 
-/** 0232 (PR #959): ai_chat_film_plan_max_turns(t) = least(15, 1 + 2·ceil(t/24)). Its TS mirror is not on main yet: the formula here. */
-const leaseMaxTurns = (t: number) => Math.min(15, 1 + 2 * Math.ceil(t / 24));
+/** 0232's ai_chat_film_plan_max_turns(t), through its TS mirror (lib/brain/film-plan): never a second copy of the formula. */
+const leaseMaxTurns = filmLeaseMaxTurns;
 
 describe("A: the answer to the last open question proposes in the same turn", () => {
   it("DATA names the open slots and says when one is left; the prompt tells the model to propose then", () => {
@@ -232,12 +236,13 @@ describe("D: the shot grammar (ported from ViMax) is checked and folded into the
     expect(scenePrompt(film, s)).toContain("Motion:");
   });
 
-  it("an in-clip line reaches the clip prompt only, and 'mouths closed' is never said of a scene spoken in its clip", () => {
+  it("an in-clip line reaches no prompt while one prompt makes both pictures, and 'mouths closed' is never said of an in-clip scene", () => {
     const o = outline60();
     const s: BriefScene = { id: "s1", n: 1, title: "t", duration_s: 4, visual_prompt: "the father hugs her", dialogue: [{ character_id: "c1", line: "Qizim!" }],
       character_ids: ["c1"], location_id: null, prop_ids: [], keyframe_model: null, clip_model: null, speech: "in_clip", shot: "two_shot" };
     const film = { characters: o.characters, locations: o.locations };
-    expect(clipPrompt(film, s)).toContain('Ota says: "Qizim!"');
+    expect(CLIP_PROMPT_SAVED).toBe(false);
+    expect(clipPrompt(film, s)).not.toContain("Qizim");
     expect(keyframePrompt(film, s)).not.toContain("Qizim");
     expect(scenePrompt(film, s)).not.toContain("Qizim");
     expect(clipPrompt(film, s)).not.toContain("mouths closed");
@@ -253,6 +258,14 @@ describe("D: the shot grammar (ported from ViMax) is checked and folded into the
     const b = buildBrief("s", SHORT(60), { ...o, scenes }, "ready");
     expect(b.text_layers).toEqual([{ scene_id: "s1", text: "10 yil o'tib", position: "bottom" }, { scene_id: "s2", text: "Barcha otalarga", position: "center" }]);
     expect(scenePrompt(b, scenes[0])).toContain("No text, no letters, no signage.");
+  });
+
+  it("BR-SG-05: every prompt says no text, the closing card's scene and a scene with no layer of its own included", () => {
+    const o = outline60();
+    const plain = { id: "s1", n: 1, title: "", duration_s: 4, visual_prompt: "sunset", dialogue: [], character_ids: [], location_id: null, prop_ids: [],
+                    keyframe_model: null, clip_model: null } as BriefScene;
+    const film = { characters: o.characters, locations: o.locations };
+    for (const f of [keyframePrompt, clipPrompt, scenePrompt]) expect(f(film, plain)).toContain(NO_TEXT);
   });
 
   it("a shot chains to the one before it only inside its chapter, never across", () => {
@@ -290,12 +303,13 @@ describe("G': how each scene is heard, and what Create refuses by name", () => {
     const rules = shotRules(o, "Uzbek");
     const long = "Ota har kuni ertalab uzoq shaharga ketadi va qizi uni deraza oldida kutib turadi har kuni";
     const ans = answerFor(w, 0, (_, p) => split(p.seconds).map((d, i) => storyScene(d, i, { speech: "voice_over", narration: long, ...(i === 0 && p.id === "ch1" ? { hook: true } : {}) })));
-    const r = readWindow(ans, w[0], refsOf(o), limits60(), "", undefined, [], rules);
+    // Only a film with a quotable voice may speak over its shots (speechAllowed(true)); today none has one.
+    const r = readWindow(ans, w[0], refsOf(o), limits60(), "", undefined, [], rules, speechAllowed(true));
     expect(r).toMatchObject({ ok: false, why: "narration", chapter: 1, scene: 1 });
     expect((r as { problem: string }).problem).toMatch(/takes about \d+\.\d s to say; it must fit in/);
   });
 
-  it("a voice-over scene saves its narration and asks for no clip sound; an in-clip scene asks for it; a wordless one for neither", () => {
+  it("a voice-over scene saves its narration; NO scene asks for clip sound while the cut drops it, an in-clip one included", () => {
     const o = outline60();
     const base = { dialogue: [], character_ids: [], location_id: null, prop_ids: [], keyframe_model: null, clip_model: null, title: "t", visual_prompt: "v" };
     const scenes: BriefScene[] = [
@@ -307,7 +321,8 @@ describe("G': how each scene is heard, and what Create refuses by name", () => {
     const f = filmFromBrief(b)!;
     expect(f.scenes[0]).toMatchObject({ narration: "Ota ketdi." });
     expect(f.scenes[0]).not.toHaveProperty("clip_params");
-    expect(f.scenes[1]).toMatchObject({ narration: "", clip_params: { audio: true } });
+    expect(f.scenes[1]).toMatchObject({ narration: "" });
+    expect(f.scenes[1]).not.toHaveProperty("clip_params");
     expect(f.scenes[2]).toMatchObject({ narration: "" });
     expect(f.scenes[2]).not.toHaveProperty("clip_params");
     expect(b.voice.mode).toBe("narration");
@@ -323,15 +338,46 @@ describe("G': how each scene is heard, and what Create refuses by name", () => {
     expect(speechBlocks([sc("none")], false)).toEqual([]);
   });
 
-  it("a film that is not a story outline (a project's own) has no narrator: a voice-over there goes back to the model", () => {
-    const o = readScenario({ ...storyOutline([30, 30]), format: undefined }, SHORT(60), { outline: true })!;
-    const lim = planLimits(null);
-    const w = planWindows(o, lim)!;
-    const ans = JSON.stringify({ chapters: w[0].parts.map((p) => ({ id: p.chapter_id, scenes: [storyScene(p.seconds, 0, { speech: "voice_over", narration: "x" })] })) });
-    expect((readWindow(ans, w[0], refsOf(o), lim) as { why: string; problem: string })).toMatchObject({ why: "rules", problem: expect.stringMatching(/no narrator/) });
-    const d = JSON.parse(planDataBlock({ outline: o, parts: [], window: { n: 1, of: 1 }, limits: { sceneMin: 3, sceneMax: 30, maxScenes: 15 }, style: null, language: "English", aspect: null,
-                                         speechAllowed: ["in_clip", "none"] }).split("\n")[1]);
-    expect(d.speech_allowed).toEqual(["in_clip", "none"]);
+  it("only what can be made is planned: today that is wordless, on the chat and the film editor alike (one helper)", () => {
+    expect(speechAllowed(false)).toEqual(["none"]);
+    expect(speechAllowed(true)).toEqual(["none", "voice_over"]);
+    expect(voiceQuotable(null)).toBe(false);
+    expect(voiceQuotable({ source: "channel" })).toBe(false);
+    expect(voiceQuotable({ source: "creative_tts", model: "m", voice_id: "v" })).toBe(true);
+    const d = JSON.parse(planDataBlock({ outline: outline60(), parts: [], window: { n: 1, of: 1 }, limits: { sceneMin: 3, sceneMax: 5, maxScenes: 15 }, style: null,
+                                         language: "English", aspect: null }).split("\n")[1]);
+    expect(d.speech_allowed).toEqual(["none"]);
+  });
+
+  it("an in-clip or voice-over answer is a speech problem for the one re-ask, on a story outline and a project's own", () => {
+    for (const [o, lim, rules] of [[outline60(), limits60(), shotRules(outline60(), "English")],
+                                   [readScenario({ ...storyOutline([30, 30]), format: undefined }, SHORT(60), { outline: true })!, planLimits(null), undefined]] as const) {
+      const w = planWindows(o, lim)!;
+      for (const speak of [{ speech: "voice_over", narration: "x" }, { speech: "in_clip", dialogue: [{ character_id: "c1", line: "Hi" }] }]) {
+        const ans = answerFor(w, 0, (_, p) => split(p.seconds).map((d, i) => storyScene(d, i, { ...speak, ...(i === 0 && p.id === "ch1" ? { hook: true } : {}) })));
+        const r = readWindow(ans, w[0], refsOf(o), lim, "", undefined, [], rules) as { why: string; problem: string };
+        expect(r.why).toBe("speech");
+        expect(r.problem).toMatch(/can only be planned with "speech" in \["none"\]/);
+      }
+    }
+  });
+
+  it("BR-SG-01: no saved scene ever asks for clip audio while CLIP_SOUND_IN_CUT is false, whatever its speech", () => {
+    expect(CLIP_SOUND_IN_CUT).toBe(false);
+    const o = outline60();
+    const kinds: (BriefScene["speech"] | undefined)[] = ["in_clip", "voice_over", "none", undefined];
+    const scenes: BriefScene[] = kinds.flatMap((k, i) => [true, false].map((lines, j) => ({
+      id: `s${i * 2 + j + 1}`, n: i * 2 + j + 1, title: "", duration_s: 7, visual_prompt: "v", character_ids: ["c1"], location_id: null, prop_ids: [],
+      keyframe_model: null, clip_model: null, dialogue: lines ? [{ character_id: "c1", line: "Hi" }] : [], ...(k ? { speech: k } : {}), narration: "n" })));
+    const f = filmFromBrief(buildBrief("s", SHORT(56), { ...o, target_seconds: 56, scenes }, "ready"))!;
+    expect(f.scenes.some((s) => (s.clip_params as { audio?: unknown } | undefined)?.audio === true)).toBe(false);
+    expect(JSON.stringify(f.scenes)).not.toContain('"Hi"');
+  });
+
+  it("BR-SG-04: hyphen- and underscore-joined words are words, and a script without spaces is counted by its characters", () => {
+    expect(spokenSeconds(Array.from({ length: 40 }, (_, k) => `w${k}`).join("-"), "English")).toBe(16);
+    expect(spokenSeconds("a_b_c_d_e", "English")).toBe(2);
+    expect(spokenSeconds("父亲在远方的城市工作", "English")).toBe(10 / SPOKEN_CPS);
   });
 
   it("a wordless film (F5) that speaks is a rules problem", () => {
@@ -421,6 +467,28 @@ describe("i18n: every new string in en, ru and uz, Uzbek with its own apostrophe
   it("the speech refusals name the reason, not a remedy that does not exist", () => {
     expect(aiChatEn.speechBlocked.voice_unavailable).toMatch(/voice model that isn't available/);
     expect(aiChatEn.speechBlocked.clip_sound_not_kept).toMatch(/Clip sound is not yet kept in the final film/);
+  });
+});
+
+describe("Lens M3: look sheets that could never fit a shot's prompt are refused before any turn", () => {
+  it("fits with ordinary looks; three huge looks in one shot are over the limit, with the numbers to say so", () => {
+    expect(looksOverLimit(outline60(), "multfilm", 2000)).toBeNull();
+    const huge = { face: "f".repeat(160), hair: "h".repeat(160), build: "b".repeat(160), outfit: "o".repeat(160), palette: "p".repeat(160), signature: "s".repeat(160) };
+    const o = story([15, 15, 15, 15], { characters: [1, 2, 3].map((i) => ({ id: `c${i}`, name: `N${i}`, description: "d", image_prompt: "i", look: huge })),
+                                       hook: "h" });
+    const over = looksOverLimit(o, "multfilm", 2000);
+    expect(over).toMatchObject({ limit: 2000, in_frame: 3 });
+    expect(over!.length).toBeGreaterThan(2000);
+  });
+
+  it("the new refusals and the planned-wordless line exist in all three languages", () => {
+    for (const d of [aiChatEn, aiChatRu, aiChatUz]) {
+      expect(d.plannedWordless).toBeTruthy();
+      for (const e of ["speech_not_available", "looks_too_long"] as const) expect(d.errors[e]).toBeTruthy();
+      expect(d.errors.story_arc_invalid).toContain("{messages}");
+      for (const t of Object.values(d.speechBlocked)) expect(t).not.toMatch(/charged|списано|yechilmadi/);
+    }
+    expect(aiChatEn.plannedWordless).toBe("This story is planned without spoken lines: voices and in-clip sound aren't available for films yet.");
   });
 });
 

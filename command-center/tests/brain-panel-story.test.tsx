@@ -51,7 +51,8 @@ beforeEach(() => {
                            scenarios: [outline("Alpha"), outline("Beta")], brief: { version: 1, kind: "short" } });
       }
       return json(200, { brief: { version: 1, kind: "short", title: "Alpha", idea: "i", target_seconds: 30, voice, music: { mode: "off" },
-                                  scenes: [{ id: "s1", dialogue: [], speech: voice.mode === "narration" ? "voice_over" : "in_clip", narration: "Ota ketdi." }],
+                                  scenes: [{ id: "s1", dialogue: [], speech: voice.mode === "narration" ? "voice_over" : voice.mode === "clip_audio" ? "in_clip" : "none",
+                                             ...(voice.intent ? { speech_intent: voice.intent } : {}), narration: "Ota ketdi." }],
                                   characters: [], text_layers: [{ scene_id: "s1", text: "10 yil", position: "bottom" }] },
                          film: { id: FILM_ID, version: 2 }, models: { clip: null, keyframe: null }, quote: null,
                          film_quote: { priced: false, refusals: [{ reason: "voice_not_set" }] } });
@@ -101,6 +102,24 @@ describe("Nightshift AI panel: story grammar", () => {
     await act(async () => fireEvent.click(btn));
     await screen.findByText(en.speechBlocked.clip_sound_not_kept);
     expect(screen.queryByTestId("film-create")).toBeNull();
+  });
+
+  it("a story planned wordless where its format meant words says so plainly, and Create is S2's", async () => {
+    voice = { mode: "off", intent: "voice_over" };
+    const btn = await open();
+    await act(async () => fireEvent.click(btn));
+    await screen.findByTestId("film-create");
+    expect(screen.getByText(en.plannedWordless)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Nothing was charged/);
+  });
+
+  it("chips show a language by its own name, and its change options too", async () => {
+    await open();
+    const chip = await screen.findByRole("button", { name: en.inferredChipLabel.replace("{slot}", "Language").replace("{value}", "O'zbek") });
+    await act(async () => fireEvent.click(chip));
+    const card = await screen.findByTestId("change-card");
+    expect(card.textContent).toContain("Русский");
+    expect(card.textContent).not.toContain("Russian");
   });
 
   it("with nothing blocking, Create is S2's as before", async () => {
