@@ -13,6 +13,8 @@ alert ``film:spend:*`` (modules/operator_bot/sources.py ``film_spend_for``, anal
 * "estimated (highest variant)": the same for a model priced in variants (pricing.variants.prices: resolution, image
   size, quality, audio), at the dearest variant that states a figure: which one the vendor billed is not read, and a cap
   watcher must not guess low. A variant table with no figure is unknown, never the base figure;
+* "estimated (failed call; the vendor may not bill it)": a call that delivered nothing (price_source failed_call), at
+  what was asked times the registry figure. A failed call with no or a 0 quantity (a picture) is unknown, never USD 0;
 * "unknown": no quantity, no figure for the model, another unit, or a finished take with no cost row at all. NEVER
   counted as 0: the total is the known sum plus the unknown lines, and for those the vendor's billing page is the
   only measure.
@@ -46,6 +48,7 @@ _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 BASIS = {"recorded": "recorded", "estimated": "estimated (registry figure)",
          "estimated_highest": "estimated (highest variant)",
          "estimated_mixed": "estimated (registry figure; highest variant where priced in variants)",
+         "estimated_failed_call": "estimated (failed call; the vendor may not bill it)",
          None: "no dollar figure known yet"}
 STATE = {"not_recorded": "not recorded", "unknown": "unknown", "pending": "in flight, no cost row yet",
          "no_job": "no vendor call"}

@@ -269,6 +269,68 @@ class RollupTestCase(unittest.TestCase):
 
 # ── the alerts ───────────────────────────────────────────────────────────────
 
+def failed_row(n, capability, params, unit, film=FILM):
+    """A cost row exactly as the workers write it for a call that delivered nothing (PR #964): the registry adapter's own
+    usage for what was asked, through creative_worker.failed_call_usage, as CreativeRest.record_cost sends it to 0037."""
+    from types import SimpleNamespace
+
+    from modules import creative_adapters as ca
+    from modules import creative_worker as cw
+
+    entry = SimpleNamespace(raw={"pricing": {"unit": unit}}, provider="lab", vendor_model_for=lambda cap: "lab-v1")
+    request = cw.GenerationRequest(job_id=f"job-{film[:4]}-{n}", org_id=ORG, capability=capability, model=CLIP, params=params)
+    u = cw.failed_call_usage(ca.RegistryAdapter(entry, adapter=object(), sync_store={}), request)
+    return {"job_id": request.job_id, "quantity": u.quantity, "unit": u.unit, "usd_estimate": u.usd, "price_source": u.price_source}
+
+
+class FailedCallTestCase(unittest.TestCase):
+    """A failed_call row: what was asked of a call that delivered nothing. Estimated and labelled as such, never recorded,
+    never a measured USD 0."""
+
+    def roll(self, takes, jobs, costs, figures=FIGURES):
+        return analysis.film_spend_rollup({FILM: ORG}, takes, jobs, costs, figures)[0]
+
+    def test_a_failed_clip_is_an_estimate_labelled_failed_call_and_ranks_worst(self):
+        failed = failed_row(2, "i2v", {"duration_s": 10, "prompt": PROMPT}, "second")
+        self.assertEqual((failed["price_source"], failed["quantity"], failed["usd_estimate"]), ("failed_call", 10.0, None))
+        f = self.roll([take(1), take(2, status="superseded")], [job(1), job(2)], [cost(1, quantity=10), failed])
+        self.assertEqual((f["usd"], f["basis"], f["unknown"]), (Decimal("1.00"), "estimated_failed_call", 0))
+        self.assertEqual((f["takes"][1]["basis"], f["takes"][1]["usd"]), ("estimated_failed_call", Decimal("0.50")))
+        self.assertEqual(analysis.SPEND_BASES[0], "estimated_failed_call")
+
+    def test_a_failed_picture_is_unknown_never_zero_dollars(self):
+        failed = failed_row(1, "t2i", {"prompt": PROMPT}, "image")
+        self.assertIsNone(failed["quantity"])
+        figures = [{"id": CLIP, "usd_per_unit": "0.04", "price_unit": "image"}]
+        f = self.roll([take(1, kind="keyframe", status="superseded")], [job(1)], [failed], figures)
+        self.assertEqual((f["usd"], f["basis"], f["unknown"]), (Decimal("0"), None, 1))
+        self.assertEqual((f["takes"][0]["state"], f["takes"][0]["usd"]), ("unknown", None))
+
+    def test_a_failed_picture_written_with_quantity_0_before_the_fix_is_unknown_too(self):
+        legacy = dict(failed_row(1, "t2i", {"prompt": PROMPT}, "image"), quantity=0)
+        figures = [{"id": CLIP, "usd_per_unit": "0.04", "price_unit": "image"}]
+        f = self.roll([take(1, kind="keyframe", status="superseded")], [job(1)], [legacy], figures)
+        self.assertEqual((f["unknown"], f["takes"][0]["usd"]), (1, None))
+
+    def test_a_failed_call_with_a_stray_usd_is_never_read_as_recorded(self):
+        row = dict(failed_row(2, "i2v", {"duration_s": 10}, "second"), usd_estimate="9.99")
+        f = self.roll([take(2, status="superseded")], [job(2)], [row])
+        self.assertEqual((f["usd"], f["basis"]), (Decimal("0.50"), "estimated_failed_call"))
+
+    def test_the_label_is_said_in_every_language_and_by_the_cli(self):
+        t = tables_for([100], extra_takes=[take(2, status="superseded")], extra_jobs=[job(2)],
+                       extra_costs=[failed_row(2, "i2v", {"duration_s": 30}, "second")])     # 5.00 + 1.50 = 6.50
+        words = {"en": "estimated (failed call; the vendor may not bill it)",
+                 "ru": "оценка (неудачный вызов; провайдер может не выставить за него счёт)",
+                 "uz": "taxminiy (muvaffaqiyatsiz chaqiruv; yetkazib beruvchi buning uchun hisob yozmasligi mumkin)"}
+        for lang in LANGUAGES:
+            a = spend_alerts(t, lang=lang)
+            self.assertEqual([x.key for x in a], [f"film:spend:{FILM}:6"])
+            self.assertIn("6.50", a[0].line)
+            self.assertIn(words[lang], a[0].line)
+        self.assertEqual(cli.BASIS["estimated_failed_call"], words["en"])
+
+
 class SpendAlertTestCase(unittest.TestCase):
     def test_below_the_warn_line_nothing(self):
         self.assertEqual(spend_alerts(tables_for([100])), [])          # USD 5.00
@@ -380,15 +442,17 @@ class SpendAlertTestCase(unittest.TestCase):
         _e, _t, ops, _s, _c = build({"film_segments": []})
         self.assertIn("no film with an open or recently settled segment", views.film_spend_line(ops, "en"))
 
-    def test_the_reads_select_no_prompt_params_error_or_price_source(self):
+    def test_the_reads_select_no_prompt_params_or_error(self):
         _e, _t, ops, sync, _c = build(tables_for([100]))
         ops.film_spend(NOW - timedelta(hours=24))
         selects = [p.get("select", "") for tbl, p in sync.reads
                    if tbl in ("film_segments", "film_takes", "creative_jobs", "creative_job_costs", "model_registry")]
         self.assertTrue(selects)
         for s in selects:
-            for word in ("prompt", "params", "error", "price_source", "*"):
+            for word in ("prompt", "params", "error", "*"):
                 self.assertNotIn(word, s)
+        # price_source is read (a closed word: a failed call is labelled as one, never priced as a delivered row).
+        self.assertIn("job_id,quantity,unit,usd_estimate,price_source", selects)
         self.assertIn("id,usd_per_unit:spec->pricing->>provider_usd_per_unit,price_unit:spec->pricing->>unit,"
                       "variant_prices:spec->pricing->variants->prices", selects)
 

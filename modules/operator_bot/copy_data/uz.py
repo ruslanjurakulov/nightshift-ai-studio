@@ -548,6 +548,7 @@ TABLE = {
     "film.spend_estimated": "taxminiy (reyestrdagi narx)",
     "film.spend_estimated_highest": "taxminiy (eng qimmat variant)",
     "film.spend_estimated_mixed": "taxminiy (reyestrdagi narx; narxi variantga bogʻliq joyda eng qimmat variant)",
+    "film.spend_estimated_failed_call": "taxminiy (muvaffaqiyatsiz chaqiruv; yetkazib beruvchi buning uchun hisob yozmasligi mumkin)",
     "film.spend_recorded": "yozilgan",
     "film.spend_nothing_known": "hali birorta dollar summasi maʼlum emas",
     "film.spend_unknown_lines": ", yana {n} ta nomaʼlum qator, hisobga olinmagan",

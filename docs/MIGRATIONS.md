@@ -3279,3 +3279,9 @@ on sale.
 - **Replay.** Re-running 0106 puts its body back (it has no guard); apply 0237 again after.
 - **Requires** 0106, 0037 and 0018.
 - **Undo.** `docs/sql/rollback_0237_provider_spend_failed_calls.sql` (owner-applied): 0106's body back, asserted by its md5.
+- **Rows already written.** Every reader keys on `price_source = 'failed_call'`, so the rows #964 wrote before this change
+  read the same way (a failed picture written with quantity 0 is unknown, never a measured $0). A delivered row written twice
+  for one film call (#964's resume window) is not dropped by any reader: the only safe key needs `creative_jobs.payer` and
+  `capability`, which the dashboards do not read. The owner's one-off, read-first cleanup is
+  `docs/sql/oneoff_duplicate_film_cost_rows.sql` (a SELECT of the candidates, then a commented DELETE under the same predicate;
+  the lab runs both, `tests/security/test_sec_operator_film_spend.py`).

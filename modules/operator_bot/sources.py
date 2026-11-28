@@ -526,7 +526,7 @@ class OperatorSources:
             return jobs
         take_ids = {str(r.get("id")) for r in take_rows}
         job_rows = [r for r in jobs.data if str(r.get("film_take_id")) in take_ids]
-        costs = self._in_chunks("creative_job_costs", "job_id,quantity,unit,usd_estimate", "job_id",
+        costs = self._in_chunks("creative_job_costs", "job_id,quantity,unit,usd_estimate,price_source", "job_id",
                                 [r.get("id") for r in job_rows])
         if not costs.ok:
             return costs
