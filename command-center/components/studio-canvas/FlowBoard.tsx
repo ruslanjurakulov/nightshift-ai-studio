@@ -32,7 +32,8 @@ import { useI18n } from "@/lib/i18n/context";
 import { failureReason, type StudioJob } from "@/lib/creative/studio";
 import { COMPOSER_W, KIND_SPEC, NODE_H, NODE_W, ZOOM_MAX, ZOOM_MIN, outputType, toCanvas, type CanvasNode, type CanvasState, type PortType, type Viewport } from "@/lib/studio/canvas";
 import { ASSET_MIME, readDrop, type DroppedAsset } from "./LibraryDrawer";
-import { KIND_ICONS, Lamp, statusLine } from "./parts";
+import { KIND_ICONS, Lamp, statusLine, useJustFinished } from "./parts";
+import { BorderBeam } from "@/components/ui/effects";
 import { LAMP, inputOf, nodeAsset, resultView, type JobReading, type NodeStatus } from "./nodeState";
 
 /** Someone other than this person working on a node (an AI agent through MCP, later): a cursor, a label, a colour. */
@@ -408,11 +409,12 @@ function NodeCard({
   const input = inputOf(canvas, node, jobs);
   const words = node.kind === "prompt" ? node.draft : node.draft || input?.text || "";
   const working = status === "working" || status === "queued";
+  const justDone = useJustFinished(status);
   // "Made" only with the real result in view (rule 5): a picture or clip result that cannot be shown says so, with a way to
   // load it again; while the library is still being read it says that instead. A voice result has no picture to show.
   const resultState = resultView(node, status, jobs, previews, resultPending);
   const showArt = !!thumb || working || (node.kind === "asset" && status !== "missing") || status === "done";
-  const cls = ["cv-node", `k-${node.kind}`, `s-${status}`, selected && "is-sel", dragging && "is-dragging", dropTarget && "is-drop", actor && "is-remote"]
+  const cls = ["cv-node", `k-${node.kind}`, `s-${status}`, selected && "is-sel", dragging && "is-dragging", dropTarget && "is-drop", actor && "is-remote", justDone && "is-just-done"]
     .filter(Boolean)
     .join(" ");
   return (
@@ -433,6 +435,8 @@ function NodeCard({
         }
       }}
     >
+      {/* A light runs round the card while its job is really running (status from the database, never a timer). */}
+      <BorderBeam active={working} size={140} duration={3.5} width={2} />
       {actor && (
         <span className="cv-actor" aria-label={actor.label}>
           {actor.label}

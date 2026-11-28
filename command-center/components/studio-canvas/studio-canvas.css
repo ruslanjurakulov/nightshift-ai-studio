@@ -1579,3 +1579,41 @@ textarea.cv-inp { min-height: 96px; resize: vertical; line-height: 1.45; }
 .cv-lane.is-phone .cv-th { padding: 0 6px 0 8px; }
 .cv-lane.is-phone .cv-th-txt { display: none; }
 .cv-lane.is-phone .cv-pill-art { width: 48px; }
+
+/* ── Job states with the studio effects (components/ui/effects, S5) ──────────────────────────────────────────────────
+   Running: a light runs round the card (BorderBeam) and over the status words (TextShimmer), both only while the job's
+   status from the database is queued or working. Just finished: a success ring and the result opening in, for a moment,
+   only when this session saw the job go from working to done (useJustFinished). Under reduced motion nothing travels: the
+   beam is a still accent edge, the words plain, the ring drawn without a pulse; the words always say the state. */
+.cv-fcard { position: relative; }
+.cv-node.is-just-done { box-shadow: 0 0 0 1px var(--ds-success), 0 0 0 5px color-mix(in srgb, var(--ds-success) 22%, transparent), var(--lift-2); }
+.cv-finish {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 14px;
+  box-shadow: 0 0 0 1px var(--ds-success), 0 0 0 4px color-mix(in srgb, var(--ds-success) 22%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cv-node.is-just-done,
+  .cv-finish { animation: cv-finish var(--ds-dur-reveal) var(--ds-ease-emphasized) both; }
+  .cv-node.is-just-done .cv-art img { animation: cv-result-in var(--ds-dur-reveal) var(--ds-ease-emphasized) both; }
+}
+@keyframes cv-finish { from { box-shadow: 0 0 0 1px var(--ds-success), 0 0 0 14px transparent, var(--lift-2); } }
+@keyframes cv-result-in { from { opacity: 0; scale: 1.04; filter: blur(6px); } }
+
+/* The empty studio: the first question sits on a slow wash of the machine's blue through the media hues (AnimatedGradient). */
+.cv-empty-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -55%;
+  width: min(820px, 92%);
+  aspect-ratio: 16 / 9;
+  border-radius: 50%;
+  filter: blur(64px);
+  opacity: 0.7;
+  pointer-events: none;
+}
+.cv-empty > .cv-ecard { position: relative; }

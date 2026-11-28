@@ -79,7 +79,8 @@ export function AnimatedGradient({
   className?: string;
 }) {
   return (
-    <div data-fx="gradient" className={cn("fx-gradient", className)} style={{ "--fx-gradient-duration": `${duration}s` } as CSSProperties}>
+    // With nothing inside it is a pure backdrop: hidden from assistive technology like the other two.
+    <div data-fx="gradient" aria-hidden={children ? undefined : true} className={cn("fx-gradient", className)} style={{ "--fx-gradient-duration": `${duration}s` } as CSSProperties}>
       {children}
     </div>
   );

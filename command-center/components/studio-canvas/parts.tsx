@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { AudioLines, Clapperboard, Film, Image as ImageIcon, Layers, Sparkles, Type, Wand2, type LucideIcon } from "lucide-react";
+import { TextShimmer } from "@/components/ui/effects";
 import type { NodeKind } from "@/lib/studio/canvas";
 import type { useI18n } from "@/lib/i18n/context";
 import { failureReason, statusView, type StudioJob } from "@/lib/creative/studio";
@@ -25,7 +27,10 @@ export function Lamp({ tone, live = false, label, className }: { tone: "ok" | "r
   return (
     <span className={className ? `cv-lampw ${className}` : "cv-lampw"}>
       <span aria-hidden className={`cv-lamp is-${tone}${live ? " is-live" : ""}`} />
-      <span className="cv-lamp-label">{label}</span>
+      {/* A light passes over the words only while the job is really working (live comes from its status, never a timer). */}
+      <TextShimmer active={live} className="cv-lamp-label">
+        {label}
+      </TextShimmer>
     </span>
   );
 }
@@ -61,3 +66,37 @@ export function statusLine(t: ReturnType<typeof useI18n>["t"], status: NodeStatu
   }
 }
 
+
+/** How long a node keeps its "just finished" look: long enough to see, short enough that a board of results is calm. */
+export const JUST_FINISHED_MS = 1800;
+
+/**
+ * True for a moment after this node's job is seen to finish: its status went from working or queued to done while it was
+ * on screen. A board opened on a finished job never celebrates it (nothing finished in front of anyone), and a job read
+ * as done after an unknown reading is not a finish either: only a transition the person watched (rule 5: a state shown is
+ * a state measured).
+ */
+export function useJustFinished(status: NodeStatus): boolean {
+  const prev = useRef<NodeStatus>(status);
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const was = prev.current;
+    prev.current = status;
+    if (status === "done" && (was === "working" || was === "queued")) {
+      setOn(true);
+      const t = window.setTimeout(() => setOn(false), JUST_FINISHED_MS);
+      return () => window.clearTimeout(t);
+    }
+    if (status !== "done") setOn(false);
+  }, [status]);
+  return on;
+}
+
+/**
+ * The phone list's card has no room for a class hook per row (rows are drawn in a map), so its "just finished" look is this
+ * ring laid over the card: a sibling inside the row, drawn only for the moment useJustFinished allows.
+ */
+export function FinishRing({ status }: { status: NodeStatus }) {
+  const on = useJustFinished(status);
+  return on ? <span aria-hidden className="cv-finish" data-fx="finish" /> : null;
+}
