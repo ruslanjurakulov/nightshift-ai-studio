@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { readScenario, readSlots, type Scenario } from "@/lib/brain/logic";
 import { withPlanTurns } from "@/lib/brain/plan";
+import { briefForView } from "@/lib/brain/ref-sheets";
 
 /**
  * One stored Nightshift AI conversation (0199) as the panel draws it: the step, the open card, the BRIEF and the messages. Shared by
@@ -41,7 +42,8 @@ export async function conversationView(supabase: SupabaseClient, s: Conversation
     ok: true,
     body: {
       session: { id: s.id, channel_id: s.channel_id, step: s.step, slots, handoff: s.handoff, updated_at: s.updated_at },
-      brief: s.brief, card: s.card, updated_at: s.updated_at, messages,
+      // Without the character sheets: the canvas and the history never draw them (0249 lets them grow beside the BRIEF).
+      brief: briefForView(s.brief), card: s.card, updated_at: s.updated_at, messages,
       plan: await planState(supabase, s.id),
     },
   };

@@ -259,6 +259,7 @@ export const aiChatEn = {
     not_enabled: "Nightshift AI isn’t available in this workspace yet. Please check back later.",
     content_refused: "Nightshift AI can’t plan that. It doesn’t make sexual content, real people or anyone’s face, graphic violence, self-harm, misleading claims, or characters and music that belong to someone else. Try another idea.",
     output_too_long: "That plan was too long to finish. Ask for fewer or shorter scenes, or a shorter video.",
+    brief_too_large: "This plan grew too large to keep. Shorten the story or split it into chapters, then ask again.",
     channel_required: "Open a channel first: Nightshift AI plans videos for one channel at a time.",
     nothing_to_choose: "That plan is no longer on screen. Ask Nightshift AI for new scenarios.",
     adult_only_service: "Nightshift is for adults (18+). When your age was asked, you answered that you are under 18, so Nightshift AI can't be used on this account.",

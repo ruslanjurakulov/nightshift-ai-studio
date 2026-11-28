@@ -64,6 +64,10 @@ const client = {
     if (fn === "save_film") return { data: { film: { id: FILM, version: 2 }, ...(state.savedScenes ? { scenes: state.savedScenes } : {}) }, error: null };
     if (fn === "quote_film") return { data: { priced: true, total: 240, quote_id: `fq-2-${"a".repeat(32)}`, startable: true, available: 500 }, error: null };
     if (fn === "ai_chat_save_sheets" && state.sheetsAnswer) return state.sheetsAnswer;
+    // Before 0249 the database has no brief_too_large outcome: finish_turn refuses it as invalid_params.
+    if (fn === "ai_chat_finish_turn" && size.finishError && (args as { p_outcome?: string }).p_outcome === "brief_too_large") {
+      return { data: null, error: { code: "NS400", message: "invalid_params" } };
+    }
     return { data: null, error: null };
   },
 };
@@ -83,6 +87,12 @@ vi.mock("@/lib/server/brain/facts", () => ({
 vi.mock("@/lib/server/brain/quote", () => ({
   chatPricing: async () => ({ ok: true, spendable: 100, quote: async (l: number) => ({ ok: true, credits: ({ 60: 30, 180: 80, 300: 130 } as Record<number, number>)[l] ?? 999 }) }),
 }));
+/** When set, the turn's BRIEF measures over the database's 262144 bytes (lib/brain/brief-size), whatever it holds. */
+const size = vi.hoisted(() => ({ over: false, finishError: false }));
+vi.mock("@/lib/brain/brief-size", async () => {
+  const real = await vi.importActual<typeof import("@/lib/brain/brief-size")>("@/lib/brain/brief-size");
+  return { ...real, briefBytes: (b: unknown) => (size.over ? real.BRIEF_MAX_BYTES + 1 : real.briefBytes(b)) };
+});
 vi.mock("@/lib/server/brain/llm", async () => {
   const real = await vi.importActual<typeof import("@/lib/server/brain/llm")>("@/lib/server/brain/llm");
   return { ...real, chatModelConfigured: () => true, callChatModel: (...a: unknown[]) => { llm(...a); return Promise.resolve(state.queue.length ? state.queue.shift()! : state.llm); } };
@@ -107,6 +117,8 @@ beforeEach(() => {
   state.queue = [];
   state.savedScenes = null;
   state.sheetsAnswer = null;
+  size.over = false;
+  size.finishError = false;
   state.llm = { ok: true, text: JSON.stringify({ reply: "Which kind?", slots: {}, card: { thread_title: "New video", question: "Long or short?", options: ["Long", "Short", "Not sure"] } }), tokensIn: 10, tokensOut: 20 };
 });
 
@@ -314,5 +326,39 @@ describe("the film link goes through 0249's writer (its trigger keeps a whole-BR
     state.sheetsAnswer = { data: null, error: { code: "XX000", message: "boom" } };
     const again = await choose();
     expect(again.status).toBe(503);
+  });
+});
+
+describe("a turn whose own BRIEF is too large to store (Atlas on BR-SW-08)", () => {
+  const finishes = () => called("ai_chat_finish_turn").map((c) => c[1] as Record<string, unknown>);
+
+  it("ends the paid call as brief_too_large with its tokens, writes no BRIEF, and answers the remedy's code", async () => {
+    size.over = true;
+    const res = await turn();
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toBe("brief_too_large");
+    const f = finishes();
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ p_outcome: "brief_too_large", p_tokens_in: 10, p_tokens_out: 20, p_brief: null, p_text: null });
+  });
+
+  it("before 0249 (no such outcome): the same call is ended output_too_long, also paid, never left pending", async () => {
+    size.over = true;
+    size.finishError = true;
+    const res = await turn();
+    expect((await res.json()).error).toBe("brief_too_large");
+    expect(finishes().map((f) => f.p_outcome)).toEqual(["brief_too_large", "output_too_long"]);
+  });
+
+  it("the panel says the remedy in all three languages: shorten the story or split it into chapters", async () => {
+    const { aiChatEn } = await import("@/lib/i18n/ai-chat/en");
+    const { aiChatRu } = await import("@/lib/i18n/ai-chat/ru");
+    const { aiChatUz } = await import("@/lib/i18n/ai-chat/uz");
+    expect(aiChatEn.errors.brief_too_large).toMatch(/Shorten the story or split it into chapters/);
+    expect(aiChatRu.errors.brief_too_large).toMatch(/Сократите историю или разделите её на главы/);
+    expect(aiChatUz.errors.brief_too_large).toMatch(/Hikoyani qisqartiring yoki uni boblarga boʻling/);
+    const { readFileSync } = await import("node:fs");
+    const panel = readFileSync(new URL("../components/brain/NightshiftAiPanel.tsx", import.meta.url), "utf8");
+    expect(panel).toContain('if (e === "brief_too_large") return c.errors.brief_too_large;');
   });
 });

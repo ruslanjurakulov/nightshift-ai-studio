@@ -200,6 +200,20 @@ describe("opening one", () => {
     expect(body.messages.map((m: { content: string }) => m.content)).toEqual(["A heist", "Here are three ideas"]);
   });
 
+  it("answers the same size with 40 stored character sheets and a film link as without (0249: the view never draws them)", async () => {
+    const brief = { version: 1, kind: "short", title: "T", scenes: [{ id: "s1", title: "a" }] };
+    s.one = stored({ brief });
+    const plain = await (await get(`?channel=c1&session=${S1}`)).text();
+    const views = ["front", "side", "back"].map((v) => ({ view: v, prompt: "p".repeat(1450), asset_id: null, status: "approved", job_id: null, attempt: 0 }));
+    const sheets = Array.from({ length: 40 }, (_, i) => ({ character_id: `c${i}`, stage: null, views }));
+    s.one = stored({ brief: { ...brief, ref_sheets: sheets, film_link: { film_id: S2, scenes: [{ brief: "s1", film: S3 }] } } });
+    const res = await get(`?channel=c1&session=${S1}`);
+    const heavy = await res.text();
+    expect(res.status).toBe(200);
+    expect(heavy.length).toBe(plain.length);
+    expect(JSON.parse(heavy).brief).toEqual(brief);
+  });
+
   it.each([
     ["another person's", { created_by: "user-2" }],
     ["another workspace's", { org_id: OTHER_ORG }],

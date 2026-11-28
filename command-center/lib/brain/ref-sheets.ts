@@ -314,6 +314,19 @@ export function refGate(modelId: string | null, onSaleT2i: readonly GateModel[],
 }
 
 /**
+ * A stored BRIEF as a view that does not draw the sheets sends it to the browser: without ref_sheets and film_link. 0249 gives the
+ * sheets their own budget (up to 192 KB beside a 256 KB BRIEF); the canvas and the history never read them (the sheets panel reads
+ * /api/brain/sheets), so they would only make every conversation's answer heavier.
+ */
+export function briefForView(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const { ref_sheets: _sheets, film_link: _link, ...rest } = raw as Record<string, unknown>;
+  void _sheets;
+  void _link;
+  return rest;
+}
+
+/**
  * The sheets a BRIEF already holds, for a route that writes the BRIEF anew (choosing the storyboard again, pricing it): without
  * this, a re-save dropped the job ids of pictures the person paid for. Whatever no longer matches the story is re-planned when the
  * sheets are next read (mergeSheets), never shown as the new look's.

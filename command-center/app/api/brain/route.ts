@@ -6,6 +6,7 @@ import { readSlots } from "@/lib/brain/logic";
 import { brainJson, channelOrg, chosenModelState, dbRefusal, modelFromRef, notFound } from "@/lib/server/brain/session";
 import { chatGateVerdict, chatModelGate } from "@/lib/server/brain/google-gate";
 import { FILM_PLAN_KEY } from "@/lib/brain/film-plan";
+import { briefForView } from "@/lib/brain/ref-sheets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,6 +72,6 @@ export async function GET(request: Request) {
     gate,
     canEdit: role.ok,
     canRun: admin.ok,
-    session: latest ? { id: latest.id, step: latest.step, slots: readSlots(latest.slots), brief: latest.brief, card: latest.card, updated_at: latest.updated_at } : null,
+    session: latest ? { id: latest.id, step: latest.step, slots: readSlots(latest.slots), brief: briefForView(latest.brief), card: latest.card, updated_at: latest.updated_at } : null,
   });
 }

@@ -1,6 +1,7 @@
 import { createClient, getUser } from "@/lib/supabase/server";
 import { carrySheets, filmLinkOf } from "@/lib/brain/ref-sheets";
 import { saveFilmLink, storedSheets } from "@/lib/server/brain/ref-sheets";
+import { BRIEF_MAX_BYTES, briefBytes } from "@/lib/brain/brief-size";
 import { requireOrgRole } from "@/lib/auth/org-roles";
 import { rejectCrossOrigin } from "@/lib/server/same-origin";
 import { readJsonBodyCapped, SMALL_BODY_BYTES } from "@/lib/server/json-body";
@@ -252,6 +253,14 @@ async function runTurn(supabase: SupabaseClient, s: Session, text: string, retry
   const payload = answer.step === "proposing"
     ? { scenarios: answer.scenarios, factsState: facts.state, factsSource: facts.source }
     : { lengthOutOfRange: answer.lengthOutOfRange, factsState: facts.state, factsSource: facts.source };
+  // A BRIEF over the database's 262144 bytes (the character sheets counted apart, 0249) cannot be stored. The vendor was paid:
+  // the turn ends as brief_too_large with the tokens reported, nothing is written, and the person is told to shorten the story or
+  // split it into chapters (Atlas on BR-SW-08). Before 0249 that outcome does not exist: output_too_long, also a paid one.
+  if (briefBytes(brief) > BRIEF_MAX_BYTES) {
+    const ended = await finish("brief_too_large", llm.tokensIn, llm.tokensOut);
+    if (ended.error) await finish("output_too_long", llm.tokensIn, llm.tokensOut);
+    return brainJson({ error: "brief_too_large", quota }, 422);
+  }
   const done = await finish("ok", llm.tokensIn, llm.tokensOut, {
     // The character sheets and the draft's link survive a chat turn (Lens H1): read again just before this write, so a press made
     // meanwhile is kept too. Before this, a turn wrote a BRIEF without them and the paid pictures were lost from the sheet.

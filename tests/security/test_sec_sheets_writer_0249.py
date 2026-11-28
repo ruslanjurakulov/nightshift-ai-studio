@@ -424,6 +424,28 @@ def test_a_paid_turn_is_never_left_pending_by_sheets_near_their_cap(w):
     assert b["notes"] == turn["notes"] and len(b["ref_sheets"]) == 40
 
 
+@pytest.mark.parametrize("asked", ["ok", "brief_too_large"])
+def test_a_turn_whose_own_brief_is_263_kb_records_its_paid_call_and_writes_nothing(w, asked):
+    """Atlas on BR-SW-08: the turn's OWN BRIEF over 262144. Asked as 'ok' (a direct call) or by name (the route): the call row is
+    not pending, it is brief_too_large with the tokens reported, no message is added and the stored BRIEF is unchanged."""
+    before = stored(w.su, w.sid)
+    msgs = w.su.value("select count(*) from public.ai_chat_messages where session_id = %s", [w.sid])
+    call = w.su.value("insert into public.ai_chat_calls (org_id, user_id, session_id, model, outcome) "
+                      "values (%s, %s, %s, 'anthropic-claude-sonnet-5-5', 'pending') returning id", [w.org, w.alice.uid, w.sid])
+    turn = {**BASE_BRIEF, "notes": "n" * 263000}
+    out = as_(w.su, w.alice, "select public.ai_chat_finish_turn(%s, %s, 1200, 3400, 'hi', null, '{}'::jsonb, 'ready', %s::jsonb, null)",
+              [call, asked, json.dumps(turn)])
+    assert out.ok, out
+    become(w.su, None)
+    row = w.su.rows("select outcome, tokens_in, tokens_out, finished_at is not null from public.ai_chat_calls where id = %s", [call])[0]
+    assert row == ("brief_too_large", 1200, 3400, True)
+    assert stored(w.su, w.sid) == before
+    assert w.su.value("select count(*) from public.ai_chat_messages where session_id = %s", [w.sid]) == msgs
+    # Once: the call is no longer pending, so a second finish is refused.
+    assert refused(w.su, w.alice, "select public.ai_chat_finish_turn(%s, 'ok', 1, 1, 'x', null, null, 'ready', null, null)", [call]) \
+        == "call_not_found"
+
+
 def test_the_brief_check_counts_the_sheets_apart_and_still_holds_the_turn_to_262144(w):
     become(w.su, None)
     defs = dict(w.su.rows("select conname, pg_get_constraintdef(oid) from pg_constraint "
@@ -560,7 +582,7 @@ def md5_of(conn, sig):
 
 
 def test_the_guard_is_the_live_body(conn):
-    for sig, want in writer.GUARD:
+    for sig, _was, want in writer.GUARD:
         assert md5_of(conn, sig) == want, sig
     assert sec_db.has_0249(conn)
 
@@ -589,12 +611,39 @@ def test_the_file_replays_onto_itself(conn):
         c.rollback()
 
 
-def test_rerunning_0199_leaves_the_writer_and_the_trigger_on(conn):
+def test_rerunning_0199_leaves_the_writer_and_the_trigger_on_and_0249_goes_back_on_top(conn):
+    """The REPLAY note, measured: 0199 applies silently, keeps the writer and the trigger, and puts its own finish_turn back; this
+    file then applies again on top (its guard takes 0199's body)."""
     with psycopg.connect(st._dsn(conn), autocommit=False) as c:
         c.execute((sec_db.MIGRATIONS / "0199_studio_ai_chat.sql").read_text(encoding="utf-8"))
         assert sec_db.has_0249(c)
         assert c.execute("select count(*) from pg_trigger where tgname = 'ai_chat_sessions_keep_sheets'").fetchone()[0] == 1
+        assert md5_of(c, writer.GUARD[1][0]) == writer.GUARD[1][1]
+        c.execute(MIGRATION.read_text(encoding="utf-8"))
+        assert md5_of(c, writer.GUARD[1][0]) == writer.GUARD[1][2]
         c.rollback()
+
+
+def test_finish_turn_is_0199s_body_with_exactly_one_marked_hunk(conn):
+    import difflib
+    old = (sec_db.MIGRATIONS / "0199_studio_ai_chat.sql").read_text(encoding="utf-8")
+    new = MIGRATION.read_text(encoding="utf-8")
+
+    def body(text):
+        i = text.index("create or replace function public.ai_chat_finish_turn(")
+        return text[i:text.index("$$;", i) + 3].splitlines()
+
+    b_new = body(new)
+    ops = [o for o in difflib.SequenceMatcher(a=body(old), b=b_new, autojunk=False).get_opcodes() if o[0] != "equal"]
+    assert len(ops) == 1 and ops[0][0] == "insert", ops          # one run of added lines, nothing changed or removed
+    # The run is the marked hunk (difflib may align it one line off around its closing `end if;`): from the 0249 comment to the
+    # `end if;` after its `return;`, and taking exactly it out gives 0199's body back.
+    start = next(i for i, ln in enumerate(b_new) if ln.strip().startswith("-- 0249"))
+    stop = next(i for i in range(start, len(b_new)) if b_new[i].strip() == "return;") + 2
+    assert stop - start == ops[0][4] - ops[0][3]
+    assert b_new[:start] + b_new[stop:] == body(old)
+    live = conn.execute("select prosrc from pg_proc where oid = to_regprocedure(%s)", [writer.GUARD[1][0]]).fetchone()[0]
+    assert "\n".join(b_new[start + 4:stop]) in live
 
 
 def test_the_rollback_removes_it_keeps_the_stored_sheets_and_0199_writes_as_before(conn, sc):
@@ -609,6 +658,7 @@ def test_the_rollback_removes_it_keeps_the_stored_sheets_and_0199_writes_as_befo
         assert c.execute("select count(*) from pg_trigger where tgname = 'ai_chat_sessions_keep_sheets'").fetchone()[0] == 0
         assert c.execute("select to_regprocedure('public.ai_chat_sheet_problem(jsonb)') is null").fetchone()[0]
         assert c.execute("select to_regprocedure('public.ai_chat_sheet_repair(jsonb)') is null").fetchone()[0]
+        assert md5_of(c, writer.GUARD[1][0]) == writer.GUARD[1][1]          # 0199's finish_turn back verbatim
         assert c.execute("select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'public.ai_chat_sessions'::regclass "
                          "and conname = 'ai_chat_sessions_brief_check'").fetchone()[0] == \
             "CHECK (((jsonb_typeof(brief) = 'object'::text) AND (octet_length((brief)::text) <= 262144)))"
@@ -659,7 +709,7 @@ def test_neither_the_file_nor_its_rollback_holds_a_backslash():
 
 
 def test_the_files_fold_reads_the_body_as_the_shorthand_does(conn):
-    for sig, _ in writer.GUARD:
+    for sig, *_ in writer.GUARD:
         a = conn.execute("select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')), md5(regexp_replace(prosrc, '\\s+', ' ', 'g')) "
                          "from pg_proc where oid = to_regprocedure(%s)", [sig]).fetchone()
         assert a[0] == a[1], sig

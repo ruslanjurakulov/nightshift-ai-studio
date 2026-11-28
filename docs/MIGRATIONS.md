@@ -3503,6 +3503,21 @@ the older list. A lost approval cannot be recovered.
   CHECK put back exactly; it refuses by name, changing nothing, while a conversation holds more than 262144 bytes with its sheets
   (trim its `ref_sheets` by hand first). The stored sheets stay in each BRIEF; the app goes back to #980's path at once (the race
   reopens).
+- **A turn too large to store keeps its paid call's record** (Atlas on BR-SW-08). 0199's `ai_chat_finish_turn`
+  (b0420b460b7717b7d084f7a9bdc3e809; neither 0226 nor 0232 replaced it) is replaced by 0199's text verbatim plus ONE marked 0249
+  hunk (ab9e0cf7f4ee370991fd208128019db5): a turn asked as `brief_too_large`, or arriving as `ok` with its own BRIEF (sheets not
+  counted) over 262144 bytes, records the call `brief_too_large` with the tokens reported, writes no message and no BRIEF, and
+  returns. A trigger cannot do this (it can only let the update through or raise, and a raise rolls the call back with it).
+  `ai_chat_calls_outcome_check` gains `brief_too_large`, a paid outcome counted like the others. The turn route measures its BRIEF
+  as jsonb does (`lib/brain/brief-size.ts`) and ends such a turn by name before writing anything, answering 422
+  `brief_too_large`; the panel says "shorten the story or split it into chapters" (en / ru / uz). Before 0249 the route ends it
+  `output_too_long` instead (also paid). The choose path's whole-BRIEF save (no call) is refused `brief_too_large` by the trigger
+  and answered the same way. The rollback puts 0199's body back verbatim and records any `brief_too_large` call as
+  `output_too_long` before restoring 0199's outcome list. Re-running 0199 puts its own `ai_chat_finish_turn` back: apply 0249 again.
+- **Responses do not carry the sheets.** `/api/brain` (the latest conversation), `/api/brain/session/<id>` and
+  `/api/brain/history?session=` send the BRIEF without `ref_sheets` and `film_link` (`briefForView`): none of those views draws
+  them; the sheets panel reads `/api/brain/sheets`. The history list never read the BRIEF. Pinned: the history answer is the same
+  size with 40 stored sheets as without.
 - **The trigger does not re-validate the writer's own update** (optional defence considered): the flag is reachable only from
   `ai_chat_save_sheets`, which validates every sheet and the film link's workspace before setting it (BR-SW-01 pins that no
   API-callable function can set it), so a second check would only repeat the first.

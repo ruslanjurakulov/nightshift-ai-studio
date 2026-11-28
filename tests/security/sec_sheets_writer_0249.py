@@ -10,9 +10,11 @@ way the file's own guard reads them).
 
 from __future__ import annotations
 
-#: (signature, the md5 0249 is written on). 0249 replaces no body.
+#: (signature, the md5 0249 is written on, 0249's own md5: the same for a body it only relies on).
 GUARD = (
-    ("public.ai_chat_save_brief(uuid, jsonb, text)", "16f6ce5d2815675860bbce0a1a1810ac"),
+    ("public.ai_chat_save_brief(uuid, jsonb, text)", "16f6ce5d2815675860bbce0a1a1810ac", "16f6ce5d2815675860bbce0a1a1810ac"),
+    ("public.ai_chat_finish_turn(uuid, text, integer, integer, text, jsonb, jsonb, text, jsonb, jsonb)", "b0420b460b7717b7d084f7a9bdc3e809",
+     "ab9e0cf7f4ee370991fd208128019db5"),
 )
 
 

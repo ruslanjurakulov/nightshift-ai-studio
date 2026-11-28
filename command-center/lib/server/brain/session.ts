@@ -35,6 +35,8 @@ export function dbRefusal(error: { code?: string; message?: string; details?: st
   if (code === "chat_plan_required") return brainJson({ error: "chat_plan_required" }, 402);
   if (code === "chat_unavailable") return brainJson({ error: "unavailable" }, 503);
   if (code === "message_too_long" || code === "invalid_params") return brainJson({ error: code }, 400);
+  // 0249: a plan too large to store (its own bytes, the sheets counted apart); the remedy is to shorten it or split it.
+  if (code === "brief_too_large") return brainJson({ error: "brief_too_large" }, 422);
   if (code === "session_closed") return brainJson({ error: "session_closed" }, 409);
   if (code === "duplicate_request") {
     // The conversation the first copy of this press went to (a retried Start must find it, not the empty one it just made).

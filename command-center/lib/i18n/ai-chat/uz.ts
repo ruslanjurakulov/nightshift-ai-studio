@@ -251,6 +251,7 @@ export const aiChatUz: AiChatDictionary = {
     not_enabled: "Nightshift AI bu ish maydonida hozircha mavjud emas. Keyinroq qayta urinib koʻring.",
     content_refused: "Nightshift AI buni rejalashtira olmaydi. U behayo kontent, haqiqiy odamlar yoki birovning yuzi, shafqatsizlik, oʻziga zarar yetkazish, chalgʻituvchi daʼvolar hamda boshqalarga tegishli qahramonlar va musiqani yaratmaydi. Boshqa gʻoyani sinab koʻring.",
     output_too_long: "Reja juda uzun boʻlib ketdi. Kamroq yoki qisqaroq sahnalar yoxud qisqaroq video soʻrang.",
+    brief_too_large: "Reja saqlash uchun juda katta boʻlib ketdi. Hikoyani qisqartiring yoki uni boblarga boʻling, soʻng qayta soʻrang.",
     channel_required: "Avval kanalni oching: Nightshift AI videolarni bir vaqtda bitta kanal uchun rejalashtiradi.",
     nothing_to_choose: "Bu reja endi ekranda yoʻq. Nightshift AIʼdan yangi ssenariylar soʻrang.",
     adult_only_service: "Nightshift kattalar (18+) uchun. Yoshingiz soʻralganda 18 yoshga toʻlmaganingizni aytdingiz, shuning uchun bu akkauntda Nightshift AIʼdan foydalanib boʻlmaydi.",

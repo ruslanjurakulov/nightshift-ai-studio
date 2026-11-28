@@ -10,7 +10,7 @@
 --     the older list back and the approval or the job id is gone. A lost approval cannot be recovered, and a lost job id is a paid
 --     picture missing from the sheet until its key is looked up again.
 --
--- CHANGE (additive; no body replaced):
+-- CHANGE (additive; one body, 0199's ai_chat_finish_turn, replaced with one marked hunk):
 --   * ai_chat_save_sheets(p_session, p_sheets, p_base, p_film_link) -> jsonb: NEW, authenticated only. Under the conversation's row
 --     lock (FOR UPDATE, the lock 0199's ai_chat_save_brief and ai_chat_finish_turn take on the same row) it writes ONLY
 --     brief -> 'ref_sheets' and brief -> 'film_link', each with jsonb_set, and leaves every other key, the step and the card as they
@@ -52,7 +52,7 @@
 --   own turn through ai_chat_finish_turn. Changing each to "leave the sheets out" still leaves 0199's two functions writing whatever
 --   BRIEF they are given, so one forgotten carry, a direct RPC, or a future writer drops the sheets again. Replacing 0199's bodies to
 --   keep them would touch two guarded functions every later file pins. The trigger needs neither: it holds for every writer of the
---   row, present and future, and leaves 0199's bodies byte for byte. The flag is not a security boundary against the author (they
+--   row, present and future, and leaves 0199's save_brief byte for byte. The flag is not a security boundary against the author (they
 --   can only ever write their own conversation, and every shape rule is enforced by this function); it is how the one writer is
 --   told apart from the rest. No API role can set it: PostgREST runs no SQL of a caller's, and no function takes a setting name.
 --
@@ -98,6 +98,12 @@
 -- GUARD (md5 of the body, whitespace runs read as one space): ai_chat_save_brief 16f6ce5d2815675860bbce0a1a1810ac (0199, which 0226
 --   did not change). This file was designed on that body (the author and editor rule mirrored above, and its write being the one
 --   the trigger overrules); any other body is refused ("changed by hand? compare with 0199 before applying").
+--   ai_chat_finish_turn b0420b460b7717b7d084f7a9bdc3e809 (0199; neither 0226 nor 0232 replaced it) -> ab9e0cf7f4ee370991fd208128019db5
+--   (0199's verbatim plus ONE marked 0249 hunk right after the call is found): a turn whose own BRIEF is over 262144 bytes, asked
+--   as brief_too_large by the route or arriving as 'ok', records the call brief_too_large with its tokens, writes nothing to the
+--   conversation and returns, so the paid call is never left pending (Atlas on BR-SW-08). The trigger cannot do this: a trigger can
+--   only let the update through or raise, and a raise rolls the call record back with it. ai_chat_calls_outcome_check (0199's, or
+--   this file's on a replay) gains 'brief_too_large', a paid outcome counted like every other but the four 0199 forgives.
 --
 -- LOCKS. One row lock, the conversation's, taken first; then reads only (films, film_scenes). 0232's order (workspace advisory lock,
 --   conversation row, leases, calls, person) is kept: nothing here takes an advisory lock or a lease.
@@ -106,10 +112,11 @@
 --   regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g'); the patterns use bracket classes.
 --
 -- NOT CHANGED: every price, hold, credit, create, film and publish rule (CLAUDE.md rules 2 and 3: a sheet write spends nothing,
---   starts nothing and publishes nothing), and every 0199 body.
+--   starts nothing and publishes nothing), and every 0199 body but ai_chat_finish_turn (one marked hunk).
 --
--- REPLAY. This file replays onto itself (create or replace, the trigger dropped and created again). Re-running 0199 replaces its
---   bodies with the same text and leaves the trigger on. 0199's rollback drops the table and the trigger with it; drop this file
+-- REPLAY. This file replays onto itself (create or replace, the trigger and the two CHECKs dropped and created again). Re-running
+--   0199 applies silently, leaves the writer, the trigger and both CHECKs on, and puts 0199's own ai_chat_finish_turn back: apply
+--   this file again after it (its guard takes 0199's body). 0199's rollback drops the table and the trigger with it; drop this file
 --   first with its rollback to remove its functions too.
 --
 -- REQUIRES 0199 (ai_chat_sessions, ai_chat_save_brief), 0018 (is_org_member), 0036 (creative_refuse), 0166 (films, film_scenes).
@@ -141,6 +148,20 @@ begin
   end if;
   if h <> '16f6ce5d2815675860bbce0a1a1810ac' then
     raise exception '0249 found public.ai_chat_save_brief with an unknown body (md5 %): changed by hand? compare with 0199 before applying', h;
+  end if;
+  -- ai_chat_finish_turn: 0199's body (neither 0226 nor 0232 replaced it), or this file's own on a replay.
+  select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p
+   where p.oid = to_regprocedure('public.ai_chat_finish_turn(uuid, text, integer, integer, text, jsonb, jsonb, text, jsonb, jsonb)');
+  if h is null then
+    raise exception '0249 found no public.ai_chat_finish_turn: apply 0199 first';
+  end if;
+  if h <> all (array['b0420b460b7717b7d084f7a9bdc3e809', 'ab9e0cf7f4ee370991fd208128019db5']) then
+    raise exception '0249 found public.ai_chat_finish_turn with an unknown body (md5 %): changed by hand? compare with 0199 before applying', h;
+  end if;
+  select pg_get_constraintdef(c.oid) into h from pg_constraint c
+   where c.conrelid = 'public.ai_chat_calls'::regclass and c.conname = 'ai_chat_calls_outcome_check';
+  if h is null or (h not like '%''output_too_long''::text])))' and h not like '%''output_too_long''::text, ''brief_too_large''::text])))') then
+    raise exception '0249 found ai_chat_calls_outcome_check with an unknown definition (%): compare with 0199 before applying', h;
   end if;
   -- The BRIEF's CHECK this file replaces: 0199's, or this file's own on a replay. Anything else was changed by hand.
   select pg_get_constraintdef(c.oid) into h from pg_constraint c
@@ -479,6 +500,85 @@ end
 $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
+-- A turn too large to store ends as brief_too_large, its paid call recorded (Atlas on BR-SW-08)
+-- ───────────────────────────────────────────────────────────────────────────
+
+-- The call's outcomes gain brief_too_large: a vendor call that was answered and paid, whose plan could not be stored. It is counted
+-- like every paid outcome (ai_chat_used forgives only not_sent, not_configured, vendor_refused and refused).
+alter table public.ai_chat_calls drop constraint if exists ai_chat_calls_outcome_check;
+alter table public.ai_chat_calls add constraint ai_chat_calls_outcome_check
+  check (outcome in ('pending', 'ok', 'vendor_error', 'invalid_output', 'not_configured', 'not_sent', 'vendor_refused', 'refused', 'output_too_long', 'brief_too_large'));
+
+-- 0199's body verbatim, with one marked 0249 hunk right after the call is found (md5 guard above).
+create or replace function public.ai_chat_finish_turn(p_call uuid, p_outcome text, p_tokens_in integer, p_tokens_out integer,
+                                                     p_text text, p_payload jsonb, p_slots jsonb, p_step text,
+                                                     p_brief jsonb, p_card jsonb) returns void
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  v_user uuid := auth.uid();
+  c public.ai_chat_calls;
+begin
+  if v_user is null then
+    raise exception 'sign in first' using errcode = '42501';
+  end if;
+  select * into c from public.ai_chat_calls where id = p_call and user_id = v_user for update;
+  if not found or c.outcome <> 'pending' then
+    perform public.creative_refuse('call_not_found', 'no such pending turn', 'NS404');
+  end if;
+  -- 0249: a turn whose OWN BRIEF is over 0199's 262144 bytes (the character sheets counted apart, 0249's CHECK) ends as
+  -- brief_too_large: the vendor's call is recorded with the tokens reported, nothing is written to the conversation, and nothing
+  -- rolls back (the CHECK's raw 23514 here left the paid call pending, Breach BR-SW-08). The route asks for it by name; a BRIEF
+  -- that reaches this over the limit as 'ok' is ended the same way.
+  if p_outcome = 'brief_too_large'
+     or (p_outcome = 'ok' and c.session_id is not null and jsonb_typeof(p_brief) = 'object'
+         and octet_length((p_brief - 'ref_sheets' - 'film_link')::text) > 262144) then
+    update public.ai_chat_calls
+       set outcome = 'brief_too_large',
+           tokens_in = case when p_tokens_in is null then null else least(greatest(p_tokens_in, 0), 1000000) end,
+           tokens_out = case when p_tokens_out is null then null else least(greatest(p_tokens_out, 0), 100000) end,
+           finished_at = now()
+     where id = c.id;
+    return;
+  end if;
+  if p_outcome is null or p_outcome not in ('ok', 'vendor_error', 'invalid_output', 'not_configured', 'not_sent', 'vendor_refused',
+                                             'refused', 'output_too_long') then
+    perform public.creative_refuse('invalid_params', 'unknown outcome');
+  end if;
+  -- not_sent means no vendor was called: it carries no tokens, and only a call just reserved can be it (a member finishing their own
+  -- call by hand gains nothing: the server, not the member, calls the vendor).
+  if p_outcome = 'not_sent' and (p_tokens_in is not null or p_tokens_out is not null or c.created_at < now() - interval '2 minutes') then
+    perform public.creative_refuse('invalid_params', 'not_sent is a call that never reached the vendor');
+  end if;
+  update public.ai_chat_calls
+     -- An unreported count stays unknown (rule 5: GREATEST would turn NULL into 0), and a count no single turn could reach is
+     -- refused rather than stored. The figures are what the server reported, not the vendor's own bill (see ai_chat_usage).
+     set outcome = p_outcome,
+         tokens_in = case when p_tokens_in is null then null else least(greatest(p_tokens_in, 0), 1000000) end,
+         tokens_out = case when p_tokens_out is null then null else least(greatest(p_tokens_out, 0), 100000) end,
+         finished_at = now()
+   where id = c.id;
+  if p_outcome = 'ok' and c.session_id is not null then
+    if coalesce(btrim(p_text), '') <> '' then
+      insert into public.ai_chat_messages (session_id, created_by, role, content, payload)
+      values (c.session_id, c.user_id, 'assistant', left(btrim(p_text), 4000),
+              case when jsonb_typeof(p_payload) = 'object' then p_payload end);
+    end if;
+    -- A handed-off session is never reopened by a turn (the handoff is the person's record of their own Create).
+    update public.ai_chat_sessions
+       set slots = case when jsonb_typeof(p_slots) = 'object' then p_slots else slots end,
+           step = case when p_step in ('asking', 'proposing', 'ready') then p_step else step end,
+           brief = case when jsonb_typeof(p_brief) = 'object' then p_brief else brief end,
+           card = case when jsonb_typeof(p_card) = 'object' then p_card when p_card is null then null else card end,
+           updated_at = now()
+     where id = c.session_id and step <> 'created';
+  end if;
+end
+$$;
+
+revoke all on function public.ai_chat_finish_turn(uuid, text, integer, integer, text, jsonb, jsonb, text, jsonb, jsonb) from public, anon, authenticated, service_role;
+grant execute on function public.ai_chat_finish_turn(uuid, text, integer, integer, text, jsonb, jsonb, text, jsonb, jsonb) to authenticated;
+
+-- ───────────────────────────────────────────────────────────────────────────
 -- Every other writer keeps the stored sheets and link
 -- ───────────────────────────────────────────────────────────────────────────
 
@@ -566,6 +666,13 @@ begin
      or not exists (select 1 from pg_constraint where conrelid = 'public.ai_chat_sessions'::regclass
                        and conname = 'ai_chat_sessions_brief_0249' and convalidated) then
     raise exception '0249 end state: the BRIEF''s CHECK is not 0249''s (the sheets counted apart)';
+  end if;
+  if (select md5(regexp_replace(p2.prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc p2
+       where p2.oid = to_regprocedure('public.ai_chat_finish_turn(uuid, text, integer, integer, text, jsonb, jsonb, text, jsonb, jsonb)'))
+     is distinct from 'ab9e0cf7f4ee370991fd208128019db5'
+     or not has_function_privilege('authenticated', 'public.ai_chat_finish_turn(uuid, text, integer, integer, text, jsonb, jsonb, text, jsonb, jsonb)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.ai_chat_finish_turn(uuid, text, integer, integer, text, jsonb, jsonb, text, jsonb, jsonb)', 'EXECUTE') then
+    raise exception '0249 end state: ai_chat_finish_turn is not 0249''s body with 0199''s grants';
   end if;
   if (select md5(regexp_replace(p2.prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc p2
        where p2.oid = to_regprocedure('public.ai_chat_save_brief(uuid, jsonb, text)')) <> '16f6ce5d2815675860bbce0a1a1810ac' then

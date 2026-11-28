@@ -59,11 +59,19 @@ class AiChatSaveSheetsMigration(unittest.TestCase):
         self.assertIn(f"grant execute on function {SIG} to authenticated;", sql)
         self.assertIn("revoke all on function public.ai_chat_sheet_problem(jsonb) from public, anon, authenticated, service_role;", sql)
         self.assertIn("revoke all on function public.ai_chat_sessions_keep_sheets() from public, anon, authenticated, service_role;", sql)
-        self.assertEqual(len(re.findall(r"\bgrant ", sql)), 1)
+        # Two grants: the writer, and 0199's own grant on the finish_turn it replaces.
+        self.assertEqual(re.findall(r"\bgrant execute on function ([^ ]+\([^)]*\)) to authenticated;", sql),
+                         ["public.ai_chat_finish_turn(uuid, text, integer, integer, text, jsonb, jsonb, text, jsonb, jsonb)", SIG])
+        self.assertEqual(len(re.findall(r"\bgrant ", sql)), 2)
 
-    def test_no_body_of_0199_is_replaced_and_the_guard_names_its_md5(self):
+    def test_only_finish_turn_of_0199_is_replaced_and_the_guard_names_the_md5s(self):
         sql = code(TEXT)
-        for fn in ("ai_chat_save_brief", "ai_chat_finish_turn", "ai_chat_start", "ai_chat_reserve_turn", "ai_chat_record_handoff"):
+        self.assertEqual(sql.count("create or replace function public.ai_chat_finish_turn("), 1)
+        for md5 in ("b0420b460b7717b7d084f7a9bdc3e809", "ab9e0cf7f4ee370991fd208128019db5"):
+            self.assertIn(md5, TEXT)
+            self.assertIn(md5, (REPO / "tests" / "security" / "sec_sheets_writer_0249.py").read_text(encoding="utf-8"))
+        self.assertIn("b0420b460b7717b7d084f7a9bdc3e809", ROLLBACK_TEXT)
+        for fn in ("ai_chat_save_brief", "ai_chat_start", "ai_chat_reserve_turn", "ai_chat_record_handoff"):
             self.assertNotIn(f"function public.{fn}(", sql, fn)
         self.assertEqual(TEXT.count("16f6ce5d2815675860bbce0a1a1810ac"), 3)  # header, guard, end state
         lab = (REPO / "tests" / "security" / "sec_sheets_writer_0249.py").read_text(encoding="utf-8")
@@ -99,8 +107,15 @@ class AiChatSaveSheetsMigration(unittest.TestCase):
         self.assertEqual(sorted(re.findall(r"drop (?:function|trigger) if exists ([^;( ]+)", sql)),
                          ["ai_chat_sessions_keep_sheets", "public.ai_chat_save_sheets", "public.ai_chat_sessions_keep_sheets",
                           "public.ai_chat_sheet_problem", "public.ai_chat_sheet_repair"])
-        for word in ("create ", "grant ", "update ", "delete "):
+        # Besides 0199's CHECK, it puts back exactly 0199's finish_turn (and its grant) and 0199's call outcomes, recording a
+        # brief_too_large call as output_too_long first.
+        self.assertEqual(re.findall(r"create or replace function public\.(\w+)\(", sql), ["ai_chat_finish_turn"])
+        self.assertEqual(re.findall(r"(?m)^update public\.(\w+)", sql), ["ai_chat_calls"])  # outside the restored body
+        for word in ("delete ", "create table", "create trigger"):
             self.assertNotIn(word, sql, word)
+        old = (REPO / "supabase" / "migrations" / "0199_studio_ai_chat.sql").read_text(encoding="utf-8")
+        i = old.index("create or replace function public.ai_chat_finish_turn(")
+        self.assertIn(old[i:old.index("$$;", i) + 3], ROLLBACK_TEXT)
         # The only ALTERs put 0199's CHECK back exactly in place of 0249's.
         self.assertEqual(re.findall(r"alter table public\.ai_chat_sessions ([^;]*);", sql), [
             "drop constraint if exists ai_chat_sessions_brief_0249",

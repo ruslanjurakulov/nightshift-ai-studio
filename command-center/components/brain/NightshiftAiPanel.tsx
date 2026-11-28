@@ -100,7 +100,7 @@ type HistoryRead<T> = { ok: true; value: T } | { ok: false; gone?: boolean; mess
 /** Refusals a Retry cannot change: the same press would meet the same answer. */
 const NO_RETRY = [
   "chat_daily_cap", "chat_plan_required", "message_too_long", "session_closed", "short_not_available", "channel_required", "nothing_to_choose",
-  "forbidden", "content_refused", "output_too_long", "not_a_member",
+  "forbidden", "content_refused", "output_too_long", "brief_too_large", "not_a_member",
   // The plan step's refusals another press cannot change (lib/server/brain/plan, 0211's lease).
   "plan_over_cap", "plan_running", "plan_unavailable", "plan_superseded", "proposal_outdated",
   // A project's own storyboard conversation (lib/server/brain/film-plan): it is continued in the project, never here.
@@ -511,6 +511,7 @@ export function NightshiftAiPanel({ channelId, channelSlug, greetingName = null,
     if (e === "channel_required") return c.errors.channel_required;
     if (e === "content_refused") return c.errors.content_refused;
     if (e === "output_too_long") return c.errors.output_too_long;
+    if (e === "brief_too_large") return c.errors.brief_too_large;
     if (e === "nothing_to_choose") return c.errors.nothing_to_choose;
     if (e === "film_refused") return c.errors.film_refused;
     if (e === "not_enabled") return c.errors.not_enabled;
