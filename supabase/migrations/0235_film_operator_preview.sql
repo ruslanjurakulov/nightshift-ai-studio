@@ -32,7 +32,8 @@
 --                                               REPLACED, each on its live body above, with only its film_check_model / film_model_problem
 --                                               call(s) given the film's organization (f.org_id or p_film.org_id), each call marked
 --                                               `-- 0235` (film_price: 3 calls, key frame / clip / voice; film_apply_settings: 2, the
---                                               key-frame or clip model and the voice; the other three: 1 each). Nothing else changes.
+--                                               key-frame or clip model and the voice; the other three: 1 each). film_price has one
+--                                               more hunk, the refs path below. Nothing else changes.
 --   The three-argument film_check_model and film_model_problem are NOT changed (any other caller keeps 0166's/0171's answer).
 --   Inherited, not replaced: quote_film and start_film (0215/0198: film_price, film_precheck), quote_film_resume, start_film_resume and
 --   film_resume_price (0215: film_resume_precheck, film_price), save_film and create_film_draft (0166: film_apply_settings,
@@ -51,6 +52,16 @@
 --   operator_preview, verified, listing the take's capability, not past its shutdown date and not switched off — the same rule the
 --   Studio's worker applies (operator_preview_runnable). Every segment of the exempt organization was started by a platform admin
 --   (start_film's own rule), so that is the operator's film. A customer organization's take is asked with previews=False, as before.
+-- THE REFS PATH (a live money bug, verified by S1; marked `-- 0235 (refs path)` in film_price). film_take_job (0198) makes every key
+--   frame as t2i, and an adapter sends reference pictures only on the capabilities it lists (reference_capabilities; the OpenAI image
+--   adapter lists edit only, and creative_adapters refuses references on any other capability as bad_request at submit). film_price
+--   asked only how many references the model takes (inputs.image_refs_max), so a film with any reference on a GPT Image key-frame model
+--   was priced, held at Start, and refused at its first take. The registry now states inputs.ref_capabilities on every image model,
+--   derived from the adapter and checked against it (modules/model_registry.py; a sync carries it into model_registry.spec), and the
+--   key-frame line is refused refs_not_supported, before anything is held, when the scene has references and the model does not list
+--   t2i there. Not stated at all reads as not supported (rule 4): run the registry sync with this file. The count check stays.
+--   start_film and start_film_resume re-price through film_price (film_resume_price) before their hold, so no other path holds a
+--   film the quote would refuse; film_precheck and film_resume_precheck do not price and are not given the check.
 -- OVERLAP. Draft #920 (0220, the film voice's language) also replaces film_price and film_precheck. Whichever of the two merges second
 --   must be rebased on the other's bodies: its drift guard, end state and rollback must name the other file's md5s, and the security
 --   lab must take the later one off first (sec_db.take_off_0235 / take_off_0220). This file accepts only the bodies listed above.
@@ -109,7 +120,7 @@ declare
 begin
   for r in
     select * from (values
-      ('public.film_price(public.films)', '3c22f87be736c073d17d93e040e914e1', '399372f5f151dcef1fa5a590b2f413eb', '0218'),
+      ('public.film_price(public.films)', '3c22f87be736c073d17d93e040e914e1', '186d34ffb633bc56a91bbf617b0b7520', '0218'),
       ('public.film_precheck(public.films)', 'ff4fa7e8a6386420f32ab6a3a85a778c', '826a4c57a5a97ef44634cb7e25d1f11d', '0171'),
       ('public.film_resume_precheck(public.films, uuid)', 'aa7275ed5e8520af52cabd03c2f930d8', 'ca3ccf2b51ddd0b4e3cc71aedee216e4', '0215'),
       ('public.film_apply_settings(public.films, jsonb, text[])', '248ffb76f60f3a6f4e8b34b85cd0c92b', 'f5cdf963343a4b722333eaf0d13bd840', '0166'),
@@ -747,6 +758,14 @@ begin
           q := jsonb_build_object('priced', false, 'reason', 'refs_not_supported',
                                   'detail', format('%s: %s takes %s reference pictures and this scene has %s; choose a model that takes them all or remove some',
                                                    label, kmodel, ref_max, refs_n));
+        -- 0235 (refs path): a film's key frame is made from words (film_take_job sends t2i), and an adapter sends references only on
+        -- the capabilities it lists (registry inputs.ref_capabilities, checked against the adapter): one that does not list t2i would
+        -- refuse this take at submit, after the hold. Not listed, or not stated at all, is refused here, before anything is held.
+        elsif refs_n > 0 and not coalesce(jsonb_typeof(spec -> 'inputs' -> 'ref_capabilities') = 'array'
+                                          and (spec -> 'inputs' -> 'ref_capabilities') ? 't2i', false) then
+          q := jsonb_build_object('priced', false, 'reason', 'refs_not_supported',
+                                  'detail', format('%s: %s does not take reference pictures for a key frame made from words; remove the reference pictures or choose a key-frame model that takes them',
+                                                   label, kmodel));
         elsif cap = 'edit' and stand is null then
           q := jsonb_build_object('priced', false, 'reason', 'source_unavailable',
                                   'detail', format('%s: an edit model is priced against a picture of this library; add one picture', label));
@@ -934,7 +953,7 @@ begin
       ('public.film_save_scenes(public.films, jsonb)', 'd2d32abea21beb742eea14d92ad6e9fd'),
       ('public.film_precheck(public.films)', '826a4c57a5a97ef44634cb7e25d1f11d'),
       ('public.film_resume_precheck(public.films, uuid)', 'ca3ccf2b51ddd0b4e3cc71aedee216e4'),
-      ('public.film_price(public.films)', '399372f5f151dcef1fa5a590b2f413eb'),
+      ('public.film_price(public.films)', '186d34ffb633bc56a91bbf617b0b7520'),
       ('public.film_check_model(text, text[], text)', '864da632969ae05f964eee1b568a671f'),
       ('public.film_model_problem(text, text[], text)', 'd828ee349aa5da3aa05ea9db4d8f1b94')
     ) v(sig, want)
@@ -969,7 +988,7 @@ end $$;
 -- ───────────────────────────────────────────────────────────────────────────
 -- select
 --   (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
---     where oid = 'public.film_price(public.films)'::regprocedure) = '399372f5f151dcef1fa5a590b2f413eb' as film_price_is_0235s,
+--     where oid = 'public.film_price(public.films)'::regprocedure) = '186d34ffb633bc56a91bbf617b0b7520' as film_price_is_0235s,
 --   (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc
 --     where oid = 'public.film_precheck(public.films)'::regprocedure) = '826a4c57a5a97ef44634cb7e25d1f11d' as film_precheck_is_0235s,
 --   (select md5(regexp_replace(prosrc, '[[:space:]]+', ' ', 'g')) from pg_proc

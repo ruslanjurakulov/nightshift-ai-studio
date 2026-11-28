@@ -53,7 +53,7 @@ OLD = {("film_price", 1): src("film_price", 1, "0218_creative_prompt_limits.sql"
 BEFORE = {("film_price", 1): "3c22f87be736c073d17d93e040e914e1", ("film_precheck", 1): "ff4fa7e8a6386420f32ab6a3a85a778c",
           ("film_resume_precheck", 2): "aa7275ed5e8520af52cabd03c2f930d8",
           ("film_apply_settings", 3): "248ffb76f60f3a6f4e8b34b85cd0c92b", ("film_save_scenes", 2): "c836631256f669318c9ef499d7c4c54b"}
-AFTER = {("film_price", 1): "399372f5f151dcef1fa5a590b2f413eb", ("film_precheck", 1): "826a4c57a5a97ef44634cb7e25d1f11d",
+AFTER = {("film_price", 1): "186d34ffb633bc56a91bbf617b0b7520", ("film_precheck", 1): "826a4c57a5a97ef44634cb7e25d1f11d",
          ("film_resume_precheck", 2): "ca3ccf2b51ddd0b4e3cc71aedee216e4",
          ("film_apply_settings", 3): "f5cdf963343a4b722333eaf0d13bd840", ("film_save_scenes", 2): "d2d32abea21beb742eea14d92ad6e9fd",
          ("film_check_model", 4): "5a2c4ed8d8b56bc63d6d095085ab0361", ("film_model_problem", 4): "48d25f5cb4f21b9cea72658968d9c952"}
@@ -78,6 +78,24 @@ CALLS = {
                                   "public.film_check_model(v ->> 'model', array['tts'], 'voice.model', f.org_id)")],
     ("film_save_scenes", 2): [("format('%s %s', label, ck));", "format('%s %s', label, ck), p_film.org_id);")],
 }
+
+
+#: 0235's one hunk in film_price that is not a call: the refs path (a key frame with references, on a model whose adapter does not send
+#: them on t2i, is refused before any hold). (old, new), as in 0218's file.
+REFS_OLD = """                                                   label, kmodel, ref_max, refs_n));
+        elsif cap = 'edit' and stand is null then
+"""
+REFS_NEW = """                                                   label, kmodel, ref_max, refs_n));
+        -- 0235 (refs path): a film's key frame is made from words (film_take_job sends t2i), and an adapter sends references only on
+        -- the capabilities it lists (registry inputs.ref_capabilities, checked against the adapter): one that does not list t2i would
+        -- refuse this take at submit, after the hold. Not listed, or not stated at all, is refused here, before anything is held.
+        elsif refs_n > 0 and not coalesce(jsonb_typeof(spec -> 'inputs' -> 'ref_capabilities') = 'array'
+                                          and (spec -> 'inputs' -> 'ref_capabilities') ? 't2i', false) then
+          q := jsonb_build_object('priced', false, 'reason', 'refs_not_supported',
+                                  'detail', format('%s: %s does not take reference pictures for a key frame made from words; remove the reference pictures or choose a key-frame model that takes them',
+                                                   label, kmodel));
+        elsif cap = 'edit' and stand is null then
+"""
 
 
 def undo(new):
@@ -105,6 +123,10 @@ class FilmOperatorPreviewMigration(unittest.TestCase):
             self.assertEqual(md5_of(old), BEFORE[key], key)
             self.assertEqual(md5_of(new), AFTER[key], key)
             self.assertEqual(new.count(TAG.strip()), len(calls), key)
+            if key == ("film_price", 1):
+                self.assertEqual(old.count(REFS_OLD), 1)
+                self.assertEqual(new.count(REFS_NEW), 1)
+                new = new.replace(REFS_NEW, REFS_OLD)
             undone = undo(new)
             for a, b in calls:
                 self.assertEqual(old.count(a), 1, (key, a))
@@ -135,6 +157,16 @@ class FilmOperatorPreviewMigration(unittest.TestCase):
         head3 = check3[check3.index("begin\n"): check3.index("  if not exists (select 1 from unnest(p_caps)")]
         self.assertIn(head3, c4)
         self.assertIn("format('%s: %s is not on sale for this', p_field, p_model)", c4)
+
+    def test_the_refs_path_follows_the_count_check_fails_closed_and_names_the_remedy(self):
+        fp = NEW[("film_price", 1)]
+        self.assertLess(fp.index("if refs_n > ref_max then"), fp.index("-- 0235 (refs path)"))
+        self.assertLess(fp.index("-- 0235 (refs path)"), fp.index("elsif cap = 'edit' and stand is null then"))
+        # a missing or non-array field is "not supported" (coalesce(..., false) under not), and only t2i counts: the take's path
+        self.assertIn("not coalesce(jsonb_typeof(spec -> 'inputs' -> 'ref_capabilities') = 'array'", fp)
+        self.assertIn("(spec -> 'inputs' -> 'ref_capabilities') ? 't2i', false)", fp)
+        self.assertIn("remove the reference pictures or choose a key-frame model that takes them", fp)
+        self.assertIn("THE REFS PATH", NEW_TEXT)
 
     def test_the_rollback_puts_back_exactly_the_predecessors_and_drops_the_overloads(self):
         self.assertEqual(set(BACK), set(OLD))

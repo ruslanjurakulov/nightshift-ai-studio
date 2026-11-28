@@ -3231,7 +3231,7 @@ allows it. Nothing changes for any customer. Dark until the registry marks a row
   exempt branch: Breach 0235-I1) and the row is probed (`verified_at`,
   `verified_probe_id`), not past its shutdown date, not switched off (`model_is_available`) and lists one of the role's capabilities.
   Five callers, each on its live body with only its check call(s) given the film's organization and marked `-- 0235`:
-  `film_price` (0218's `3c22f87be736c073d17d93e040e914e1` -> `399372f5f151dcef1fa5a590b2f413eb`; three calls: key frame, clip,
+  `film_price` (0218's `3c22f87be736c073d17d93e040e914e1` -> `186d34ffb633bc56a91bbf617b0b7520`; three calls: key frame, clip,
   voice), `film_precheck` (0171's `ff4fa7e8a6386420f32ab6a3a85a778c` -> `826a4c57a5a97ef44634cb7e25d1f11d`),
   `film_resume_precheck` (0215's `aa7275ed5e8520af52cabd03c2f930d8` -> `ca3ccf2b51ddd0b4e3cc71aedee216e4`), `film_apply_settings`
   (0166's `248ffb76f60f3a6f4e8b34b85cd0c92b` -> `f5cdf963343a4b722333eaf0d13bd840`; two calls) and `film_save_scenes` (0166's
@@ -3239,6 +3239,16 @@ allows it. Nothing changes for any customer. Dark until the registry marks a row
   start_film_resume, save_film and create_film_draft inherit it. The three-argument functions are unchanged. md5s are of prosrc with
   white space folded (`[[:space:]]+`); the file holds no backslash (film_price's one is written `@@0235_BACKSLASH@@` and put back with
   `chr(92)`).
+- **The refs path (a live money bug, S1).** `film_take_job` makes every key frame as t2i, and an adapter sends reference pictures
+  only on its `reference_capabilities` (the OpenAI image adapter: edit only; `creative_adapters` refuses the rest as `bad_request` at
+  submit). `film_price` asked only `inputs.image_refs_max`, so a film with a reference on a GPT Image key-frame model was priced,
+  held at Start, then refused at its first take. The registry now states `inputs.ref_capabilities` on every image model, derived from
+  the adapter and checked against it by `modules/model_registry.py` and pinned by `tests/test_ref_capabilities_registry.py`, and
+  `film_price`'s key-frame line (marked `-- 0235 (refs path)`) is `refs_not_supported` when the scene has references and the field
+  does not list `t2i`. A missing field is not supported (rule 4). The detail names the remedy: remove the reference pictures or choose
+  a key-frame model that takes them. start_film and start_film_resume re-price through film_price before their hold.
+  **Owner step:** run `python tools/probe_models.py --sync` (no vendor call) with this file, or every film with references is refused
+  at the quote until it runs.
 - **Who.** A customer, a member of the exempt organization who is not a platform admin, a platform admin acting in a customer's
   organization, and any caller without a JWT (the service role, the SQL editor) get `model_not_available`, as before. A preview film
   holds nothing (the exempt organization) and is quoted at the vendor's cost with `"preview": true`; no `credit_prices` row is written.

@@ -1432,7 +1432,7 @@ def put_back_0219(conn_or_session) -> None:
 MIGRATION_0235 = MIGRATIONS / "0235_film_operator_preview.sql"
 ROLLBACK_0235 = REPO / "docs" / "sql" / "rollback_0235_film_operator_preview.sql"
 #: md5 of 0235's bodies (white space folded), the way its drift guard and end state read them.
-FILM_PRICE_0235 = "399372f5f151dcef1fa5a590b2f413eb"
+FILM_PRICE_0235 = "186d34ffb633bc56a91bbf617b0b7520"
 FILM_CHECK_MODEL_0235 = "5a2c4ed8d8b56bc63d6d095085ab0361"
 FILM_MODEL_PROBLEM_0235 = "48d25f5cb4f21b9cea72658968d9c952"
 #: The bodies 0235 is written on: 0218's film_price, 0171's film_precheck, 0215's film_resume_precheck, 0166's film_apply_settings and

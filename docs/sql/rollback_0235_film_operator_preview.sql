@@ -26,7 +26,7 @@ declare
 begin
   for r in
     select * from (values
-      ('public.film_price(public.films)', '3c22f87be736c073d17d93e040e914e1', '399372f5f151dcef1fa5a590b2f413eb'),
+      ('public.film_price(public.films)', '3c22f87be736c073d17d93e040e914e1', '186d34ffb633bc56a91bbf617b0b7520'),
       ('public.film_precheck(public.films)', 'ff4fa7e8a6386420f32ab6a3a85a778c', '826a4c57a5a97ef44634cb7e25d1f11d'),
       ('public.film_resume_precheck(public.films, uuid)', 'aa7275ed5e8520af52cabd03c2f930d8', 'ca3ccf2b51ddd0b4e3cc71aedee216e4'),
       ('public.film_apply_settings(public.films, jsonb, text[])', '248ffb76f60f3a6f4e8b34b85cd0c92b', 'f5cdf963343a4b722333eaf0d13bd840'),
