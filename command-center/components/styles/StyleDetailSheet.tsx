@@ -64,7 +64,7 @@ export function StyleDetailSheet({
       >
         <header className="flex items-center justify-between gap-3 border-b border-[var(--ds-border)] px-5 py-3">
           <SheetTitle className="g2-h2 min-w-0 truncate">{style.name[locale]}</SheetTitle>
-          <SheetClose aria-label={ts.close} className="ui-close shrink-0">
+          <SheetClose aria-label={ts.close} className="ui-close tap-icon shrink-0">
             <X aria-hidden className="size-5" />
           </SheetClose>
         </header>

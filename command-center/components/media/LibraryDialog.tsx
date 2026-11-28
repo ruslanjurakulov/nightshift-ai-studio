@@ -3,6 +3,7 @@
 import { useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { X } from "lucide-react";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/Sheet";
+import { focusWasLost } from "@/components/ui/returnFocus";
 
 /**
  * The library's small dialogs (a folder's name, "delete this folder?", the
@@ -26,7 +27,14 @@ export function LibraryDialog({
   busy = false,
   testId,
   side = false,
+  afterClose,
 }: {
+  /**
+   * Where focus goes instead of back to the opener, when the person's choice in this dialog sends them somewhere (Captions
+   * in the editor scrolls to and focuses the captions panel). Set just before closing; run once the dialog has gone, because
+   * while it is open its focus trap pulls any focus back inside and the opener would then take it, scroll and all.
+   */
+  afterClose?: RefObject<(() => void) | null>;
   /**
    * A panel along the right edge from `lg` up (full height, the page still visible beside it) instead of a centred
    * card; a bottom sheet on a phone either way. For a dialog someone works in for a while ("Improve with AI").
@@ -67,6 +75,18 @@ export function LibraryDialog({
           (initialFocus?.current ?? card.current)?.focus();
         }}
         onCloseAutoFocus={(e) => {
+          const land = afterClose?.current;
+          if (land) {
+            e.preventDefault();
+            afterClose.current = null;
+            land();
+            return;
+          }
+          // Only when focus was lost (useOverlay's rule): a choice that moved it on purpose keeps it there.
+          if (!focusWasLost()) {
+            e.preventDefault();
+            return;
+          }
           if (opener?.current?.isConnected) {
             e.preventDefault();
             opener.current.focus();
@@ -81,7 +101,7 @@ export function LibraryDialog({
             <SheetTitle className="m-0 break-words text-base font-semibold leading-snug text-[var(--ds-text)]">{title}</SheetTitle>
             {description && <SheetDescription className="m-0 text-sm leading-relaxed text-[var(--ds-muted)]">{description}</SheetDescription>}
           </div>
-          <SheetClose className="ui-close shrink-0" aria-label={closeLabel} disabled={busy}>
+          <SheetClose className="ui-close tap-icon shrink-0" aria-label={closeLabel} disabled={busy}>
             <X className="size-4" aria-hidden />
           </SheetClose>
         </div>

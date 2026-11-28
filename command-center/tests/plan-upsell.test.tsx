@@ -287,6 +287,7 @@ describe("the plan dialog in the Studio", () => {
     refuse = { status: 429, body: { error: "run_limit_reached", active: 1, limit: 1 } };
     const { button } = await refusedGenerate();
     const dialog = await screen.findByRole("dialog");
+    expect(document.body.hasAttribute("data-scroll-locked")).toBe(true);
     const focusable = Array.from(dialog.querySelectorAll<HTMLElement>("a[href], button:not([disabled])"));
     focusable[focusable.length - 1].focus();
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Tab" });
@@ -298,7 +299,8 @@ describe("the plan dialog in the Studio", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     // The shared Sheet (Radix) gives focus back on the next tick, after the dialog has gone.
     await waitFor(() => expect(document.activeElement).toBe(button));
-    expect(document.body.style.overflow).toBe("");
+    // The page is released (react-remove-scroll marks the body while a modal is open).
+    expect(document.body.hasAttribute("data-scroll-locked")).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: en.upsell.seePlans }));
     const again = await screen.findByRole("dialog", { name: en.upsell.titleRunLimit });

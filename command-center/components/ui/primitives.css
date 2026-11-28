@@ -285,6 +285,12 @@
     .ui-sheet[data-side="auto"][data-state="open"] { animation: ui-pop-in var(--ds-dur-panel) var(--ds-ease-out); }
     .ui-sheet[data-side="auto"][data-state="closed"] { animation: ui-pop-out var(--ds-dur-panel) var(--ds-ease-exit); }
   }
+  /* Docked on the right, it slides in from that edge rather than popping in about its centre. */
+  @media (min-width: 1024px) {
+    .ui-sheet[data-side="auto"][data-dock="right"] { --ui-from: translateX(100%); }
+    .ui-sheet[data-side="auto"][data-dock="right"][data-state="open"] { animation: ui-sheet-in var(--ds-dur-page) var(--ds-ease-emphasized); }
+    .ui-sheet[data-side="auto"][data-dock="right"][data-state="closed"] { animation: ui-sheet-out var(--ds-dur-panel) var(--ds-ease-exit); }
+  }
 
   @media (prefers-reduced-motion: reduce) {
     .ui-overlay, .ui-dialog, .ui-sheet, .ui-popover, .ui-tooltip { animation: none !important; }
