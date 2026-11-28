@@ -35,7 +35,9 @@
  *      (an EXIF Make, an MP4 ilst string). Three: case-sensitive as a whole word inside such a run only (as a bare value, three
  *      letters turn up by chance in a few hundred MB);
  *   2. the label's own keys (PROVENANCE_KEYS) outside an exempted value;
- *   3. a vendor job id: a run of 32 hex digits or a UUID, with at least MIN_DISTINCT different digits (a flat poster's VP8 data
+ *   3. every name at any length (three letters included), case-insensitive, as a whole word, in every tag key and value the
+ *      container frames (structuralValues): a WebM SimpleTag, an MP4 ilst / keys / udta string;
+ *   4. a vendor job id: a run of 32 hex digits or a UUID, with at least MIN_DISTINCT different digits (a flat poster's VP8 data
  *      holds runs like 38 times "3", which are not ids).
  * Under .next/static/media only the types the site imports (MEDIA_TYPES) may appear: anything else (JSON, SVG, PNG) can hold a
  * name in an encoding this scan does not read (\u escapes, base64, zlib), so it fails rather than pass unread. public/ is scanned
@@ -253,6 +255,67 @@ function mp4AigcValues(s) {
   return out;
 }
 
+/**
+ * Every tag key and value the container itself frames, as strings: a WebM SimpleTag's TagName and TagString (TagName 0x45A3, its
+ * size and a printable name, then TagString 0x4487 and its size, optionally after a TagLanguage / TagDefault); an MP4's
+ * moov/udta/meta keys (mdta names) and every `data` payload under an ilst, and the QuickTime udta strings (©xxx). Lenient about
+ * the outer framing (a stand-in file need not have valid parent sizes), strict about the element itself. Breach, PR #996: a
+ * short name in a short value ("Kling AI", a bare "Luma") is below what the loose scan can tell from chance; read as the tag value
+ * it is, it is a name.
+ */
+export function structuralValues(s, ext) {
+  const out = [];
+  if (ext === ".webm") {
+    for (let i = s.indexOf("\x45\xa3"); i !== -1; i = s.indexOf("\x45\xa3", i + 2)) {
+      const n = vint(s, i + 2);
+      if (!n || n.value < 1 || n.value > 256) continue;
+      let p = i + 2 + n.len;
+      const name = s.slice(p, p + n.value);
+      if (name.length !== n.value || !/^[\x20-\x7e]+$/.test(name)) continue;
+      out.push(name);
+      p += n.value;
+      // TagLanguage (0x447A) and TagDefault (0x4484) may sit between the name and the string.
+      for (let k = 0; k < 2 && (s.slice(p, p + 2) === "\x44\x7a" || s.slice(p, p + 2) === "\x44\x84"); k++) {
+        const m = vint(s, p + 2);
+        if (!m) break;
+        p += 2 + m.len + m.value;
+      }
+      if (s.slice(p, p + 2) !== "\x44\x87") continue;
+      const m = vint(s, p + 2);
+      if (m && m.value > 0) out.push(s.slice(p + 2 + m.len, p + 2 + m.len + m.value));
+    }
+  } else if (ext === ".mp4") {
+    const walk = (a, b, depth, inIlst) => {
+      if (depth > 6) return;
+      for (const [type, start, end] of boxes(s, a, b)) {
+        if (inIlst && type === "data") out.push(s.slice(start + 8, end));
+        else if (type === "keys") {
+          const count = u32(s, start + 4);
+          for (let k = 0, q = start + 8; k < count && q + 8 <= end; k++) {
+            const len = u32(s, q);
+            if (len < 8 || q + len > end) break;
+            out.push(s.slice(q + 8, q + len));
+            q += len;
+          }
+        } else if (type === "meta") {
+          walk(start, end, depth + 1, false);
+          walk(start + 4, end, depth + 1, false);
+        } else if (type === "ilst") walk(start, end, depth + 1, true);
+        else if (inIlst && type !== "mdat" && type !== "free" && type !== "skip") walk(start, end, depth + 1, true);
+        else if (type === "moov" || type === "udta" || type === "trak") walk(start, end, depth + 1, false);
+        else if (type.charCodeAt(0) === 0xa9 && end - start > 4) out.push(s.slice(start + 4, end));
+      }
+    };
+    walk(0, s.length, 0, false);
+    // And every ilst by its fourcc, whatever its parents say: bounded by its own size when that is sane, else by the file.
+    for (let i = s.indexOf("ilst"); i !== -1; i = s.indexOf("ilst", i + 4)) {
+      const size = i >= 4 ? u32(s, i - 4) : 0;
+      walk(i + 4, size >= 8 && i - 4 + size <= s.length ? i - 4 + size : s.length, 1, true);
+    }
+  }
+  return out;
+}
+
 /** The byte range of the file's one signed label, or null (none, more than one AIGC value, or not exactly a label). */
 export function labelRange(s, ext) {
   if (!LABELLED_TYPES.includes(ext)) return null;
@@ -301,6 +364,10 @@ export function patterns(names) {
   for (const k of PROVENANCE_KEYS) {
     out.push(k.length >= 6 ? { label: `provenance key ${k}`, kind: "exact", text: k } : { label: `provenance key ${k}`, kind: "short", re: word(k, ""), whole: k });
   }
+  // For a parsed tag value (structuralValues): every name at any length, three letters included, case-insensitive, as a whole
+  // word. A tag value is text by construction, so the chance argument that limits the loose scan does not apply there.
+  out.tagValue = new RegExp(`(?<![A-Za-z0-9])(?:${[...names].sort((a, b) => b.length - a.length).map(escape).join("|")})(?![A-Za-z0-9])`, "i");
+  out.names = names;
   return out;
 }
 
@@ -354,6 +421,14 @@ export function findLeaks(raw, ext, list, allowLabel) {
   const text = range ? raw.slice(0, range[0]) + " ".repeat(range[1] - range[0]) + raw.slice(range[1]) : raw;
   const hits = new Set();
   for (const v of views(text)) scanText(v, list, hits);
+  if (list.tagValue) {
+    for (const value of structuralValues(text, ext)) {
+      const m = value.match(list.tagValue);
+      if (!m) continue;
+      const name = list.names.find((n) => n.toLowerCase() === m[0].toLowerCase()) ?? m[0];
+      hits.add(`vendor name "${name}" in a tag value`);
+    }
+  }
   return { hits: [...hits], exempted: !!range };
 }
 
@@ -366,7 +441,12 @@ const sha = (buf) => createHash("sha256").update(buf).digest("hex");
  * source clips among them (each must be in the build). null when there are no showcase sources here (a stand-in build).
  */
 function readBinding() {
-  if (!existsSync(SHOWCASE)) return null;
+  if (!existsSync(SHOWCASE)) {
+    // The unbound fallback is for stand-in builds (the tests). In CI the repository is checked out, so its absence means the
+    // scan is in the wrong place, and a pass would mean nothing.
+    if (process.env.CI) fail2("components/site/showcase/ not found while CI is set — the label cannot be bound to its job; run from command-center/ in the repository.");
+    return null;
+  }
   if (!existsSync(SHOWCASE_DATA)) fail2("components/site/showcase/ is here but lib/site/showcase.json is not — a sample's maker cannot be read.");
   let entries;
   try {

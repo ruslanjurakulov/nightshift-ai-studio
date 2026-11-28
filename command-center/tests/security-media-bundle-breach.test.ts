@@ -81,7 +81,8 @@ function run(layout: Layout): { status: number | null; out: string } {
   }
   if (layout.pub) put(path.join(cc, "public"), layout.pub);
   if (layout.sources) put(path.join(cc, "components", "site", "showcase"), layout.sources);
-  const r = spawnSync(process.execPath, [SCRIPT], { cwd: cc, encoding: "utf8", timeout: layout.timeout ?? 60_000 });
+  // CI cleared: a stand-in build has no showcase sources, and the script refuses to run unbound when CI is set.
+  const r = spawnSync(process.execPath, [SCRIPT], { cwd: cc, encoding: "utf8", timeout: layout.timeout ?? 60_000, env: { ...process.env, CI: "" } });
   return { status: r.status, out: `${r.stdout}${r.stderr}` };
 }
 const scan = (media: Record<string, Uint8Array>) => run({ media });
@@ -112,7 +113,7 @@ describe("breach: a shape-valid label is a free carrier for any vendor's name or
 
   it("a second, different label in the same file (a second job id) is not exempted", () => {
     const second = JSON.stringify(label({ ProduceID: HEX_ID }));
-    const file = Buffer.concat([webm(exact), Buffer.from(`\x67\xc8\x45\xa3\x84AIGC\x44\x87\x80${second}\x00`, "latin1")]);
+    const file = Buffer.concat([webm(exact), Buffer.from(`\x67\xc8\x45\xa3\x84AIGC\x44\x87${ebmlSize(second.length)}${second}\x00`, "latin1")]);
     expect(scan({ "clip.1.webm": file }).status).toBe(1);
   });
 
@@ -214,5 +215,30 @@ describe("held: what the scan already gets right (and what the fix must keep)", 
   it("the exact MiniMax label still passes in a WebM, and no build still exits 2", () => {
     expect(scan({ "clip.1.webm": webm(exact) }).status).toBe(0);
     expect(run({ media: null }).status).toBe(2);
+  });
+});
+
+describe("breach, fix round: a short vendor name in a short tag value (under 12 printable bytes, not a bare NUL-ended name)", () => {
+  // A WebM SimpleTag and an MP4 ilst item are parsed already for the label; their other values are only scanned as loose text,
+  // where a 4- or 5-letter name counts only inside a 12-character run or as a bare value of at most 5 followed by a NUL. A muxer
+  // writes neither: a TagString is followed by the next element's id, and "Kling AI" is 8 characters.
+  const simpleTag = (name: string, v: string) =>
+    `\x67\xc8\x80\x45\xa3${String.fromCharCode(0x80 | name.length)}${name}\x44\x87${String.fromCharCode(0x80 | v.length)}${v}`;
+  const webmTags = (v: string) => Buffer.from(`${head}\x12\x54\xc3\x67${simpleTag("ARTIST", v)}${simpleTag("COMMENT", "x")}\x1f\x43\xb6\x75`, "latin1");
+  const mp4Tool = (v: string) =>
+    Buffer.from(
+      `\x00\x00\x00\x18ftypisom\x00\x00\x02\x00ilst\x00\x00\x00${String.fromCharCode(24 + v.length)}\xa9too\x00\x00\x00${String.fromCharCode(16 + v.length)}data\x00\x00\x00\x01\x00\x00\x00\x00${v}\x00\x00\x00\x08mdat`,
+      "latin1",
+    );
+
+  it("'Kling AI', 'Luma AI', 'Pika AI', 'Veo 3', 'Vidu AI' as a WebM TagString or an MP4 ilst value fail", () => {
+    for (const v of ["Kling AI", "Luma AI", "Pika AI", "Veo 3", "Vidu AI"]) {
+      expect(scan({ "clip.1.webm": webmTags(v) }).status, `webm ${v}`).toBe(1);
+      expect(scan({ "clip.1.mp4": mp4Tool(v) }).status, `mp4 ${v}`).toBe(1);
+    }
+  });
+
+  it("a bare 'Luma' or 'kling' WebM TagString (followed by the next element, not a NUL) fails", () => {
+    for (const v of ["Luma", "kling"]) expect(scan({ "clip.1.webm": webmTags(v) }).status, v).toBe(1);
   });
 });

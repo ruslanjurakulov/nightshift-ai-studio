@@ -72,10 +72,10 @@ afterAll(() => {
   for (const r of roots) rmSync(r, { recursive: true, force: true });
 });
 
-type Layout = { media?: Record<string, Buffer | { link: string }> | null; providers?: string; repo?: boolean; args?: string[] };
+type Layout = { media?: Record<string, Buffer | { link: string }> | null; providers?: string; repo?: boolean; args?: string[]; ci?: boolean };
 
 /** A stand-in command-center. `repo` links the real showcase sources and data file in, so the job binding applies. */
-function run({ media = {}, providers, repo = false, args = [] }: Layout): { status: number; out: string } {
+function run({ media = {}, providers, repo = false, args = [], ci = false }: Layout): { status: number; out: string } {
   const root = mkdtempSync(path.join(os.tmpdir(), "media-check-"));
   roots.push(root);
   const cc = path.join(root, "cc");
@@ -98,7 +98,8 @@ function run({ media = {}, providers, repo = false, args = [] }: Layout): { stat
       else symlinkSync(body.link, path.join(dir, name));
     }
   }
-  const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd: cc, encoding: "utf8" });
+  // CI is cleared unless a case sets it: a stand-in build without showcase sources is refused when CI is set.
+  const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd: cc, encoding: "utf8", env: { ...process.env, CI: ci ? "true" : "" } });
   return { status: r.status ?? -1, out: `${r.stdout}${r.stderr}` };
 }
 
@@ -188,6 +189,13 @@ describe("media-bundle-check: the signed implicit label is kept, nothing else th
     }
   });
 
+  it("a name of any length in a parsed tag value fails, and the real tags our muxers write do not", () => {
+    for (const v of ["Veo 3", "Wan 2.7 render", "made by xai", "GPT"]) expect(run({ media: { "clip.1.mp4": mp4([["comment", v]]) } }).status, v).toBe(1);
+    expect(run({ media: { "clip.1.mp4": mp4([["Luma", "x"]]) } }).status, "an mdta key").toBe(1);
+    // Words that only contain a name are not it: "Lavf", "isomiso2avc1mp41", "VideoHandler", "Advent", "veoh".
+    expect(run({ media: { "clip.1.mp4": mp4([["encoder", "Lavf60.16.100"], ["compatible_brands", "isomiso2avc1mp41"], ["handler", "VideoHandler"], ["comment", "Advent veoh"]]) } }).status).toBe(0);
+  });
+
   it("a short name only inside text: 'Luma' in binary noise is not a tag, 'Luma' in a tag value is", () => {
     expect(run({ media: { "font.1.woff2": Buffer.from("\x00\x8f\x13Luma\x91\x01", "latin1") } }).status).toBe(0);
     expect(run({ media: { "clip.1.webm": webm('{"ContentProducer":"Luma"}') } }).status).toBe(1);
@@ -202,6 +210,11 @@ describe("media-bundle-check: exits 2 when it could not run", () => {
 
   it("when the provider map is no longer the object literal it reads", () => {
     expect(run({ media: { "clip.1.webm": webm(exact) }, providers: 'import "server-only";\nexport const PROVIDER_NAMES = new Map();\n' }).status).toBe(2);
+  });
+
+  it("in CI, when the showcase sources are not there to bind a label to its job (the unbound fallback never runs in CI)", () => {
+    expect(run({ media: { "clip.1.webm": webm(exact) }, ci: true }).status).toBe(2);
+    expect(run({ media: { "clip.1.webm": webm(exact) } }).status).toBe(0);
   });
 
   it("in the repository, when a labelled sample is missing from the build", () => {

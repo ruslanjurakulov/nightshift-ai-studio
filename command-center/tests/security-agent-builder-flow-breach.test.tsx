@@ -176,8 +176,11 @@ describe("Breach: crafted draft content on the React Flow canvas", () => {
     const canvas = screen.getByRole("region", { name: copy.canvasLabel });
     expect(canvas.querySelector("img, svg[onload], [onerror]")).toBeNull();
     expect((window as unknown as { __pwn?: number }).__pwn).toBeUndefined();
-    expect(screen.getByLabelText("Rename brand")).toHaveProperty("value", evil);
+    // React Flow copies new node data into its own store in an effect, after the import's state update: under CI load the
+    // card can still show the old label when the status line already reads "imported". Wait for the card, then check it.
+    await waitFor(() => expect(screen.getByLabelText("Rename brand")).toHaveProperty("value", evil));
     expect(screen.getByRole("button", { name: `Remove ${evil}` })).toBeTruthy();
+    expect(canvas.querySelector("img, svg[onload], [onerror]")).toBeNull();
   });
 
   it("a label holding a {placeholder} does not rewrite the other words of an aria-label (fmt is single pass)", async () => {
