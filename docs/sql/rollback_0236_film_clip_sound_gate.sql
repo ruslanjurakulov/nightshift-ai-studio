@@ -1,15 +1,15 @@
 -- rollback_0236_film_clip_sound_gate.sql — takes migration 0236 (clip sound refused until the cut keeps it) out again.
 -- OWNER-APPLY: paste into the Supabase SQL editor, as one transaction. Nothing in the app runs it. Idempotent.
 --
--- WHAT COMES BACK: 0218's film_price, verbatim (md5 3c22f87be736c073d17d93e040e914e1, white space folded). A scene whose
+-- WHAT COMES BACK: 0235's film_price, verbatim (md5 186d34ffb633bc56a91bbf617b0b7520, white space folded). A scene whose
 --   clip_params.audio is true is then quoted and started again at the with-sound price (BR-SG-01 is open again on a worker that drops
 --   the sound). And 0215's film_assembly_retryable, verbatim (82ec51dabd0ff178ec2280bc0c56e62b): sound_mix_failed and asset_unprobed
 --   are then assembly_not_retryable again.
 -- WHAT GOES: film_studio_settings.clip_sound_kept (its value with it; 0171's switch film_studio_enabled is untouched).
--- WHAT IT DOES: 0. REFUSES (changes nothing) if film_price is neither 0236's body nor 0218's, or film_assembly_retryable neither
---   0236's nor 0215's (a later file changed it: take that out first). 1. Puts 0218's and 0215's bodies back. 2. Drops the column.
+-- WHAT IT DOES: 0. REFUSES (changes nothing) if film_price is neither 0236's body nor 0235's, or film_assembly_retryable neither
+--   0236's nor 0215's (a later file changed it: take that out first). 1. Puts 0235's and 0215's bodies back. 2. Drops the column.
 --   3. Asserts the end state.
--- No backslash anywhere in this file (0219's header): 0218's one backslash is written @@0236_BACKSLASH@@ and put back with chr(92).
+-- No backslash anywhere in this file (0219's header): 0218's one backslash (in 0235's body) is written @@0236_BACKSLASH@@ and put back with chr(92).
 
 begin;
 set local lock_timeout = '5s';
@@ -20,8 +20,8 @@ declare
 begin
   select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p
    where p.oid = to_regprocedure('public.film_price(public.films)');
-  if h is null or h <> all (array['b873f893f3f185b3eab3698d349f3379', '3c22f87be736c073d17d93e040e914e1']) then
-    raise exception 'rollback 0236: film_price is neither 0236''s body nor 0218''s (md5 %): read it first', h;
+  if h is null or h <> all (array['af0fb80cce8e92fd2360aa6d5366a942', '186d34ffb633bc56a91bbf617b0b7520']) then
+    raise exception 'rollback 0236: film_price is neither 0236''s body nor 0235''s (md5 %): read it first', h;
   end if;
   select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into h from pg_proc p
    where p.oid = to_regprocedure('public.film_assembly_retryable(text)');
@@ -30,7 +30,7 @@ begin
   end if;
 end $$;
 
--- 0218's body.
+-- 0235's body.
 do $fp$
 begin
   execute replace($fp0236$create or replace function public.film_price(p_film public.films) returns jsonb
@@ -81,7 +81,8 @@ begin
     -- The key frame (only a scene that makes its own).
     if sc.first_frame = 'keyframe' then
       ln := jsonb_build_object('line', 'keyframe', 'scene_id', sc.id, 'position', sc.position, 'shot_index', 0, 'model', kmodel);
-      q := case when kmodel is not null then public.film_model_problem(kmodel, array['t2i', 'edit'], label || ' keyframe_model') end;
+      -- 0235: the film's organization, so a platform admin's operator preview in the exempt organization passes (and nobody else's).
+      q := case when kmodel is not null then public.film_model_problem(kmodel, array['t2i', 'edit'], label || ' keyframe_model', f.org_id) end;
       if kmodel is null then
         ln := ln || jsonb_build_object('priced', false, 'reason', 'model_not_set',
                                        'detail', format('%s: choose a key-frame model', label));
@@ -112,6 +113,14 @@ begin
           q := jsonb_build_object('priced', false, 'reason', 'refs_not_supported',
                                   'detail', format('%s: %s takes %s reference pictures and this scene has %s; choose a model that takes them all or remove some',
                                                    label, kmodel, ref_max, refs_n));
+        -- 0235 (refs path): a film's key frame is made from words (film_take_job sends t2i), and an adapter sends references only on
+        -- the capabilities it lists (registry inputs.ref_capabilities, checked against the adapter): one that does not list t2i would
+        -- refuse this take at submit, after the hold. Not listed, or not stated at all, is refused here, before anything is held.
+        elsif refs_n > 0 and not coalesce(jsonb_typeof(spec -> 'inputs' -> 'ref_capabilities') = 'array'
+                                          and (spec -> 'inputs' -> 'ref_capabilities') ? 't2i', false) then
+          q := jsonb_build_object('priced', false, 'reason', 'refs_not_supported',
+                                  'detail', format('%s: %s does not take reference pictures for a key frame made from words; remove the reference pictures or choose a key-frame model that takes them',
+                                                   label, kmodel));
         elsif cap = 'edit' and stand is null then
           q := jsonb_build_object('priced', false, 'reason', 'source_unavailable',
                                   'detail', format('%s: an edit model is priced against a picture of this library; add one picture', label));
@@ -139,7 +148,8 @@ begin
 
     -- The clip shots: shot 1 from the first frame, shots 2-3 extend from the shot before.
     select m.spec into spec from public.model_registry m where m.id = cmodel;
-    bad := case when cmodel is not null then public.film_model_problem(cmodel, array['i2v'], label || ' clip_model') end;
+    -- 0235: the film's organization, so a platform admin's operator preview in the exempt organization passes (and nobody else's).
+    bad := case when cmodel is not null then public.film_model_problem(cmodel, array['i2v'], label || ' clip_model', f.org_id) end;
     target := ceil(sc.planned_seconds::numeric / sc.shot_count);
     select min(x::numeric) filter (where x::numeric >= target), max(x::numeric) into dur, longest
       from jsonb_array_elements_text(case when jsonb_typeof(spec -> 'durations_s') = 'array' then spec -> 'durations_s'
@@ -217,7 +227,8 @@ begin
       q := jsonb_build_object('priced', false, 'reason', 'channel_voice_not_priced',
                               'detail', 'a channel''s own voice is not priced here; choose a voice for the film');
     else
-      q := coalesce(public.film_model_problem(f.voice ->> 'model', array['tts'], 'voice.model'),
+      -- 0235: the film's organization, so a platform admin's operator preview in the exempt organization passes (and nobody else's).
+      q := coalesce(public.film_model_problem(f.voice ->> 'model', array['tts'], 'voice.model', f.org_id),
                     public.film_try_price(f.org_id, 'tts', f.voice ->> 'model',
                                           jsonb_build_object('prompt', left(sample, (public.film_money_limits() ->> 'tts_sample_chars')::integer),
                                                              'voice_id', f.voice ->> 'voice_id')));
@@ -301,8 +312,8 @@ declare
 begin
   select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into got from pg_proc p
    where p.oid = 'public.film_price(public.films)'::regprocedure;
-  if got <> '3c22f87be736c073d17d93e040e914e1' then
-    raise exception 'rollback 0236 end state: film_price is not 0218''s body (md5 %)', got;
+  if got <> '186d34ffb633bc56a91bbf617b0b7520' then
+    raise exception 'rollback 0236 end state: film_price is not 0235''s body (md5 %)', got;
   end if;
   select md5(regexp_replace(p.prosrc, '[[:space:]]+', ' ', 'g')) into got from pg_proc p
    where p.oid = 'public.film_assembly_retryable(text)'::regprocedure;

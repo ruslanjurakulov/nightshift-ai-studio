@@ -644,7 +644,8 @@ def not_on_sale(queue, model: str, capability: str, org_id: str, *, previews: bo
     """Asked right before a paid submit of a job queued earlier (module doc, "Still on sale"). None: the model may be sent. Otherwise
     ``(code, message)``: it must not be, and the caller fails the job with that code. Raises :class:`CreativeUnavailable` when the
     database's answer cannot be read, so the caller sends nothing and leaves the job (unknown is not "available"). ``previews``: the
-    caller sells operator previews (the Studio's creative jobs do; Film Studio refuses them at start, 0166's film_check_model)."""
+    caller sells operator previews (the Studio's creative jobs do; Film Studio's takes do for the exempt organization only, which is
+    where 0235's film_check_model lets a platform admin start a film on one). Either way the exempt organization is asked here too."""
     sold = queue.on_sale(capability)
     if not isinstance(sold, list):
         raise CreativeUnavailable("sellable_models: unreadable answer")

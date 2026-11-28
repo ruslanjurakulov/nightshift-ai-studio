@@ -15,7 +15,10 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 16
+        "image_refs_max": 16,
+        "ref_capabilities": [
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -95,7 +98,10 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 16
+        "image_refs_max": 16,
+        "ref_capabilities": [
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -168,7 +174,10 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 16
+        "image_refs_max": 16,
+        "ref_capabilities": [
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -241,7 +250,10 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 16
+        "image_refs_max": 16,
+        "ref_capabilities": [
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -315,7 +327,10 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 16
+        "image_refs_max": 16,
+        "ref_capabilities": [
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -389,7 +404,11 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 14
+        "image_refs_max": 14,
+        "ref_capabilities": [
+          "t2i",
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -729,7 +748,11 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 3
+        "image_refs_max": 3,
+        "ref_capabilities": [
+          "t2i",
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -1062,7 +1085,11 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 14
+        "image_refs_max": 14,
+        "ref_capabilities": [
+          "t2i",
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
@@ -1403,7 +1430,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "16:9",
@@ -1738,7 +1766,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "ref_capabilities": []
       },
       "aspect_ratios": [],
       "relight_looks": [
@@ -2066,7 +2095,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "ref_capabilities": []
       },
       "aspect_ratios": [],
       "resolutions": [],
@@ -2937,7 +2967,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -2999,7 +3030,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3061,7 +3093,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3123,7 +3156,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "21:9",
@@ -3207,7 +3241,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "21:9",
@@ -3291,7 +3326,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3365,7 +3401,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3440,7 +3477,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3506,7 +3544,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3580,7 +3619,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3668,7 +3708,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "ref_capabilities": []
       },
       "aspect_ratios": [],
       "resolutions": [],
@@ -3730,7 +3771,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3800,7 +3842,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -3870,7 +3913,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -6694,7 +6738,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 10
+        "image_refs_max": 10,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -6758,7 +6803,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 10
+        "image_refs_max": 10,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -6821,7 +6867,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -7135,7 +7182,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -7218,7 +7266,11 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 10
+        "image_refs_max": 10,
+        "ref_capabilities": [
+          "t2i",
+          "edit"
+        ]
       },
       "aspect_ratios": [],
       "resolutions": [],
@@ -7331,6 +7383,7 @@
         "confirmed": false,
         "note": "elevenlabs.io/pricing/api read 2026-11-11: v4 '$0.08 Price per 1K characters', the same on every plan row."
       },
+      "operator_preview": true,
       "credit_unit": "model_elevenlabs_v4_character",
       "entitlement": "models_audio:premium",
       "terms_gate": "plan_required:scale",
@@ -7389,6 +7442,7 @@
         "confirmed": false,
         "note": "elevenlabs.io/pricing/api read 2026-11-11: v3 '$0.08 Price per 1K characters', the same on every plan row; '5,000 character limit'."
       },
+      "operator_preview": true,
       "credit_unit": "model_elevenlabs_v3_character",
       "entitlement": "models_audio:premium",
       "terms_gate": "plan_required:scale",
@@ -7778,7 +7832,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -7858,7 +7913,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 1
+        "image_refs_max": 1,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "1:1",
@@ -8285,7 +8341,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "3:1",
@@ -8355,7 +8412,8 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 0
+        "image_refs_max": 0,
+        "ref_capabilities": []
       },
       "aspect_ratios": [
         "3:1",
@@ -8769,7 +8827,11 @@
       ],
       "output": "image",
       "inputs": {
-        "image_refs_max": 14
+        "image_refs_max": 14,
+        "ref_capabilities": [
+          "t2i",
+          "edit"
+        ]
       },
       "aspect_ratios": [
         "1:1",
